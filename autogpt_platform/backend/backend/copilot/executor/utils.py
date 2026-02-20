@@ -205,3 +205,20 @@ async def enqueue_copilot_task(
         message=entry.model_dump_json(),
         exchange=COPILOT_EXECUTION_EXCHANGE,
     )
+
+
+async def enqueue_cancel_task(task_id: str) -> None:
+    """Publish a cancel request for a running CoPilot task.
+
+    Sends a ``CancelCoPilotEvent`` to the FANOUT exchange so all executor
+    pods receive the cancellation signal.
+    """
+    from backend.util.clients import get_async_copilot_queue
+
+    event = CancelCoPilotEvent(task_id=task_id)
+    queue_client = await get_async_copilot_queue()
+    await queue_client.publish_message(
+        routing_key="",  # FANOUT ignores routing key
+        message=event.model_dump_json(),
+        exchange=COPILOT_CANCEL_EXCHANGE,
+    )

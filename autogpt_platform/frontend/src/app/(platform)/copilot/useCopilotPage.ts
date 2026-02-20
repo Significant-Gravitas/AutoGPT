@@ -1,5 +1,6 @@
 import {
   getGetV2ListSessionsQueryKey,
+  postV2CancelSessionTask,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -109,7 +110,7 @@ export function useCopilotPage() {
   const {
     messages,
     sendMessage,
-    stop,
+    stop: sdkStop,
     status,
     error,
     setMessages,
@@ -121,6 +122,52 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
   });
+
+  // Wrap AI SDK's stop() to also cancel the backend executor task.
+  // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
+  // the cancel API to actually stop the executor and wait for confirmation.
+  async function stop() {
+    sdkStop();
+
+    // Mark any in-progress tool parts as errored so spinners stop.
+    setMessages((prev) =>
+      prev.map((msg) => ({
+        ...msg,
+        parts: msg.parts.map((part) =>
+          "state" in part &&
+          (part.state === "input-streaming" || part.state === "input-available")
+            ? {
+                ...part,
+                state: "output-error" as const,
+                errorText: "Cancelled",
+              }
+            : part,
+        ),
+      })),
+    );
+
+    if (!sessionId) return;
+    try {
+      const res = await postV2CancelSessionTask(sessionId);
+      if (
+        res.status === 200 &&
+        "reason" in res.data &&
+        res.data.reason === "cancel_published_not_confirmed"
+      ) {
+        toast({
+          title: "Stop may take a moment",
+          description:
+            "The cancel was sent but not yet confirmed. The task should stop shortly.",
+        });
+      }
+    } catch {
+      toast({
+        title: "Could not stop the task",
+        description: "The task may still be running in the background.",
+        variant: "destructive",
+      });
+    }
+  }
 
   // Abort the stream if the backend doesn't start sending data within 12s.
   const stopRef = useRef(stop);
