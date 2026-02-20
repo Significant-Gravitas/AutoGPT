@@ -181,6 +181,3 @@ autogpt_platform/backend/settings.py
 CLAUDE.local.md
 /autogpt_platform/backend/logs
 .next
-
-# Local PR draft/notes (copy content to GitHub, do not commit)
-PR_12001_UPDATES.md
