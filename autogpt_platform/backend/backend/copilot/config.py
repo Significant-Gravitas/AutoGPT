@@ -38,8 +38,10 @@ class ChatConfig(BaseSettings):
 
     # Long-running operation configuration
     long_running_operation_ttl: int = Field(
-        default=600,
-        description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
+        default=3600,
+        description="TTL in seconds for long-running operation deduplication lock "
+        "(1 hour, matches stream_ttl). Prevents duplicate operations if pod dies. "
+        "For longer operations, the stream_registry heartbeat keeps them alive.",
     )
 
     # Stream registry configuration for SSE reconnection
