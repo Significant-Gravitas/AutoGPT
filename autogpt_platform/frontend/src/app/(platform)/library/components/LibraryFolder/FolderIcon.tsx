@@ -96,32 +96,32 @@ export const folderCardStyles: Record<
   blue: {
     bg: "bg-blue-50",
     border: "border-blue-200",
-    buttonBase: "border-blue-300 text-blue-600",
-    buttonHover: "hover:bg-blue-100",
+    buttonBase: "border-zinc-600 text-black",
+    buttonHover: "hover:bg-blue-200",
   },
   purple: {
     bg: "bg-purple-50",
     border: "border-purple-200",
-    buttonBase: "border-purple-300 text-purple-600",
-    buttonHover: "hover:bg-purple-100",
+    buttonBase: "border-zinc-600 text-black ",
+    buttonHover: "hover:bg-purple-200",
   },
   emerald: {
     bg: "bg-emerald-50",
     border: "border-emerald-200",
-    buttonBase: "border-emerald-300 text-emerald-600",
-    buttonHover: "hover:bg-emerald-100",
+    buttonBase: "border-zinc-600 text-black",
+    buttonHover: "hover:bg-emerald-200",
   },
   orange: {
     bg: "bg-orange-50",
     border: "border-orange-200",
-    buttonBase: "border-orange-300 text-orange-600",
-    buttonHover: "hover:bg-orange-100",
+    buttonBase: "border-zinc-600 text-black",
+    buttonHover: "hover:bg-orange-200",
   },
   pink: {
     bg: "bg-pink-50",
     border: "border-pink-200",
-    buttonBase: "border-pink-300 text-pink-600",
-    buttonHover: "hover:bg-pink-100",
+    buttonBase: "border-zinc-600 text-black",
+    buttonHover: "hover:bg-pink-200",
   },
 };
 
