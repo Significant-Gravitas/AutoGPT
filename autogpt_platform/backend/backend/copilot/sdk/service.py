@@ -595,7 +595,7 @@ async def stream_chat_completion_sdk(
         os.makedirs(sdk_cwd, exist_ok=True)
 
         # Initialize saved message counter as mutable list so long-running
-        # callback and streaming loop can coordinate (Layer 3: defense-in-depth)
+        # callback and streaming loop can coordinate
         saved_msg_count_ref: list[int] = [len(session.messages)]
 
         set_execution_context(
@@ -735,7 +735,7 @@ async def stream_chat_completion_sdk(
                 has_appended_assistant = False
                 has_tool_results = False
                 # Track persisted message count. Uses shared ref so long-running
-                # callback can update it (Layer 3: defense-in-depth)
+                # callback can update it for coordination
 
                 # Use an explicit async iterator with non-cancelling heartbeats.
                 # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
