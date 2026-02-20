@@ -11,6 +11,7 @@ from typing import Any
 
 from backend.util.exceptions import NotFoundError
 
+from .. import db as chat_db
 from .. import stream_registry
 from ..config import ChatConfig
 from ..model import (
@@ -133,7 +134,10 @@ is delivered to the user via a background stream.
 """
 
 
-def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
+def _build_long_running_callback(
+    user_id: str | None,
+    saved_msg_count_ref: list[int] | None = None,
+) -> LongRunningCallback:
     """Build a callback that delegates long-running tools to the non-SDK infrastructure.
 
     Long-running tools (create_agent, edit_agent, etc.) are delegated to the
@@ -141,6 +145,12 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
     database persistence, and SSE reconnection.  This means results survive
     page refreshes / pod restarts, and the frontend shows the proper loading
     widget with progress updates.
+
+    Args:
+        user_id: User ID for the session
+        saved_msg_count_ref: Mutable reference [count] shared with streaming loop
+            for coordinating message saves. When provided, the callback will update
+            it after appending messages to prevent counter drift.
 
     The returned callback matches the ``LongRunningCallback`` signature:
     ``(tool_name, args, session) -> MCP response dict``.
@@ -207,7 +217,12 @@ def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
             tool_call_id=tool_call_id,
         )
         session.messages.append(pending_message)
-        await upsert_chat_session(session)
+        # Layer 2: Query DB for latest count before save (defense against stale counter)
+        db_count = await chat_db.get_chat_session_message_count(session_id)
+        await upsert_chat_session(session, existing_message_count=db_count)
+        # Layer 3: Update shared counter so streaming loop stays in sync
+        if saved_msg_count_ref is not None:
+            saved_msg_count_ref[0] = len(session.messages)
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -581,10 +596,16 @@ async def stream_chat_completion_sdk(
         sdk_cwd = _make_sdk_cwd(session_id)
         os.makedirs(sdk_cwd, exist_ok=True)
 
+        # Initialize saved message counter as mutable list so long-running
+        # callback and streaming loop can coordinate (Layer 3: defense-in-depth)
+        saved_msg_count_ref: list[int] = [len(session.messages)]
+
         set_execution_context(
             user_id,
             session,
-            long_running_callback=_build_long_running_callback(user_id),
+            long_running_callback=_build_long_running_callback(
+                user_id, saved_msg_count_ref
+            ),
         )
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
@@ -715,9 +736,8 @@ async def stream_chat_completion_sdk(
                 accumulated_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False
-                # Track persisted message count to skip DB count queries
-                # on incremental saves.  Initial save happened at line 545.
-                saved_msg_count = len(session.messages)
+                # Track persisted message count. Uses shared ref so long-running
+                # callback can update it (Layer 3: defense-in-depth)
 
                 # Use an explicit async iterator with non-cancelling heartbeats.
                 # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
@@ -895,11 +915,18 @@ async def stream_chat_completion_sdk(
                                 # pending tool call is visible on refresh /
                                 # other devices.
                                 try:
+                                    # Layer 2: Query DB for latest count (defense against stale counter)
+                                    db_count = (
+                                        await chat_db.get_chat_session_message_count(
+                                            session_id
+                                        )
+                                    )
                                     await upsert_chat_session(
                                         session,
-                                        existing_message_count=saved_msg_count,
+                                        existing_message_count=db_count,
                                     )
-                                    saved_msg_count = len(session.messages)
+                                    # Layer 3: Update shared ref so callback stays in sync
+                                    saved_msg_count_ref[0] = len(session.messages)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -923,11 +950,18 @@ async def stream_chat_completion_sdk(
                                 # Save after tool completes so the result is
                                 # visible on refresh / other devices.
                                 try:
+                                    # Layer 2: Query DB for latest count (defense against stale counter)
+                                    db_count = (
+                                        await chat_db.get_chat_session_message_count(
+                                            session_id
+                                        )
+                                    )
                                     await upsert_chat_session(
                                         session,
-                                        existing_message_count=saved_msg_count,
+                                        existing_message_count=db_count,
                                     )
-                                    saved_msg_count = len(session.messages)
+                                    # Layer 3: Update shared ref so callback stays in sync
+                                    saved_msg_count_ref[0] = len(session.messages)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
