@@ -288,10 +288,10 @@ def _build_long_running_callback(
         )
         session.messages.append(pending_message)
         # Collision detection happens in add_chat_messages_batch (db.py)
-        _, final_count = await upsert_chat_session(session)
+        session = await upsert_chat_session(session)
         # Update shared counter so streaming loop stays in sync
         if saved_msg_count is not None:
-            saved_msg_count.update(final_count)
+            saved_msg_count.update(session.saved_message_count)
 
         # --- Spawn background task (reuses non-SDK infrastructure) ---
         bg_task = asyncio.create_task(
@@ -626,7 +626,7 @@ async def stream_chat_completion_sdk(
                 user_id=user_id, session_id=session_id, message_length=len(message)
             )
 
-    session, _ = await upsert_chat_session(session)
+    session = await upsert_chat_session(session)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -1002,9 +1002,9 @@ async def stream_chat_completion_sdk(
                                 # other devices. Collision detection happens
                                 # in add_chat_messages_batch (db.py).
                                 try:
-                                    _, final_count = await upsert_chat_session(session)
+                                    session = await upsert_chat_session(session)
                                     # Update shared counter so callback stays in sync
-                                    saved_msg_count.update(final_count)
+                                    saved_msg_count.update(session.saved_message_count)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",
@@ -1029,9 +1029,9 @@ async def stream_chat_completion_sdk(
                                 # visible on refresh / other devices.
                                 # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    _, final_count = await upsert_chat_session(session)
+                                    session = await upsert_chat_session(session)
                                     # Update shared counter so callback stays in sync
-                                    saved_msg_count.update(final_count)
+                                    saved_msg_count.update(session.saved_message_count)
                                 except Exception as save_err:
                                     logger.warning(
                                         "[SDK] [%s] Incremental save " "failed: %s",

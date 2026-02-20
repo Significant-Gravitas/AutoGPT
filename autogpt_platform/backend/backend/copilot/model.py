@@ -85,6 +85,7 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
+    saved_message_count: int = 0  # Number of messages persisted to DB
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -436,7 +437,7 @@ async def upsert_chat_session(
     session: ChatSession,
     *,
     existing_message_count: int | None = None,
-) -> tuple[ChatSession, int]:
+) -> ChatSession:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
@@ -450,9 +451,9 @@ async def upsert_chat_session(
             where the caller already knows how many messages are persisted.
 
     Returns:
-        Tuple of (session, next_sequence) where next_sequence is the next
-        available sequence number after save (accounting for collision detection).
-        This equals the total message count if sequences start at 0.
+        The session with updated saved_message_count field reflecting the
+        number of messages persisted to the database (accounting for
+        collision detection).
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -486,6 +487,9 @@ async def upsert_chat_session(
             )
             db_error = e
 
+        # Update session metadata with persisted message count
+        session.saved_message_count = final_count
+
         # Save to cache (best-effort, even if DB failed)
         try:
             await cache_chat_session(session)
@@ -506,7 +510,7 @@ async def upsert_chat_session(
                 f"Failed to persist chat session {session.session_id} to database"
             ) from db_error
 
-        return session, final_count
+        return session
 
 
 async def _save_session_to_db(
