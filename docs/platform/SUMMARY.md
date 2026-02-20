@@ -33,6 +33,12 @@
 * [API Introduction](integrating/api-guide.md)
 * [OAuth & SSO](integrating/oauth-guide.md)
 
+## Contributing
+
+* [Contributing Guide](contributing/README.md)
+* [OAuth Integration Flow](contributing/oauth-integration-flow.md)
+* [Testing](contributing/tests.md)
+
 ## Changelog
 
 * [What's New](changelog/README.md)
