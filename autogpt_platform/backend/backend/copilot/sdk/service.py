@@ -237,8 +237,12 @@ def _build_long_running_callback(
         )
         session.messages.append(pending_message)
         # Collision detection happens in add_chat_messages_batch (db.py)
-        session = await upsert_chat_session(session)
-        # Update shared counter so streaming loop stays in sync
+        # Pass existing count to avoid DB query
+        session = await upsert_chat_session(
+            session,
+            existing_message_count=saved_msg_count.count if saved_msg_count else None,
+        )
+        # Update shared counter with actual persisted count so streaming loop stays in sync
         if saved_msg_count is not None:
             saved_msg_count.update(session.saved_message_count)
 
@@ -960,8 +964,11 @@ async def stream_chat_completion_sdk(
                                 # other devices. Collision detection happens
                                 # in add_chat_messages_batch (db.py).
                                 try:
-                                    session = await upsert_chat_session(session)
-                                    # Update shared counter so callback stays in sync
+                                    session = await upsert_chat_session(
+                                        session,
+                                        existing_message_count=saved_msg_count.count,
+                                    )
+                                    # Update counter with actual persisted count (accounting for collision detection)
                                     saved_msg_count.update(session.saved_message_count)
                                 except Exception as save_err:
                                     logger.warning(
@@ -987,8 +994,11 @@ async def stream_chat_completion_sdk(
                                 # visible on refresh / other devices.
                                 # Collision detection happens in add_chat_messages_batch (db.py).
                                 try:
-                                    session = await upsert_chat_session(session)
-                                    # Update shared counter so callback stays in sync
+                                    session = await upsert_chat_session(
+                                        session,
+                                        existing_message_count=saved_msg_count.count,
+                                    )
+                                    # Update counter with actual persisted count (accounting for collision detection)
                                     saved_msg_count.update(session.saved_message_count)
                                 except Exception as save_err:
                                     logger.warning(
