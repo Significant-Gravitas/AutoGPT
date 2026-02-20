@@ -459,7 +459,7 @@ def _is_tool_error_or_denial(content: str | None) -> bool:
             "maximum",  # subtask-limit denial
             "denied",
             "blocked",
-            "failed",  # internal tool execution failures
+            "failed to",  # internal tool execution failures
             '"iserror": true',  # MCP protocol error flag
         )
     )

@@ -169,11 +169,15 @@ async def wait_for_stash(timeout: float = 0.5) -> bool:
     event = _stash_event.get(None)
     if event is None:
         return False
-    # Clear before waiting so we detect new signals only.
-    event.clear()
+    # Fast path: hook already completed before we got here.
+    if event.is_set():
+        event.clear()
+        return True
+    # Slow path: wait for the hook to signal.
     try:
         async with asyncio.timeout(timeout):
             await event.wait()
+        event.clear()
         return True
     except TimeoutError:
         return False

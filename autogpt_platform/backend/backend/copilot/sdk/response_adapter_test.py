@@ -569,15 +569,10 @@ async def test_wait_for_stash_already_stashed():
 
     # Stash before waiting — simulates hook completing before message arrives
     _stash("Read", "file contents")
-    # Event is now set; wait_for_stash clears it and re-waits.
-    # Since the stash already happened, the event won't fire again,
-    # so this should timeout. But the stash DATA is available.
+    # Event is now set; wait_for_stash detects the fast path and returns
+    # immediately without timing out.
     result = await wait_for_stash(timeout=0.05)
-    # Returns False because the event was cleared before waiting and
-    # no NEW signal arrived. This is expected: the flush will find the
-    # data in the stash directly — wait_for_stash is only needed when
-    # the stash hasn't happened yet.
-    assert result is False
+    assert result is True
 
     # But the stash itself is populated
     assert _pto.get({}).get("Read") == ["file contents"]
