@@ -307,27 +307,26 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-async def _compress_conversation_history(
-    session: ChatSession,
+async def _compress_messages(
+    messages: list[ChatMessage],
 ) -> list[ChatMessage]:
-    """Compress prior conversation messages if they exceed the token threshold.
+    """Compress a list of chat messages if they exceed the token threshold.
 
     Uses the shared compress_context() from prompt.py which supports:
     - LLM summarization of old messages (keeps recent ones intact)
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
 
-    Returns the compressed prior messages (everything except the current message).
+    Returns the (potentially compressed) messages.
     """
-    prior = session.messages[:-1]
-    if len(prior) < 2:
-        return prior
+    if len(messages) < 2:
+        return messages
 
     from backend.util.prompt import compress_context
 
     # Convert ChatMessages to dicts for compress_context
     messages_dict = []
-    for msg in prior:
+    for msg in messages:
         msg_dict: dict[str, Any] = {"role": msg.role}
         if msg.content:
             msg_dict["content"] = msg.content
@@ -375,7 +374,7 @@ async def _compress_conversation_history(
             for m in result.messages
         ]
 
-    return prior
+    return messages
 
 
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
@@ -603,63 +602,56 @@ async def stream_chat_completion_sdk(
                     yield StreamFinish()
                     return
 
-                # Build query: with --resume the CLI already has full
-                # context, so we only send the new message.  Without
-                # resume, compress history into a context prefix.
+                # Build query: determine which prior messages (if any)
+                # need to be injected as context, compress them, and
+                # prepend to the user message.
                 #
-                # Hybrid mode: if the transcript is stale (upload missed
-                # some turns), compress only the gap and prepend it so
-                # the agent has transcript context + missed turns.
+                # With --resume the CLI already has the transcript, so we
+                # only inject the "gap" (messages added since the last
+                # transcript upload).  Without --resume we inject the
+                # full prior history.  Both paths share the same
+                # compress → format → prepend logic.
                 query_message = current_message
                 current_msg_count = len(session.messages)
 
-                if use_resume and transcript_msg_count > 0:
-                    # Transcript covers messages[0..M-1].  Current session
-                    # has N messages (last one is the new user msg).
-                    # Gap = messages[M .. N-2] (everything between upload
-                    # and the current turn).
-                    # When transcript_msg_count == 0 (no metadata), we trust
-                    # the transcript is up-to-date and skip gap detection to
-                    # avoid duplicating the full history.
-                    if transcript_msg_count < current_msg_count - 1:
-                        gap = session.messages[transcript_msg_count:-1]
-                        gap_context = _format_conversation_context(gap)
-                        if gap_context:
-                            logger.info(
-                                f"[SDK] Transcript stale: covers {transcript_msg_count} "
-                                f"of {current_msg_count} messages, compressing "
-                                f"{len(gap)} missed messages"
-                            )
-                            query_message = (
-                                f"{gap_context}\n\n"
-                                f"Now, the user says:\n{current_message}"
-                            )
-                elif not use_resume and current_msg_count > 1:
-                    logger.warning(
-                        f"[SDK] Using compression fallback for session "
-                        f"{session_id} ({current_msg_count} messages) — "
-                        f"no transcript available for --resume"
-                    )
-                    compressed = await _compress_conversation_history(session)
-                    history_context = _format_conversation_context(compressed)
-                    if history_context:
+                # Determine messages that need context injection.
+                if use_resume:
+                    # Transcript covers messages[0..M-1].  Gap = messages
+                    # between the upload watermark and the current turn.
+                    # When transcript_msg_count == 0 (no metadata) we trust
+                    # the transcript is up-to-date and skip gap detection.
+                    if (
+                        transcript_msg_count > 0
+                        and transcript_msg_count < current_msg_count - 1
+                    ):
+                        context_msgs = session.messages[transcript_msg_count:-1]
+                    else:
+                        context_msgs = []
+                elif current_msg_count > 1:
+                    context_msgs = session.messages[:-1]
+                else:
+                    context_msgs = []
+
+                if context_msgs:
+                    compressed = await _compress_messages(context_msgs)
+                    context_text = _format_conversation_context(compressed)
+                    if context_text:
                         query_message = (
-                            f"{history_context}\n\n"
+                            f"{context_text}\n\n"
                             f"Now, the user says:\n{current_message}"
                         )
 
                 # Log which context-management approach this turn uses.
-                if use_resume and transcript_msg_count > 0:
+                if context_msgs:
                     approach = (
-                        f"resume (transcript covers {transcript_msg_count}"
-                        f"/{current_msg_count} msgs)"
+                        f"resume+gap ({len(context_msgs)} missed)"
+                        if use_resume
+                        else f"compression ({len(context_msgs)} prior)"
                     )
                 elif use_resume:
-                    approach = "resume (fresh transcript, no gap detection)"
-                elif current_msg_count > 1:
-                    approach = "compression (no transcript available)"
+                    approach = "resume (transcript current)"
                 else:
-                    approach = "single-turn (first message)"
+                    approach = "single-turn"
                 logger.info(
                     "[SDK] [%s] Sending query — approach=%s, "
                     "total_msgs=%d, query_len=%d",
