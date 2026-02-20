@@ -670,8 +670,7 @@ async def stream_chat_completion_sdk(
     stream_id = task_id  # Use task_id as unique stream identifier
 
     # Acquire stream lock to prevent concurrent streams to the same session
-    lock_acquired = await _acquire_stream_lock(session_id, stream_id)
-    if not lock_acquired:
+    if not await _acquire_stream_lock(session_id, stream_id):
         # Another stream is active - check if it's still alive
         active_stream = await check_active_stream(session_id)
         logger.warning(
