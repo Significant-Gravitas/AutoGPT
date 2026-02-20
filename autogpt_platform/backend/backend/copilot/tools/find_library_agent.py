@@ -49,7 +49,7 @@ class FindLibraryAgentTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         return await search_agents(
-            query=kwargs.get("query", "").strip(),
+            query=(kwargs.get("query") or "").strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,
