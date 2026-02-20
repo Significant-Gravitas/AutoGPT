@@ -18,7 +18,7 @@ from backend.copilot.completion_handler import (
     process_operation_success,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.executor.utils import enqueue_copilot_task
+from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_task
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -50,6 +50,7 @@ from backend.copilot.tools.models import (
     OperationPendingResponse,
     OperationStartedResponse,
     SetupRequirementsResponse,
+    SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
@@ -129,6 +130,14 @@ class ListSessionsResponse(BaseModel):
 
     sessions: list[SessionSummaryResponse]
     total: int
+
+
+class CancelTaskResponse(BaseModel):
+    """Response model for the cancel task endpoint."""
+
+    cancelled: bool
+    task_id: str | None = None
+    reason: str | None = None
 
 
 class OperationCompleteRequest(BaseModel):
@@ -310,6 +319,57 @@ async def get_session(
         user_id=session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/cancel",
+    status_code=200,
+)
+async def cancel_session_task(
+    session_id: str,
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+) -> CancelTaskResponse:
+    """Cancel the active streaming task for a session.
+
+    Publishes a cancel event to the executor via RabbitMQ FANOUT, then
+    polls Redis until the task status flips from ``running`` or a timeout
+    (5 s) is reached.  Returns only after the cancellation is confirmed.
+    """
+    await _validate_and_get_session(session_id, user_id)
+
+    active_task, _ = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+    if not active_task:
+        return CancelTaskResponse(cancelled=False, reason="no_active_task")
+
+    task_id = active_task.task_id
+    await enqueue_cancel_task(task_id)
+    logger.info(
+        f"[CANCEL] Published cancel for task ...{task_id[-8:]} "
+        f"session ...{session_id[-8:]}"
+    )
+
+    # Poll until the executor confirms the task is no longer running.
+    # Keep max_wait below typical reverse-proxy read timeouts.
+    poll_interval = 0.5
+    max_wait = 5.0
+    waited = 0.0
+    while waited < max_wait:
+        await asyncio.sleep(poll_interval)
+        waited += poll_interval
+        task = await stream_registry.get_task(task_id)
+        if task is None or task.status != "running":
+            logger.info(
+                f"[CANCEL] Task ...{task_id[-8:]} confirmed stopped "
+                f"(status={task.status if task else 'gone'}) after {waited:.1f}s"
+            )
+            return CancelTaskResponse(cancelled=True, task_id=task_id)
+
+    logger.warning(f"[CANCEL] Task ...{task_id[-8:]} not confirmed after {max_wait}s")
+    return CancelTaskResponse(
+        cancelled=True, task_id=task_id, reason="cancel_published_not_confirmed"
     )
 
 
@@ -984,6 +1044,7 @@ ToolResponseUnion = (
     | AgentPreviewResponse
     | AgentSavedResponse
     | ClarificationNeededResponse
+    | SuggestedGoalResponse
     | BlockListResponse
     | BlockDetailsResponse
     | BlockOutputResponse

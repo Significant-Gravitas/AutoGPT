@@ -432,12 +432,22 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
     return session
 
 
-async def upsert_chat_session(session: ChatSession) -> ChatSession:
+async def upsert_chat_session(
+    session: ChatSession,
+    *,
+    existing_message_count: int | None = None,
+) -> ChatSession:
     """Update a chat session in both cache and database.
 
     Uses session-level locking to prevent race conditions when concurrent
     operations (e.g., background title update and main stream handler)
     attempt to upsert the same session simultaneously.
+
+    Args:
+        existing_message_count: If provided, skip the DB query to count
+            existing messages. The caller is responsible for tracking this
+            accurately. Useful for incremental saves in a streaming loop
+            where the caller already knows how many messages are persisted.
 
     Raises:
         DatabaseError: If the database write fails. The cache is still updated
@@ -450,15 +460,20 @@ async def upsert_chat_session(session: ChatSession) -> ChatSession:
 
     async with lock:
         # Get existing message count from DB for incremental saves
-        existing_message_count = await chat_db().get_chat_session_message_count(
-            session.session_id
-        )
+        if existing_message_count is None:
+            existing_message_count = await chat_db().get_chat_session_message_count(
+                session.session_id
+            )
 
         db_error: Exception | None = None
 
         # Save to database (primary storage)
         try:
-            await _save_session_to_db(session, existing_message_count)
+            await _save_session_to_db(
+                session,
+                existing_message_count,
+                skip_existence_check=existing_message_count > 0,
+            )
         except Exception as e:
             logger.error(
                 f"Failed to save session {session.session_id} to database: {e}"
@@ -489,21 +504,31 @@ async def upsert_chat_session(session: ChatSession) -> ChatSession:
 
 
 async def _save_session_to_db(
-    session: ChatSession, existing_message_count: int
+    session: ChatSession,
+    existing_message_count: int,
+    *,
+    skip_existence_check: bool = False,
 ) -> None:
-    """Save or update a chat session in the database."""
+    """Save or update a chat session in the database.
+
+    Args:
+        skip_existence_check: When True, skip the ``get_chat_session`` query
+            and assume the session row already exists.  Saves one DB round trip
+            for incremental saves during streaming.
+    """
     db = chat_db()
 
-    # Check if session exists in DB
-    existing = await db.get_chat_session(session.session_id)
+    if not skip_existence_check:
+        # Check if session exists in DB
+        existing = await db.get_chat_session(session.session_id)
 
-    if not existing:
-        # Create new session
-        await db.create_chat_session(
-            session_id=session.session_id,
-            user_id=session.user_id,
-        )
-        existing_message_count = 0
+        if not existing:
+            # Create new session
+            await db.create_chat_session(
+                session_id=session.session_id,
+                user_id=session.user_id,
+            )
+            existing_message_count = 0
 
     # Calculate total tokens from usage
     total_prompt = sum(u.prompt_tokens for u in session.usage)

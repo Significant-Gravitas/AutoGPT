@@ -27,7 +27,6 @@ class ChatConfig(BaseSettings):
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
     # Streaming Configuration
-    stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
     max_retries: int = Field(
         default=3,
         description="Max retries for fallback path (SDK handles retries internally)",

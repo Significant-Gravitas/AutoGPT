@@ -10,17 +10,10 @@ export function MiniGame() {
   const { canvasRef, activeMode, showOverlay, score, highScore, onContinue } =
     useMiniGame();
 
-  const isRunActive =
-    activeMode === "run" || activeMode === "idle" || activeMode === "over";
-
   let overlayText: string | undefined;
   let buttonLabel = "Continue";
   if (activeMode === "idle") {
     buttonLabel = "Start";
-  } else if (activeMode === "boss-intro") {
-    overlayText = "Face the bandit!";
-  } else if (activeMode === "boss-defeated") {
-    overlayText = "Great job, keep on going";
   } else if (activeMode === "over") {
     overlayText = `Score: ${score} / Record: ${highScore}`;
     buttonLabel = "Retry";
@@ -29,16 +22,7 @@ export function MiniGame() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium text-purple-500">
-        {isRunActive ? (
-          <>
-            Run mode: <Key>Space</Key> to jump
-          </>
-        ) : (
-          <>
-            Duel mode: <Key>←→</Key> to move · <Key>Z</Key> to attack ·{" "}
-            <Key>X</Key> to block · <Key>Space</Key> to jump
-          </>
-        )}
+        <Key>WASD</Key> to move
       </p>
       <div className="relative w-full overflow-hidden rounded-md border border-accent bg-background text-foreground">
         <canvas
