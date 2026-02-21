@@ -232,3 +232,37 @@ class ReverseListOrderBlock(Block):
         reversed_list = list(input_data.input_list)
         reversed_list.reverse()
         yield "reversed_list", reversed_list
+
+
+class ListConcatenationBlock(Block):
+    """
+    A block that concatenates two or more lists into one.
+    """
+
+    class Input(BlockSchemaInput):
+        lists: list[list[Any]] = SchemaField(
+            description="Lists to concatenate. Each item is a list to be combined."
+        )
+
+    class Output(BlockSchemaOutput):
+        concatenated_list: list[Any] = SchemaField(
+            description="The concatenated list containing all elements from input lists"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            description="Concatenates multiple lists into a single list. Pass a list of lists to combine them all.",
+            categories={BlockCategory.BASIC},
+            input_schema=ListConcatenationBlock.Input,
+            output_schema=ListConcatenationBlock.Output,
+            test_input={"lists": [[1, 2], [3, 4], [5]]},
+            test_output=[("concatenated_list", [1, 2, 3, 4, 5])],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        result = []
+        for lst in input_data.lists:
+            result.extend(lst)
+        yield "concatenated_list", result
+
