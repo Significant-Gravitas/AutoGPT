@@ -8,11 +8,10 @@ interface Props {
 }
 
 /**
- * Wrapper that automatically shows mini-game for long-running tools.
- * Checks the tool name against LONG_RUNNING_TOOLS and displays
- * LongRunningToolDisplay during streaming.
+ * Wrapper for all tool components. Automatically shows mini-game
+ * for long-running tools by checking LONG_RUNNING_TOOLS list.
  */
-export function LongRunningToolWrapper({ part, children }: Props) {
+export function ToolWrapper({ part, children }: Props) {
   // Extract tool name from part.type (e.g., "tool-create_agent" -> "create_agent")
   const toolName = part.type.replace(/^tool-/, "");
   const isStreaming =

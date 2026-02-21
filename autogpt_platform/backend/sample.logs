@@ -1,0 +1,208 @@
+2026-02-21 17:57:25,369 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:25,370 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:25,370 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:25,371 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:25,371 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:25,658 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:25,658 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:25,658 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:27,723 [34mINFO[0m  Metrics endpoint exposed at /metrics for external-api
+2026-02-21 17:57:27,729 [34mINFO[0m  Metrics endpoint exposed at /metrics for rest-api
+2026-02-21 17:57:27,834 [34mINFO[0m  Metrics endpoint exposed at /metrics for websocket-server
+2026-02-21 17:57:27,938 [34mINFO[0m  [DatabaseManager] started with PID 27517
+2026-02-21 17:57:27,940 [34mINFO[0m  [Scheduler] started with PID 27518
+2026-02-21 17:57:27,942 [34mINFO[0m  [NotificationManager] started with PID 27519
+2026-02-21 17:57:27,945 [34mINFO[0m  [WebsocketServer] started with PID 27520
+2026-02-21 17:57:27,950 [34mINFO[0m  [AgentServer] started with PID 27521
+2026-02-21 17:57:27,953 [34mINFO[0m  [ExecutionManager] started with PID 27522
+2026-02-21 17:57:27,953 [34mINFO[0m  [CoPilotExecutor] Starting...
+2026-02-21 17:57:27,954 [34mINFO[0m  [CoPilotExecutor] Pod assigned executor_id: 1f367aeb-07da-4998-bf2f-712cecf9c1dd 
+2026-02-21 17:57:27,954 [34mINFO[0m  [CoPilotExecutor] Spawn max-5 workers... 
+2026-02-21 17:57:27,972 [34mINFO[0m  [PID-27443|THREAD-77300354|CoPilotExecutor|RabbitMQ-81ca19ca-7f8d-4f35-ae55-88f2698363b8] Acquiring connection started...
+2026-02-21 17:57:27,972 [34mINFO[0m  [PID-27443|THREAD-77300355|CoPilotExecutor|RabbitMQ-81ca19ca-7f8d-4f35-ae55-88f2698363b8] Acquiring connection started...
+2026-02-21 17:57:27,975 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-02-21 17:57:27,977 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-02-21 17:57:27,977 [34mINFO[0m  Socket connected: <socket.socket fd=29, family=30, type=1, proto=6, laddr=('::1', 52555, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-02-21 17:57:27,980 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb4ecf0>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb4ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-02-21 17:57:27,980 [34mINFO[0m  Socket connected: <socket.socket fd=31, family=30, type=1, proto=6, laddr=('::1', 52554, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-02-21 17:57:27,981 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb88550>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb88550> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-02-21 17:57:28,020 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb4ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,021 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb4ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,022 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb4ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,022 [34mINFO[0m  Created channel=1
+2026-02-21 17:57:28,022 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb88550> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,023 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb88550> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,023 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x17fb88550> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:28,024 [34mINFO[0m  Created channel=1
+2026-02-21 17:57:28,043 [34mINFO[0m  [PID-27443|THREAD-77300355|CoPilotExecutor|RabbitMQ-81ca19ca-7f8d-4f35-ae55-88f2698363b8] Acquiring connection completed successfully.
+2026-02-21 17:57:28,043 [34mINFO[0m  [PID-27443|THREAD-77300354|CoPilotExecutor|RabbitMQ-81ca19ca-7f8d-4f35-ae55-88f2698363b8] Acquiring connection completed successfully.
+2026-02-21 17:57:28,044 [34mINFO[0m  [CoPilotExecutor] Starting to consume cancel messages... 
+2026-02-21 17:57:28,045 [34mINFO[0m  [CoPilotExecutor] Starting to consume run messages... 
+2026-02-21 17:57:30,342 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:30,344 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:30,345 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:30,345 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:30,345 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:30,476 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:30,477 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:30,478 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:31,478 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:31,479 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:31,480 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:31,480 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:31,481 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:31,561 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:31,563 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:31,564 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:31,565 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:31,565 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:31,616 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:31,616 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:31,617 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:31,682 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:31,682 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:31,683 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:32,686 [34mINFO[0m  [NotificationManager] Starting...
+2026-02-21 17:57:32,733 [34mINFO[0m  Metrics endpoint exposed at /metrics for NotificationManager
+2026-02-21 17:57:32,735 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:32,737 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:32,739 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,739 [34mINFO[0m  [PID-27519|THREAD-77300608|NotificationManager|FastAPI server-36587700-11ae-461f-bfec-6227929d72f0] Running FastAPI server started...
+2026-02-21 17:57:32,739 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,740 [34mINFO[0m  [NotificationManager] Starting RPC server at http://localhost:8007
+2026-02-21 17:57:32,740 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:32,742 [34mINFO[0m  [NotificationManager] [NotificationManager] ⏳ Configuring RabbitMQ... 
+2026-02-21 17:57:32,743 [34mINFO[0m  [PID-27519|THREAD-77300609|NotificationManager|AsyncRabbitMQ-af3e5906-c5fb-4e69-862e-efed939f4b63] Acquiring async connection started...
+2026-02-21 17:57:32,744 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:32,747 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:32,748 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,748 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:32,749 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,769 [34mINFO[0m  Started server process [27519]
+2026-02-21 17:57:32,769 [34mINFO[0m  Waiting for application startup.
+2026-02-21 17:57:32,771 [34mINFO[0m  Application startup complete.
+2026-02-21 17:57:32,773 [34mINFO[0m  Uvicorn running on http://localhost:8007 (Press CTRL+C to quit)
+2026-02-21 17:57:32,784 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-21 17:57:32,789 [34mINFO[0m  Starting event processor
+2026-02-21 17:57:32,790 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,790 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-02-21 17:57:32,791 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-21 17:57:32,822 [34mINFO[0m  [PID-27519|THREAD-77300609|NotificationManager|AsyncRabbitMQ-af3e5906-c5fb-4e69-862e-efed939f4b63] Acquiring async connection completed successfully.
+2026-02-21 17:57:32,823 [34mINFO[0m  [NotificationManager] [NotificationManager] Started notification service 
+2026-02-21 17:57:32,823 [34mINFO[0m  [NotificationManager] Starting consumer for queue: immediate_notifications 
+2026-02-21 17:57:32,824 [34mINFO[0m  [NotificationManager] Starting consumer for queue: admin_notifications 
+2026-02-21 17:57:32,824 [34mINFO[0m  [NotificationManager] Starting consumer for queue: batch_notifications 
+2026-02-21 17:57:32,824 [34mINFO[0m  [NotificationManager] Starting consumer for queue: summary_notifications 
+2026-02-21 17:57:32,861 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:32,862 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:32,862 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:32,890 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:32,890 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:32,890 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:32,937 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-02-21 17:57:32,937 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-02-21 17:57:32,937 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-02-21 17:57:33,011 [34mINFO[0m  Metrics endpoint exposed at /metrics for websocket-server
+2026-02-21 17:57:33,012 [34mINFO[0m  [WebsocketServer] Starting...
+2026-02-21 17:57:33,013 [34mINFO[0m  CORS allow origins: ['http://localhost:3000', 'http://127.0.0.1:3000']
+2026-02-21 17:57:33,060 [34mINFO[0m  Started server process [27520]
+2026-02-21 17:57:33,060 [34mINFO[0m  Waiting for application startup.
+2026-02-21 17:57:33,061 [34mINFO[0m  Application startup complete.
+2026-02-21 17:57:33,062 [34mINFO[0m  [PID-27520|THREAD-77300349|WebsocketServer|AsyncRedis-ab997956-869b-421b-8307-c193cdf1d4cb] Acquiring connection started...
+2026-02-21 17:57:33,063 [34mINFO[0m  [PID-27520|THREAD-77300349|WebsocketServer|AsyncRedis-ab997956-869b-421b-8307-c193cdf1d4cb] Acquiring connection started...
+2026-02-21 17:57:33,063 [34mINFO[0m  Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+2026-02-21 17:57:33,070 [34mINFO[0m  [PID-27520|THREAD-77300349|WebsocketServer|AsyncRedis-ab997956-869b-421b-8307-c193cdf1d4cb] Acquiring connection completed successfully.
+2026-02-21 17:57:33,071 [34mINFO[0m  [PID-27520|THREAD-77300349|WebsocketServer|AsyncRedis-ab997956-869b-421b-8307-c193cdf1d4cb] Acquiring connection completed successfully.
+2026-02-21 17:57:33,905 [34mINFO[0m  [DatabaseManager] Starting...
+2026-02-21 17:57:33,927 [34mINFO[0m  [Scheduler] Starting...
+2026-02-21 17:57:33,934 [34mINFO[0m  [ExecutionManager] Starting...
+2026-02-21 17:57:33,935 [34mINFO[0m  [GraphExecutor] [ExecutionManager] 🆔 Pod assigned executor_id: fe60ec6c-0560-438d-939d-d9b8f75aaeaf 
+2026-02-21 17:57:33,935 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Spawn max-10 workers... 
+2026-02-21 17:57:33,937 [34mINFO[0m  Metrics endpoint exposed at /metrics for DatabaseManager
+2026-02-21 17:57:33,939 [34mINFO[0m  [PID-27522|THREAD-77300767|ExecutionManager|RabbitMQ-dce807ce-9d94-4258-9926-a05874135977] Acquiring connection started...
+2026-02-21 17:57:33,939 [34mINFO[0m  [PID-27522|THREAD-77300768|ExecutionManager|RabbitMQ-dce807ce-9d94-4258-9926-a05874135977] Acquiring connection started...
+2026-02-21 17:57:33,941 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-02-21 17:57:33,941 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-02-21 17:57:33,941 [34mINFO[0m  Socket connected: <socket.socket fd=20, family=30, type=1, proto=6, laddr=('::1', 52584, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-02-21 17:57:33,941 [34mINFO[0m  Socket connected: <socket.socket fd=21, family=30, type=1, proto=6, laddr=('::1', 52585, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-02-21 17:57:33,942 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x1680cd400>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x1680cd400> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-02-21 17:57:33,942 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x168124b90>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x168124b90> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-02-21 17:57:33,950 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x1680cd400> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,951 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x1680cd400> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,951 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x1680cd400> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,951 [34mINFO[0m  Created channel=1
+2026-02-21 17:57:33,954 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x168124b90> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,954 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x168124b90> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,954 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x168124b90> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-02-21 17:57:33,955 [34mINFO[0m  Created channel=1
+2026-02-21 17:57:33,959 [34mINFO[0m  Metrics endpoint exposed at /metrics for Scheduler
+2026-02-21 17:57:33,962 [34mINFO[0m  [PID-27522|THREAD-77300768|ExecutionManager|RabbitMQ-dce807ce-9d94-4258-9926-a05874135977] Acquiring connection completed successfully.
+2026-02-21 17:57:33,962 [34mINFO[0m  [PID-27522|THREAD-77300767|ExecutionManager|RabbitMQ-dce807ce-9d94-4258-9926-a05874135977] Acquiring connection completed successfully.
+2026-02-21 17:57:33,963 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Starting to consume run messages... 
+2026-02-21 17:57:33,963 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Starting cancel message consumer... 
+2026-02-21 17:57:33,965 [34mINFO[0m  [PID-27518|THREAD-77300786|Scheduler|FastAPI server-21b2bff4-54db-4513-a5a3-618522a09cc6] Running FastAPI server started...
+2026-02-21 17:57:33,965 [34mINFO[0m  [Scheduler] Starting RPC server at http://localhost:8003
+2026-02-21 17:57:34,167 [34mINFO[0m  [PID-27517|THREAD-77300789|DatabaseManager|FastAPI server-d0b05357-0bed-46f6-b382-f616297cac04] Running FastAPI server started...
+2026-02-21 17:57:34,167 [34mINFO[0m  [DatabaseManager] Starting RPC server at http://localhost:8005
+2026-02-21 17:57:34,175 [34mINFO[0m  [DatabaseManager] ⏳ Connecting to Database...
+2026-02-21 17:57:34,176 [34mINFO[0m  [PID-27517|THREAD-77300790|DatabaseManager|Prisma-7d67c1c3-fb90-4e06-97d6-f3b6e5dd4b46] Acquiring connection started...
+2026-02-21 17:57:34,213 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,213 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,213 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,214 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,214 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,214 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,214 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-02-21 17:57:34,292 [34mINFO[0m  [Scheduler] [APScheduler] Added job "process_weekly_summary" to job store "weekly_notifications"
+2026-02-21 17:57:34,299 [34mINFO[0m  [Scheduler] [APScheduler] Added job "report_late_executions" to job store "execution"
+2026-02-21 17:57:34,304 [34mINFO[0m  [Scheduler] [APScheduler] Added job "report_block_error_rates" to job store "execution"
+2026-02-21 17:57:34,306 [34mINFO[0m  [Scheduler] [APScheduler] Added job "cleanup_expired_files" to job store "execution"
+2026-02-21 17:57:34,308 [34mINFO[0m  [Scheduler] [APScheduler] Added job "cleanup_oauth_tokens" to job store "execution"
+2026-02-21 17:57:34,311 [34mINFO[0m  [Scheduler] [APScheduler] Added job "execution_accuracy_alerts" to job store "execution"
+2026-02-21 17:57:34,313 [34mINFO[0m  [Scheduler] [APScheduler] Added job "ensure_embeddings_coverage" to job store "execution"
+2026-02-21 17:57:34,314 [34mINFO[0m  [Scheduler] [APScheduler] Scheduler started
+2026-02-21 17:57:34,314 [34mINFO[0m  [Scheduler] Running embedding backfill on startup...
+2026-02-21 17:57:34,320 [34mINFO[0m  [PID-27517|THREAD-77300790|DatabaseManager|Prisma-7d67c1c3-fb90-4e06-97d6-f3b6e5dd4b46] Acquiring connection completed successfully.
+2026-02-21 17:57:34,320 [34mINFO[0m  [DatabaseManager] ✅ Ready
+2026-02-21 17:57:34,380 [34mINFO[0m  [PID-27518|THREAD-77300347|Scheduler|AppService client-965012bb-215b-49e5-8554-89f9bff39f4a] Creating service client started...
+2026-02-21 17:57:34,381 [34mINFO[0m  [PID-27518|THREAD-77300347|Scheduler|AppService client-965012bb-215b-49e5-8554-89f9bff39f4a] Creating service client completed successfully.
+2026-02-21 17:57:34,677 [34mINFO[0m  Metrics endpoint exposed at /metrics for external-api
+2026-02-21 17:57:34,681 [34mINFO[0m  Metrics endpoint exposed at /metrics for rest-api
+2026-02-21 17:57:34,760 [34mINFO[0m  [AgentServer] Starting...
+2026-02-21 17:57:34,772 [34mINFO[0m  Started server process [27521]
+2026-02-21 17:57:34,772 [34mINFO[0m  Waiting for application startup.
+2026-02-21 17:57:34,773 [34mINFO[0m  [PID-27521|THREAD-77300350|AgentServer|Prisma-a433968d-e6b9-46f2-97f6-ab2765405f7a] Acquiring connection started...
+2026-02-21 17:57:34,929 [34mINFO[0m  [PID-27521|THREAD-77300350|AgentServer|Prisma-a433968d-e6b9-46f2-97f6-ab2765405f7a] Acquiring connection completed successfully.
+2026-02-21 17:57:34,941 [34mINFO[0m  Thread pool size set to 60 for sync endpoint/dependency performance
+2026-02-21 17:57:34,941 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-02-21 17:57:34,941 [34mINFO[0m  Syncing provider costs to blocks...
+2026-02-21 17:57:35,273 [34mINFO[0m  Registered 1 custom costs for block FirecrawlExtractBlock
+2026-02-21 17:57:35,735 [34mINFO[0m  Registered 1 custom costs for block FirecrawlExtractBlock
+2026-02-21 17:57:36,994 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-02-21 17:57:37,253 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-02-21 17:57:37,318 [34mINFO[0m  [Scheduler] BLOCK: 36 items without embeddings (89.9% coverage)
+2026-02-21 17:57:37,320 [34mINFO[0m  [Scheduler] Total: 36 items without embeddings (99.2% coverage) - processing all
+2026-02-21 17:57:37,322 [34mINFO[0m  Processing BLOCK content type...
+2026-02-21 17:57:37,333 [34mINFO[0m  Processing STORE_AGENT content type...
+2026-02-21 17:57:37,337 [34mINFO[0m  Processing DOCUMENTATION content type...
+2026-02-21 17:57:37,397 [34mINFO[0m  [Scheduler] Embedding backfill completed: 0/0 succeeded, 0 failed
+2026-02-21 17:57:37,397 [34mINFO[0m  [Scheduler] Running cleanup for orphaned embeddings (blocks/docs)...
+2026-02-21 17:57:37,420 [34mINFO[0m  STORE_AGENT: No orphaned embeddings found
+2026-02-21 17:57:37,422 [34mINFO[0m  BLOCK: No orphaned embeddings found
+2026-02-21 17:57:37,449 [34mINFO[0m  DOCUMENTATION: No orphaned embeddings found
+2026-02-21 17:57:37,449 [34mINFO[0m  [Scheduler] Cleanup completed: no orphaned embeddings found
+2026-02-21 17:57:37,450 [34mINFO[0m  [Scheduler] Startup embedding backfill complete: {'backfill': {'processed': 0, 'success': 0, 'failed': 0}, 'cleanup': {'deleted': 0}}
+2026-02-21 17:57:37,459 [34mINFO[0m  Started server process [27518]
+2026-02-21 17:57:37,459 [34mINFO[0m  Waiting for application startup.
+2026-02-21 17:57:37,460 [34mINFO[0m  Application startup complete.
+2026-02-21 17:57:37,463 [34mINFO[0m  Uvicorn running on http://localhost:8003 (Press CTRL+C to quit)
+2026-02-21 17:57:37,498 [34mINFO[0m  Synced 82 costs to 82 blocks
+2026-02-21 17:57:39,280 [34mINFO[0m  Migrating integration credentials for 0 users
+2026-02-21 17:57:39,290 [34mINFO[0m  Fixing LLM credential inputs on 0 nodes
+2026-02-21 17:57:39,290 [34mINFO[0m  Migrating LLM models
+2026-02-21 17:57:39,312 [34mINFO[0m  Migrated 0 node triggers to triggered presets
+2026-02-21 17:57:39,312 [34mINFO[0m  [PID-27521|THREAD-77300350|AgentServer|AsyncRedis-1363a95e-74f1-4116-b093-ab608c44565a] Acquiring connection started...
+2026-02-21 17:57:39,321 [34mINFO[0m  [PID-27521|THREAD-77300350|AgentServer|AsyncRedis-1363a95e-74f1-4116-b093-ab608c44565a] Acquiring connection completed successfully.
+2026-02-21 17:57:39,323 [34mINFO[0m  Chat completion consumer started (consumer: consumer-8a5ab512)
+2026-02-21 17:57:39,323 [34mINFO[0m  Application startup complete.
+2026-02-21 17:57:39,324 [34mINFO[0m  Uvicorn running on http://0.0.0.0:8006 (Press CTRL+C to quit)
