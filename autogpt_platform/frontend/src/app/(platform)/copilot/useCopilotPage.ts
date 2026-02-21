@@ -203,8 +203,9 @@ export function useCopilotPage() {
     prevStatusRef.current = status;
 
     const wasActive = prev === "streaming" || prev === "submitted";
-    const isIdle = status === "ready" || status === "error";
-    if (wasActive && isIdle && sessionId) {
+    const isReady = status === "ready";
+    // Only invalidate on successful completion, not on error to avoid infinite refetch loop
+    if (wasActive && isReady && sessionId) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
