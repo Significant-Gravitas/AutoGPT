@@ -901,6 +901,36 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         return None
 
 
+async def cancel_task(task_id: str) -> bool:
+    """Cancel a running task by cancelling its asyncio.Task.
+
+    Cancels the background asyncio task that is driving AI generation for the
+    given task_id and marks the task as failed in Redis so subscribers receive
+    a StreamFinish event.
+
+    Args:
+        task_id: Task ID to cancel
+
+    Returns:
+        True if the task was found and cancelled, False if not found or already done
+    """
+    bg_task = _local_tasks.get(task_id)
+    if bg_task is None:
+        logger.debug(f"No local asyncio task found for task {task_id}")
+        return False
+
+    if bg_task.done():
+        logger.debug(f"asyncio task for {task_id} already completed")
+        return False
+
+    bg_task.cancel()
+    logger.info(f"Cancelled background asyncio task for chat task {task_id}")
+
+    # Mark the task as failed in Redis and publish StreamFinish to subscribers
+    await mark_task_completed(task_id, "failed")
+    return True
+
+
 async def set_task_asyncio_task(task_id: str, asyncio_task: asyncio.Task) -> None:
     """Track the asyncio.Task for a task (local reference only).
 

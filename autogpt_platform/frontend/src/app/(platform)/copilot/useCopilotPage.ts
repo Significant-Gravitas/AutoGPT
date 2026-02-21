@@ -47,10 +47,31 @@ export function useCopilotPage() {
     [sessionId],
   );
 
-  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stop: stopStream,
+    status,
+    error,
+    setMessages,
+  } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
   });
+
+  async function stop() {
+    // Stop the client-side SSE stream first so the UI updates immediately.
+    stopStream();
+
+    // Then tell the backend to cancel its background processing.
+    if (sessionId) {
+      try {
+        await fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" });
+      } catch {
+        // Best-effort: ignore network errors so the UI stop still works.
+      }
+    }
+  }
 
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;

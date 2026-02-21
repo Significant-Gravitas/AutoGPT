@@ -645,6 +645,38 @@ async def resume_session_stream(
     )
 
 
+@router.post(
+    "/sessions/{session_id}/stop",
+    status_code=200,
+)
+async def stop_session_stream(
+    session_id: str,
+    user_id: str | None = Depends(auth.get_user_id),
+) -> dict:
+    """
+    Stop the active backend processing for a chat session.
+
+    Cancels the background AI generation task associated with the session so
+    that processing actually stops, not just the client-side SSE connection.
+
+    Args:
+        session_id: The chat session identifier.
+        user_id: Optional authenticated user ID.
+
+    Returns:
+        dict: Status of the cancellation.
+    """
+    active_task, _ = await stream_registry.get_active_task_for_session(
+        session_id, user_id
+    )
+
+    if not active_task:
+        return {"status": "no_active_task"}
+
+    cancelled = await stream_registry.cancel_task(active_task.task_id)
+    return {"status": "cancelled" if cancelled else "already_done"}
+
+
 @router.patch(
     "/sessions/{session_id}/assign-user",
     dependencies=[Security(auth.requires_user)],
