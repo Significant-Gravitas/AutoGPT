@@ -561,8 +561,12 @@ async def embed_query(query: str) -> list[float]:
 
 
 def embedding_to_vector_string(embedding: list[float]) -> str:
-    """Convert embedding list to PostgreSQL vector string format."""
-    return "[" + ",".join(str(x) for x in embedding) + "]"
+    """Convert embedding list to PostgreSQL vector string format.
+
+    Uses explicit decimal formatting to avoid scientific notation (e.g. 1e-10)
+    which pgvector does not accept.
+    """
+    return "[" + ",".join(f"{x:.18g}" for x in embedding) + "]"
 
 
 async def ensure_content_embedding(
@@ -843,8 +847,14 @@ async def semantic_search(
         # Semantic search with embeddings
         embedding_str = embedding_to_vector_string(query_embedding)
 
-        # Build params in order: limit, then user_id (if provided), then content types
+        # Build params in order: limit, embedding, then user_id (if provided), then content types
         params: list[Any] = [limit]
+
+        # Pass embedding as a proper query parameter to avoid SQL injection risk
+        # and to prevent issues with scientific notation in float-to-string conversion
+        params.append(embedding_str)
+        embedding_param_idx = len(params)
+
         user_filter = ""
         if user_id is not None:
             user_filter = 'AND "userId" = ${}'.format(len(params) + 1)
@@ -863,32 +873,20 @@ async def semantic_search(
         params.append(min_similarity)
 
         # Use unqualified ::vector and <=> operator - pgvector is in search_path on all environments
-        sql = (
-            """
+        sql = f"""
             SELECT
                 "contentId" as content_id,
                 "contentType" as content_type,
                 "searchableText" as searchable_text,
                 metadata,
-                1 - (embedding <=> '"""
-            + embedding_str
-            + """'::vector) as similarity
-            FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" IN ("""
-            + content_type_placeholders
-            + """)
-            """
-            + user_filter
-            + """
-            AND 1 - (embedding <=> '"""
-            + embedding_str
-            + """'::vector) >= $"""
-            + str(min_similarity_idx)
-            + """
+                1 - (embedding <=> ${embedding_param_idx}::vector) as similarity
+            FROM {{schema_prefix}}"UnifiedContentEmbedding"
+            WHERE "contentType" IN ({content_type_placeholders})
+            {user_filter}
+            AND 1 - (embedding <=> ${embedding_param_idx}::vector) >= ${min_similarity_idx}
             ORDER BY similarity DESC
             LIMIT $1
         """
-        )
 
         results = await query_raw_with_schema(sql, *params)
         return [
