@@ -51,7 +51,7 @@ export function useAgentActivityDropdown() {
   const processedExecutionsRef = useRef<string | null>(null);
   useEffect(() => {
     const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
+      ? `${executions.length}-${executionsSuccess}-${agentInfoMap.size}`
       : null;
 
     if (
