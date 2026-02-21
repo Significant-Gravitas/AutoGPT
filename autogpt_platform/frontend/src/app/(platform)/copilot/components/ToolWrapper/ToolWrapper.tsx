@@ -14,6 +14,11 @@ export function ToolWrapper({ part, children }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
+  // Extract tool name from type (format: "tool-{name}")
+  const toolName = part.type.startsWith("tool-")
+    ? part.type.substring(5)
+    : "unknown";
+
   // Check if this tool is marked as long-running via providerMetadata
   const isLongRunning =
     "providerMetadata" in part &&
@@ -25,13 +30,14 @@ export function ToolWrapper({ part, children }: Props) {
   // Debug logging
   if (part.type.startsWith("tool-")) {
     console.log("[ToolWrapper]", {
-      toolName: "toolName" in part ? part.toolName : "unknown",
+      toolName,
+      type: part.type,
       hasProviderMetadata: "providerMetadata" in part,
       providerMetadata:
         "providerMetadata" in part ? part.providerMetadata : undefined,
-      computed: isLongRunning,
+      isLongRunning,
       state: part.state,
-      part,
+      isStreaming,
     });
   }
 
