@@ -1428,8 +1428,10 @@ async def _yield_tool_call(
     tool = get_tool(tool_name)
     if tool and tool.is_long_running:
         yield StreamLongRunningStart(
-            toolCallId=tool_call_id,
-            toolName=tool_name,
+            data={
+                "toolCallId": tool_call_id,
+                "toolName": tool_name,
+            }
         )
 
     # Run tool execution synchronously with heartbeats

@@ -736,10 +736,19 @@ async def stream_chat_completion_sdk(
                             # Emit long-running notification for tools with is_long_running=True
                             if isinstance(response, StreamToolInputAvailable):
                                 tool = get_tool(response.toolName)
+                                logger.info(
+                                    f"[SDK] Tool check: {response.toolName}, "
+                                    f"tool={tool}, is_long_running={tool.is_long_running if tool else 'N/A'}"
+                                )
                                 if tool and tool.is_long_running:
+                                    logger.info(
+                                        f"[SDK] Emitting StreamLongRunningStart for {response.toolName}"
+                                    )
                                     yield StreamLongRunningStart(
-                                        toolCallId=response.toolCallId,
-                                        toolName=response.toolName,
+                                        data={
+                                            "toolCallId": response.toolCallId,
+                                            "toolName": response.toolName,
+                                        }
                                     )
 
                             if isinstance(response, StreamTextDelta):

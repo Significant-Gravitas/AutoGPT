@@ -15,13 +15,16 @@ export function ToolWrapper({ part, message, children }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
-  // Check if this tool has a long-running-start event in the message
+  // Check if this tool has a data-long-running-start event in the message
   const isLongRunning = message.parts.some(
     (p) =>
-      p.type === "long-running-start" &&
-      "toolCallId" in p &&
+      p.type === "data-long-running-start" &&
+      "data" in p &&
+      typeof p.data === "object" &&
+      p.data !== null &&
+      "toolCallId" in p.data &&
       "toolCallId" in part &&
-      p.toolCallId === part.toolCallId,
+      p.data.toolCallId === part.toolCallId,
   );
 
   return (
