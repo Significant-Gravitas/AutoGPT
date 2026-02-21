@@ -63,12 +63,7 @@ from .response_model import (
     StreamUsage,
 )
 from .tools import execute_tool, get_tool, tools
-from .tools.models import (
-    ErrorResponse,
-    OperationInProgressResponse,
-    OperationPendingResponse,
-    OperationStartedResponse,
-)
+from .tools.models import ErrorResponse, OperationInProgressResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -1424,14 +1419,20 @@ async def _yield_tool_call(
     else:
         arguments = {}
 
+    # Check if this tool is long-running (survives SSE disconnection)
+    tool = get_tool(tool_name)
+
+    # Set callProviderMetadata for long-running tools to show mini-game in UI
+    provider_metadata = None
+    if tool and tool.is_long_running:
+        provider_metadata = {"isLongRunning": True}
+
     yield StreamToolInputAvailable(
         toolCallId=tool_call_id,
         toolName=tool_name,
         input=arguments,
+        callProviderMetadata=provider_metadata,
     )
-
-    # Check if this tool is long-running (survives SSE disconnection)
-    tool = get_tool(tool_name)
     if tool and tool.is_long_running:
         # Atomic check-and-set: returns False if operation already running (lost race)
         if not await _mark_operation_started(tool_call_id):
@@ -1461,131 +1462,72 @@ async def _yield_tool_call(
         operation_id = str(uuid_module.uuid4())
         task_id = str(uuid_module.uuid4())
 
-        # Build a user-friendly message based on tool and arguments
-        if tool_name == "create_agent":
-            agent_desc = arguments.get("description", "")
-            # Truncate long descriptions for the message
-            desc_preview = (
-                (agent_desc[:100] + "...") if len(agent_desc) > 100 else agent_desc
-            )
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = arguments.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
+        # Create task in stream registry for SSE reconnection support
+        await stream_registry.create_task(
+            task_id=task_id,
+            session_id=session.session_id,
+            user_id=session.user_id,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            operation_id=operation_id,
+        )
 
-        # Track appended message for rollback on failure
-        pending_message: ChatMessage | None = None
+        # Save tool_call to session before execution
+        async def _save_tool_call() -> None:
+            session.add_tool_call_to_current_turn(tool_calls[yield_idx])
+            await upsert_chat_session(session)
 
-        # Wrap session save and task creation in try-except to release lock on failure
+        await _with_optional_lock(session_lock, _save_tool_call)
+        logger.info(
+            f"Starting synchronous execution of {tool_name} "
+            f"(operation_id={operation_id}, task_id={task_id})"
+        )
+
+        # Execute tool SYNCHRONOUSLY - blocks until complete
+        # Frontend shows mini-game via callProviderMetadata during this time
         try:
-            # Create task in stream registry for SSE reconnection support
-            await stream_registry.create_task(
+            result_str = await _execute_long_running_tool_with_streaming(
+                tool_name=tool_name,
+                parameters=arguments,
+                tool_call_id=tool_call_id,
+                operation_id=operation_id,
                 task_id=task_id,
                 session_id=session.session_id,
                 user_id=session.user_id,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                operation_id=operation_id,
             )
-
-            # Attach tool_call and save pending result — lock serialises
-            # concurrent session mutations during parallel execution.
-            async def _save_pending() -> None:
-                nonlocal pending_message
-                session.add_tool_call_to_current_turn(tool_calls[yield_idx])
-                pending_message = ChatMessage(
-                    role="tool",
-                    content=OperationPendingResponse(
-                        message=pending_msg,
-                        operation_id=operation_id,
-                        tool_name=tool_name,
-                    ).model_dump_json(),
-                    tool_call_id=tool_call_id,
-                )
-                session.messages.append(pending_message)
-                await upsert_chat_session(session)
-
-            await _with_optional_lock(session_lock, _save_pending)
-            logger.info(
-                f"Saved pending operation {operation_id} (task_id={task_id}) "
-                f"for tool {tool_name} in session {session.session_id}"
-            )
-
-            # Store task reference in module-level set to prevent GC before completion
-            bg_task = asyncio.create_task(
-                _execute_long_running_tool_with_streaming(
-                    tool_name=tool_name,
-                    parameters=arguments,
-                    tool_call_id=tool_call_id,
-                    operation_id=operation_id,
-                    task_id=task_id,
-                    session_id=session.session_id,
-                    user_id=session.user_id,
-                )
-            )
-            _background_tasks.add(bg_task)
-            bg_task.add_done_callback(_background_tasks.discard)
-
-            # Associate the asyncio task with the stream registry task
-            await stream_registry.set_task_asyncio_task(task_id, bg_task)
         except Exception as e:
-            # Roll back appended messages — use identity-based removal so
-            # it works even when other parallel tools have appended after us.
-            async def _rollback() -> None:
-                if pending_message and pending_message in session.messages:
-                    session.messages.remove(pending_message)
-
-            await _with_optional_lock(session_lock, _rollback)
-
-            # Release the Redis lock since the background task won't be spawned
-            await _mark_operation_completed(tool_call_id)
-            # Mark stream registry task as failed if it was created
-            try:
-                await stream_registry.mark_task_completed(
-                    task_id,
-                    status="failed",
-                    error_message=f"Failed to setup tool {tool_name}: {e}",
-                )
-            except Exception as mark_err:
-                logger.warning(f"Failed to mark task {task_id} as failed: {mark_err}")
-            logger.error(
-                f"Failed to setup long-running tool {tool_name}: {e}", exc_info=True
+            logger.error(f"Long-running tool {tool_name} failed: {e}", exc_info=True)
+            # Mark task as failed
+            await stream_registry.mark_task_completed(
+                task_id,
+                status="failed",
+                error_message=str(e),
             )
-            raise
+            await _mark_operation_completed(tool_call_id)
 
-        # Return immediately - don't wait for completion
+            # Return error to Claude
+            error_response = ErrorResponse(
+                message=f"Tool {tool_name} failed: {e!s}",
+                error=type(e).__name__,
+                session_id=session.session_id,
+            )
+            yield StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=tool_name,
+                output=error_response.model_dump_json(),
+                success=False,
+            )
+            return
+
+        # Return actual result to Claude
+        logger.info(
+            f"Long-running tool {tool_name} completed, "
+            f"returning {len(result_str) if result_str else 0} chars to Claude"
+        )
         yield StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
-            output=OperationStartedResponse(
-                message=started_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-                task_id=task_id,  # Include task_id for SSE reconnection
-            ).model_dump_json(),
+            output=result_str or '{"message": "Operation completed"}',
             success=True,
         )
         return
@@ -1687,8 +1629,10 @@ async def _execute_long_running_tool(
 
         logger.info(f"Background tool {tool_name} completed for session {session_id}")
 
-        # Generate LLM continuation so user sees response when they poll/refresh
-        await _generate_llm_continuation(session_id=session_id, user_id=user_id)
+        # DON'T generate LLM continuation - wait for user to return and send new message
+        logger.info(
+            f"Background tool {tool_name} complete. Waiting for user to return."
+        )
 
     except Exception as e:
         logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
@@ -1700,11 +1644,10 @@ async def _execute_long_running_tool(
             tool_call_id=tool_call_id,
             result=error_response.model_dump_json(),
         )
-        # Generate LLM continuation so user sees explanation even for errors
-        try:
-            await _generate_llm_continuation(session_id=session_id, user_id=user_id)
-        except Exception as llm_err:
-            logger.warning(f"Failed to generate LLM continuation for error: {llm_err}")
+        # DON'T auto-generate continuation - user will see error when they return
+        logger.info(
+            f"Background tool {tool_name} failed. Error saved for when user returns."
+        )
     finally:
         await _mark_operation_completed(tool_call_id)
 
@@ -1717,15 +1660,17 @@ async def _execute_long_running_tool_with_streaming(
     task_id: str,
     session_id: str,
     user_id: str | None,
-) -> None:
-    """Execute a long-running tool with stream registry support for SSE reconnection.
+) -> str | None:
+    """Execute a long-running tool synchronously with stream registry support.
 
-    This function runs independently of the SSE connection, publishes progress
-    to the stream registry, and survives if the user closes their browser tab.
-    Clients can reconnect via GET /chat/tasks/{task_id}/stream to resume streaming.
+    Executes the tool and blocks until completion. If the tool returns 202 Accepted,
+    polls Redis until the completion consumer processes the result, then returns it.
 
-    If the external service returns a 202 Accepted (async), this function exits
-    early and lets the Redis Streams completion consumer handle the rest.
+    Progress is published to stream_registry for SSE reconnection - clients can
+    reconnect via GET /chat/tasks/{task_id}/stream if they disconnect.
+
+    Returns:
+        The tool result as a JSON string, or None on error.
     """
     # Track whether we delegated to async processing - if so, the Redis Streams
     # completion consumer (stream_registry / completion_consumer) will handle cleanup, not us
@@ -1772,45 +1717,90 @@ async def _execute_long_running_tool_with_streaming(
                 logger.info(
                     f"Tool {tool_name} delegated to async processing "
                     f"(operation_id={operation_id}, task_id={task_id}). "
-                    f"Redis Streams completion consumer will handle the rest."
+                    f"Waiting for webhook to complete..."
                 )
                 # Don't publish result, don't continue with LLM, and don't cleanup
                 # The Redis Streams consumer (completion_consumer) will handle
                 # everything when the external service completes via webhook
                 delegated_to_async = True
-                return
+
+                # Poll until webhook completes (status changes from "running")
+                max_wait_seconds = 300  # 5 minutes
+                poll_interval = 1.0  # Check every second
+                elapsed = 0.0
+
+                while elapsed < max_wait_seconds:
+                    await asyncio.sleep(poll_interval)
+                    elapsed += poll_interval
+
+                    # Check task status in Redis
+                    task_status = await stream_registry.get_task(task_id)
+                    if task_status and task_status.status != "running":
+                        logger.info(
+                            f"Task {task_id} completed with status: {task_status.status}"
+                        )
+                        break
+                else:
+                    # Timeout - return error
+                    logger.error(
+                        f"Timeout waiting for webhook to complete "
+                        f"(task_id={task_id}, elapsed={elapsed}s)"
+                    )
+                    return '{"error": "Timeout waiting for operation to complete"}'
+
+                # Query database for final result
+                session = await get_chat_session(session_id)
+                if not session:
+                    logger.warning(
+                        f"Session not found after webhook completion "
+                        f"(session_id={session_id}, task_id={task_id})"
+                    )
+                    return '{"error": "Session not found after completion"}'
+
+                # Find the most recent tool message for this tool_call_id
+                result_content = None
+                for msg in reversed(session.messages):
+                    if msg.role == "tool" and msg.tool_call_id == tool_call_id:
+                        result_content = msg.content
+                        break
+
+                if not result_content:
+                    logger.warning(
+                        f"No result found in DB after webhook completion "
+                        f"(task_id={task_id}, tool_call_id={tool_call_id[:12]})"
+                    )
+                    result_content = '{"message": "Operation completed"}'
+
+                logger.info(
+                    f"Returning {len(result_content)} chars from webhook result "
+                    f"for {tool_name}"
+                )
+                return result_content
         except (orjson.JSONDecodeError, TypeError):
             pass  # Not JSON or not async - continue normally
 
+        # Synchronous completion (not delegated to async)
         # Publish tool result to stream registry
         await stream_registry.publish_chunk(task_id, result)
 
-        # Update the pending message with result
+        # Serialize result
         result_str = (
             result.output
             if isinstance(result.output, str)
             else orjson.dumps(result.output).decode("utf-8")
         )
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=result_str,
-        )
 
         logger.info(
-            f"Background tool {tool_name} completed for session {session_id} "
+            f"Tool {tool_name} completed synchronously for session {session_id} "
             f"(task_id={task_id})"
         )
 
-        # Generate LLM continuation and stream chunks to registry
-        await _generate_llm_continuation_with_streaming(
-            session_id=session_id,
-            user_id=user_id,
-            task_id=task_id,
-        )
-
-        # Mark task as completed in stream registry
+        # Mark task as completed and clean up
         await stream_registry.mark_task_completed(task_id, status="completed")
+        await _mark_operation_completed(tool_call_id)
+
+        # Return the result to Claude
+        return result_str
 
     except Exception as e:
         logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
@@ -1850,6 +1840,15 @@ async def _update_pending_operation(
 
     This is called by background tasks when long-running operations complete.
     """
+    # Skip update if using fallback ID - the message was saved with
+    # the original Claude tool_use_id, not our generated sdk- ID.
+    if tool_call_id.startswith("sdk-"):
+        logger.info(
+            f"[SDK] Skipping message update for fallback ID {tool_call_id} "
+            f"in session {session_id[:12]}"
+        )
+        return
+
     # Update the message in database
     updated = await chat_db().update_tool_message_content(
         session_id=session_id,

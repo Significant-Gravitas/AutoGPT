@@ -186,6 +186,17 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
+            # Store tool_use_id in ContextVar for long-running tools so the
+            # callback can use the original ID instead of generating a new one
+            if tool_use_id and tool_name in ("create_agent", "edit_agent"):
+                from .tool_adapter import _current_tool_use_id
+
+                _current_tool_use_id.set(tool_use_id)
+                logger.info(
+                    f"[SDK] PreToolUse: Set tool_use_id={tool_use_id[:12]} "
+                    f"for long-running tool {tool_name}"
+                )
+
             # Rate-limit Task (sub-agent) spawns per session
             if tool_name == "Task":
                 # Block background task execution first — denied calls

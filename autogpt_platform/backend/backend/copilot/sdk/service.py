@@ -38,7 +38,6 @@ from ..service import (
     _execute_long_running_tool_with_streaming,
     _generate_session_title,
 )
-from ..tools.models import OperationPendingResponse, OperationStartedResponse
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -138,6 +137,59 @@ is delivered to the user via a background stream.
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
+async def _find_latest_tool_use_id(session_id: str, tool_name: str) -> str | None:
+    """Find the tool_use_id for the most recent tool call of the given name.
+
+    Queries the session messages to find the latest assistant message with a
+    tool call matching the tool_name, then extracts its tool_use_id.
+
+    Args:
+        session_id: The session ID
+        tool_name: The MCP tool name (without prefix)
+
+    Returns:
+        The tool_use_id if found, None otherwise
+    """
+    try:
+        # Query the latest assistant message with tool calls
+        session = await get_chat_session(session_id)
+        if not session:
+            logger.warning(f"[SDK] Session {session_id[:12]} not found for {tool_name}")
+            return None
+
+        # Search backwards for the latest assistant message with this tool
+        for msg in reversed(session.messages):
+            if msg.role != "assistant" or not msg.tool_calls:
+                continue
+
+            # Check if any tool call matches our tool name
+            for tool_call in msg.tool_calls:
+                # Match both with and without MCP prefix
+                if (
+                    tool_call.get("name") == tool_name
+                    or tool_call.get("name") == f"mcp__copilot__{tool_name}"
+                ):
+                    tool_use_id = tool_call.get("id")
+                    if tool_use_id:
+                        logger.info(
+                            f"[SDK] Found tool_use_id={tool_use_id[:12]}... "
+                            f"for {tool_name} in session {session_id[:12]}"
+                        )
+                        return tool_use_id
+
+        logger.warning(
+            f"[SDK] No tool_use_id found in session {session_id[:12]} for {tool_name}"
+        )
+        return None
+
+    except Exception as e:
+        logger.error(
+            f"[SDK] Error finding tool_use_id for {tool_name} "
+            f"in session {session_id[:12]}: {e}"
+        )
+        return None
+
+
 def _build_long_running_callback(
     user_id: str | None,
 ) -> LongRunningCallback:
@@ -161,39 +213,20 @@ def _build_long_running_callback(
     ) -> dict[str, Any]:
         operation_id = str(uuid.uuid4())
         task_id = str(uuid.uuid4())
-        tool_call_id = f"sdk-{uuid.uuid4().hex[:12]}"
         session_id = session.session_id
 
-        # --- Build user-friendly messages (matches non-SDK service) ---
-        if tool_name == "create_agent":
-            desc = args.get("description", "")
-            desc_preview = (desc[:100] + "...") if len(desc) > 100 else desc
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = args.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
+        # CRITICAL: Find the tool_use_id from the latest assistant message.
+        # The SDK has already saved the AssistantMessage with the ToolUseBlock,
+        # so we can query it to get the original Claude-generated tool_use_id.
+        # This ensures the background task result matches the tool_use in the conversation.
+        tool_call_id = await _find_latest_tool_use_id(session_id, tool_name)
+
+        if not tool_call_id:
+            # Fallback: generate ID (shouldn't happen in normal flow)
+            tool_call_id = f"sdk-{uuid.uuid4().hex[:12]}"
+            logger.warning(
+                f"[SDK] No tool_call_id found in session messages for {tool_name}, "
+                f"using generated ID: {tool_call_id}"
             )
 
         # --- Register task in Redis for SSE reconnection ---
@@ -206,53 +239,46 @@ def _build_long_running_callback(
             operation_id=operation_id,
         )
 
-        # --- Save OperationPendingResponse to chat history ---
-        pending_message = ChatMessage(
-            role="tool",
-            content=OperationPendingResponse(
-                message=pending_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-            ).model_dump_json(),
-            tool_call_id=tool_call_id,
-        )
-        session.messages.append(pending_message)
-        # Collision detection happens in add_chat_messages_batch (db.py)
-        session = await upsert_chat_session(session)
+        # Don't save OperationPendingResponse here - the SDK will save
+        # OperationStartedResponse (returned below) as the tool result.
+        # This prevents duplicate tool messages with mismatched IDs.
 
-        # --- Spawn background task (reuses non-SDK infrastructure) ---
-        bg_task = asyncio.create_task(
-            _execute_long_running_tool_with_streaming(
-                tool_name=tool_name,
-                parameters=args,
-                tool_call_id=tool_call_id,
-                operation_id=operation_id,
-                task_id=task_id,
-                session_id=session_id,
-                user_id=user_id,
-            )
-        )
-        _background_tasks.add(bg_task)
-        bg_task.add_done_callback(_background_tasks.discard)
-        await stream_registry.set_task_asyncio_task(task_id, bg_task)
-
+        # --- Execute tool synchronously and WAIT for completion ---
+        # The callback blocks here, waiting for agent generation to complete.
+        # Meanwhile, the frontend mini-game shows via SSE events from stream_registry.
+        # Claude only receives the FINAL result after generation is done.
         logger.info(
-            f"[SDK] Long-running tool {tool_name} delegated to background "
+            f"[SDK] Executing {tool_name} synchronously and blocking until completion "
             f"(operation_id={operation_id}, task_id={task_id})"
         )
 
-        # --- Return OperationStartedResponse as MCP tool result ---
-        # This flows through SDK → response adapter → frontend, triggering
-        # the loading widget with SSE reconnection support.
-        started_json = OperationStartedResponse(
-            message=started_msg,
-            operation_id=operation_id,
+        # Execute synchronously - this handles both sync and async (202) tool responses
+        result_content = await _execute_long_running_tool_with_streaming(
             tool_name=tool_name,
+            parameters=args,
+            tool_call_id=tool_call_id,
+            operation_id=operation_id,
             task_id=task_id,
-        ).model_dump_json()
+            session_id=session_id,
+            user_id=user_id,
+        )
 
+        if not result_content:
+            logger.warning(
+                f"[SDK] No result returned from {tool_name} "
+                f"(tool_call_id={tool_call_id[:12]}), using default"
+            )
+            result_content = '{"message": "Operation completed"}'
+
+        logger.info(
+            f"[SDK] Returning {len(result_content)} chars to Claude for {tool_name}"
+        )
+
+        # --- Return the ACTUAL result to Claude ---
+        # Claude sees the final AgentSavedResponse and can respond appropriately.
+        # The mini-game has already been showing during the blocking wait.
         return {
-            "content": [{"type": "text", "text": started_json}],
+            "content": [{"type": "text", "text": result_content}],
             "isError": False,
         }
 
@@ -879,6 +905,10 @@ async def stream_chat_completion_sdk(
                                 if isinstance(response, StreamToolOutputAvailable):
                                     out_len = len(str(response.output))
                                     extra = f", output_len={out_len}"
+                                elif isinstance(response, StreamToolInputAvailable):
+                                    # Log callProviderMetadata for debugging
+                                    pm = getattr(response, "callProviderMetadata", None)
+                                    extra = f", callProviderMetadata={pm}"
                                 logger.info(
                                     "[SDK] [%s] Tool event: %s, tool=%s%s",
                                     session_id[:12],

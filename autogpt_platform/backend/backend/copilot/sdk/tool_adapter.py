@@ -64,6 +64,11 @@ LongRunningCallback = Callable[
 _long_running_callback: ContextVar[LongRunningCallback | None] = ContextVar(
     "long_running_callback", default=None
 )
+# ContextVar to store the current tool_use_id being executed, so the
+# long-running callback can use it instead of generating a new one.
+_current_tool_use_id: ContextVar[str | None] = ContextVar(
+    "current_tool_use_id", default=None
+)
 
 
 def set_execution_context(
@@ -293,8 +298,15 @@ def create_tool_handler(base_tool: BaseTool):
         # --- Long-running: delegate to non-SDK background infrastructure ---
         if base_tool.is_long_running:
             callback = _long_running_callback.get(None)
+            logger.info(
+                f"[SDK] Tool {base_tool.name} is long-running, "
+                f"callback={'SET' if callback else 'NOT SET'}"
+            )
             if callback:
                 try:
+                    logger.info(
+                        f"[SDK] Invoking long-running callback for {base_tool.name}"
+                    )
                     return await callback(base_tool.name, args, session)
                 except Exception as e:
                     logger.error(
