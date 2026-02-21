@@ -62,13 +62,8 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, get_tool, tools
-from .tools.models import (
-    ErrorResponse,
-    OperationInProgressResponse,
-    OperationPendingResponse,
-    OperationStartedResponse,
-)
+from .tools import execute_tool, tools
+from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -1402,16 +1397,15 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
-    For tools marked with `is_long_running=True` (like agent generation), spawns a
-    background task so the operation survives SSE disconnections. For other tools,
-    yields heartbeat events every 15 seconds to keep the SSE connection alive.
+    Executes tools synchronously and yields heartbeat events every 15 seconds to
+    keep the SSE connection alive during execution. The is_long_running property
+    is only used by the frontend to display mini-game UI during long operations.
 
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
-    import uuid as uuid_module
 
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
@@ -1429,163 +1423,8 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    # Check if this tool is long-running (survives SSE disconnection)
-    tool = get_tool(tool_name)
-    if tool and tool.is_long_running:
-        # Atomic check-and-set: returns False if operation already running (lost race)
-        if not await _mark_operation_started(tool_call_id):
-            logger.info(
-                f"Tool call {tool_call_id} already in progress, returning status"
-            )
-            # Build dynamic message based on tool name
-            if tool_name == "create_agent":
-                in_progress_msg = "Agent creation already in progress. Please wait..."
-            elif tool_name == "edit_agent":
-                in_progress_msg = "Agent edit already in progress. Please wait..."
-            else:
-                in_progress_msg = f"{tool_name} already in progress. Please wait..."
-
-            yield StreamToolOutputAvailable(
-                toolCallId=tool_call_id,
-                toolName=tool_name,
-                output=OperationInProgressResponse(
-                    message=in_progress_msg,
-                    tool_call_id=tool_call_id,
-                ).model_dump_json(),
-                success=True,
-            )
-            return
-
-        # Generate operation ID and task ID
-        operation_id = str(uuid_module.uuid4())
-        task_id = str(uuid_module.uuid4())
-
-        # Build a user-friendly message based on tool and arguments
-        if tool_name == "create_agent":
-            agent_desc = arguments.get("description", "")
-            # Truncate long descriptions for the message
-            desc_preview = (
-                (agent_desc[:100] + "...") if len(agent_desc) > 100 else agent_desc
-            )
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = arguments.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
-
-        # Track appended message for rollback on failure
-        pending_message: ChatMessage | None = None
-
-        # Wrap session save and task creation in try-except to release lock on failure
-        try:
-            # Create task in stream registry for SSE reconnection support
-            await stream_registry.create_task(
-                task_id=task_id,
-                session_id=session.session_id,
-                user_id=session.user_id,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                operation_id=operation_id,
-            )
-
-            # Attach tool_call and save pending result — lock serialises
-            # concurrent session mutations during parallel execution.
-            async def _save_pending() -> None:
-                nonlocal pending_message
-                session.add_tool_call_to_current_turn(tool_calls[yield_idx])
-                pending_message = ChatMessage(
-                    role="tool",
-                    content=OperationPendingResponse(
-                        message=pending_msg,
-                        operation_id=operation_id,
-                        tool_name=tool_name,
-                    ).model_dump_json(),
-                    tool_call_id=tool_call_id,
-                )
-                session.messages.append(pending_message)
-                await upsert_chat_session(session)
-
-            await _with_optional_lock(session_lock, _save_pending)
-            logger.info(
-                f"Saved pending operation {operation_id} (task_id={task_id}) "
-                f"for tool {tool_name} in session {session.session_id}"
-            )
-
-            # Store task reference in module-level set to prevent GC before completion
-            bg_task = asyncio.create_task(
-                _execute_long_running_tool_with_streaming(
-                    tool_name=tool_name,
-                    parameters=arguments,
-                    tool_call_id=tool_call_id,
-                    operation_id=operation_id,
-                    task_id=task_id,
-                    session_id=session.session_id,
-                    user_id=session.user_id,
-                )
-            )
-            _background_tasks.add(bg_task)
-            bg_task.add_done_callback(_background_tasks.discard)
-
-            # Associate the asyncio task with the stream registry task
-            await stream_registry.set_task_asyncio_task(task_id, bg_task)
-        except Exception as e:
-            # Roll back appended messages — use identity-based removal so
-            # it works even when other parallel tools have appended after us.
-            async def _rollback() -> None:
-                if pending_message and pending_message in session.messages:
-                    session.messages.remove(pending_message)
-
-            await _with_optional_lock(session_lock, _rollback)
-
-            # Release the Redis lock since the background task won't be spawned
-            await _mark_operation_completed(tool_call_id)
-            # Mark stream registry task as failed if it was created
-            try:
-                await stream_registry.mark_task_completed(task_id, status="failed")
-            except Exception as mark_err:
-                logger.warning(f"Failed to mark task {task_id} as failed: {mark_err}")
-            logger.error(
-                f"Failed to setup long-running tool {tool_name}: {e}", exc_info=True
-            )
-            raise
-
-        # Return immediately - don't wait for completion
-        yield StreamToolOutputAvailable(
-            toolCallId=tool_call_id,
-            toolName=tool_name,
-            output=OperationStartedResponse(
-                message=started_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-                task_id=task_id,  # Include task_id for SSE reconnection
-            ).model_dump_json(),
-            success=True,
-        )
-        return
-
-    # Normal flow: Run tool execution in background task with heartbeats
+    # Run tool execution synchronously with heartbeats
+    # The is_long_running property is only used by the frontend to show mini-game UI
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
