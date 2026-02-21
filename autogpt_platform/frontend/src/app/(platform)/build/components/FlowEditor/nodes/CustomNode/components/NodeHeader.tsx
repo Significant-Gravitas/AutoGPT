@@ -20,10 +20,26 @@ type Props = {
 
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
-  const title =
-    (data.metadata?.customized_name as string) ||
-    data.hardcodedValues?.agent_name ||
-    data.title;
+
+  // For Agent Executor blocks, show agent name + version if available
+  const getTitle = () => {
+    if (data.metadata?.customized_name) {
+      return data.metadata.customized_name as string;
+    }
+
+    const agentName = data.hardcodedValues?.agent_name;
+    const agentVersion = data.hardcodedValues?.graph_version;
+
+    if (agentName && agentVersion !== undefined) {
+      return `${agentName} v${agentVersion}`;
+    } else if (agentName) {
+      return agentName;
+    }
+
+    return data.title;
+  };
+
+  const title = getTitle();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
