@@ -34,6 +34,9 @@ class ResponseType(str, Enum):
     TOOL_INPUT_AVAILABLE = "tool-input-available"
     TOOL_OUTPUT_AVAILABLE = "tool-output-available"
 
+    # Long-running tool notification (custom extension)
+    LONG_RUNNING_START = "long-running-start"
+
     # Other
     ERROR = "error"
     USAGE = "usage"
@@ -171,6 +174,20 @@ class StreamToolOutputAvailable(StreamBaseResponse):
             "output": self.output,
         }
         return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamLongRunningStart(StreamBaseResponse):
+    """Notification that a long-running tool has started.
+
+    Custom extension to the AI SDK protocol. Signals the frontend to show
+    UI feedback (like a mini-game) while the tool executes.
+    """
+
+    type: ResponseType = ResponseType.LONG_RUNNING_START
+    toolCallId: str = Field(
+        ..., description="Tool call ID for the long-running operation"
+    )
+    toolName: str = Field(..., description="Name of the long-running tool")
 
 
 # ========== Other ==========

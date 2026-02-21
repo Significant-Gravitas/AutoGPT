@@ -52,6 +52,7 @@ from .response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamLongRunningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -62,7 +63,7 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, tools
+from .tools import execute_tool, get_tool, tools
 from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
@@ -1423,8 +1424,15 @@ async def _yield_tool_call(
         input=arguments,
     )
 
+    # Notify frontend if this is a long-running tool (e.g., agent generation)
+    tool = get_tool(tool_name)
+    if tool and tool.is_long_running:
+        yield StreamLongRunningStart(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+        )
+
     # Run tool execution synchronously with heartbeats
-    # The is_long_running property is only used by the frontend to show mini-game UI
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
