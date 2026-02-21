@@ -11,7 +11,6 @@ from typing import Any
 
 from backend.util.exceptions import NotFoundError
 
-from .. import stream_registry
 from ..config import ChatConfig
 from ..model import (
     ChatMessage,
@@ -31,12 +30,7 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from ..service import (
-    _build_system_prompt,
-    _execute_long_running_tool_with_streaming,
-    _generate_session_title,
-)
-from ..tools.models import OperationPendingResponse, OperationStartedResponse
+from ..service import _build_system_prompt, _generate_session_title
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -44,7 +38,6 @@ from .security_hooks import create_security_hooks
 from .tool_adapter import (
     COPILOT_TOOL_NAMES,
     SDK_DISALLOWED_TOOLS,
-    LongRunningCallback,
     create_copilot_mcp_server,
     set_execution_context,
     wait_for_stash,
@@ -123,129 +116,14 @@ When you create or modify important files (code, configs, outputs), you MUST:
    are available from previous turns
 
 ### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
+Long-running tools (create_agent, edit_agent, etc.) run synchronously
+with heartbeats to keep the connection alive. The frontend shows UI feedback
+during execution based on stream events.
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 """
-
-
-def _build_long_running_callback(user_id: str | None) -> LongRunningCallback:
-    """Build a callback that delegates long-running tools to the non-SDK infrastructure.
-
-    Long-running tools (create_agent, edit_agent, etc.) are delegated to the
-    existing background infrastructure: stream_registry (Redis Streams),
-    database persistence, and SSE reconnection.  This means results survive
-    page refreshes / pod restarts, and the frontend shows the proper loading
-    widget with progress updates.
-
-    The returned callback matches the ``LongRunningCallback`` signature:
-    ``(tool_name, args, session) -> MCP response dict``.
-    """
-
-    async def _callback(
-        tool_name: str, args: dict[str, Any], session: ChatSession
-    ) -> dict[str, Any]:
-        operation_id = str(uuid.uuid4())
-        task_id = str(uuid.uuid4())
-        tool_call_id = f"sdk-{uuid.uuid4().hex[:12]}"
-        session_id = session.session_id
-
-        # --- Build user-friendly messages (matches non-SDK service) ---
-        if tool_name == "create_agent":
-            desc = args.get("description", "")
-            desc_preview = (desc[:100] + "...") if len(desc) > 100 else desc
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = args.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
-
-        # --- Register task in Redis for SSE reconnection ---
-        await stream_registry.create_task(
-            task_id=task_id,
-            session_id=session_id,
-            user_id=user_id,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            operation_id=operation_id,
-        )
-
-        # --- Save OperationPendingResponse to chat history ---
-        pending_message = ChatMessage(
-            role="tool",
-            content=OperationPendingResponse(
-                message=pending_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-            ).model_dump_json(),
-            tool_call_id=tool_call_id,
-        )
-        session.messages.append(pending_message)
-        await upsert_chat_session(session)
-
-        # --- Spawn background task (reuses non-SDK infrastructure) ---
-        bg_task = asyncio.create_task(
-            _execute_long_running_tool_with_streaming(
-                tool_name=tool_name,
-                parameters=args,
-                tool_call_id=tool_call_id,
-                operation_id=operation_id,
-                task_id=task_id,
-                session_id=session_id,
-                user_id=user_id,
-            )
-        )
-        _background_tasks.add(bg_task)
-        bg_task.add_done_callback(_background_tasks.discard)
-        await stream_registry.set_task_asyncio_task(task_id, bg_task)
-
-        logger.info(
-            f"[SDK] Long-running tool {tool_name} delegated to background "
-            f"(operation_id={operation_id}, task_id={task_id})"
-        )
-
-        # --- Return OperationStartedResponse as MCP tool result ---
-        # This flows through SDK → response adapter → frontend, triggering
-        # the loading widget with SSE reconnection support.
-        started_json = OperationStartedResponse(
-            message=started_msg,
-            operation_id=operation_id,
-            tool_name=tool_name,
-            task_id=task_id,
-        ).model_dump_json()
-
-        return {
-            "content": [{"type": "text", "text": started_json}],
-            "isError": False,
-        }
-
-    return _callback
 
 
 def _resolve_sdk_model() -> str | None:
@@ -584,7 +462,7 @@ async def stream_chat_completion_sdk(
         set_execution_context(
             user_id,
             session,
-            long_running_callback=_build_long_running_callback(user_id),
+            long_running_callback=None,
         )
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
