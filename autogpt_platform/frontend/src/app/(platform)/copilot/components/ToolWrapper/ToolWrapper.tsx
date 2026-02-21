@@ -14,8 +14,26 @@ export function ToolWrapper({ part, children }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
-  // Check if this tool is marked as long-running in the part itself
-  const isLongRunning = "isLongRunning" in part && part.isLongRunning === true;
+  // Check if this tool is marked as long-running via providerMetadata
+  const isLongRunning =
+    "providerMetadata" in part &&
+    part.providerMetadata &&
+    typeof part.providerMetadata === "object" &&
+    "isLongRunning" in part.providerMetadata &&
+    part.providerMetadata.isLongRunning === true;
+
+  // Debug logging
+  if (part.type.startsWith("tool-")) {
+    console.log("[ToolWrapper]", {
+      toolName: "toolName" in part ? part.toolName : "unknown",
+      hasProviderMetadata: "providerMetadata" in part,
+      providerMetadata:
+        "providerMetadata" in part ? part.providerMetadata : undefined,
+      computed: isLongRunning,
+      state: part.state,
+      part,
+    });
+  }
 
   return (
     <>

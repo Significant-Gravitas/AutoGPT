@@ -116,6 +116,11 @@ class SDKResponseAdapter:
                     tool = get_tool(tool_name)
                     is_long_running = tool.is_long_running if tool else False
 
+                    logger.info(
+                        f"[ADAPTER] Tool: {tool_name}, has_tool={tool is not None}, "
+                        f"is_long_running={is_long_running}"
+                    )
+
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
                     )
@@ -124,8 +129,14 @@ class SDKResponseAdapter:
                             toolCallId=block.id,
                             toolName=tool_name,
                             input=block.input,
-                            isLongRunning=is_long_running,
+                            providerMetadata=(
+                                {"isLongRunning": True} if is_long_running else None
+                            ),
                         )
+                    )
+                    logger.info(
+                        f"[ADAPTER] Created StreamToolInputAvailable with "
+                        f"providerMetadata={{'isLongRunning': {is_long_running}}}"
                     )
                     self.current_tool_calls[block.id] = {"name": tool_name}
 
