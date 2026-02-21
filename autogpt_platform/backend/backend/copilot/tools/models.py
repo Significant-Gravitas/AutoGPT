@@ -459,23 +459,6 @@ class OperationInProgressResponse(ToolResponseBase):
     tool_call_id: str
 
 
-class AsyncProcessingResponse(ToolResponseBase):
-    """Response when an operation has been delegated to async processing.
-
-    This is returned by tools when the external service accepts the request
-    for async processing (HTTP 202 Accepted). The Redis Streams completion
-    consumer will handle the result when the external service completes.
-
-    The status field is specifically "accepted" to allow the long-running tool
-    handler to detect this response and skip LLM continuation.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    status: str = "accepted"  # Must be "accepted" for detection
-    operation_id: str | None = None
-    task_id: str | None = None
-
-
 class WebFetchResponse(ToolResponseBase):
     """Response for web_fetch tool."""
 

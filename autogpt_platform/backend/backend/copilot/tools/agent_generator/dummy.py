@@ -101,8 +101,6 @@ async def decompose_goal_dummy(
 async def generate_agent_dummy(
     instructions: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any]:
     """Return dummy agent JSON after a simulated delay."""
     logger.info("Using dummy agent generator for generate_agent (30s delay)")
@@ -114,8 +112,6 @@ async def generate_agent_patch_dummy(
     update_request: str,
     current_agent: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any]:
     """Return dummy patched agent (returns the current agent with updated description)."""
     logger.info("Using dummy agent generator for generate_agent_patch")

@@ -17,7 +17,6 @@ from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
-    AsyncProcessingResponse,
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
@@ -101,10 +100,6 @@ class EditAgentTool(BaseTool):
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
 
-        # Extract async processing params (passed by long-running tool handler)
-        operation_id = kwargs.get("_operation_id")
-        task_id = kwargs.get("_task_id")
-
         if not agent_id:
             return ErrorResponse(
                 message="Please provide the agent ID to edit.",
@@ -153,8 +148,6 @@ class EditAgentTool(BaseTool):
                 update_request,
                 current_agent,
                 library_agents,
-                operation_id=operation_id,
-                task_id=task_id,
             )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
@@ -171,19 +164,6 @@ class EditAgentTool(BaseTool):
                 message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
                 error="update_generation_failed",
                 details={"agent_id": agent_id, "changes": changes[:100]},
-                session_id=session_id,
-            )
-
-        # Check if Agent Generator accepted for async processing
-        if result.get("status") == "accepted":
-            logger.info(
-                f"Agent edit delegated to async processing "
-                f"(operation_id={operation_id}, task_id={task_id})"
-            )
-            return AsyncProcessingResponse(
-                message="Agent edit started. You'll be notified when it's complete.",
-                operation_id=operation_id,
-                task_id=task_id,
                 session_id=session_id,
             )
 
