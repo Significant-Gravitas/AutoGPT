@@ -47,6 +47,11 @@ class CreateAgentTool(BaseTool):
         return True
 
     @property
+    def is_long_running(self) -> bool:
+        """Agent generation takes several minutes - show mini-game."""
+        return True
+
+    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
