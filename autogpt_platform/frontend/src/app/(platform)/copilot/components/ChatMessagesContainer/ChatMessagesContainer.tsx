@@ -13,6 +13,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef, useState } from "react";
+import { LongRunningToolWrapper } from "../LongRunningToolWrapper/LongRunningToolWrapper";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -208,86 +209,110 @@ export const ChatMessagesContainer = ({
                       );
                     case "tool-find_block":
                       return (
-                        <FindBlocksTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <FindBlocksTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-find_agent":
                     case "tool-find_library_agent":
                       return (
-                        <FindAgentsTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <FindAgentsTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-search_docs":
                     case "tool-get_doc_page":
                       return (
-                        <SearchDocsTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <SearchDocsTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-run_block":
                       return (
-                        <RunBlockTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <RunBlockTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-run_agent":
                     case "tool-schedule_agent":
                       return (
-                        <RunAgentTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <RunAgentTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-create_agent":
                       return (
-                        <CreateAgentTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <CreateAgentTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-edit_agent":
                       return (
-                        <EditAgentTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <EditAgentTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-view_agent_output":
                       return (
-                        <ViewAgentOutputTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <ViewAgentOutputTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-search_feature_requests":
                       return (
-                        <SearchFeatureRequestsTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <SearchFeatureRequestsTool
+                            part={part as ToolUIPart}
+                          />
+                        </LongRunningToolWrapper>
                       );
                     case "tool-create_feature_request":
                       return (
-                        <CreateFeatureRequestTool
+                        <LongRunningToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                        />
+                        >
+                          <CreateFeatureRequestTool part={part as ToolUIPart} />
+                        </LongRunningToolWrapper>
                       );
                     default:
                       // Render a generic tool indicator for SDK built-in
                       // tools (Read, Glob, Grep, etc.) or any unrecognized tool
                       if (part.type.startsWith("tool-")) {
                         return (
-                          <GenericTool
+                          <LongRunningToolWrapper
                             key={`${message.id}-${i}`}
                             part={part as ToolUIPart}
-                          />
+                          >
+                            <GenericTool part={part as ToolUIPart} />
+                          </LongRunningToolWrapper>
                         );
                       }
                       return null;

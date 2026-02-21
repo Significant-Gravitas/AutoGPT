@@ -10,7 +10,6 @@ import {
 import type { ToolUIPart } from "ai";
 import Image from "next/image";
 import NextLink from "next/link";
-import { LongRunningToolDisplay } from "../../components/LongRunningToolDisplay/LongRunningToolDisplay";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -143,9 +142,6 @@ export function CreateAgentTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
-
-      {/* Show mini-game while tool is executing */}
-      <LongRunningToolDisplay isStreaming={isStreaming} />
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>

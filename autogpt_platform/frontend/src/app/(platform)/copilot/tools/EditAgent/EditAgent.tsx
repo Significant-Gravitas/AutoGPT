@@ -2,7 +2,6 @@
 
 import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { LongRunningToolDisplay } from "../../components/LongRunningToolDisplay/LongRunningToolDisplay";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -123,9 +122,6 @@ export function EditAgentTool({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
-
-      {/* Show mini-game while tool is executing */}
-      <LongRunningToolDisplay isStreaming={isStreaming} />
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
