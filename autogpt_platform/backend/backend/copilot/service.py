@@ -1400,7 +1400,7 @@ async def _yield_tool_call(
 
     Executes tools synchronously and yields heartbeat events every 15 seconds to
     keep the SSE connection alive during execution. The is_long_running property
-    is only used by the frontend to display mini-game UI during long operations.
+    is only used by the frontend to display UI feedback during long operations.
 
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON

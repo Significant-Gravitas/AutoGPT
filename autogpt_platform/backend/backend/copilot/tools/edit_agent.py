@@ -46,7 +46,7 @@ class EditAgentTool(BaseTool):
 
     @property
     def is_long_running(self) -> bool:
-        """Agent editing takes several minutes - show mini-game."""
+        """Agent editing takes several minutes."""
         return True
 
     @property

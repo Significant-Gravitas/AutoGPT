@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Wrapper for all tool components. Automatically shows UI feedback (e.g., mini-game)
+ * Wrapper for all tool components. Automatically shows UI feedback
  * for long-running tools by detecting StreamLongRunningStart events from the backend.
  */
 export function ToolWrapper({ part, message, children }: Props) {

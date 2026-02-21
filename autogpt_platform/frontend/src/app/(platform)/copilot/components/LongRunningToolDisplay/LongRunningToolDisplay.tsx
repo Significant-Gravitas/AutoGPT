@@ -12,7 +12,7 @@ interface Props {
 }
 
 /**
- * Displays a mini-game while a long-running tool executes.
+ * Displays UI feedback while a long-running tool executes.
  * Automatically shown for tools marked as is_long_running=True in the backend.
  */
 export function LongRunningToolDisplay({ isStreaming }: Props) {

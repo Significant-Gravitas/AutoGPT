@@ -180,7 +180,7 @@ class StreamLongRunningStart(StreamBaseResponse):
     """Notification that a long-running tool has started.
 
     Custom extension to the AI SDK protocol. Signals the frontend to show
-    UI feedback (like a mini-game) while the tool executes.
+    UI feedback while the tool executes.
     """
 
     type: ResponseType = ResponseType.LONG_RUNNING_START

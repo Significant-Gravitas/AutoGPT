@@ -48,7 +48,7 @@ class CreateAgentTool(BaseTool):
 
     @property
     def is_long_running(self) -> bool:
-        """Agent generation takes several minutes - show mini-game."""
+        """Agent generation takes several minutes."""
         return True
 
     @property

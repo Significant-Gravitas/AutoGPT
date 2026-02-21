@@ -38,7 +38,7 @@ class BaseTool:
 
     @property
     def is_long_running(self) -> bool:
-        """Whether this tool takes a long time to execute (shows mini-game in UI)."""
+        """Whether this tool takes a long time to execute (triggers long-running UI)."""
         return False
 
     def as_openai_tool(self) -> ChatCompletionToolParam:

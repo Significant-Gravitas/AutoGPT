@@ -48,7 +48,7 @@ class CustomizeAgentTool(BaseTool):
 
     @property
     def is_long_running(self) -> bool:
-        """Agent customization takes several minutes - show mini-game."""
+        """Agent customization takes several minutes."""
         return True
 
     @property
