@@ -373,9 +373,23 @@ export const CustomNode = React.memo(
       [handleTitleSave, data.metadata],
     );
 
-    const displayTitle =
-      customTitle ||
-      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+    const displayTitle = (() => {
+      if (customTitle) return customTitle;
+
+      // For Agent Executor blocks, show agent name + version if available
+      if (data.uiType === BlockUIType.AGENT) {
+        const agentName = data.hardcodedValues?.agent_name;
+        const agentVersion = data.hardcodedValues?.graph_version;
+
+        if (agentName && agentVersion !== undefined) {
+          return `${agentName} v${agentVersion}`;
+        } else if (agentName) {
+          return agentName;
+        }
+      }
+
+      return beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+    })();
 
     useEffect(() => {
       isInitialSetup.current = false;
