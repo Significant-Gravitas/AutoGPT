@@ -148,6 +148,10 @@ class StreamToolInputAvailable(StreamBaseResponse):
     input: dict[str, Any] = Field(
         default_factory=dict, description="Tool input arguments"
     )
+    isLongRunning: bool = Field(
+        default=False,
+        description="Whether this tool is long-running (triggers UI feedback)",
+    )
 
 
 class StreamToolOutputAvailable(StreamBaseResponse):

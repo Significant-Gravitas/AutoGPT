@@ -34,6 +34,7 @@ from backend.copilot.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
+from backend.copilot.tools import get_tool
 
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
 
@@ -111,6 +112,10 @@ class SDKResponseAdapter:
                     # instead of "mcp__copilot__find_block".
                     tool_name = block.name.removeprefix(MCP_TOOL_PREFIX)
 
+                    # Check if this is a long-running tool to trigger UI feedback
+                    tool = get_tool(tool_name)
+                    is_long_running = tool.is_long_running if tool else False
+
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
                     )
@@ -119,6 +124,7 @@ class SDKResponseAdapter:
                             toolCallId=block.id,
                             toolName=tool_name,
                             input=block.input,
+                            isLongRunning=is_long_running,
                         )
                     )
                     self.current_tool_calls[block.id] = {"name": tool_name}

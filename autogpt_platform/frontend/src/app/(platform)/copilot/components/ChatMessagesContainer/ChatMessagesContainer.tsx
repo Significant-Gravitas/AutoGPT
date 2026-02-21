@@ -212,8 +212,6 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
-                          message={message}
-                          message={message}
                         >
                           <FindBlocksTool part={part as ToolUIPart} />
                         </ToolWrapper>

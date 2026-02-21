@@ -25,14 +25,12 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
-    StreamLongRunningStart,
     StreamStart,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
 from ..service import _build_system_prompt, _generate_session_title
-from ..tools import get_tool
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -732,24 +730,6 @@ async def stream_chat_completion_sdk(
                                 )
 
                             yield response
-
-                            # Emit long-running notification for tools with is_long_running=True
-                            if isinstance(response, StreamToolInputAvailable):
-                                tool = get_tool(response.toolName)
-                                logger.info(
-                                    f"[SDK] Tool check: {response.toolName}, "
-                                    f"tool={tool}, is_long_running={tool.is_long_running if tool else 'N/A'}"
-                                )
-                                if tool and tool.is_long_running:
-                                    logger.info(
-                                        f"[SDK] Emitting StreamLongRunningStart for {response.toolName}"
-                                    )
-                                    yield StreamLongRunningStart(
-                                        data={
-                                            "toolCallId": response.toolCallId,
-                                            "toolName": response.toolName,
-                                        }
-                                    )
 
                             if isinstance(response, StreamTextDelta):
                                 delta = response.delta or ""

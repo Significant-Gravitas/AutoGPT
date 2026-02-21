@@ -1,31 +1,21 @@
-import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import type { ToolUIPart } from "ai";
 import { LongRunningToolDisplay } from "../LongRunningToolDisplay/LongRunningToolDisplay";
 
 interface Props {
   part: ToolUIPart;
-  message: UIMessage<unknown, UIDataTypes, UITools>;
   children: React.ReactNode;
 }
 
 /**
  * Wrapper for all tool components. Automatically shows UI feedback
- * for long-running tools by detecting StreamLongRunningStart events from the backend.
+ * for long-running tools by detecting the isLongRunning flag on the tool part.
  */
-export function ToolWrapper({ part, message, children }: Props) {
+export function ToolWrapper({ part, children }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
-  // Check if this tool has a data-long-running-start event in the message
-  const isLongRunning = message.parts.some(
-    (p) =>
-      p.type === "data-long-running-start" &&
-      "data" in p &&
-      typeof p.data === "object" &&
-      p.data !== null &&
-      "toolCallId" in p.data &&
-      "toolCallId" in part &&
-      p.data.toolCallId === part.toolCallId,
-  );
+  // Check if this tool is marked as long-running in the part itself
+  const isLongRunning = "isLongRunning" in part && part.isLongRunning === true;
 
   return (
     <>
