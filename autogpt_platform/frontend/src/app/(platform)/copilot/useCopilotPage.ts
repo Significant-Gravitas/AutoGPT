@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
-const STREAM_START_TIMEOUT_MS = 60_000; // 60 seconds for long-running operations
+const STREAM_START_TIMEOUT_MS = 30_000; // 30s to detect if backend is down/not responding
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(

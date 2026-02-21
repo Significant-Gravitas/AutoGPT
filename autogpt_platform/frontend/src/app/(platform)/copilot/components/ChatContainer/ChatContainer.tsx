@@ -34,7 +34,8 @@ export const ChatContainer = ({
   onStop,
   headerSlot,
 }: ChatContainerProps) => {
-  const isBusy = status === "streaming" || !!isReconnecting;
+  const isBusy =
+    status === "streaming" || status === "submitted" || !!isReconnecting;
   const inputLayoutId = "copilot-2-chat-input";
 
   return (

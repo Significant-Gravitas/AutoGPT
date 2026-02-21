@@ -564,3 +564,9 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
 2026-02-21 20:39:00,123 [33mWARNING[0m  [33mService communication: Retry attempt 10 for '_call_method_sync': HTTPServerError: HTTP 500: Server error '500 Internal Server Error' for url 'http://localhost:8005/get_graph_executions'
 For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500[0m
 2026-02-21 20:39:13,881 [34mINFO[0m  127.0.0.1:59398 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-02-21 20:39:30,173 [33mWARNING[0m  [33mService communication: Retry attempt 11 for '_call_method_sync': HTTPServerError: HTTP 500: Server error '500 Internal Server Error' for url 'http://localhost:8005/get_graph_executions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500[0m
+2026-02-21 20:39:35,355 [34mINFO[0m  127.0.0.1:59522 - "GET /api/store/profile HTTP/1.1" 404
+2026-02-21 20:39:35,685 [34mINFO[0m  127.0.0.1:59526 - "GET /api/executions HTTP/1.1" 200
+2026-02-21 20:39:38,916 [34mINFO[0m  127.0.0.1:59522 - "GET /api/store/profile HTTP/1.1" 404
+2026-02-21 20:39:40,019 [34mINFO[0m  127.0.0.1:59522 - "GET /api/store/profile HTTP/1.1" 404
