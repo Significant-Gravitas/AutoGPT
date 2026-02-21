@@ -212,6 +212,8 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
+                          message={message}
                         >
                           <FindBlocksTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -222,6 +224,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <FindAgentsTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -232,6 +235,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <SearchDocsTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -241,6 +245,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <RunBlockTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -251,6 +256,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <RunAgentTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -260,6 +266,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <CreateAgentTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -269,6 +276,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <EditAgentTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -278,6 +286,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <ViewAgentOutputTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -287,9 +296,11 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <SearchFeatureRequestsTool
                             part={part as ToolUIPart}
+                            message={message}
                           />
                         </ToolWrapper>
                       );
@@ -298,6 +309,7 @@ export const ChatMessagesContainer = ({
                         <ToolWrapper
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
+                          message={message}
                         >
                           <CreateFeatureRequestTool part={part as ToolUIPart} />
                         </ToolWrapper>
@@ -310,6 +322,7 @@ export const ChatMessagesContainer = ({
                           <ToolWrapper
                             key={`${message.id}-${i}`}
                             part={part as ToolUIPart}
+                            message={message}
                           >
                             <GenericTool part={part as ToolUIPart} />
                           </ToolWrapper>
