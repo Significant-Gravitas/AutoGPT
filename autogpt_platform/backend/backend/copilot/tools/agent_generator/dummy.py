@@ -104,9 +104,8 @@ async def generate_agent_dummy(
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy agent JSON after a simulated delay."""
-    logger.info("Using dummy agent generator for generate_agent (30s delay)")
-    await asyncio.sleep(30)
+    """Return dummy agent JSON immediately without blocking delay."""
+    logger.info("Using dummy agent generator for generate_agent (returns immediately)")
     return _generate_dummy_agent_json()
 
 

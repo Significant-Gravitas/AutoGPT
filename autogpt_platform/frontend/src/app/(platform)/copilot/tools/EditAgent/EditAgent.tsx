@@ -2,19 +2,17 @@
 
 import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { LongRunningToolDisplay } from "../../components/LongRunningToolDisplay/LongRunningToolDisplay";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
@@ -28,9 +26,6 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -75,17 +70,6 @@ function getAccordionMeta(output: EditAgentToolOutput): {
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
-    return {
-      icon: <OrbitLoader size={32} />,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
   return {
     icon: (
       <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
@@ -104,18 +88,10 @@ export function EditAgentTool({ part }: Props) {
   const output = getEditAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
+    (isAgentPreviewOutput(output) ||
       isAgentSavedOutput(output) ||
       isClarificationNeededOutput(output) ||
       isErrorOutput(output));
@@ -148,17 +124,14 @@ export function EditAgentTool({ part }: Props) {
         />
       </div>
 
+      {/* Show mini-game while tool is executing */}
+      <LongRunningToolDisplay
+        isStreaming={isStreaming}
+        title="Editing agent, this may take a few minutes. Play while you wait."
+      />
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
-
           {isAgentSavedOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>

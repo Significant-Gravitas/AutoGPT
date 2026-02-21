@@ -35,10 +35,6 @@ class ResponseType(str, Enum):
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    # Long-running operation types
-    OPERATION_STARTED = "operation_started"
-    OPERATION_PENDING = "operation_pending"
-    OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
     # Web fetch
@@ -417,63 +413,6 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
-
-
-# Long-running operation models
-class OperationStartedResponse(ToolResponseBase):
-    """Response when a long-running operation has been started in the background.
-
-    This is returned immediately to the client while the operation continues
-    to execute. The user can close the tab and check back later.
-
-    The task_id can be used to reconnect to the SSE stream via
-    GET /chat/tasks/{task_id}/stream?last_idx=0
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    operation_id: str
-    tool_name: str
-    task_id: str | None = None  # For SSE reconnection
-
-
-class OperationPendingResponse(ToolResponseBase):
-    """Response stored in chat history while a long-running operation is executing.
-
-    This is persisted to the database so users see a pending state when they
-    refresh before the operation completes.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_PENDING
-    operation_id: str
-    tool_name: str
-
-
-class OperationInProgressResponse(ToolResponseBase):
-    """Response when an operation is already in progress.
-
-    Returned for idempotency when the same tool_call_id is requested again
-    while the background task is still running.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
-    tool_call_id: str
-
-
-class AsyncProcessingResponse(ToolResponseBase):
-    """Response when an operation has been delegated to async processing.
-
-    This is returned by tools when the external service accepts the request
-    for async processing (HTTP 202 Accepted). The Redis Streams completion
-    consumer will handle the result when the external service completes.
-
-    The status field is specifically "accepted" to allow the long-running tool
-    handler to detect this response and skip LLM continuation.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    status: str = "accepted"  # Must be "accepted" for detection
-    operation_id: str | None = None
-    task_id: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

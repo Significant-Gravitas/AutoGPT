@@ -14,7 +14,6 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
-import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
 
@@ -226,11 +225,6 @@ export function useCopilotPage() {
     hasResumedRef.current = sessionId;
     resumeStream();
   }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
-
-  // Poll session endpoint when a long-running tool (create_agent, edit_agent)
-  // is in progress. When the backend completes, the session data will contain
-  // the final tool output — this hook detects the change and updates messages.
-  useLongRunningToolPolling(sessionId, messages, setMessages);
 
   // Clear messages when session is null
   useEffect(() => {

@@ -501,27 +501,69 @@ function getFileAccordionData(
       "path",
       "pattern",
     ) ?? "File";
-  const content = getStringField(output, "content", "text", "_raw");
+  const content = getStringField(
+    output,
+    "content",
+    "text",
+    "preview",
+    "content_preview",
+    "_raw",
+  );
   const message = getStringField(output, "message");
+
+  // Handle base64 content from workspace files
+  let displayContent = content;
+  if (output.content_base64 && typeof output.content_base64 === "string") {
+    try {
+      displayContent = atob(output.content_base64);
+    } catch {
+      displayContent = "[Binary content]";
+    }
+  }
+
+  // Handle MCP-style content blocks from SDK tools (Read, Glob, Grep, Edit)
+  if (!displayContent) {
+    displayContent = extractMcpText(output);
+  }
+
   // For Glob/list results, try to show file list
-  const files = Array.isArray(output.files)
-    ? output.files.filter((f: unknown): f is string => typeof f === "string")
-    : null;
+  // Files can be either strings (from Glob) or objects (from list_workspace_files)
+  const files = Array.isArray(output.files) ? output.files : null;
+
+  // Format file list for display
+  let fileListText: string | null = null;
+  if (files && files.length > 0) {
+    const fileLines = files.map((f: unknown) => {
+      if (typeof f === "string") {
+        return f;
+      }
+      if (typeof f === "object" && f !== null) {
+        const fileObj = f as Record<string, unknown>;
+        // Workspace file format: path (size, mime_type)
+        const path = fileObj.path || fileObj.name || "unknown";
+        const size =
+          typeof fileObj.size_bytes === "number"
+            ? ` (${(fileObj.size_bytes / 1024).toFixed(1)} KB, ${fileObj.mime_type || "unknown"})`
+            : "";
+        return `${path}${size}`;
+      }
+      return String(f);
+    });
+    fileListText = fileLines.join("\n");
+  }
 
   return {
     title: message ?? "File output",
     description: truncate(filePath, 80),
     content: (
       <div className="space-y-2">
-        {content && (
-          <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
+        {displayContent && (
+          <ContentCodeBlock>{truncate(displayContent, 2000)}</ContentCodeBlock>
         )}
-        {files && files.length > 0 && (
-          <ContentCodeBlock>
-            {truncate(files.join("\n"), 2000)}
-          </ContentCodeBlock>
+        {fileListText && (
+          <ContentCodeBlock>{truncate(fileListText, 2000)}</ContentCodeBlock>
         )}
-        {!content && !files && message && (
+        {!displayContent && !fileListText && message && (
           <ContentMessage>{message}</ContentMessage>
         )}
       </div>
