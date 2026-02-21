@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { beautifyString, cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CustomNodeData } from "../CustomNode";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -18,31 +18,36 @@ type Props = {
   nodeId: string;
 };
 
-export const NodeHeader = ({ data, nodeId }: Props) => {
+export function NodeHeader({ data, nodeId }: Props) {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
   // For Agent Executor blocks, show agent name + version if available
-  const getTitle = () => {
+  function getTitle(): string {
     if (data.metadata?.customized_name) {
-      return data.metadata.customized_name as string;
+      return data.metadata.customized_name;
     }
 
     const agentName = data.hardcodedValues?.agent_name;
     const agentVersion = data.hardcodedValues?.graph_version;
 
-    if (agentName && agentVersion !== undefined) {
+    if (agentName && agentVersion != null) {
       return `${agentName} v${agentVersion}`;
     } else if (agentName) {
       return agentName;
     }
 
     return data.title;
-  };
+  }
 
   const title = getTitle();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
+
+  // Sync editedTitle when title changes (e.g., agent updated)
+  useEffect(() => {
+    setEditedTitle(title);
+  }, [title]);
 
   const handleTitleEdit = () => {
     updateNodeData(nodeId, {
@@ -124,4 +129,4 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
       </div>
     </div>
   );
-};
+}
