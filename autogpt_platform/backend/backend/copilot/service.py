@@ -170,10 +170,8 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 
 You are NOT a chatbot. You are NOT documentation. You are a partner who helps busy business owners get value quickly by showing proof through working automations. Bias toward action over explanation."""
 
-# Module-level set to hold strong references to background tasks.
-# This prevents asyncio from garbage collecting tasks before they complete.
-# Tasks are automatically removed on completion via done_callback.
-_background_tasks: set[asyncio.Task] = set()
+# Background tasks are no longer used for long-running tools (now synchronous execution).
+# Only used in tools/agent_generator/dummy.py for testing delayed Redis publishing.
 
 
 async def _mark_operation_started(tool_call_id: str) -> bool:
@@ -1484,17 +1482,34 @@ async def _yield_tool_call(
         )
 
         # Execute tool SYNCHRONOUSLY - blocks until complete
-        # Frontend shows mini-game via callProviderMetadata during this time
+        # Send heartbeats to keep SSE connection alive while waiting
         try:
-            result_str = await _execute_long_running_tool_with_streaming(
-                tool_name=tool_name,
-                parameters=arguments,
-                tool_call_id=tool_call_id,
-                operation_id=operation_id,
-                task_id=task_id,
-                session_id=session.session_id,
-                user_id=session.user_id,
+            # Create task for long-running execution
+            tool_task = asyncio.create_task(
+                _execute_long_running_tool_with_streaming(
+                    tool_name=tool_name,
+                    parameters=arguments,
+                    tool_call_id=tool_call_id,
+                    operation_id=operation_id,
+                    task_id=task_id,
+                    session_id=session.session_id,
+                    user_id=session.user_id,
+                )
             )
+
+            # Send heartbeats every 15 seconds while waiting
+            heartbeat_interval = 15.0
+            while not tool_task.done():
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(tool_task), timeout=heartbeat_interval
+                    )
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield StreamHeartbeat()
+
+            # Get the result
+            result_str = await tool_task
         except Exception as e:
             logger.error(f"Long-running tool {tool_name} failed: {e}", exc_info=True)
             # Mark task as failed
@@ -1582,74 +1597,6 @@ async def _yield_tool_call(
         )
 
     yield tool_execution_response
-
-
-async def _execute_long_running_tool(
-    tool_name: str,
-    parameters: dict[str, Any],
-    tool_call_id: str,
-    operation_id: str,
-    session_id: str,
-    user_id: str | None,
-) -> None:
-    """Execute a long-running tool in background and update chat history with result.
-
-    This function runs independently of the SSE connection, so the operation
-    survives if the user closes their browser tab.
-
-    NOTE: This is the legacy function without stream registry support.
-    Use _execute_long_running_tool_with_streaming for new implementations.
-    """
-    try:
-        # Load fresh session (not stale reference)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for background tool")
-            return
-
-        # Execute the actual tool
-        result = await execute_tool(
-            tool_name=tool_name,
-            parameters=parameters,
-            tool_call_id=tool_call_id,
-            user_id=user_id,
-            session=session,
-        )
-
-        # Update the pending message with result
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=(
-                result.output
-                if isinstance(result.output, str)
-                else orjson.dumps(result.output).decode("utf-8")
-            ),
-        )
-
-        logger.info(f"Background tool {tool_name} completed for session {session_id}")
-
-        # DON'T generate LLM continuation - wait for user to return and send new message
-        logger.info(
-            f"Background tool {tool_name} complete. Waiting for user to return."
-        )
-
-    except Exception as e:
-        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
-        error_response = ErrorResponse(
-            message=f"Tool {tool_name} failed: {str(e)}",
-        )
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=error_response.model_dump_json(),
-        )
-        # DON'T auto-generate continuation - user will see error when they return
-        logger.info(
-            f"Background tool {tool_name} failed. Error saved for when user returns."
-        )
-    finally:
-        await _mark_operation_completed(tool_call_id)
 
 
 async def _execute_long_running_tool_with_streaming(
@@ -1741,10 +1688,16 @@ async def _execute_long_running_tool_with_streaming(
                         )
                         break
                 else:
-                    # Timeout - return error
+                    # Timeout - release lock and mark task as failed
                     logger.error(
                         f"Timeout waiting for webhook to complete "
                         f"(task_id={task_id}, elapsed={elapsed}s)"
+                    )
+                    await _mark_operation_completed(tool_call_id)
+                    await stream_registry.mark_task_completed(
+                        task_id,
+                        status="failed",
+                        error_message="Timeout waiting for operation to complete",
                     )
                     return '{"error": "Timeout waiting for operation to complete"}'
 

@@ -104,11 +104,19 @@ export function EditAgentTool({ part }: Props) {
   const output = getEditAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
+
+  // Check if tool is long-running via provider metadata (for synchronous execution)
+  // or output type (for legacy async background tasks)
+  const isLongRunning =
+    (part as unknown as { callProviderMetadata?: { isLongRunning?: boolean } })
+      .callProviderMetadata?.isLongRunning === true;
+
   const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
+    isLongRunning ||
+    (!!output &&
+      (isOperationStartedOutput(output) ||
+        isOperationPendingOutput(output) ||
+        isOperationInProgressOutput(output)));
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&

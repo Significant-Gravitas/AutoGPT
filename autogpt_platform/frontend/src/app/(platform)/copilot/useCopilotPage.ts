@@ -227,9 +227,9 @@ export function useCopilotPage() {
     resumeStream();
   }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
-  // Poll session endpoint when a long-running tool (create_agent, edit_agent)
-  // is in progress. When the backend completes, the session data will contain
-  // the final tool output — this hook detects the change and updates messages.
+  // Poll session endpoint for async long-running operations (fallback path when
+  // tools return 202 Accepted and webhook back). Also handles legacy sessions
+  // with operation_started/pending. Modern synchronous execution bypasses polling.
   useLongRunningToolPolling(sessionId, messages, setMessages);
 
   // Clear messages when session is null

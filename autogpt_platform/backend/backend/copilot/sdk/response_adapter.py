@@ -119,7 +119,7 @@ class SDKResponseAdapter:
                     provider_metadata = None
                     if tool_name in ("create_agent", "edit_agent"):
                         provider_metadata = {"isLongRunning": True}
-                        logger.info(
+                        logger.debug(
                             f"[ADAPTER] Long-running tool detected: {tool_name}, "
                             f"setting provider_metadata={provider_metadata}"
                         )
@@ -132,19 +132,20 @@ class SDKResponseAdapter:
                     )
 
                     # Debug: verify field is set on the object
-                    logger.info(
-                        f"[ADAPTER] Created StreamToolInputAvailable object: "
-                        f"tool={tool_name}, "
-                        f"callProviderMetadata={tool_input_obj.callProviderMetadata}"
-                    )
-
-                    # Debug: test serialization immediately
-                    test_json = tool_input_obj.model_dump_json(exclude_none=False)
-                    logger.info(f"[ADAPTER] Object serializes to: {test_json[:300]}")
-
-                    # Debug: test to_sse() method
-                    test_sse = tool_input_obj.to_sse()
-                    logger.info(f"[ADAPTER] to_sse() returns: {test_sse[:300]}")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            f"[ADAPTER] Created StreamToolInputAvailable object: "
+                            f"tool={tool_name}, "
+                            f"callProviderMetadata={tool_input_obj.callProviderMetadata}"
+                        )
+                        # Debug: test serialization
+                        test_json = tool_input_obj.model_dump_json(exclude_none=False)
+                        logger.debug(
+                            f"[ADAPTER] Object serializes to: {test_json[:300]}"
+                        )
+                        # Debug: test to_sse() method
+                        test_sse = tool_input_obj.to_sse()
+                        logger.debug(f"[ADAPTER] to_sse() returns: {test_sse[:300]}")
 
                     responses.append(tool_input_obj)
                     self.current_tool_calls[block.id] = {"name": tool_name}

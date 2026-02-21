@@ -13,6 +13,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Track background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task] = set()
+
 # Dummy decomposition result (instructions type)
 DUMMY_DECOMPOSITION_RESULT: dict[str, Any] = {
     "type": "instructions",
@@ -117,9 +120,11 @@ async def generate_agent_dummy(
         )
 
         # Spawn background task to publish result after delay
-        asyncio.create_task(
+        bg_task = asyncio.create_task(
             _publish_dummy_result_after_delay(operation_id, task_id, 30)
         )
+        _background_tasks.add(bg_task)
+        bg_task.add_done_callback(_background_tasks.discard)
 
         return {
             "status": "accepted",
@@ -181,11 +186,13 @@ async def generate_agent_patch_dummy(
         )
 
         # Spawn background task to publish result after delay
-        asyncio.create_task(
+        bg_task = asyncio.create_task(
             _publish_dummy_patch_after_delay(
                 operation_id, task_id, current_agent, update_request, 30
             )
         )
+        _background_tasks.add(bg_task)
+        bg_task.add_done_callback(_background_tasks.discard)
 
         return {
             "status": "accepted",

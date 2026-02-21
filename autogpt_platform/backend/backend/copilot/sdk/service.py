@@ -164,11 +164,12 @@ async def _find_latest_tool_use_id(session_id: str, tool_name: str) -> str | Non
 
             # Check if any tool call matches our tool name
             for tool_call in msg.tool_calls:
+                # Extract tool name from either direct 'name' or nested 'function.name' (OpenAI format)
+                tc_name = tool_call.get("name") or tool_call.get("function", {}).get(
+                    "name"
+                )
                 # Match both with and without MCP prefix
-                if (
-                    tool_call.get("name") == tool_name
-                    or tool_call.get("name") == f"mcp__copilot__{tool_name}"
-                ):
+                if tc_name in (tool_name, f"mcp__copilot__{tool_name}"):
                     tool_use_id = tool_call.get("id")
                     if tool_use_id:
                         logger.info(

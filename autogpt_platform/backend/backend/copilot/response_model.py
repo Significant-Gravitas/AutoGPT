@@ -5,12 +5,15 @@ This module implements the AI SDK UI Stream Protocol (v1) for streaming chat res
 See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 """
 
+import logging
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
+
+logger = logging.getLogger(__name__)
 
 
 class ResponseType(str, Enum):
@@ -50,11 +53,8 @@ class StreamBaseResponse(BaseModel):
         # Include all fields, even those with None values, to ensure callProviderMetadata is sent
         json_str = self.model_dump_json(exclude_none=False)
         # Debug: log StreamToolInputAvailable with callProviderMetadata
-        if hasattr(self, "callProviderMetadata"):
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.info(
+        if hasattr(self, "callProviderMetadata") and logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
                 f"[SSE] Serializing {self.__class__.__name__}: {json_str[:300]}"
             )
         return f"data: {json_str}\n\n"
