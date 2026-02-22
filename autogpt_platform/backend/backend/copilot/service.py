@@ -398,6 +398,7 @@ async def stream_chat_completion(
             }
         },
     )
+    logger.info(f"[DEBUG_CONVERSATION] RAW MESSAGE: {message!r}")
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
@@ -428,6 +429,12 @@ async def stream_chat_completion(
 
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
+    logger.info(
+        f"[DEBUG_CONVERSATION] Before append check: "
+        f"message={message!r}, role={new_message_role}, "
+        f"n_messages={len(session.messages)}, "
+        f"last_msg={'None' if len(session.messages) == 0 else f'{session.messages[-1].role}: {session.messages[-1].content!r}'}"
+    )
     if message and (
         len(session.messages) == 0
         or not (
@@ -437,23 +444,25 @@ async def stream_chat_completion(
     ):
         session.messages.append(ChatMessage(role=new_message_role, content=message))
         logger.info(
-            f"Appended message (role={'user' if is_user_message else 'assistant'}), "
+            f"[DEBUG_CONVERSATION] APPENDED message (role={'user' if is_user_message else 'assistant'}), "
             f"new message_count={len(session.messages)}"
         )
+    else:
+        logger.info("[DEBUG_CONVERSATION] SKIPPED appending duplicate message")
 
-        # Track user message in PostHog
-        if is_user_message:
-            posthog_start = time.monotonic()
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(message),
-            )
-            posthog_time = (time.monotonic() - posthog_start) * 1000
-            logger.info(
-                f"[TIMING] track_user_message took {posthog_time:.1f}ms",
-                extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
-            )
+    # Track user message in PostHog
+    if is_user_message and message:
+        posthog_start = time.monotonic()
+        track_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            message_length=len(message),
+        )
+        posthog_time = (time.monotonic() - posthog_start) * 1000
+        logger.info(
+            f"[TIMING] track_user_message took {posthog_time:.1f}ms",
+            extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
+        )
 
     upsert_start = time.monotonic()
     session = await upsert_chat_session(session)
@@ -992,7 +1001,15 @@ async def _stream_chat_chunks(
         extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
     )
 
+    # Log full conversation history
+    logger.info(
+        f"[DEBUG_CONVERSATION] FULL SESSION HISTORY ({len(session.messages)} messages):"
+    )
+    for idx, msg in enumerate(session.messages):
+        logger.info(f"[DEBUG_CONVERSATION]   [{idx}] {msg.role}: {msg.content!r}")
+
     messages = session.to_openai_messages()
+    logger.info(f"[DEBUG_CONVERSATION] Converted to {len(messages)} OpenAI messages")
     if system_prompt:
         system_message = ChatCompletionSystemMessageParam(
             role="system",
@@ -1155,6 +1172,9 @@ async def _stream_chat_chunks(
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
                                 delta=delta.content,
+                            )
+                            logger.info(
+                                f"[DEBUG_CONVERSATION] YIELDING TEXT: {delta.content!r}"
                             )
                             yield text_response
 
@@ -1976,6 +1996,11 @@ async def _generate_llm_continuation_with_streaming(
     """
     import uuid as uuid_module
 
+    logger.info(
+        f"[DEBUG_CONVERSATION] _generate_llm_continuation_with_streaming CALLED "
+        f"for session_id={session_id}, user_id={user_id}"
+    )
+
     try:
         # Load fresh session from DB (bypass cache to get the updated tool result)
         await invalidate_session_cache(session_id)
@@ -1983,6 +2008,10 @@ async def _generate_llm_continuation_with_streaming(
         if not session:
             logger.error(f"Session {session_id} not found for LLM continuation")
             return
+
+        logger.info(
+            f"[DEBUG_CONVERSATION] Continuation session has {len(session.messages)} messages"
+        )
 
         # Build system prompt
         system_prompt, _ = await _build_system_prompt(user_id)
