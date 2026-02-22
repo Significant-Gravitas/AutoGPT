@@ -190,6 +190,36 @@ async def get_library_agent_by_id(
 get_library_agent_by_graph_id = get_library_agent_by_id
 
 
+async def get_library_agents_by_ids(
+    user_id: str,
+    agent_ids: list[str],
+) -> list[LibraryAgentSummary]:
+    """Fetch multiple library agents by their IDs.
+
+    Args:
+        user_id: The user ID
+        agent_ids: List of agent IDs (can be graph_ids or library agent IDs)
+
+    Returns:
+        List of LibraryAgentSummary for found agents (silently skips not found)
+    """
+    agents: list[LibraryAgentSummary] = []
+    for agent_id in agent_ids:
+        try:
+            agent = await get_library_agent_by_id(user_id, agent_id)
+            if agent:
+                agents.append(agent)
+                logger.debug(f"Fetched library agent by ID: {agent.name}")
+            else:
+                logger.warning(f"Library agent not found for ID: {agent_id}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch library agent {agent_id}: {e}")
+            continue
+
+    logger.info(f"Fetched {len(agents)}/{len(agent_ids)} library agents by ID")
+    return agents
+
+
 async def get_library_agents_for_generation(
     user_id: str,
     search_query: str | None = None,

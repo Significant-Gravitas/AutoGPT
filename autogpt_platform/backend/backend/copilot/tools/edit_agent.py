@@ -37,7 +37,10 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent from the user's library using natural language. "
-            "Generates updates to the agent while preserving unchanged parts."
+            "Generates updates to the agent while preserving unchanged parts. "
+            "\n\nIMPORTANT: Before calling this tool, if the changes involve adding new "
+            "functionality, search for relevant existing agents using find_library_agent "
+            "that could be used as building blocks. Pass their IDs in library_agent_ids."
         )
 
     @property
@@ -73,6 +76,15 @@ class EditAgentTool(BaseTool):
                         "Additional context or answers to previous clarifying questions."
                     ),
                 },
+                "library_agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of library agent IDs to use as building blocks for the changes. "
+                        "If adding new functionality, search for relevant agents using "
+                        "find_library_agent first, then pass their IDs here."
+                    ),
+                },
                 "save": {
                     "type": "boolean",
                     "description": (
@@ -101,6 +113,7 @@ class EditAgentTool(BaseTool):
         agent_id = kwargs.get("agent_id", "").strip()
         changes = kwargs.get("changes", "").strip()
         context = kwargs.get("context", "")
+        library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
 
@@ -127,21 +140,25 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch library agents by IDs if provided
         library_agents = None
-        if user_id:
+        if user_id and library_agent_ids:
             try:
+                from .agent_generator import get_library_agents_by_ids
+
                 graph_id = current_agent.get("id")
-                library_agents = await get_all_relevant_agents_for_generation(
+                # Filter out the current agent being edited
+                filtered_ids = [id for id in library_agent_ids if id != graph_id]
+
+                library_agents = await get_library_agents_by_ids(
                     user_id=user_id,
-                    search_query=changes,
-                    exclude_graph_id=graph_id,
-                    include_marketplace=True,
+                    agent_ids=filtered_ids,
                 )
                 logger.debug(
-                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
                 )
             except Exception as e:
-                logger.warning(f"Failed to fetch library agents: {e}")
+                logger.warning(f"Failed to fetch library agents by IDs: {e}")
 
         update_request = changes
         if context:

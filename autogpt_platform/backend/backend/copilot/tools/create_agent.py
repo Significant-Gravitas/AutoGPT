@@ -39,7 +39,10 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent workflow from a natural language description. "
-            "First generates a preview, then saves to library if save=true."
+            "First generates a preview, then saves to library if save=true. "
+            "\n\nIMPORTANT: Before calling this tool, search for relevant existing agents "
+            "using find_library_agent that could be used as building blocks. "
+            "Pass their IDs in the library_agent_ids parameter so the generator can compose them."
         )
 
     @property
@@ -69,6 +72,15 @@ class CreateAgentTool(BaseTool):
                         "Include any preferences or constraints mentioned by the user."
                     ),
                 },
+                "library_agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of library agent IDs to use as building blocks. "
+                        "Search for relevant agents using find_library_agent first, "
+                        "then pass their IDs here so they can be composed into the new agent."
+                    ),
+                },
                 "save": {
                     "type": "boolean",
                     "description": (
@@ -96,12 +108,13 @@ class CreateAgentTool(BaseTool):
         """
         description = kwargs.get("description", "").strip()
         context = kwargs.get("context", "")
+        library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
 
         logger.info(
             f"[AGENT_CREATE_DEBUG] START - description_len={len(description)}, "
-            f"save={save}, user_id={user_id}, session_id={session_id}"
+            f"library_agent_ids={library_agent_ids}, save={save}, user_id={user_id}, session_id={session_id}"
         )
 
         if not description:
@@ -111,19 +124,21 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch library agents by IDs if provided
         library_agents = None
-        if user_id:
+        if user_id and library_agent_ids:
             try:
-                library_agents = await get_all_relevant_agents_for_generation(
+                from .agent_generator import get_library_agents_by_ids
+
+                library_agents = await get_library_agents_by_ids(
                     user_id=user_id,
-                    search_query=description,
-                    include_marketplace=True,
+                    agent_ids=library_agent_ids,
                 )
                 logger.debug(
-                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
                 )
             except Exception as e:
-                logger.warning(f"Failed to fetch library agents: {e}")
+                logger.warning(f"Failed to fetch library agents by IDs: {e}")
 
         try:
             decomposition_result = await decompose_goal(
