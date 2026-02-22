@@ -58,7 +58,7 @@ class OperationCompleteMessage(BaseModel):
     """Message format for operation completion notifications."""
 
     operation_id: str
-    task_id: str
+    session_id: str  # Session ID (used to be task_id, now consistent with streaming)
     success: bool
     result: dict | str | None = None
     error: str | None = None
@@ -245,18 +245,18 @@ class ChatCompletionConsumer:
 
         logger.info(
             f"[COMPLETION] Received completion for operation {message.operation_id} "
-            f"(task_id={message.task_id}, success={message.success})"
+            f"(session_id={message.session_id}, success={message.success})"
         )
 
         # Find task in registry
         task = await stream_registry.find_task_by_operation_id(message.operation_id)
         if task is None:
-            task = await stream_registry.get_task(message.task_id)
+            task = await stream_registry.get_task(message.session_id)
 
         if task is None:
             logger.warning(
                 f"[COMPLETION] Task not found for operation {message.operation_id} "
-                f"(task_id={message.task_id})"
+                f"(session_id={message.session_id})"
             )
             return
 
@@ -318,7 +318,7 @@ async def stop_completion_consumer() -> None:
 
 async def publish_operation_complete(
     operation_id: str,
-    task_id: str,
+    session_id: str,
     success: bool,
     result: dict | str | None = None,
     error: str | None = None,
@@ -327,14 +327,14 @@ async def publish_operation_complete(
 
     Args:
         operation_id: The operation ID that completed.
-        task_id: The task ID associated with the operation.
+        session_id: The session ID associated with the operation.
         success: Whether the operation succeeded.
         result: The result data (for success).
         error: The error message (for failure).
     """
     message = OperationCompleteMessage(
         operation_id=operation_id,
-        task_id=task_id,
+        session_id=session_id,
         success=success,
         result=result,
         error=error,

@@ -57,7 +57,6 @@ return 0
 class ActiveTask:
     """Represents an active streaming task (metadata only, no in-memory queues)."""
 
-    task_id: str  # For backwards compatibility, equals session_id
     session_id: str
     user_id: str | None
     tool_call_id: str
@@ -121,9 +120,8 @@ async def create_task(
         extra={"json_fields": log_meta},
     )
 
-    # Use session_id as task_id (no separate task_id needed)
+    # Create task (use session_id directly, no separate task_id)
     task = ActiveTask(
-        task_id=session_id,  # task_id = session_id
         session_id=session_id,
         user_id=user_id,
         tool_call_id=tool_call_id,
@@ -743,7 +741,6 @@ async def get_task(session_id: str) -> ActiveTask | None:
 
     # Note: Redis client uses decode_responses=True, so keys/values are strings
     return ActiveTask(
-        task_id=meta.get("task_id", ""),
         session_id=meta.get("session_id", ""),
         user_id=meta.get("user_id", "") or None,
         tool_call_id=meta.get("tool_call_id", ""),
@@ -786,7 +783,6 @@ async def get_task_with_expiry_info(
     # Note: Redis client uses decode_responses=True, so keys/values are strings
     return (
         ActiveTask(
-            task_id=meta.get("task_id", ""),
             session_id=meta.get("session_id", ""),
             user_id=meta.get("user_id", "") or None,
             tool_call_id=meta.get("tool_call_id", ""),
@@ -880,7 +876,6 @@ async def get_active_task_for_session(
 
                 return (
                     ActiveTask(
-                        task_id=session_id,
                         session_id=session_id,
                         user_id=task_user_id,
                         tool_call_id=meta.get("tool_call_id", ""),
