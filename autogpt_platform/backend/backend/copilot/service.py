@@ -1488,7 +1488,7 @@ async def _yield_tool_call(
         else:
             in_progress_msg = f"{tool_name} in progress..."
 
-        initial_response = StreamToolOutputAvailable(
+        yield StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
             output=OperationInProgressResponse(
@@ -1497,12 +1497,6 @@ async def _yield_tool_call(
             ).model_dump_json(),
             success=True,
         )
-
-        # Publish to stream registry for SSE reconnection support
-        await stream_registry.publish_chunk(task_id, initial_response)
-
-        # Yield to current SSE connection
-        yield initial_response
 
         # Execute tool SYNCHRONOUSLY - blocks until complete
         # Send heartbeats to keep SSE connection alive while waiting
