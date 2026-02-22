@@ -39,15 +39,33 @@ export function NodeHeader({ data, nodeId }: Props) {
     return data.title;
   }
 
-  const title = getTitle();
+  function getBeautifiedTitle(): string {
+    const rawTitle = getTitle();
+
+    // Extract version suffix (e.g., "v1", "v2.0", "v3.1.4") to preserve casing
+    const versionMatch = rawTitle.match(/\s+(v\d+(?:\.\d+)*)$/i);
+
+    if (versionMatch) {
+      const nameOnly = rawTitle.slice(0, -versionMatch[0].length);
+      const versionSuffix = versionMatch[1]; // Preserve original case
+      return beautifyString(nameOnly).replace("Block", "").trim() + " " + versionSuffix;
+    }
+
+    return beautifyString(rawTitle).replace("Block", "").trim();
+  }
+
+  const title = getBeautifiedTitle();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
 
   // Sync editedTitle when title changes (e.g., agent updated)
+  // Only sync when NOT editing to preserve user's in-progress edits
   useEffect(() => {
-    setEditedTitle(title);
-  }, [title]);
+    if (!isEditingTitle) {
+      setEditedTitle(title);
+    }
+  }, [title, isEditingTitle]);
 
   const handleTitleEdit = () => {
     updateNodeData(nodeId, {
@@ -95,12 +113,12 @@ export function NodeHeader({ data, nodeId }: Props) {
                         variant="large-semibold"
                         className="line-clamp-1 hover:cursor-text"
                       >
-                        {beautifyString(title).replace("Block", "").trim()}
+                        {title}
                       </Text>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{beautifyString(title).replace("Block", "").trim()}</p>
+                    <p>{title}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
