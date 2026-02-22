@@ -63,6 +63,7 @@ class ActiveTask:
     tool_call_id: str
     tool_name: str
     operation_id: str
+    blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
@@ -89,6 +90,7 @@ async def create_task(
     tool_call_id: str,
     tool_name: str,
     operation_id: str,
+    blocking: bool = False,
 ) -> ActiveTask:
     """Create a new streaming task in Redis (keyed by session_id).
 
@@ -127,6 +129,7 @@ async def create_task(
         tool_call_id=tool_call_id,
         tool_name=tool_name,
         operation_id=operation_id,
+        blocking=blocking,
     )
 
     # Store metadata in Redis
@@ -150,6 +153,7 @@ async def create_task(
             "tool_call_id": tool_call_id,
             "tool_name": tool_name,
             "operation_id": operation_id,
+            "blocking": "1" if blocking else "0",
             "status": task.status,
             "created_at": task.created_at.isoformat(),
         },
@@ -745,6 +749,7 @@ async def get_task(session_id: str) -> ActiveTask | None:
         tool_call_id=meta.get("tool_call_id", ""),
         tool_name=meta.get("tool_name", ""),
         operation_id=meta.get("operation_id", ""),
+        blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
     )
 
@@ -787,6 +792,7 @@ async def get_task_with_expiry_info(
             tool_call_id=meta.get("tool_call_id", ""),
             tool_name=meta.get("tool_name", ""),
             operation_id=meta.get("operation_id", ""),
+            blocking=meta.get("blocking") == "1",
             status=meta.get("status", "running"),  # type: ignore[arg-type]
         ),
         None,

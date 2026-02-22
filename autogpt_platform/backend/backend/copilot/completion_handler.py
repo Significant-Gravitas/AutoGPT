@@ -254,16 +254,23 @@ async def process_operation_success(
         await stream_registry.mark_task_completed(task.session_id, status="failed")
         raise
 
-    # Generate LLM continuation with streaming
-    try:
-        await chat_service._generate_llm_continuation_with_streaming(
-            session_id=task.session_id,
-            user_id=task.user_id,
-        )
-    except Exception as e:
-        logger.error(
-            f"[COMPLETION] Failed to generate LLM continuation: {e}",
-            exc_info=True,
+    # Generate LLM continuation with streaming (only if not blocking)
+    # If blocking=True, the HTTP request is waiting and will handle continuation
+    if not task.blocking:
+        try:
+            await chat_service._generate_llm_continuation_with_streaming(
+                session_id=task.session_id,
+                user_id=task.user_id,
+            )
+        except Exception as e:
+            logger.error(
+                f"[COMPLETION] Failed to generate LLM continuation: {e}",
+                exc_info=True,
+            )
+    else:
+        logger.info(
+            "[COMPLETION] Skipping LLM continuation (blocking mode - "
+            "HTTP request will handle it)"
         )
 
     # Mark task as completed and release Redis lock

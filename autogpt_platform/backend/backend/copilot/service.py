@@ -1613,10 +1613,17 @@ async def _execute_long_running_tool_with_streaming(
     session_id: str,
     user_id: str | None,
 ) -> str | None:
-    """Execute a long-running tool synchronously with stream registry support.
+    """Execute a long-running tool with blocking wait for completion.
 
-    Executes the tool and blocks until completion. If the tool returns 202 Accepted,
-    polls Redis until the completion consumer processes the result, then returns it.
+    For agent generator tools (create_agent, edit_agent, customize_agent):
+    - Enables async mode on Agent Generator (passes operation_id/session_id)
+    - Agent Generator returns 202 Accepted immediately
+    - Subscribes to stream_registry for completion event (no polling!)
+    - Waits for completion while forwarding progress chunks to SSE
+    - Returns result when ready
+
+    For other tools:
+    - Executes synchronously and returns result immediately
 
     Progress is published to stream_registry for SSE reconnection - clients can
     reconnect via GET /chat/sessions/{session_id}/stream if they disconnect.
@@ -1624,6 +1631,10 @@ async def _execute_long_running_tool_with_streaming(
     Returns:
         The tool result as a JSON string, or None on error.
     """
+    # Agent generator tools use async mode (202 Accepted + callback)
+    AGENT_GENERATOR_TOOLS = {"create_agent", "edit_agent", "customize_agent"}
+    is_agent_tool = tool_name in AGENT_GENERATOR_TOOLS
+
     try:
         # Load fresh session (not stale reference)
         session = await get_chat_session(session_id, user_id)
@@ -1636,45 +1647,122 @@ async def _execute_long_running_tool_with_streaming(
             )
             return
 
-        # Execute the tool synchronously (do NOT pass operation_id/session_id to force sync mode)
-        # The operation_id/session_id are only for our internal task tracking, not for the tool
-        result = await execute_tool(
-            tool_name=tool_name,
-            parameters=parameters,  # No enrichment - forces synchronous execution
-            tool_call_id=tool_call_id,
-            user_id=user_id,
-            session=session,
-        )
+        if is_agent_tool:
+            # Create task in stream_registry with blocking=True
+            # This enables completion_consumer to route the callback to us
+            await stream_registry.create_task(
+                session_id=session_id,
+                user_id=user_id,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                operation_id=operation_id,
+                blocking=True,  # HTTP request is waiting for completion
+            )
 
-        # Tool executed synchronously (no async/webhook mode)
-        # Publish tool result to stream registry
-        await stream_registry.publish_chunk(session_id, result)
+            # Subscribe to stream BEFORE executing tool (so we don't miss events)
+            queue = await stream_registry.subscribe_to_task(session_id, user_id)
+            if not queue:
+                logger.error(f"Failed to subscribe to task {session_id}")
+                return None
 
-        # Serialize result
-        result_str = (
-            result.output
-            if isinstance(result.output, str)
-            else orjson.dumps(result.output).decode("utf-8")
-        )
+            logger.info(
+                f"[AGENT_ASYNC] Executing {tool_name} with async mode "
+                f"(operation_id={operation_id}, session_id={session_id})"
+            )
 
-        logger.info(
-            f"Tool {tool_name} completed synchronously for session {session_id} "
-            f"(session_id={session_id})"
-        )
+            # Execute tool with operation_id/session_id to enable async mode
+            # Agent Generator will return 202 Accepted immediately
+            await execute_tool(
+                tool_name=tool_name,
+                parameters={
+                    **parameters,
+                    "operation_id": operation_id,
+                    "session_id": session_id,
+                },
+                tool_call_id=tool_call_id,
+                user_id=user_id,
+                session=session,
+            )
 
-        # Mark operation as completed (but don't complete the main task - that's done by processor)
-        await _mark_operation_completed(tool_call_id)
+            # Wait for completion via subscription (event-driven, no polling!)
+            logger.info(
+                f"[AGENT_ASYNC] Waiting for {tool_name} completion via stream subscription"
+            )
 
-        # Return the result to Claude
-        return result_str
+            result_str = None
+            while True:
+                try:
+                    # Wait for next chunk with timeout (for heartbeats)
+                    chunk = await asyncio.wait_for(queue.get(), timeout=15.0)
+
+                    logger.info(f"[AGENT_ASYNC] Received chunk: {type(chunk).__name__}")
+
+                    # Check if this is our tool result
+                    if isinstance(chunk, StreamToolOutputAvailable):
+                        if chunk.toolCallId == tool_call_id:
+                            # Serialize output to string if needed
+                            result_str = (
+                                chunk.output
+                                if isinstance(chunk.output, str)
+                                else orjson.dumps(chunk.output).decode("utf-8")
+                            )
+                            logger.info(
+                                f"[AGENT_ASYNC] {tool_name} completed! "
+                                f"Result length: {len(result_str) if result_str else 0}"
+                            )
+                            break
+
+                    elif isinstance(chunk, StreamError):
+                        logger.error(
+                            f"[AGENT_ASYNC] {tool_name} failed: {chunk.errorText}"
+                        )
+                        raise Exception(chunk.errorText)
+
+                except asyncio.TimeoutError:
+                    # Timeout is normal - just means no chunks in last 15s
+                    # Keep waiting (no heartbeat needed here, done by outer function)
+                    continue
+
+            return result_str
+
+        else:
+            # Non-agent tools: execute synchronously
+            logger.info(f"Executing {tool_name} synchronously")
+
+            result = await execute_tool(
+                tool_name=tool_name,
+                parameters=parameters,  # No enrichment for non-agent tools
+                tool_call_id=tool_call_id,
+                user_id=user_id,
+                session=session,
+            )
+
+            # Publish tool result to stream registry
+            await stream_registry.publish_chunk(session_id, result)
+
+            # Serialize result
+            result_str = (
+                result.output
+                if isinstance(result.output, str)
+                else orjson.dumps(result.output).decode("utf-8")
+            )
+
+            logger.info(
+                f"Tool {tool_name} completed synchronously for session {session_id}"
+            )
+
+            # Mark operation as completed
+            await _mark_operation_completed(tool_call_id)
+
+            return result_str
 
     except Exception as e:
-        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
+        logger.error(f"Tool {tool_name} failed: {e}", exc_info=True)
         error_response = ErrorResponse(
             message=f"Tool {tool_name} failed: {str(e)}",
         )
 
-        # Publish error to stream registry followed by finish event
+        # Publish error to stream registry
         await stream_registry.publish_chunk(
             session_id,
             StreamError(errorText=str(e)),
@@ -1690,6 +1778,7 @@ async def _execute_long_running_tool_with_streaming(
 
         # Mark task as failed in stream registry
         await stream_registry.mark_task_completed(session_id, status="failed")
+        return None
     finally:
         # Clean up operation lock
         await _mark_operation_completed(tool_call_id)
