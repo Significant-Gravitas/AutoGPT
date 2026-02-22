@@ -515,7 +515,10 @@ function getFileAccordionData(
   let displayContent = content;
   if (output.content_base64 && typeof output.content_base64 === "string") {
     try {
-      displayContent = atob(output.content_base64);
+      const bytes = Uint8Array.from(atob(output.content_base64), (c) =>
+        c.charCodeAt(0),
+      );
+      displayContent = new TextDecoder().decode(bytes);
     } catch {
       displayContent = "[Binary content]";
     }
