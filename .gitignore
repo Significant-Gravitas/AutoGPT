@@ -181,3 +181,4 @@ autogpt_platform/backend/settings.py
 CLAUDE.local.md
 /autogpt_platform/backend/logs
 .next
+.application.logs

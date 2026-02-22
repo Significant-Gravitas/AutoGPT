@@ -1539,6 +1539,11 @@ async def _yield_tool_call(
             f"Long-running tool {tool_name} completed, "
             f"returning {len(result_str) if result_str else 0} chars to Claude"
         )
+
+        # Mark task as completed and clean up
+        await stream_registry.mark_task_completed(task_id, status="completed")
+        await _mark_operation_completed(tool_call_id)
+
         yield StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
