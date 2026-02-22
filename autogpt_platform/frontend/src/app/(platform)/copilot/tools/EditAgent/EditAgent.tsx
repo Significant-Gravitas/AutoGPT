@@ -110,16 +110,8 @@ export function EditAgentTool({ part }: Props) {
   // edit_agent is always long-running
   const isOperating = !output || isOperationInProgressOutput(output);
 
-  const hasExpandableContent =
-    part.state === "input-streaming" ||
-    part.state === "input-available" ||
-    (part.state === "output-available" &&
-      !!output &&
-      (isOperationInProgressOutput(output) ||
-        isAgentPreviewOutput(output) ||
-        isAgentSavedOutput(output) ||
-        isClarificationNeededOutput(output) ||
-        isErrorOutput(output)));
+  // Always show accordion for edit_agent (to show mini game during execution)
+  const hasExpandableContent = true;
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =

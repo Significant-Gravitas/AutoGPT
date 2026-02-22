@@ -125,17 +125,8 @@ export function CreateAgentTool({ part }: Props) {
   // create_agent is always long-running
   const isOperating = !output || isOperationInProgressOutput(output);
 
-  const hasExpandableContent =
-    part.state === "input-streaming" ||
-    part.state === "input-available" ||
-    (part.state === "output-available" &&
-      !!output &&
-      (isOperationInProgressOutput(output) ||
-        isAgentPreviewOutput(output) ||
-        isAgentSavedOutput(output) ||
-        isClarificationNeededOutput(output) ||
-        isSuggestedGoalOutput(output) ||
-        isErrorOutput(output)));
+  // Always show accordion for create_agent (to show mini game during execution)
+  const hasExpandableContent = true;
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
