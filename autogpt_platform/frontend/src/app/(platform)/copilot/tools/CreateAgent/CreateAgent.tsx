@@ -10,13 +10,13 @@ import {
 import type { ToolUIPart } from "ai";
 import Image from "next/image";
 import NextLink from "next/link";
-import { LongRunningToolDisplay } from "../../components/LongRunningToolDisplay/LongRunningToolDisplay";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
+  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -25,6 +25,7 @@ import {
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
 import sparklesImg from "./components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "./components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
@@ -35,6 +36,9 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
+  isOperationInProgressOutput,
+  isOperationPendingOutput,
+  isOperationStartedOutput,
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
@@ -82,6 +86,18 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       expanded: true,
     };
   }
+  if (
+    isOperationStartedOutput(output) ||
+    isOperationPendingOutput(output) ||
+    isOperationInProgressOutput(output)
+  ) {
+    return {
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
+  }
   return {
     icon: (
       <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
@@ -103,10 +119,19 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
+  const isOperating =
+    !!output &&
+    (isOperationStartedOutput(output) ||
+      isOperationPendingOutput(output) ||
+      isOperationInProgressOutput(output));
+
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
-    (isAgentPreviewOutput(output) ||
+    (isOperationStartedOutput(output) ||
+      isOperationPendingOutput(output) ||
+      isOperationInProgressOutput(output) ||
+      isAgentPreviewOutput(output) ||
       isAgentSavedOutput(output) ||
       isClarificationNeededOutput(output) ||
       isSuggestedGoalOutput(output) ||
@@ -144,14 +169,17 @@ export function CreateAgentTool({ part }: Props) {
         />
       </div>
 
-      {/* Show mini-game while tool is executing */}
-      <LongRunningToolDisplay
-        isStreaming={isStreaming}
-        title="Creating agent, this may take a few minutes. Play while you wait."
-      />
-
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
+          {isOperating && (
+            <ContentGrid>
+              <MiniGame />
+              <ContentHint>
+                This could take a few minutes — play while you wait!
+              </ContentHint>
+            </ContentGrid>
+          )}
+
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-baseline gap-2">
