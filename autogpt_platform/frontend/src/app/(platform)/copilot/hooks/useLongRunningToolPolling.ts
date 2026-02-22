@@ -10,7 +10,7 @@ const OPERATING_TYPES = new Set([
   "operation_in_progress",
 ]);
 
-const POLL_INTERVAL_MS = 1_500;
+const POLL_INTERVAL_MS = 5_000; // 5 seconds - less aggressive for legacy async tools
 
 /**
  * Detects whether any message contains a tool part whose output indicates

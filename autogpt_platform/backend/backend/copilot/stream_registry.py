@@ -576,7 +576,7 @@ async def _stream_listener(
                             if isinstance(chunk, StreamFinish):
                                 total_time = (time.perf_counter() - start_time) * 1000
                                 logger.info(
-                                    f"[TIMING] StreamFinish received in {total_time/1000:.1f}s; delivered={messages_delivered}",
+                                    f"[TIMING] StreamFinish received in {total_time / 1000:.1f}s; delivered={messages_delivered}",
                                     extra={
                                         "json_fields": {
                                             **log_meta,
@@ -627,7 +627,7 @@ async def _stream_listener(
         # Clean up listener task mapping on exit
         total_time = (time.perf_counter() - start_time) * 1000
         logger.info(
-            f"[TIMING] _stream_listener FINISHED in {total_time/1000:.1f}s; task={task_id}, "
+            f"[TIMING] _stream_listener FINISHED in {total_time / 1000:.1f}s; task={task_id}, "
             f"delivered={messages_delivered}, xread_count={xread_count}",
             extra={
                 "json_fields": {
@@ -837,6 +837,29 @@ async def get_active_task_for_session(
                 # Validate ownership - if task has an owner, requester must match
                 if task_user_id and user_id != task_user_id:
                     continue
+
+                # Check if task is stale (running for >10 minutes without completion)
+                # Auto-complete it to prevent infinite polling loops
+                created_at_str = meta.get("created_at")
+                if created_at_str:
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str)
+                        age_seconds = (
+                            datetime.now(timezone.utc) - created_at
+                        ).total_seconds()
+                        if age_seconds > 600:  # 10 minutes
+                            logger.warning(
+                                f"[STALE_TASK] Auto-completing stale task {task_id[:8]}... "
+                                f"(running for {age_seconds:.0f}s)"
+                            )
+                            await mark_task_completed(
+                                task_id,
+                                status="failed",
+                                error_message=f"Task timed out after {age_seconds:.0f}s",
+                            )
+                            continue  # Skip this task, it's now completed
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to parse created_at: {e}")
 
                 logger.info(
                     f"[TASK_LOOKUP] Found running task {task_id[:8]}... for session {session_id[:8]}..."
