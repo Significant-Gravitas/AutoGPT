@@ -24,11 +24,15 @@ export function NodeHeader({ data, nodeId }: Props) {
   // For Agent Executor blocks, show agent name + version if available
   function getTitle(): string {
     if (data.metadata?.customized_name) {
-      return data.metadata.customized_name;
+      return data.metadata.customized_name as string;
     }
 
-    const agentName = data.hardcodedValues?.agent_name;
-    const agentVersion = data.hardcodedValues?.graph_version;
+    const agentName = data.hardcodedValues?.agent_name as
+      | string
+      | undefined;
+    const agentVersion = data.hardcodedValues?.graph_version as
+      | number
+      | undefined;
 
     if (agentName && agentVersion != null) {
       return `${agentName} v${agentVersion}`;
