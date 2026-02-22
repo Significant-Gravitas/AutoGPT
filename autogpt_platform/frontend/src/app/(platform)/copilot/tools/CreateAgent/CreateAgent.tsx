@@ -169,7 +169,7 @@ export function CreateAgentTool({ part }: Props) {
         />
       </div>
 
-      {hasExpandableContent && output && (
+      {hasExpandableContent && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -180,7 +180,7 @@ export function CreateAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentSavedOutput(output) && (
+          {output && isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-baseline gap-2">
                 <Image
@@ -226,7 +226,7 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {isAgentPreviewOutput(output) && (
+          {output && isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -240,7 +240,7 @@ export function CreateAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isClarificationNeededOutput(output) && (
+          {output && isClarificationNeededOutput(output) && (
             <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
                 const item: ClarifyingQuestion = {
@@ -259,7 +259,7 @@ export function CreateAgentTool({ part }: Props) {
             />
           )}
 
-          {isSuggestedGoalOutput(output) && (
+          {output && isSuggestedGoalOutput(output) && (
             <SuggestedGoalCard
               message={output.message}
               suggestedGoal={output.suggested_goal}
@@ -269,7 +269,7 @@ export function CreateAgentTool({ part }: Props) {
             />
           )}
 
-          {isErrorOutput(output) && (
+          {output && isErrorOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.error && (

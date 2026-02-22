@@ -149,7 +149,7 @@ export function EditAgentTool({ part }: Props) {
         />
       </div>
 
-      {hasExpandableContent && output && (
+      {hasExpandableContent && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -160,7 +160,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentSavedOutput(output) && (
+          {output && isAgentSavedOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               <div className="flex flex-wrap gap-2">
@@ -180,7 +180,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentPreviewOutput(output) && (
+          {output && isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -194,7 +194,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isClarificationNeededOutput(output) && (
+          {output && isClarificationNeededOutput(output) && (
             <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
                 const item: ClarifyingQuestion = {
@@ -213,7 +213,7 @@ export function EditAgentTool({ part }: Props) {
             />
           )}
 
-          {isErrorOutput(output) && (
+          {output && isErrorOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.error && (
