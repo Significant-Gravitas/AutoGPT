@@ -2,7 +2,7 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import {
   ContentGrid,
   ContentHint,
-} from "../../tools/CreateAgent/../../components/ToolAccordion/AccordionContent";
+} from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { MiniGame } from "../../tools/CreateAgent/components/MiniGame/MiniGame";
 
