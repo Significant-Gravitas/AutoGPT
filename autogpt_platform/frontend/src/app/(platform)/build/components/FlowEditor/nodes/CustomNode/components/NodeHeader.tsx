@@ -27,12 +27,8 @@ export function NodeHeader({ data, nodeId }: Props) {
       return data.metadata.customized_name as string;
     }
 
-    const agentName = data.hardcodedValues?.agent_name as
-      | string
-      | undefined;
-    const agentVersion = data.hardcodedValues?.graph_version as
-      | number
-      | undefined;
+    const agentName = data.hardcodedValues?.agent_name as string | undefined;
+    const agentVersion = data.hardcodedValues?.graph_version as number | undefined;
 
     if (agentName && agentVersion != null) {
       return `${agentName} v${agentVersion}`;
