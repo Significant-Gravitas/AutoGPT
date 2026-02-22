@@ -1475,6 +1475,29 @@ async def _yield_tool_call(
             f"(operation_id={operation_id}, task_id={task_id})"
         )
 
+        # Send initial operation_in_progress response so frontend can render UI immediately
+        # This ensures the accordion/mini-game shows while we execute synchronously
+        if tool_name == "create_agent":
+            in_progress_msg = (
+                "Creating agent, this may take a few minutes. Play while you wait."
+            )
+        elif tool_name == "edit_agent":
+            in_progress_msg = (
+                "Editing agent, this may take a few minutes. Play while you wait."
+            )
+        else:
+            in_progress_msg = f"{tool_name} in progress..."
+
+        yield StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=OperationInProgressResponse(
+                message=in_progress_msg,
+                tool_call_id=tool_call_id,
+            ).model_dump_json(),
+            success=True,
+        )
+
         # Execute tool SYNCHRONOUSLY - blocks until complete
         # Send heartbeats to keep SSE connection alive while waiting
         try:
