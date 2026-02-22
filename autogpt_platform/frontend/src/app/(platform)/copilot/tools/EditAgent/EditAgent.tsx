@@ -118,15 +118,16 @@ export function EditAgentTool({ part }: Props) {
         isOperationPendingOutput(output) ||
         isOperationInProgressOutput(output)));
   const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isErrorOutput(output));
+    isLongRunning ||
+    (part.state === "output-available" &&
+      !!output &&
+      (isOperationStartedOutput(output) ||
+        isOperationPendingOutput(output) ||
+        isOperationInProgressOutput(output) ||
+        isAgentPreviewOutput(output) ||
+        isAgentSavedOutput(output) ||
+        isClarificationNeededOutput(output) ||
+        isErrorOutput(output)));
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =

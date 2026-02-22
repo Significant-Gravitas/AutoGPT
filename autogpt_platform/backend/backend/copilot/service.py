@@ -1728,6 +1728,8 @@ async def _execute_long_running_tool_with_streaming(
                     f"Returning {len(result_content)} chars from webhook result "
                     f"for {tool_name}"
                 )
+                # Release Redis lock now that we have the result
+                await _mark_operation_completed(tool_call_id)
                 return result_content
         except (orjson.JSONDecodeError, TypeError):
             pass  # Not JSON or not async - continue normally

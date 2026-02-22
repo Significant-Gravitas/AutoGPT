@@ -1,0 +1,5 @@
+2026-02-22 07:16:10,054 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-02-22 07:16:10,055 [34mINFO[0m  Starting event processor
+2026-02-22 07:16:10,055 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-02-22 07:16:10,055 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-02-22 07:16:10,055 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all

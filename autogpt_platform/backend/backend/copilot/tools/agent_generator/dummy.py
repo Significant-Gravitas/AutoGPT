@@ -163,7 +163,7 @@ async def _publish_dummy_result_after_delay(
             f"(operation_id={operation_id})"
         )
     except Exception as e:
-        logger.error(f"[Dummy] Failed to publish to Redis Streams: {e}")
+        logger.error(f"[Dummy] Failed to publish to Redis Streams: {e}", exc_info=True)
 
 
 async def generate_agent_patch_dummy(
@@ -220,14 +220,17 @@ async def _publish_dummy_patch_after_delay(
     delay_seconds: int,
 ) -> None:
     """Simulate agent generator publishing patch to Redis Streams after delay."""
+    # Make defensive copy BEFORE sleep to avoid race conditions
+    saved_agent = current_agent.copy()
+
     await asyncio.sleep(delay_seconds)
 
     # Import here to avoid circular dependency
     from backend.copilot.completion_consumer import publish_operation_complete
 
-    patched = current_agent.copy()
+    patched = saved_agent.copy()
     patched["description"] = (
-        f"{current_agent.get('description', '')} (updated: {update_request})"
+        f"{saved_agent.get('description', '')} (updated: {update_request})"
     )
 
     try:
@@ -235,14 +238,16 @@ async def _publish_dummy_patch_after_delay(
             operation_id=operation_id,
             task_id=task_id,
             success=True,
-            result={"type": "agent", "agent_json": patched},
+            result={"agent_json": patched},
         )
         logger.info(
             f"[Dummy] Published agent patch result to Redis Streams "
             f"(operation_id={operation_id})"
         )
     except Exception as e:
-        logger.error(f"[Dummy] Failed to publish patch to Redis Streams: {e}")
+        logger.error(
+            f"[Dummy] Failed to publish patch to Redis Streams: {e}", exc_info=True
+        )
 
 
 async def customize_template_dummy(

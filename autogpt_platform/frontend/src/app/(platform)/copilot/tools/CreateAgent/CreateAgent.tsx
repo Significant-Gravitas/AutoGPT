@@ -133,16 +133,17 @@ export function CreateAgentTool({ part }: Props) {
         isOperationInProgressOutput(output)));
 
   const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isSuggestedGoalOutput(output) ||
-      isErrorOutput(output));
+    isLongRunning ||
+    (part.state === "output-available" &&
+      !!output &&
+      (isOperationStartedOutput(output) ||
+        isOperationPendingOutput(output) ||
+        isOperationInProgressOutput(output) ||
+        isAgentPreviewOutput(output) ||
+        isAgentSavedOutput(output) ||
+        isClarificationNeededOutput(output) ||
+        isSuggestedGoalOutput(output) ||
+        isErrorOutput(output)));
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
