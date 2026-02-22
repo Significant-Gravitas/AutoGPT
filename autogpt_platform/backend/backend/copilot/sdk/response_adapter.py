@@ -294,7 +294,7 @@ class SDKResponseAdapter:
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
                 logger.info(
-                    "[SDK] [%s] Flushed stashed output for %s " "(call %s, %d chars)",
+                    "[SDK] [%s] Flushed stashed output for %s (call %s, %d chars)",
                     sid,
                     tool_name,
                     tool_id[:12],

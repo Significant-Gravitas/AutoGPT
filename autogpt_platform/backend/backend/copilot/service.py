@@ -361,7 +361,6 @@ async def stream_chat_completion(
     _continuation_message_id: (
         str | None
     ) = None,  # Internal: reuse message ID for tool call continuations
-    _task_id: str | None = None,  # Internal: task ID for SSE reconnection support
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -543,7 +542,7 @@ async def stream_chat_completion(
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
     if not is_continuation:
-        yield StreamStart(messageId=message_id, taskId=_task_id)
+        yield StreamStart(messageId=message_id, taskId=session.session_id)
 
     # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)
     yield StreamStartStep()
@@ -793,7 +792,6 @@ async def stream_chat_completion(
             session=session,
             context=context,
             _continuation_message_id=message_id,  # Reuse message ID since start was already sent
-            _task_id=_task_id,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -868,7 +866,6 @@ async def stream_chat_completion(
             context=context,
             tool_call_response=str(tool_response_messages),
             _continuation_message_id=message_id,  # Reuse message ID to avoid duplicates
-            _task_id=_task_id,
         ):
             yield chunk
 
@@ -1450,19 +1447,8 @@ async def _yield_tool_call(
             )
             return
 
-        # Generate operation ID and task ID
+        # Generate operation ID for tracking
         operation_id = str(uuid_module.uuid4())
-        task_id = str(uuid_module.uuid4())
-
-        # Create task in stream registry for SSE reconnection support
-        await stream_registry.create_task(
-            task_id=task_id,
-            session_id=session.session_id,
-            user_id=session.user_id,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            operation_id=operation_id,
-        )
 
         # Save tool_call to session before execution
         async def _save_tool_call() -> None:
@@ -1472,7 +1458,7 @@ async def _yield_tool_call(
         await _with_optional_lock(session_lock, _save_tool_call)
         logger.info(
             f"Starting synchronous execution of {tool_name} "
-            f"(operation_id={operation_id}, task_id={task_id})"
+            f"(operation_id={operation_id}, session_id={session.session_id})"
         )
 
         # Execute tool SYNCHRONOUSLY - blocks until complete
@@ -1485,7 +1471,6 @@ async def _yield_tool_call(
                     parameters=arguments,
                     tool_call_id=tool_call_id,
                     operation_id=operation_id,
-                    task_id=task_id,
                     session_id=session.session_id,
                     user_id=session.user_id,
                 )
@@ -1508,7 +1493,7 @@ async def _yield_tool_call(
             logger.error(f"Long-running tool {tool_name} failed: {e}", exc_info=True)
             # Mark task as failed
             await stream_registry.mark_task_completed(
-                task_id,
+                session.session_id,
                 status="failed",
                 error_message=str(e),
             )
@@ -1535,7 +1520,9 @@ async def _yield_tool_call(
         )
 
         # Mark task as completed and clean up
-        await stream_registry.mark_task_completed(task_id, status="completed")
+        await stream_registry.mark_task_completed(
+            session.session_id, status="completed"
+        )
         await _mark_operation_completed(tool_call_id)
 
         yield StreamToolOutputAvailable(
@@ -1603,7 +1590,6 @@ async def _execute_long_running_tool_with_streaming(
     parameters: dict[str, Any],
     tool_call_id: str,
     operation_id: str,
-    task_id: str,
     session_id: str,
     user_id: str | None,
 ) -> str | None:
@@ -1613,7 +1599,7 @@ async def _execute_long_running_tool_with_streaming(
     polls Redis until the completion consumer processes the result, then returns it.
 
     Progress is published to stream_registry for SSE reconnection - clients can
-    reconnect via GET /chat/tasks/{task_id}/stream if they disconnect.
+    reconnect via GET /chat/sessions/{session_id}/stream if they disconnect.
 
     Returns:
         The tool result as a JSON string, or None on error.
@@ -1624,14 +1610,14 @@ async def _execute_long_running_tool_with_streaming(
         if not session:
             logger.error(f"Session {session_id} not found for background tool")
             await stream_registry.mark_task_completed(
-                task_id,
+                session_id,
                 status="failed",
                 error_message=f"Session {session_id} not found",
             )
             return
 
-        # Execute the tool synchronously (do NOT pass operation_id/task_id to force sync mode)
-        # The operation_id/task_id are only for our internal task tracking, not for the tool
+        # Execute the tool synchronously (do NOT pass operation_id/session_id to force sync mode)
+        # The operation_id/session_id are only for our internal task tracking, not for the tool
         result = await execute_tool(
             tool_name=tool_name,
             parameters=parameters,  # No enrichment - forces synchronous execution
@@ -1642,7 +1628,7 @@ async def _execute_long_running_tool_with_streaming(
 
         # Tool executed synchronously (no async/webhook mode)
         # Publish tool result to stream registry
-        await stream_registry.publish_chunk(task_id, result)
+        await stream_registry.publish_chunk(session_id, result)
 
         # Serialize result
         result_str = (
@@ -1653,11 +1639,10 @@ async def _execute_long_running_tool_with_streaming(
 
         logger.info(
             f"Tool {tool_name} completed synchronously for session {session_id} "
-            f"(task_id={task_id})"
+            f"(session_id={session_id})"
         )
 
-        # Mark task as completed and clean up
-        await stream_registry.mark_task_completed(task_id, status="completed")
+        # Mark operation as completed (but don't complete the main task - that's done by processor)
         await _mark_operation_completed(tool_call_id)
 
         # Return the result to Claude
@@ -1671,11 +1656,11 @@ async def _execute_long_running_tool_with_streaming(
 
         # Publish error to stream registry followed by finish event
         await stream_registry.publish_chunk(
-            task_id,
+            session_id,
             StreamError(errorText=str(e)),
         )
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
-        await stream_registry.publish_chunk(task_id, StreamFinish())
+        await stream_registry.publish_chunk(session_id, StreamFinishStep())
+        await stream_registry.publish_chunk(session_id, StreamFinish())
 
         await _update_pending_operation(
             session_id=session_id,
@@ -1684,7 +1669,7 @@ async def _execute_long_running_tool_with_streaming(
         )
 
         # Mark task as failed in stream registry
-        await stream_registry.mark_task_completed(task_id, status="failed")
+        await stream_registry.mark_task_completed(session_id, status="failed")
     finally:
         # Clean up operation lock
         await _mark_operation_completed(tool_call_id)
@@ -1982,7 +1967,6 @@ def _sanitize_error_body(
 async def _generate_llm_continuation_with_streaming(
     session_id: str,
     user_id: str | None,
-    task_id: str,
 ) -> None:
     """Generate an LLM response with streaming to the stream registry.
 
@@ -2040,9 +2024,13 @@ async def _generate_llm_continuation_with_streaming(
         text_block_id = str(uuid_module.uuid4())
 
         # Publish start event
-        await stream_registry.publish_chunk(task_id, StreamStart(messageId=message_id))
-        await stream_registry.publish_chunk(task_id, StreamStartStep())
-        await stream_registry.publish_chunk(task_id, StreamTextStart(id=text_block_id))
+        await stream_registry.publish_chunk(
+            session_id, StreamStart(messageId=message_id)
+        )
+        await stream_registry.publish_chunk(session_id, StreamStartStep())
+        await stream_registry.publish_chunk(
+            session_id, StreamTextStart(id=text_block_id)
+        )
 
         # Stream the response
         stream = await client.chat.completions.create(
@@ -2059,13 +2047,13 @@ async def _generate_llm_continuation_with_streaming(
                 assistant_content += delta
                 # Publish delta to stream registry
                 await stream_registry.publish_chunk(
-                    task_id,
+                    session_id,
                     StreamTextDelta(id=text_block_id, delta=delta),
                 )
 
         # Publish end events
-        await stream_registry.publish_chunk(task_id, StreamTextEnd(id=text_block_id))
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
+        await stream_registry.publish_chunk(session_id, StreamTextEnd(id=text_block_id))
+        await stream_registry.publish_chunk(session_id, StreamFinishStep())
 
         if assistant_content:
             # Reload session from DB to avoid race condition with user messages
@@ -2091,7 +2079,7 @@ async def _generate_llm_continuation_with_streaming(
 
             logger.info(
                 f"Generated streaming LLM continuation for session {session_id} "
-                f"(task_id={task_id}), response length: {len(assistant_content)}"
+                f"(session_id={session_id}), response length: {len(assistant_content)}"
             )
         else:
             logger.warning(
@@ -2104,8 +2092,8 @@ async def _generate_llm_continuation_with_streaming(
         )
         # Publish error to stream registry followed by finish event
         await stream_registry.publish_chunk(
-            task_id,
+            session_id,
             StreamError(errorText=f"Failed to generate response: {e}"),
         )
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
-        await stream_registry.publish_chunk(task_id, StreamFinish())
+        await stream_registry.publish_chunk(session_id, StreamFinishStep())
+        await stream_registry.publish_chunk(session_id, StreamFinish())

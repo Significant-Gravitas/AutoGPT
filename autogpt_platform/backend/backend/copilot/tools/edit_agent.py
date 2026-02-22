@@ -9,7 +9,6 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
-    get_all_relevant_agents_for_generation,
     get_user_message_for_error,
     save_agent_to_library,
 )

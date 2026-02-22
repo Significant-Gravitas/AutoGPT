@@ -10,9 +10,8 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -129,7 +128,6 @@ export const ChatMessagesContainer = ({
   headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-  const lastToastTimeRef = useRef(0);
 
   useEffect(() => {
     if (status === "submitted") {

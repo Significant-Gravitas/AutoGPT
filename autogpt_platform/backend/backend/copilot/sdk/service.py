@@ -13,7 +13,6 @@ from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 
-from .. import stream_registry
 from ..config import ChatConfig
 from ..model import (
     ChatMessage,
@@ -213,7 +212,6 @@ def _build_long_running_callback(
         tool_name: str, args: dict[str, Any], session: ChatSession
     ) -> dict[str, Any]:
         operation_id = str(uuid.uuid4())
-        task_id = str(uuid.uuid4())
         session_id = session.session_id
 
         # CRITICAL: Find the tool_use_id from the latest assistant message.
@@ -230,23 +228,13 @@ def _build_long_running_callback(
                 f"using generated ID: {tool_call_id}"
             )
 
-        # --- Register task in Redis for SSE reconnection ---
-        await stream_registry.create_task(
-            task_id=task_id,
-            session_id=session_id,
-            user_id=user_id,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            operation_id=operation_id,
-        )
-
         # --- Execute tool synchronously and WAIT for completion ---
         # The callback blocks here, waiting for agent generation to complete.
-        # Meanwhile, the frontend mini-game shows via SSE events from stream_registry.
+        # Results are published to stream_registry via session_id for SSE reconnection.
         # Claude only receives the FINAL result after generation is done.
         logger.info(
             f"[SDK] Executing {tool_name} synchronously and blocking until completion "
-            f"(operation_id={operation_id}, task_id={task_id})"
+            f"(operation_id={operation_id}, session_id={session_id})"
         )
 
         # Execute synchronously - this handles both sync and async (202) tool responses
@@ -255,7 +243,6 @@ def _build_long_running_callback(
             parameters=args,
             tool_call_id=tool_call_id,
             operation_id=operation_id,
-            task_id=task_id,
             session_id=session_id,
             user_id=user_id,
         )
@@ -762,8 +749,7 @@ async def stream_chat_completion_sdk(
                     session_id,
                 )
                 logger.info(
-                    "[SDK] [%s] Sending query — resume=%s, "
-                    "total_msgs=%d, query_len=%d",
+                    "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
                     session_id[:12],
                     use_resume,
                     len(session.messages),
@@ -812,8 +798,7 @@ async def stream_chat_completion_sdk(
                             sdk_msg = done.pop().result()
                         except StopAsyncIteration:
                             logger.info(
-                                "[SDK] [%s] Stream ended normally "
-                                "(StopAsyncIteration)",
+                                "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
                                 session_id[:12],
                             )
                             break
@@ -958,7 +943,7 @@ async def stream_chat_completion_sdk(
                                     session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
-                                        "[SDK] [%s] Incremental save " "failed: %s",
+                                        "[SDK] [%s] Incremental save failed: %s",
                                         session_id[:12],
                                         save_err,
                                     )
@@ -983,7 +968,7 @@ async def stream_chat_completion_sdk(
                                     session = await upsert_chat_session(session)
                                 except Exception as save_err:
                                     logger.warning(
-                                        "[SDK] [%s] Incremental save " "failed: %s",
+                                        "[SDK] [%s] Incremental save failed: %s",
                                         session_id[:12],
                                         save_err,
                                     )
@@ -996,8 +981,7 @@ async def stream_chat_completion_sdk(
                     # server shutdown).  Log and let the safety-net / finally
                     # blocks handle cleanup.
                     logger.warning(
-                        "[SDK] [%s] Streaming loop cancelled "
-                        "(asyncio.CancelledError)",
+                        "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
                         session_id[:12],
                     )
                     raise
@@ -1077,7 +1061,7 @@ async def stream_chat_completion_sdk(
                 elif captured_transcript.path:
                     raw_transcript = read_transcript_file(captured_transcript.path)
                     logger.debug(
-                        "[SDK] Transcript source: stop hook (%s), " "read result: %s",
+                        "[SDK] Transcript source: stop hook (%s), read result: %s",
                         captured_transcript.path,
                         f"{len(raw_transcript)}B" if raw_transcript else "None",
                     )

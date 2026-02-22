@@ -151,7 +151,7 @@ class CoPilotProcessor:
         """
         log = CoPilotLogMetadata(
             logging.getLogger(__name__),
-            task_id=entry.task_id,
+            task_id=entry.session_id,
             session_id=entry.session_id,
             user_id=entry.user_id,
         )
@@ -240,14 +240,16 @@ class CoPilotProcessor:
                 if cancel.is_set():
                     log.info("Cancelled during streaming")
                     await stream_registry.publish_chunk(
-                        entry.task_id, StreamError(errorText="Operation cancelled")
+                        entry.session_id, StreamError(errorText="Operation cancelled")
                     )
                     await stream_registry.publish_chunk(
-                        entry.task_id, StreamFinishStep()
+                        entry.session_id, StreamFinishStep()
                     )
-                    await stream_registry.publish_chunk(entry.task_id, StreamFinish())
+                    await stream_registry.publish_chunk(
+                        entry.session_id, StreamFinish()
+                    )
                     await stream_registry.mark_task_completed(
-                        entry.task_id, status="failed"
+                        entry.session_id, status="failed"
                     )
                     return
 
@@ -258,16 +260,18 @@ class CoPilotProcessor:
                     last_refresh = current_time
 
                 # Publish chunk to stream registry
-                await stream_registry.publish_chunk(entry.task_id, chunk)
+                await stream_registry.publish_chunk(entry.session_id, chunk)
 
             # Mark task as completed
-            await stream_registry.mark_task_completed(entry.task_id, status="completed")
+            await stream_registry.mark_task_completed(
+                entry.session_id, status="completed"
+            )
             log.info("Task completed successfully")
 
         except asyncio.CancelledError:
             log.info("Task cancelled")
             await stream_registry.mark_task_completed(
-                entry.task_id,
+                entry.session_id,
                 status="failed",
                 error_message="Task was cancelled",
             )
@@ -275,17 +279,17 @@ class CoPilotProcessor:
 
         except Exception as e:
             log.error(f"Task failed: {e}")
-            await self._mark_task_failed(entry.task_id, str(e))
+            await self._mark_task_failed(entry.session_id, str(e))
             raise
 
-    async def _mark_task_failed(self, task_id: str, error_message: str):
+    async def _mark_task_failed(self, session_id: str, error_message: str):
         """Mark a task as failed and publish error to stream registry."""
         try:
             await stream_registry.publish_chunk(
-                task_id, StreamError(errorText=error_message)
+                session_id, StreamError(errorText=error_message)
             )
-            await stream_registry.publish_chunk(task_id, StreamFinishStep())
-            await stream_registry.publish_chunk(task_id, StreamFinish())
-            await stream_registry.mark_task_completed(task_id, status="failed")
+            await stream_registry.publish_chunk(session_id, StreamFinishStep())
+            await stream_registry.publish_chunk(session_id, StreamFinish())
+            await stream_registry.mark_task_completed(session_id, status="failed")
         except Exception as e:
-            logger.error(f"Failed to mark task {task_id} as failed: {e}")
+            logger.error(f"Failed to mark task {session_id} as failed: {e}")

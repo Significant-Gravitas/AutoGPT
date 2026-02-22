@@ -379,8 +379,9 @@ class TestLLMCall:
         from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        with (
+            patch("backend.blocks.llm.llm_call") as mock_llm_call,
+            patch("backend.blocks.llm.secrets.token_hex", return_value="test123"),
         ):
             mock_llm_call.return_value = LLMResponse(
                 raw_response={},
@@ -442,8 +443,9 @@ class TestLLMCall:
         from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        with (
+            patch("backend.blocks.llm.llm_call") as mock_llm_call,
+            patch("backend.blocks.llm.secrets.token_hex", return_value="test123"),
         ):
             # Return invalid JSON that will fail validation (missing required field)
             mock_llm_call.return_value = LLMResponse(
@@ -515,17 +517,21 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -533,10 +539,13 @@ class TestGenerateActivityStatusForExecution:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "I analyzed your data and provided the requested insights.",
-                    "correctness_score": 0.85,
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": "I analyzed your data and provided the requested insights.",
+                        "correctness_score": 0.85,
+                    },
+                )
 
             mock_instance.run = mock_run
 
@@ -586,11 +595,14 @@ class TestGenerateActivityStatusForExecution:
         """Test activity status generation with no API key."""
         mock_db_client = AsyncMock()
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
             mock_settings.return_value.secrets.openai_internal_api_key = ""
 
@@ -612,11 +624,14 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.side_effect = Exception("Database error")
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -641,17 +656,21 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client.get_graph_metadata.return_value = None  # No metadata
         mock_db_client.get_graph.return_value = None  # No graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -659,10 +678,13 @@ class TestGenerateActivityStatusForExecution:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "Agent completed execution.",
-                    "correctness_score": 0.8,
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": "Agent completed execution.",
+                        "correctness_score": 0.8,
+                    },
+                )
 
             mock_instance.run = mock_run
 
@@ -704,17 +726,21 @@ class TestIntegration:
 
         expected_activity = "I processed user input but failed during final output generation due to system error."
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -722,10 +748,13 @@ class TestIntegration:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": expected_activity,
-                    "correctness_score": 0.3,  # Low score since there was a failure
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": expected_activity,
+                        "correctness_score": 0.3,  # Low score since there was a failure
+                    },
+                )
 
             mock_instance.run = mock_run
 

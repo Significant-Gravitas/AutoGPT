@@ -304,7 +304,7 @@ async def get_session(
         # Since we filtered out the cached assistant message, the client needs
         # the full stream to reconstruct the response.
         active_stream_info = ActiveStreamInfo(
-            task_id=active_task.task_id,
+            task_id=active_task.session_id,
             last_message_id="0-0",
             operation_id=active_task.operation_id,
             tool_name=active_task.tool_name,
@@ -342,7 +342,7 @@ async def cancel_session_task(
     if not active_task:
         return CancelTaskResponse(cancelled=False, reason="no_active_task")
 
-    task_id = active_task.task_id
+    task_id = active_task.session_id
     await enqueue_cancel_task(task_id)
     logger.info(
         f"[CANCEL] Published cancel for task ...{task_id[-8:]} "
@@ -357,7 +357,7 @@ async def cancel_session_task(
     while waited < max_wait:
         await asyncio.sleep(poll_interval)
         waited += poll_interval
-        task = await stream_registry.get_task(task_id)
+        task = await stream_registry.get_task(session_id)
         if task is None or task.status != "running":
             logger.info(
                 f"[CANCEL] Task ...{task_id[-8:]} confirmed stopped "
@@ -444,13 +444,13 @@ async def stream_chat_post(
         logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
-    task_id = str(uuid_module.uuid4())
+    # Note: task_id = session_id (no longer generating random UUIDs)
+    task_id = session_id  # For backwards compatibility in responses
     operation_id = str(uuid_module.uuid4())
     log_meta["task_id"] = task_id
 
     task_create_start = time.perf_counter()
     await stream_registry.create_task(
-        task_id=task_id,
         session_id=session_id,
         user_id=user_id,
         tool_call_id="chat_stream",  # Not a tool call, but needed for the model
@@ -499,7 +499,7 @@ async def stream_chat_post(
         try:
             # Subscribe to the task stream (this replays existing messages + live updates)
             subscriber_queue = await stream_registry.subscribe_to_task(
-                task_id=task_id,
+                session_id=session_id,
                 user_id=user_id,
                 last_message_id="0-0",  # Get all messages from the beginning
             )
@@ -585,7 +585,7 @@ async def stream_chat_post(
             if subscriber_queue is not None:
                 try:
                     await stream_registry.unsubscribe_from_task(
-                        task_id, subscriber_queue
+                        session_id, subscriber_queue
                     )
                 except Exception as unsub_err:
                     logger.error(
@@ -651,7 +651,7 @@ async def resume_session_stream(
         return Response(status_code=204)
 
     subscriber_queue = await stream_registry.subscribe_to_task(
-        task_id=active_task.task_id,
+        session_id=session_id,
         user_id=user_id,
         last_message_id="0-0",  # Full replay so useChat rebuilds the message
     )
@@ -690,11 +690,11 @@ async def resume_session_stream(
         finally:
             try:
                 await stream_registry.unsubscribe_from_task(
-                    active_task.task_id, subscriber_queue
+                    session_id, subscriber_queue
                 )
             except Exception as unsub_err:
                 logger.error(
-                    f"Error unsubscribing from task {active_task.task_id}: {unsub_err}",
+                    f"Error unsubscribing from task {active_task.session_id}: {unsub_err}",
                     exc_info=True,
                 )
             logger.info(
@@ -778,7 +778,9 @@ async def stream_task(
         HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.
     """
     # Check task existence and expiry before subscribing
-    task, error_code = await stream_registry.get_task_with_expiry_info(task_id)
+    task, error_code = await stream_registry.get_task_with_expiry_info(
+        session_id=task_id
+    )
 
     if error_code == "TASK_EXPIRED":
         raise HTTPException(
@@ -810,7 +812,7 @@ async def stream_task(
 
     # Get subscriber queue from stream registry
     subscriber_queue = await stream_registry.subscribe_to_task(
-        task_id=task_id,
+        session_id=task_id,
         user_id=user_id,
         last_message_id=last_message_id,
     )
@@ -887,7 +889,7 @@ async def get_task_status(
     Raises:
         NotFoundError: If task_id is not found or user doesn't have access.
     """
-    task = await stream_registry.get_task(task_id)
+    task = await stream_registry.get_task(session_id=task_id)
 
     if task is None:
         raise NotFoundError(f"Task {task_id} not found.")
@@ -897,7 +899,7 @@ async def get_task_status(
         raise NotFoundError(f"Task {task_id} not found.")
 
     return {
-        "task_id": task.task_id,
+        "task_id": task.session_id,
         "session_id": task.session_id,
         "status": task.status,
         "tool_name": task.tool_name,
@@ -957,7 +959,7 @@ async def complete_operation(
 
     logger.info(
         f"Received completion webhook for operation {operation_id} "
-        f"(task_id={task.task_id}, success={request.success})"
+        f"(task_id={task.session_id}, success={request.success})"
     )
 
     if request.success:
@@ -965,7 +967,7 @@ async def complete_operation(
     else:
         await process_operation_failure(task, request.error)
 
-    return {"status": "ok", "task_id": task.task_id}
+    return {"status": "ok", "task_id": task.session_id}
 
 
 # ========== Configuration ==========

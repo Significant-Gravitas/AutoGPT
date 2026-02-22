@@ -4,7 +4,6 @@ import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   ContentCardDescription,
   ContentCodeBlock,
@@ -57,7 +56,7 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
 
   if (!output) {
     return {
-      icon: <OrbitLoader size={32} />,
+      icon,
       title: "Editing agent, this may take a few minutes. Play while you wait.",
       expanded: true,
     };
@@ -83,7 +82,7 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
   }
   if (isOperationInProgressOutput(output)) {
     return {
-      icon: <OrbitLoader size={32} />,
+      icon,
       title: "Editing agent, this may take a few minutes. Play while you wait.",
       expanded: true,
     };
@@ -133,7 +132,7 @@ export function EditAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {!hasExpandableContent && (
+      {isOperating && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <ToolIcon isStreaming={isStreaming} isError={isError} />
           <MorphingTextAnimation

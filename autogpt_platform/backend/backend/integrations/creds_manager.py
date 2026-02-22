@@ -146,8 +146,7 @@ class IntegrationCredentialsManager:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
-                    f"Refreshing '{credentials.provider}' "
-                    f"credentials #{credentials.id}"
+                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
                 )
                 _lock = None
                 if lock:

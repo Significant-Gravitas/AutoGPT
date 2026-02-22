@@ -223,7 +223,7 @@ async def process_operation_success(
 
     # Publish result to stream registry
     await stream_registry.publish_chunk(
-        task.task_id,
+        task.session_id,
         StreamToolOutputAvailable(
             toolCallId=task.tool_call_id,
             toolName=task.tool_name,
@@ -244,14 +244,14 @@ async def process_operation_success(
     except ToolMessageUpdateError:
         # DB update failed - mark task as failed to avoid inconsistent state
         logger.error(
-            f"[COMPLETION] DB update failed for task {task.task_id}, "
+            f"[COMPLETION] DB update failed for task {task.session_id}, "
             "marking as failed instead of completed"
         )
         await stream_registry.publish_chunk(
-            task.task_id,
+            task.session_id,
             StreamError(errorText="Failed to save operation result to database"),
         )
-        await stream_registry.mark_task_completed(task.task_id, status="failed")
+        await stream_registry.mark_task_completed(task.session_id, status="failed")
         raise
 
     # Generate LLM continuation with streaming
@@ -259,7 +259,6 @@ async def process_operation_success(
         await chat_service._generate_llm_continuation_with_streaming(
             session_id=task.session_id,
             user_id=task.user_id,
-            task_id=task.task_id,
         )
     except Exception as e:
         logger.error(
@@ -268,14 +267,14 @@ async def process_operation_success(
         )
 
     # Mark task as completed and release Redis lock
-    await stream_registry.mark_task_completed(task.task_id, status="completed")
+    await stream_registry.mark_task_completed(task.session_id, status="completed")
     try:
         await chat_service._mark_operation_completed(task.tool_call_id)
     except Exception as e:
         logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
 
     logger.info(
-        f"[COMPLETION] Successfully processed completion for task {task.task_id}"
+        f"[COMPLETION] Successfully processed completion for task {task.session_id}"
     )
 
 
@@ -296,7 +295,7 @@ async def process_operation_failure(
 
     # Publish error to stream registry
     await stream_registry.publish_chunk(
-        task.task_id,
+        task.session_id,
         StreamError(errorText=error_msg),
     )
 
@@ -315,15 +314,17 @@ async def process_operation_failure(
     except ToolMessageUpdateError:
         # DB update failed - log but continue with cleanup
         logger.error(
-            f"[COMPLETION] DB update failed while processing failure for task {task.task_id}, "
+            f"[COMPLETION] DB update failed while processing failure for task {task.session_id}, "
             "continuing with cleanup"
         )
 
     # Mark task as failed and release Redis lock
-    await stream_registry.mark_task_completed(task.task_id, status="failed")
+    await stream_registry.mark_task_completed(task.session_id, status="failed")
     try:
         await chat_service._mark_operation_completed(task.tool_call_id)
     except Exception as e:
         logger.error(f"[COMPLETION] Failed to mark operation completed: {e}")
 
-    logger.info(f"[COMPLETION] Processed failure for task {task.task_id}: {error_msg}")
+    logger.info(
+        f"[COMPLETION] Processed failure for task {task.session_id}: {error_msg}"
+    )

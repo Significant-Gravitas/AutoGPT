@@ -43,7 +43,8 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
 _pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
-    "pending_tool_outputs", default=None  # type: ignore[arg-type]
+    "pending_tool_outputs",
+    default=None,  # type: ignore[arg-type]
 )
 # Event signaled whenever stash_pending_tool_output() adds a new entry.
 # Used by the streaming loop to wait for PostToolUse hooks to complete

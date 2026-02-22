@@ -267,9 +267,12 @@ class MCPToolBlock(Block):
         if required:
             missing = required - set(input_data.tool_arguments.keys())
             if missing:
-                yield "error", (
-                    f"Missing required argument(s): {', '.join(sorted(missing))}. "
-                    f"Please fill in all required fields marked with * in the block form."
+                yield (
+                    "error",
+                    (
+                        f"Missing required argument(s): {', '.join(sorted(missing))}. "
+                        f"Please fill in all required fields marked with * in the block form."
+                    ),
                 )
                 return
 

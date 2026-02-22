@@ -128,10 +128,16 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         try:
             content = await self.get_request(url, json=False, headers=headers)
         except HTTPClientError as e:
-            yield "error", f"Client error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Client error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except HTTPServerError as e:
-            yield "error", f"Server error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Server error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except Exception as e:
             yield "error", f"Failed to fetch {input_data.url}: {e}"

@@ -261,15 +261,15 @@ class ChatCompletionConsumer:
             return
 
         logger.info(
-            f"[COMPLETION] Found task: task_id={task.task_id}, "
+            f"[COMPLETION] Found task: task_id={task.session_id}, "
             f"session_id={task.session_id}, tool_call_id={task.tool_call_id}"
         )
 
         # Guard against empty task fields
-        if not task.task_id or not task.session_id or not task.tool_call_id:
+        if not task.session_id or not task.session_id or not task.tool_call_id:
             logger.error(
                 f"[COMPLETION] Task has empty critical fields! "
-                f"task_id={task.task_id!r}, session_id={task.session_id!r}, "
+                f"task_id={task.session_id!r}, session_id={task.session_id!r}, "
                 f"tool_call_id={task.tool_call_id!r}"
             )
             return

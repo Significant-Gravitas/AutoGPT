@@ -275,24 +275,30 @@ class GetCurrentDateBlock(Block):
             test_output=[
                 (
                     "date",
-                    lambda t: abs(
-                        datetime.now().date() - datetime.strptime(t, "%Y-%m-%d").date()
-                    )
-                    <= timedelta(days=8),  # 7 days difference + 1 day error margin.
+                    lambda t: (
+                        abs(
+                            datetime.now().date()
+                            - datetime.strptime(t, "%Y-%m-%d").date()
+                        )
+                        <= timedelta(days=8)
+                    ),  # 7 days difference + 1 day error margin.
                 ),
                 (
                     "date",
-                    lambda t: abs(
-                        datetime.now().date() - datetime.strptime(t, "%m/%d/%Y").date()
-                    )
-                    <= timedelta(days=8),
+                    lambda t: (
+                        abs(
+                            datetime.now().date()
+                            - datetime.strptime(t, "%m/%d/%Y").date()
+                        )
+                        <= timedelta(days=8)
+                    ),
                     # 7 days difference + 1 day error margin.
                 ),
                 (
                     "date",
-                    lambda t: len(t) == 10
-                    and t[4] == "-"
-                    and t[7] == "-",  # ISO date format YYYY-MM-DD
+                    lambda t: (
+                        len(t) == 10 and t[4] == "-" and t[7] == "-"
+                    ),  # ISO date format YYYY-MM-DD
                 ),
             ],
         )
@@ -380,25 +386,32 @@ class GetCurrentDateAndTimeBlock(Block):
             test_output=[
                 (
                     "date_time",
-                    lambda t: abs(
-                        datetime.now(tz=ZoneInfo("UTC"))
-                        - datetime.strptime(t + "+00:00", "%Y-%m-%d %H:%M:%S%z")
-                    )
-                    < timedelta(seconds=10),  # 10 seconds error margin.
+                    lambda t: (
+                        abs(
+                            datetime.now(tz=ZoneInfo("UTC"))
+                            - datetime.strptime(t + "+00:00", "%Y-%m-%d %H:%M:%S%z")
+                        )
+                        < timedelta(seconds=10)
+                    ),  # 10 seconds error margin.
                 ),
                 (
                     "date_time",
-                    lambda t: abs(
-                        datetime.now().date() - datetime.strptime(t, "%Y/%m/%d").date()
-                    )
-                    <= timedelta(days=1),  # Date format only, no time component
+                    lambda t: (
+                        abs(
+                            datetime.now().date()
+                            - datetime.strptime(t, "%Y/%m/%d").date()
+                        )
+                        <= timedelta(days=1)
+                    ),  # Date format only, no time component
                 ),
                 (
                     "date_time",
-                    lambda t: abs(
-                        datetime.now(tz=ZoneInfo("UTC")) - datetime.fromisoformat(t)
-                    )
-                    < timedelta(seconds=10),  # 10 seconds error margin for ISO format.
+                    lambda t: (
+                        abs(
+                            datetime.now(tz=ZoneInfo("UTC")) - datetime.fromisoformat(t)
+                        )
+                        < timedelta(seconds=10)
+                    ),  # 10 seconds error margin for ISO format.
                 ),
             ],
         )
