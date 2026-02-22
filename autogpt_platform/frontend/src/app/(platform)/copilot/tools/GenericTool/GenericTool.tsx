@@ -543,12 +543,12 @@ function getFileAccordionData(
       if (typeof f === "object" && f !== null) {
         const fileObj = f as Record<string, unknown>;
         // Workspace file format: path (size, mime_type)
-        const path = fileObj.path || fileObj.name || "unknown";
+        const filePath = fileObj.path || fileObj.name || "unknown";
         const size =
           typeof fileObj.size_bytes === "number"
             ? ` (${(fileObj.size_bytes / 1024).toFixed(1)} KB, ${fileObj.mime_type || "unknown"})`
             : "";
-        return `${path}${size}`;
+        return `${filePath}${size}`;
       }
       return String(f);
     });
