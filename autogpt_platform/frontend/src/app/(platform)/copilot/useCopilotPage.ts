@@ -237,8 +237,7 @@ export function useCopilotPage() {
     // Mark as resumed immediately to prevent race conditions
     hasResumedRef.current.set(sessionId, true);
     resumeStream();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]); // ONLY depend on sessionId - run once when session loads
+  }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
 
   // Clear messages when session is null
   useEffect(() => {
