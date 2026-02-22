@@ -240,10 +240,6 @@ def _build_long_running_callback(
             operation_id=operation_id,
         )
 
-        # Don't save OperationPendingResponse here - the SDK will save
-        # OperationStartedResponse (returned below) as the tool result.
-        # This prevents duplicate tool messages with mismatched IDs.
-
         # --- Execute tool synchronously and WAIT for completion ---
         # The callback blocks here, waiting for agent generation to complete.
         # Meanwhile, the frontend mini-game shows via SSE events from stream_registry.
@@ -906,10 +902,6 @@ async def stream_chat_completion_sdk(
                                 if isinstance(response, StreamToolOutputAvailable):
                                     out_len = len(str(response.output))
                                     extra = f", output_len={out_len}"
-                                elif isinstance(response, StreamToolInputAvailable):
-                                    # Log callProviderMetadata for debugging
-                                    pm = getattr(response, "callProviderMetadata", None)
-                                    extra = f", callProviderMetadata={pm}"
                                 logger.info(
                                     "[SDK] [%s] Tool event: %s, tool=%s%s",
                                     session_id[:12],

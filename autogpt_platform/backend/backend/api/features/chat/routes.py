@@ -47,8 +47,6 @@ from backend.copilot.tools.models import (
     NeedLoginResponse,
     NoResultsResponse,
     OperationInProgressResponse,
-    OperationPendingResponse,
-    OperationStartedResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
@@ -1050,8 +1048,6 @@ ToolResponseUnion = (
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse
-    | OperationStartedResponse
-    | OperationPendingResponse
     | OperationInProgressResponse
 )
 

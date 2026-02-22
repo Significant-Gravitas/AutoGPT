@@ -115,38 +115,11 @@ class SDKResponseAdapter:
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
                     )
 
-                    # Set callProviderMetadata for long-running tools to show mini-game in UI
-                    provider_metadata = None
-                    if tool_name in ("create_agent", "edit_agent"):
-                        provider_metadata = {"isLongRunning": True}
-                        logger.debug(
-                            f"[ADAPTER] Long-running tool detected: {tool_name}, "
-                            f"setting provider_metadata={provider_metadata}"
-                        )
-
                     tool_input_obj = StreamToolInputAvailable(
                         toolCallId=block.id,
                         toolName=tool_name,
                         input=block.input,
-                        callProviderMetadata=provider_metadata,
                     )
-
-                    # Debug: verify field is set on the object
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(
-                            f"[ADAPTER] Created StreamToolInputAvailable object: "
-                            f"tool={tool_name}, "
-                            f"callProviderMetadata={tool_input_obj.callProviderMetadata}"
-                        )
-                        # Debug: test serialization
-                        test_json = tool_input_obj.model_dump_json(exclude_none=False)
-                        logger.debug(
-                            f"[ADAPTER] Object serializes to: {test_json[:300]}"
-                        )
-                        # Debug: test to_sse() method
-                        test_sse = tool_input_obj.to_sse()
-                        logger.debug(f"[ADAPTER] to_sse() returns: {test_sse[:300]}")
-
                     responses.append(tool_input_obj)
                     self.current_tool_calls[block.id] = {"name": tool_name}
 

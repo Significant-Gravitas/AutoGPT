@@ -214,10 +214,20 @@ async def get_library_agents_for_generation(
     Returns:
         List of LibraryAgentSummary with schemas and recent executions for sub-agent composition
     """
+    # Truncate search query to avoid "Search term is too long" error (100 char limit in DB)
+    truncated_search = None
+    if search_query:
+        truncated_search = search_query.strip()[:100]
+        if len(search_query.strip()) > 100:
+            logger.debug(
+                f"Truncated search query from {len(search_query)} to 100 chars: "
+                f"{truncated_search}..."
+            )
+
     try:
         response = await library_db().list_library_agents(
             user_id=user_id,
-            search_term=search_query,
+            search_term=truncated_search,
             page=1,
             page_size=max_results,
             include_executions=True,
@@ -271,9 +281,17 @@ async def search_marketplace_agents_for_generation(
     Returns:
         List of LibraryAgentSummary with full input/output schemas
     """
+    # Truncate search query to avoid potential issues with very long queries
+    truncated_search = search_query.strip()[:100]
+    if len(search_query.strip()) > 100:
+        logger.debug(
+            f"Truncated marketplace search query from {len(search_query)} to 100 chars: "
+            f"{truncated_search}..."
+        )
+
     try:
         response = await store_db().get_store_agents(
-            search_query=search_query,
+            search_query=truncated_search,
             page=1,
             page_size=max_results,
         )

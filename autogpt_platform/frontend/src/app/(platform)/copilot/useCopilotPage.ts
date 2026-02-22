@@ -14,7 +14,6 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
-import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
 
@@ -34,6 +33,16 @@ function resolveInProgressTools(
         : part,
     ),
   }));
+}
+
+/** Deduplicate messages by ID to prevent duplicate streams from showing duplicate UI. */
+function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
+  const seen = new Set<string>();
+  return messages.filter((msg) => {
+    if (seen.has(msg.id)) return false;
+    seen.add(msg.id);
+    return true;
+  });
 }
 
 export function useCopilotPage() {
@@ -184,14 +193,14 @@ export function useCopilotPage() {
     if (status === "streaming" || status === "submitted") return;
     setMessages((prev) => {
       if (prev.length >= hydratedMessages.length) return prev;
-      return hydratedMessages;
+      // Deduplicate to handle rare cases where duplicate streams might occur
+      return deduplicateMessages(hydratedMessages);
     });
   }, [hydratedMessages, setMessages, status]);
 
   // Ref: tracks whether we've already resumed for a given session.
-  // Reset when the stream ends so re-resume is possible if the backend
-  // task is still running (SSE dropped but executor didn't finish).
-  const hasResumedRef = useRef<string | null>(null);
+  // Format: Map<sessionId, hasResumed>
+  const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
   // When the stream ends (or drops), invalidate the session cache so the
   // next hydration fetches fresh messages from the backend.  Without this,
@@ -208,29 +217,28 @@ export function useCopilotPage() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
-      // Allow re-resume if the backend task is still running.
-      hasResumedRef.current = null;
     }
   }, [status, sessionId, queryClient]);
 
   // Resume an active stream AFTER hydration completes.
-  // The backend returns active_stream info when a task is still running.
-  // We wait for hydration so the AI SDK has the conversation history
-  // before the resumed stream appends the in-progress assistant message.
+  // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
+  // Does NOT run when new streams start during active conversation.
   useEffect(() => {
-    if (!hasActiveStream || !sessionId) return;
+    if (!sessionId) return;
+    if (!hasActiveStream) return;
     if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    // Only resume once per session to avoid re-triggering after stream ends
-    if (hasResumedRef.current === sessionId) return;
-    hasResumedRef.current = sessionId;
-    resumeStream();
-  }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
-  // Poll session endpoint for async long-running operations (fallback path when
-  // tools return 202 Accepted and webhook back). Also handles legacy sessions
-  // with operation_started/pending. Modern synchronous execution bypasses polling.
-  useLongRunningToolPolling(sessionId, messages, setMessages);
+    // Never resume if currently streaming
+    if (status === "streaming" || status === "submitted") return;
+
+    // Only resume once per session
+    if (hasResumedRef.current.get(sessionId)) return;
+
+    // Mark as resumed immediately to prevent race conditions
+    hasResumedRef.current.set(sessionId, true);
+    resumeStream();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]); // ONLY depend on sessionId - run once when session loads
 
   // Clear messages when session is null
   useEffect(() => {

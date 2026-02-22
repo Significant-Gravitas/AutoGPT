@@ -3,8 +3,6 @@ import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSav
 import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { OperationInProgressResponse } from "@/app/api/__generated__/models/operationInProgressResponse";
-import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
-import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
 import {
@@ -16,8 +14,6 @@ import type { ToolUIPart } from "ai";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 
 export type CreateAgentToolOutput =
-  | OperationStartedResponse
-  | OperationPendingResponse
   | OperationInProgressResponse
   | AgentPreviewResponse
   | AgentSavedResponse
@@ -39,8 +35,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
   if (typeof output === "object") {
     const type = (output as { type?: unknown }).type;
     if (
-      type === ResponseType.operation_started ||
-      type === ResponseType.operation_pending ||
       type === ResponseType.operation_in_progress ||
       type === ResponseType.agent_preview ||
       type === ResponseType.agent_saved ||
@@ -50,8 +44,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
     ) {
       return output as CreateAgentToolOutput;
     }
-    if ("operation_id" in output && "tool_name" in output)
-      return output as OperationStartedResponse | OperationPendingResponse;
     if ("tool_call_id" in output) return output as OperationInProgressResponse;
     if ("agent_json" in output && "agent_name" in output)
       return output as AgentPreviewResponse;
@@ -70,21 +62,6 @@ export function getCreateAgentToolOutput(
 ): CreateAgentToolOutput | null {
   if (!part || typeof part !== "object") return null;
   return parseOutput((part as { output?: unknown }).output);
-}
-
-export function isOperationStartedOutput(
-  output: CreateAgentToolOutput,
-): output is OperationStartedResponse {
-  return (
-    output.type === ResponseType.operation_started ||
-    ("operation_id" in output && "tool_name" in output)
-  );
-}
-
-export function isOperationPendingOutput(
-  output: CreateAgentToolOutput,
-): output is OperationPendingResponse {
-  return output.type === ResponseType.operation_pending;
 }
 
 export function isOperationInProgressOutput(
@@ -144,8 +121,6 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Creating a new agent";
-      if (isOperationStartedOutput(output)) return "Agent creation started";
-      if (isOperationPendingOutput(output)) return "Agent creation in progress";
       if (isOperationInProgressOutput(output))
         return "Agent creation already in progress";
       if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;

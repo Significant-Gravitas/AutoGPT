@@ -1420,16 +1420,10 @@ async def _yield_tool_call(
     # Check if this tool is long-running (survives SSE disconnection)
     tool = get_tool(tool_name)
 
-    # Set callProviderMetadata for long-running tools to show mini-game in UI
-    provider_metadata = None
-    if tool and tool.is_long_running:
-        provider_metadata = {"isLongRunning": True}
-
     yield StreamToolInputAvailable(
         toolCallId=tool_call_id,
         toolName=tool_name,
         input=arguments,
-        callProviderMetadata=provider_metadata,
     )
     if tool and tool.is_long_running:
         # Atomic check-and-set: returns False if operation already running (lost race)
@@ -1624,10 +1618,6 @@ async def _execute_long_running_tool_with_streaming(
     Returns:
         The tool result as a JSON string, or None on error.
     """
-    # Track whether we delegated to async processing - if so, the Redis Streams
-    # completion consumer (stream_registry / completion_consumer) will handle cleanup, not us
-    delegated_to_async = False
-
     try:
         # Load fresh session (not stale reference)
         session = await get_chat_session(session_id, user_id)
@@ -1650,90 +1640,7 @@ async def _execute_long_running_tool_with_streaming(
             session=session,
         )
 
-        # Check if the tool result indicates async processing
-        # (e.g., Agent Generator returned 202 Accepted)
-        try:
-            if isinstance(result.output, dict):
-                result_data = result.output
-            elif result.output:
-                result_data = orjson.loads(result.output)
-            else:
-                result_data = {}
-            if result_data.get("status") == "accepted":
-                logger.info(
-                    f"Tool {tool_name} delegated to async processing "
-                    f"(operation_id={operation_id}, task_id={task_id}). "
-                    f"Waiting for webhook to complete..."
-                )
-                # Don't publish result, don't continue with LLM, and don't cleanup
-                # The Redis Streams consumer (completion_consumer) will handle
-                # everything when the external service completes via webhook
-                delegated_to_async = True
-
-                # Poll until webhook completes (status changes from "running")
-                max_wait_seconds = 300  # 5 minutes
-                poll_interval = 1.0  # Check every second
-                elapsed = 0.0
-
-                while elapsed < max_wait_seconds:
-                    await asyncio.sleep(poll_interval)
-                    elapsed += poll_interval
-
-                    # Check task status in Redis
-                    task_status = await stream_registry.get_task(task_id)
-                    if task_status and task_status.status != "running":
-                        logger.info(
-                            f"Task {task_id} completed with status: {task_status.status}"
-                        )
-                        break
-                else:
-                    # Timeout - release lock and mark task as failed
-                    logger.error(
-                        f"Timeout waiting for webhook to complete "
-                        f"(task_id={task_id}, elapsed={elapsed}s)"
-                    )
-                    await _mark_operation_completed(tool_call_id)
-                    await stream_registry.mark_task_completed(
-                        task_id,
-                        status="failed",
-                        error_message="Timeout waiting for operation to complete",
-                    )
-                    return '{"error": "Timeout waiting for operation to complete"}'
-
-                # Query database for final result
-                session = await get_chat_session(session_id)
-                if not session:
-                    logger.warning(
-                        f"Session not found after webhook completion "
-                        f"(session_id={session_id}, task_id={task_id})"
-                    )
-                    return '{"error": "Session not found after completion"}'
-
-                # Find the most recent tool message for this tool_call_id
-                result_content = None
-                for msg in reversed(session.messages):
-                    if msg.role == "tool" and msg.tool_call_id == tool_call_id:
-                        result_content = msg.content
-                        break
-
-                if not result_content:
-                    logger.warning(
-                        f"No result found in DB after webhook completion "
-                        f"(task_id={task_id}, tool_call_id={tool_call_id[:12]})"
-                    )
-                    result_content = '{"message": "Operation completed"}'
-
-                logger.info(
-                    f"Returning {len(result_content)} chars from webhook result "
-                    f"for {tool_name}"
-                )
-                # Release Redis lock now that we have the result
-                await _mark_operation_completed(tool_call_id)
-                return result_content
-        except (orjson.JSONDecodeError, TypeError):
-            pass  # Not JSON or not async - continue normally
-
-        # Synchronous completion (not delegated to async)
+        # Tool executed synchronously (no async/webhook mode)
         # Publish tool result to stream registry
         await stream_registry.publish_chunk(task_id, result)
 
@@ -1779,10 +1686,8 @@ async def _execute_long_running_tool_with_streaming(
         # Mark task as failed in stream registry
         await stream_registry.mark_task_completed(task_id, status="failed")
     finally:
-        # Only cleanup if we didn't delegate to async processing
-        # For async path, the Redis Streams completion consumer handles cleanup
-        if not delegated_to_async:
-            await _mark_operation_completed(tool_call_id)
+        # Clean up operation lock
+        await _mark_operation_completed(tool_call_id)
 
 
 async def _update_pending_operation(

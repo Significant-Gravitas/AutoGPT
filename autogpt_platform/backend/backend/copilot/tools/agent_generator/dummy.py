@@ -13,9 +13,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Track background tasks to prevent garbage collection
-_background_tasks: set[asyncio.Task] = set()
-
 # Dummy decomposition result (instructions type)
 DUMMY_DECOMPOSITION_RESULT: dict[str, Any] = {
     "type": "instructions",
@@ -107,63 +104,16 @@ async def generate_agent_dummy(
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy agent - mimics real agent generator behavior.
+    """Return dummy agent synchronously (blocks for 30s, returns agent JSON).
 
-    If operation_id and task_id provided: returns "accepted" and publishes to Redis Streams.
-    Otherwise: returns agent JSON directly (synchronous mode).
+    Note: operation_id and task_id parameters are ignored - we always use synchronous mode
+    to match how we call the real agent-generator service (without operation_id/task_id).
     """
-    # Async mode: mimic real agent generator (202 Accepted + Redis Streams)
-    if operation_id and task_id:
-        logger.info(
-            "Using dummy agent generator (async mode): returning 'accepted', "
-            "will publish to Redis after 30s delay"
-        )
-
-        # Spawn background task to publish result after delay
-        bg_task = asyncio.create_task(
-            _publish_dummy_result_after_delay(operation_id, task_id, 30)
-        )
-        _background_tasks.add(bg_task)
-        bg_task.add_done_callback(_background_tasks.discard)
-
-        return {
-            "status": "accepted",
-            "operation_id": operation_id,
-            "task_id": task_id,
-        }
-
-    # Synchronous mode: return agent JSON directly
     logger.info(
         "Using dummy agent generator (sync mode): returning agent JSON after 30s"
     )
     await asyncio.sleep(30)
     return _generate_dummy_agent_json()
-
-
-async def _publish_dummy_result_after_delay(
-    operation_id: str, task_id: str, delay_seconds: int
-) -> None:
-    """Simulate agent generator publishing to Redis Streams after delay."""
-    await asyncio.sleep(delay_seconds)
-
-    # Import here to avoid circular dependency
-    from backend.copilot.completion_consumer import publish_operation_complete
-
-    agent_json = _generate_dummy_agent_json()
-
-    try:
-        await publish_operation_complete(
-            operation_id=operation_id,
-            task_id=task_id,
-            success=True,
-            result={"agent_json": agent_json},
-        )
-        logger.info(
-            f"[Dummy] Published agent generation result to Redis Streams "
-            f"(operation_id={operation_id})"
-        )
-    except Exception as e:
-        logger.error(f"[Dummy] Failed to publish to Redis Streams: {e}", exc_info=True)
 
 
 async def generate_agent_patch_dummy(
@@ -173,34 +123,10 @@ async def generate_agent_patch_dummy(
     operation_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy patched agent - mimics real agent generator behavior.
+    """Return dummy patched agent synchronously (blocks for 30s, returns patched agent JSON).
 
-    If operation_id and task_id provided: returns "accepted" and publishes to Redis Streams.
-    Otherwise: returns patched agent JSON directly (synchronous mode).
+    Note: operation_id and task_id parameters are ignored - we always use synchronous mode.
     """
-    # Async mode: mimic real agent generator (202 Accepted + Redis Streams)
-    if operation_id and task_id:
-        logger.info(
-            "Using dummy agent generator patch (async mode): returning 'accepted', "
-            "will publish to Redis after 30s delay"
-        )
-
-        # Spawn background task to publish result after delay
-        bg_task = asyncio.create_task(
-            _publish_dummy_patch_after_delay(
-                operation_id, task_id, current_agent, update_request, 30
-            )
-        )
-        _background_tasks.add(bg_task)
-        bg_task.add_done_callback(_background_tasks.discard)
-
-        return {
-            "status": "accepted",
-            "operation_id": operation_id,
-            "task_id": task_id,
-        }
-
-    # Synchronous mode: return patched agent directly
     logger.info(
         "Using dummy agent generator patch (sync mode): returning patched agent after 30s"
     )
@@ -210,44 +136,6 @@ async def generate_agent_patch_dummy(
         f"{current_agent.get('description', '')} (updated: {update_request})"
     )
     return patched
-
-
-async def _publish_dummy_patch_after_delay(
-    operation_id: str,
-    task_id: str,
-    current_agent: dict[str, Any],
-    update_request: str,
-    delay_seconds: int,
-) -> None:
-    """Simulate agent generator publishing patch to Redis Streams after delay."""
-    # Make defensive copy BEFORE sleep to avoid race conditions
-    saved_agent = current_agent.copy()
-
-    await asyncio.sleep(delay_seconds)
-
-    # Import here to avoid circular dependency
-    from backend.copilot.completion_consumer import publish_operation_complete
-
-    patched = saved_agent.copy()
-    patched["description"] = (
-        f"{saved_agent.get('description', '')} (updated: {update_request})"
-    )
-
-    try:
-        await publish_operation_complete(
-            operation_id=operation_id,
-            task_id=task_id,
-            success=True,
-            result={"agent_json": patched},
-        )
-        logger.info(
-            f"[Dummy] Published agent patch result to Redis Streams "
-            f"(operation_id={operation_id})"
-        )
-    except Exception as e:
-        logger.error(
-            f"[Dummy] Failed to publish patch to Redis Streams: {e}", exc_info=True
-        )
 
 
 async def customize_template_dummy(

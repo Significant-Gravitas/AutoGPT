@@ -29,8 +29,6 @@ import {
   isClarificationNeededOutput,
   isErrorOutput,
   isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -75,11 +73,7 @@ function getAccordionMeta(output: EditAgentToolOutput): {
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
+  if (isOperationInProgressOutput(output)) {
     return {
       icon: <OrbitLoader size={32} />,
       title: "Editing agent, this may take a few minutes. Play while you wait.",
@@ -105,25 +99,15 @@ export function EditAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  // Check if tool is long-running via provider metadata (for synchronous execution)
-  // or output type (for legacy async background tasks)
-  const isLongRunning =
-    (part as unknown as { callProviderMetadata?: { isLongRunning?: boolean } })
-      .callProviderMetadata?.isLongRunning === true;
+  // edit_agent is always long-running
+  const isOperating = !output || isOperationInProgressOutput(output);
 
-  const isOperating =
-    isLongRunning ||
-    (!!output &&
-      (isOperationStartedOutput(output) ||
-        isOperationPendingOutput(output) ||
-        isOperationInProgressOutput(output)));
   const hasExpandableContent =
-    isLongRunning ||
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
     (part.state === "output-available" &&
       !!output &&
-      (isOperationStartedOutput(output) ||
-        isOperationPendingOutput(output) ||
-        isOperationInProgressOutput(output) ||
+      (isOperationInProgressOutput(output) ||
         isAgentPreviewOutput(output) ||
         isAgentSavedOutput(output) ||
         isClarificationNeededOutput(output) ||

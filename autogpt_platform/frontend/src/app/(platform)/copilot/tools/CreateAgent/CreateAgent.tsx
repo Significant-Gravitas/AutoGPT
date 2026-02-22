@@ -37,8 +37,6 @@ import {
   isClarificationNeededOutput,
   isErrorOutput,
   isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
@@ -86,11 +84,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       expanded: true,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
+  if (isOperationInProgressOutput(output)) {
     return {
       icon,
       title:
@@ -119,26 +113,15 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  // Check if tool is long-running via provider metadata (for synchronous execution)
-  // or output type (for legacy async background tasks)
-  const isLongRunning =
-    (part as unknown as { callProviderMetadata?: { isLongRunning?: boolean } })
-      .callProviderMetadata?.isLongRunning === true;
-
-  const isOperating =
-    isLongRunning ||
-    (!!output &&
-      (isOperationStartedOutput(output) ||
-        isOperationPendingOutput(output) ||
-        isOperationInProgressOutput(output)));
+  // create_agent is always long-running
+  const isOperating = !output || isOperationInProgressOutput(output);
 
   const hasExpandableContent =
-    isLongRunning ||
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
     (part.state === "output-available" &&
       !!output &&
-      (isOperationStartedOutput(output) ||
-        isOperationPendingOutput(output) ||
-        isOperationInProgressOutput(output) ||
+      (isOperationInProgressOutput(output) ||
         isAgentPreviewOutput(output) ||
         isAgentSavedOutput(output) ||
         isClarificationNeededOutput(output) ||

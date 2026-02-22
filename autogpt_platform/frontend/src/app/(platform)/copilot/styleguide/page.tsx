@@ -984,40 +984,6 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (operation started)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation has been started. This may take a moment.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation pending)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_pending,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation is queued and will begin shortly.",
-                    },
-                  }}
-                />
-              </SubSection>
-
               <SubSection label="Output available (operation in progress)">
                 <CreateAgentTool
                   part={{
@@ -1152,22 +1118,6 @@ export default function StyleguidePage() {
                     type: "tool-edit_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <EditAgentTool
-                  part={{
-                    type: "tool-edit_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-edit-456",
-                      tool_name: "edit_agent",
-                      message: "Agent editing has started.",
-                    },
                   }}
                 />
               </SubSection>

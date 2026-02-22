@@ -50,13 +50,7 @@ class StreamBaseResponse(BaseModel):
 
     def to_sse(self) -> str:
         """Convert to SSE format."""
-        # Include all fields, even those with None values, to ensure callProviderMetadata is sent
-        json_str = self.model_dump_json(exclude_none=False)
-        # Debug: log StreamToolInputAvailable with callProviderMetadata
-        if hasattr(self, "callProviderMetadata") and logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"[SSE] Serializing {self.__class__.__name__}: {json_str[:300]}"
-            )
+        json_str = self.model_dump_json(exclude_none=True)
         return f"data: {json_str}\n\n"
 
 
@@ -154,10 +148,6 @@ class StreamToolInputAvailable(StreamBaseResponse):
     toolName: str = Field(..., description="Name of the tool being called")
     input: dict[str, Any] = Field(
         default_factory=dict, description="Tool input arguments"
-    )
-    callProviderMetadata: dict[str, Any] | None = Field(
-        default=None,
-        description="Provider-specific metadata (e.g., isLongRunning flag for UI widgets)",
     )
 
 

@@ -1058,8 +1058,6 @@
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
                     { "$ref": "#/components/schemas/DocPageResponse" },
-                    { "$ref": "#/components/schemas/OperationStartedResponse" },
-                    { "$ref": "#/components/schemas/OperationPendingResponse" },
                     {
                       "$ref": "#/components/schemas/OperationInProgressResponse"
                     }
@@ -10146,48 +10144,6 @@
         "title": "OperationInProgressResponse",
         "description": "Response when an operation is already in progress.\n\nReturned for idempotency when the same tool_call_id is requested again\nwhile the background task is still running."
       },
-      "OperationPendingResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_pending"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationPendingResponse",
-        "description": "Response stored in chat history while a long-running operation is executing.\n\nThis is persisted to the database so users see a pending state when they\nrefresh before the operation completes."
-      },
-      "OperationStartedResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_started"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" },
-          "task_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Task Id"
-          }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationStartedResponse",
-        "description": "Response when a long-running operation has been started in the background.\n\nThis is returned immediately to the client while the operation continues\nto execute. The user can close the tab and check back later.\n\nThe task_id can be used to reconnect to the SSE stream via\nGET /chat/tasks/{task_id}/stream?last_idx=0"
-      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -10844,13 +10800,10 @@
           "workspace_file_metadata",
           "workspace_file_written",
           "workspace_file_deleted",
-          "operation_started",
-          "operation_pending",
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
           "bash_exec",
-          "operation_status",
           "feature_request_search",
           "feature_request_created",
           "suggested_goal"
