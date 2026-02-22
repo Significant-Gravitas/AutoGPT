@@ -46,7 +46,7 @@ interface Props {
   part: EditAgentToolPart;
 }
 
-function getAccordionMeta(output: EditAgentToolOutput | null): {
+function getAccordionMeta(output: EditAgentToolOutput): {
   icon: React.ReactNode;
   title: string;
   titleClassName?: string;
@@ -54,14 +54,6 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
   expanded?: boolean;
 } {
   const icon = <AccordionIcon />;
-
-  if (!output) {
-    return {
-      icon: <OrbitLoader size={32} />,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
 
   if (isAgentSavedOutput(output)) {
     return { icon, title: output.agent_name };
@@ -149,7 +141,7 @@ export function EditAgentTool({ part }: Props) {
         />
       </div>
 
-      {hasExpandableContent && (
+      {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -160,7 +152,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {output && isAgentSavedOutput(output) && (
+          {isAgentSavedOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               <div className="flex flex-wrap gap-2">
@@ -180,7 +172,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {output && isAgentPreviewOutput(output) && (
+          {isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -194,7 +186,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {output && isClarificationNeededOutput(output) && (
+          {isClarificationNeededOutput(output) && (
             <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
                 const item: ClarifyingQuestion = {
@@ -213,7 +205,7 @@ export function EditAgentTool({ part }: Props) {
             />
           )}
 
-          {output && isErrorOutput(output) && (
+          {isErrorOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.error && (
