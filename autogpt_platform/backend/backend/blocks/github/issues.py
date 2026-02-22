@@ -798,9 +798,7 @@ class GithubUnassignIssueBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Issue unassigned successfully")],
             test_mock={
-                "unassign_issue": lambda *args, **kwargs: (
-                    "Issue unassigned successfully"
-                )
+                "unassign_issue": lambda *args, **kwargs: "Issue unassigned successfully"
             },
         )
 

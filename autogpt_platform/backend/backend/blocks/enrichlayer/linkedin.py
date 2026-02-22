@@ -490,9 +490,7 @@ class GetLinkedinProfilePictureBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={
-                "_get_profile_picture": lambda *args, **kwargs: (
-                    "https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk"
-                ),
+                "_get_profile_picture": lambda *args, **kwargs: "https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk",
             },
         )
 

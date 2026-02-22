@@ -75,14 +75,11 @@ class PersistInformationBlock(Block):
         storage_key = get_storage_key(input_data.key, input_data.scope, graph_id)
 
         # Store the data
-        yield (
-            "value",
-            await self._store_data(
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                key=storage_key,
-                data=input_data.value,
-            ),
+        yield "value", await self._store_data(
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            key=storage_key,
+            data=input_data.value,
         )
 
     async def _store_data(

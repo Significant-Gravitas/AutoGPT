@@ -127,9 +127,7 @@ class AIImageEditorBlock(Block):
             ],
             test_mock={
                 # Use data URI to avoid HTTP requests during tests
-                "run_model": lambda *args, **kwargs: (
-                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-                ),
+                "run_model": lambda *args, **kwargs: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
             },
             test_credentials=TEST_CREDENTIALS,
         )

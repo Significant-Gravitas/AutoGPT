@@ -110,10 +110,8 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             test_output=[
                 (
                     "suggestion",
-                    lambda x: (
-                        hasattr(x, "keyword")
-                        and x.keyword == "digital marketing strategy"
-                    ),
+                    lambda x: hasattr(x, "keyword")
+                    and x.keyword == "digital marketing strategy",
                 ),
                 ("suggestions", lambda x: isinstance(x, list) and len(x) == 1),
                 ("total_count", 1),

@@ -211,11 +211,8 @@ class AgentOutputBlock(Block):
         if input_data.format:
             try:
                 formatter = TextFormatter(autoescape=input_data.escape_html)
-                yield (
-                    "output",
-                    formatter.format_string(
-                        input_data.format, {input_data.name: input_data.value}
-                    ),
+                yield "output", formatter.format_string(
+                    input_data.format, {input_data.name: input_data.value}
                 )
             except Exception as e:
                 yield "output", f"Error: {e}, {input_data.value}"
@@ -478,13 +475,10 @@ class AgentFileInputBlock(AgentInputBlock):
         # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
         return_format = "for_external_api" if input_data.base_64 else "for_block_output"
 
-        yield (
-            "result",
-            await store_media_file(
-                file=input_data.value,
-                execution_context=execution_context,
-                return_format=return_format,
-            ),
+        yield "result", await store_media_file(
+            file=input_data.value,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 

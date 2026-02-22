@@ -179,9 +179,7 @@ class AIImageGeneratorBlock(Block):
             ],
             test_mock={
                 # Return a data URI directly so store_media_file doesn't need to download
-                "_run_client": lambda *args, **kwargs: (
-                    "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
-                )
+                "_run_client": lambda *args, **kwargs: "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
             },
         )
 

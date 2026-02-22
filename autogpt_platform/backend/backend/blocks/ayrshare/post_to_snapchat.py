@@ -73,10 +73,7 @@ class PostToSnapchatBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield (
-                "error",
-                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
-            )
+            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
             return
 
         # Validate Snapchat constraints
@@ -91,10 +88,7 @@ class PostToSnapchatBlock(Block):
         # Validate story type
         valid_story_types = ["story", "saved_story", "spotlight"]
         if input_data.story_type not in valid_story_types:
-            yield (
-                "error",
-                f"Snapchat story type must be one of: {', '.join(valid_story_types)}",
-            )
+            yield "error", f"Snapchat story type must be one of: {', '.join(valid_story_types)}"
             return
 
         # Convert datetime to ISO format if provided

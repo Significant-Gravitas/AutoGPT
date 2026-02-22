@@ -1,7 +1,7 @@
 """
 Integration between SDK provider costs and the execution cost system.
 
-This module provides the glue between provider-defined base costs and the
+This module provides the glue between provider-defined base costs and the 
 BLOCK_COSTS configuration used by the execution system.
 """
 

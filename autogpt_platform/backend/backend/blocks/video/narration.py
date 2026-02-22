@@ -44,8 +44,7 @@ class VideoNarrationBlock(Block):
         )
         script: str = SchemaField(description="Narration script text")
         voice_id: str = SchemaField(
-            description="ElevenLabs voice ID",
-            default="21m00Tcm4TlvDq8ikWAM",  # Rachel
+            description="ElevenLabs voice ID", default="21m00Tcm4TlvDq8ikWAM"  # Rachel
         )
         model_id: Literal[
             "eleven_multilingual_v2",

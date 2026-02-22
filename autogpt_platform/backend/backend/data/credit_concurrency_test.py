@@ -507,7 +507,7 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
         sorted_timings = sorted(timings.items(), key=lambda x: x[1]["start"])
         print("\nExecution order by start time:")
         for i, (label, timing) in enumerate(sorted_timings):
-            print(f"  {i + 1}. {label}: {timing['start']:.4f} -> {timing['end']:.4f}")
+            print(f"  {i+1}. {label}: {timing['start']:.4f} -> {timing['end']:.4f}")
 
         # Check for overlap (true concurrency) vs serialization
         overlaps = []
@@ -546,7 +546,7 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
         print("\nDatabase transaction order (by createdAt):")
         for i, tx in enumerate(transactions):
             print(
-                f"  {i + 1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
+                f"  {i+1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
             )
 
         # Verify running balances are chronologically consistent (ordered by createdAt)
@@ -707,7 +707,7 @@ async def test_prove_database_locking_behavior(server: SpinTestServer):
 
             for i, result in enumerate(sorted_results):
                 print(
-                    f"   {i + 1}. {result['label']}: DB operation took {result['db_duration']:.4f}s"
+                    f"   {i+1}. {result['label']}: DB operation took {result['db_duration']:.4f}s"
                 )
 
             # Check if any operations overlapped at the database level

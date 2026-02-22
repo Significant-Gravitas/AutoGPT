@@ -164,7 +164,7 @@ class BlockHandler(ContentHandler):
         block_ids = list(all_blocks.keys())
 
         # Query for existing embeddings
-        placeholders = ",".join([f"${i + 1}" for i in range(len(block_ids))])
+        placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
         existing_result = await query_raw_with_schema(
             f"""
             SELECT "contentId"
@@ -265,7 +265,7 @@ class BlockHandler(ContentHandler):
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
         block_ids = enabled_block_ids
-        placeholders = ",".join([f"${i + 1}" for i in range(len(block_ids))])
+        placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
 
         embedded_result = await query_raw_with_schema(
             f"""
@@ -508,7 +508,7 @@ class DocumentationHandler(ContentHandler):
         ]
 
         # Check which ones have embeddings
-        placeholders = ",".join([f"${i + 1}" for i in range(len(section_content_ids))])
+        placeholders = ",".join([f"${i+1}" for i in range(len(section_content_ids))])
         existing_result = await query_raw_with_schema(
             f"""
             SELECT "contentId"

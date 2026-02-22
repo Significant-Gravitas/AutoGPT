@@ -500,6 +500,7 @@ class Requests:
                 json=json,
                 **kwargs,
             ) as response:
+
                 if self.raise_for_status:
                     try:
                         response.raise_for_status()

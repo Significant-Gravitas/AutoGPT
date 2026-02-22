@@ -59,13 +59,10 @@ class FileStoreBlock(Block):
         # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
         return_format = "for_external_api" if input_data.base_64 else "for_block_output"
 
-        yield (
-            "file_out",
-            await store_media_file(
-                file=input_data.file_in,
-                execution_context=execution_context,
-                return_format=return_format,
-            ),
+        yield "file_out", await store_media_file(
+            file=input_data.file_in,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 

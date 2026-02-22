@@ -222,9 +222,9 @@ class TestSafeJson:
         problematic_data = {
             "null_byte": "data with \x00 null",
             "bell_char": "data with \x07 bell",
-            "form_feed": "data with \x0c feed",
-            "escape_char": "data with \x1b escape",
-            "delete_char": "data with \x7f delete",
+            "form_feed": "data with \x0C feed",
+            "escape_char": "data with \x1B escape",
+            "delete_char": "data with \x7F delete",
         }
 
         # SafeJson should successfully process data with control characters
@@ -235,9 +235,9 @@ class TestSafeJson:
         result_data = result.data
         assert "\x00" not in str(result_data)  # null byte removed
         assert "\x07" not in str(result_data)  # bell removed
-        assert "\x0c" not in str(result_data)  # form feed removed
-        assert "\x1b" not in str(result_data)  # escape removed
-        assert "\x7f" not in str(result_data)  # delete removed
+        assert "\x0C" not in str(result_data)  # form feed removed
+        assert "\x1B" not in str(result_data)  # escape removed
+        assert "\x7F" not in str(result_data)  # delete removed
 
         # Test that safe whitespace characters are preserved
         safe_data = {
@@ -263,7 +263,7 @@ class TestSafeJson:
     def test_web_scraping_content_sanitization(self):
         """Test sanitization of typical web scraping content with null characters."""
         # Simulate web content that might contain null bytes from SearchTheWebBlock
-        web_content = "Article title\x00Hidden null\x01Start of heading\x08Backspace\x0cForm feed content\x1fUnit separator\x7fDelete char"
+        web_content = "Article title\x00Hidden null\x01Start of heading\x08Backspace\x0CForm feed content\x1FUnit separator\x7FDelete char"
 
         result = SafeJson(web_content)
         assert isinstance(result, Json)
@@ -273,9 +273,9 @@ class TestSafeJson:
         assert "\x00" not in sanitized_content
         assert "\x01" not in sanitized_content
         assert "\x08" not in sanitized_content
-        assert "\x0c" not in sanitized_content
-        assert "\x1f" not in sanitized_content
-        assert "\x7f" not in sanitized_content
+        assert "\x0C" not in sanitized_content
+        assert "\x1F" not in sanitized_content
+        assert "\x7F" not in sanitized_content
 
         # Verify the content is still readable
         assert "Article title" in sanitized_content
@@ -391,7 +391,7 @@ class TestSafeJson:
         mixed_content = {
             "safe_and_unsafe": "Good text\twith tab\x00NULL BYTE\nand newline\x08BACKSPACE",
             "file_path_with_null": "C:\\temp\\file\x00.txt",
-            "json_with_controls": '{"text": "data\x01\x0c\x1f"}',
+            "json_with_controls": '{"text": "data\x01\x0C\x1F"}',
         }
 
         result = SafeJson(mixed_content)
@@ -419,13 +419,13 @@ class TestSafeJson:
 
         # Create data with various problematic escape sequences that could cause JSON parsing errors
         problematic_output_data = {
-            "web_content": "Article text\x00with null\x01and control\x08chars\x0c\x1f\x7f",
+            "web_content": "Article text\x00with null\x01and control\x08chars\x0C\x1F\x7F",
             "file_path": "C:\\Users\\test\\file\x00.txt",
-            "json_like_string": '{"text": "data\x00\x08\x1f"}',
+            "json_like_string": '{"text": "data\x00\x08\x1F"}',
             "escaped_sequences": "Text with \\u0000 and \\u0008 sequences",
-            "mixed_content": "Normal text\tproperly\nformatted\rwith\x00invalid\x08chars\x1fmixed",
+            "mixed_content": "Normal text\tproperly\nformatted\rwith\x00invalid\x08chars\x1Fmixed",
             "large_text": "A" * 35000
-            + "\x00\x08\x1f"
+            + "\x00\x08\x1F"
             + "B" * 5000,  # Large text like in the error
         }
 
@@ -446,9 +446,9 @@ class TestSafeJson:
         assert "\x00" not in str(web_content)
         assert "\x01" not in str(web_content)
         assert "\x08" not in str(web_content)
-        assert "\x0c" not in str(web_content)
-        assert "\x1f" not in str(web_content)
-        assert "\x7f" not in str(web_content)
+        assert "\x0C" not in str(web_content)
+        assert "\x1F" not in str(web_content)
+        assert "\x7F" not in str(web_content)
 
         # Check that legitimate content is preserved
         assert "Article text" in str(web_content)
@@ -467,7 +467,7 @@ class TestSafeJson:
         assert "B" * 1000 in str(large_text)  # B's preserved
         assert "\x00" not in str(large_text)  # Control chars removed
         assert "\x08" not in str(large_text)
-        assert "\x1f" not in str(large_text)
+        assert "\x1F" not in str(large_text)
 
         # Most importantly: ensure the result can be JSON-serialized without errors
         # This would have failed with the old approach
@@ -602,7 +602,7 @@ class TestSafeJson:
         model = SamplePydanticModel(
             name="Test\x00User",  # Has null byte
             age=30,
-            metadata={"info": "data\x08with\x0ccontrols"},
+            metadata={"info": "data\x08with\x0Ccontrols"},
         )
 
         data = {"credential": model}
@@ -616,7 +616,7 @@ class TestSafeJson:
         json_string = json.dumps(result.data)
         assert "\x00" not in json_string
         assert "\x08" not in json_string
-        assert "\x0c" not in json_string
+        assert "\x0C" not in json_string
         assert "TestUser" in json_string  # Name preserved minus null byte
 
     def test_deeply_nested_pydantic_models_control_char_sanitization(self):
@@ -639,16 +639,16 @@ class TestSafeJson:
 
         # Create test data with control characters at every nesting level
         inner = InnerModel(
-            deep_string="Deepest\x00Level\x08Control\x0cChars",  # Multiple control chars at deepest level
+            deep_string="Deepest\x00Level\x08Control\x0CChars",  # Multiple control chars at deepest level
             metadata={
-                "nested_key": "Nested\x1fValue\x7fDelete"
+                "nested_key": "Nested\x1FValue\x7FDelete"
             },  # Control chars in nested dict
         )
 
         middle = MiddleModel(
-            middle_string="Middle\x01StartOfHeading\x1fUnitSeparator",
+            middle_string="Middle\x01StartOfHeading\x1FUnitSeparator",
             inner=inner,
-            data="Some\x0bVerticalTab\x0eShiftOut",
+            data="Some\x0BVerticalTab\x0EShiftOut",
         )
 
         outer = OuterModel(outer_string="Outer\x00Null\x07Bell", middle=middle)
@@ -659,7 +659,7 @@ class TestSafeJson:
             "nested_model": outer,
             "list_with_strings": [
                 "List\x00Item1",
-                "List\x0cItem2\x1f",
+                "List\x0CItem2\x1F",
                 {"dict_in_list": "Dict\x08Value"},
             ],
         }
@@ -684,10 +684,10 @@ class TestSafeJson:
             "\x06",
             "\x07",
             "\x08",
-            "\x0b",
-            "\x0c",
-            "\x0e",
-            "\x0f",
+            "\x0B",
+            "\x0C",
+            "\x0E",
+            "\x0F",
             "\x10",
             "\x11",
             "\x12",
@@ -698,13 +698,13 @@ class TestSafeJson:
             "\x17",
             "\x18",
             "\x19",
-            "\x1a",
-            "\x1b",
-            "\x1c",
-            "\x1d",
-            "\x1e",
-            "\x1f",
-            "\x7f",
+            "\x1A",
+            "\x1B",
+            "\x1C",
+            "\x1D",
+            "\x1E",
+            "\x1F",
+            "\x7F",
         ]
 
         for char in control_chars:

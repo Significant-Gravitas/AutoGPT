@@ -314,14 +314,11 @@ async def test_output_yielding_with_dynamic_fields():
         mock_llm.return_value = mock_response
 
         # Mock the database manager to avoid HTTP calls during tool execution
-        with (
-            patch(
-                "backend.blocks.smart_decision_maker.get_database_manager_async_client"
-            ) as mock_db_manager,
-            patch.object(
-                block, "_create_tool_node_signatures", new_callable=AsyncMock
-            ) as mock_sig,
-        ):
+        with patch(
+            "backend.blocks.smart_decision_maker.get_database_manager_async_client"
+        ) as mock_db_manager, patch.object(
+            block, "_create_tool_node_signatures", new_callable=AsyncMock
+        ) as mock_sig:
             # Set up the mock database manager
             mock_db_client = AsyncMock()
             mock_db_manager.return_value = mock_db_client

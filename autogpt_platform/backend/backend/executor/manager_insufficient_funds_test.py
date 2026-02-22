@@ -35,14 +35,16 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
         amount=-714,  # Attempting to spend $7.14
     )
 
-    with (
-        patch("backend.executor.manager.queue_notification") as mock_queue_notif,
-        patch(
-            "backend.executor.manager.get_notification_manager_client"
-        ) as mock_get_client,
-        patch("backend.executor.manager.settings") as mock_settings,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch(
+        "backend.executor.manager.queue_notification"
+    ) as mock_queue_notif, patch(
+        "backend.executor.manager.get_notification_manager_client"
+    ) as mock_get_client, patch(
+        "backend.executor.manager.settings"
+    ) as mock_settings, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Setup mocks
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -107,14 +109,16 @@ async def test_handle_insufficient_funds_skips_duplicate_notifications(
         amount=-714,
     )
 
-    with (
-        patch("backend.executor.manager.queue_notification") as mock_queue_notif,
-        patch(
-            "backend.executor.manager.get_notification_manager_client"
-        ) as mock_get_client,
-        patch("backend.executor.manager.settings") as mock_settings,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch(
+        "backend.executor.manager.queue_notification"
+    ) as mock_queue_notif, patch(
+        "backend.executor.manager.get_notification_manager_client"
+    ) as mock_get_client, patch(
+        "backend.executor.manager.settings"
+    ) as mock_settings, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Setup mocks
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
@@ -162,14 +166,14 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         amount=-714,
     )
 
-    with (
-        patch("backend.executor.manager.queue_notification"),
-        patch(
-            "backend.executor.manager.get_notification_manager_client"
-        ) as mock_get_client,
-        patch("backend.executor.manager.settings") as mock_settings,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.executor.manager.queue_notification"), patch(
+        "backend.executor.manager.get_notification_manager_client"
+    ) as mock_get_client, patch(
+        "backend.executor.manager.settings"
+    ) as mock_settings, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_settings.config.frontend_base_url = "https://test.com"
@@ -224,6 +228,7 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
     user_id = "test-user-123"
 
     with patch("backend.executor.manager.redis") as mock_redis_module:
+
         mock_redis_client = MagicMock()
         # get_redis_async is an async function, so we need AsyncMock for it
         mock_redis_module.get_redis_async = AsyncMock(return_value=mock_redis_client)
@@ -259,6 +264,7 @@ async def test_clear_insufficient_funds_notifications_no_keys(server: SpinTestSe
     user_id = "test-user-no-notifications"
 
     with patch("backend.executor.manager.redis") as mock_redis_module:
+
         mock_redis_client = MagicMock()
         # get_redis_async is an async function, so we need AsyncMock for it
         mock_redis_module.get_redis_async = AsyncMock(return_value=mock_redis_client)
@@ -285,6 +291,7 @@ async def test_clear_insufficient_funds_notifications_handles_redis_error(
     user_id = "test-user-redis-error"
 
     with patch("backend.executor.manager.redis") as mock_redis_module:
+
         # Mock get_redis_async to raise an error
         mock_redis_module.get_redis_async = AsyncMock(
             side_effect=Exception("Redis connection failed")
@@ -313,14 +320,16 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
         amount=-714,
     )
 
-    with (
-        patch("backend.executor.manager.queue_notification") as mock_queue_notif,
-        patch(
-            "backend.executor.manager.get_notification_manager_client"
-        ) as mock_get_client,
-        patch("backend.executor.manager.settings") as mock_settings,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch(
+        "backend.executor.manager.queue_notification"
+    ) as mock_queue_notif, patch(
+        "backend.executor.manager.get_notification_manager_client"
+    ) as mock_get_client, patch(
+        "backend.executor.manager.settings"
+    ) as mock_settings, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_settings.config.frontend_base_url = "https://test.com"
@@ -360,10 +369,10 @@ async def test_add_transaction_clears_notifications_on_grant(server: SpinTestSer
 
     user_id = "test-user-grant-clear"
 
-    with (
-        patch("backend.data.credit.query_raw_with_schema") as mock_query,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Mock the query to return a successful transaction
         mock_query.return_value = [{"balance": 1000, "transactionKey": "test-tx-key"}]
 
@@ -402,10 +411,10 @@ async def test_add_transaction_clears_notifications_on_top_up(server: SpinTestSe
 
     user_id = "test-user-topup-clear"
 
-    with (
-        patch("backend.data.credit.query_raw_with_schema") as mock_query,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Mock the query to return a successful transaction
         mock_query.return_value = [{"balance": 2000, "transactionKey": "test-tx-key-2"}]
 
@@ -440,10 +449,10 @@ async def test_add_transaction_skips_clearing_for_inactive_transaction(
 
     user_id = "test-user-inactive"
 
-    with (
-        patch("backend.data.credit.query_raw_with_schema") as mock_query,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Mock the query to return a successful transaction
         mock_query.return_value = [{"balance": 500, "transactionKey": "test-tx-key-3"}]
 
@@ -476,10 +485,10 @@ async def test_add_transaction_skips_clearing_for_usage_transaction(
 
     user_id = "test-user-usage"
 
-    with (
-        patch("backend.data.credit.query_raw_with_schema") as mock_query,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
+        "backend.executor.manager.redis"
+    ) as mock_redis_module:
+
         # Mock the query to return a successful transaction
         mock_query.return_value = [{"balance": 400, "transactionKey": "test-tx-key-4"}]
 
@@ -510,11 +519,10 @@ async def test_enable_transaction_clears_notifications(server: SpinTestServer):
 
     user_id = "test-user-enable"
 
-    with (
-        patch("backend.data.credit.CreditTransaction") as mock_credit_tx,
-        patch("backend.data.credit.query_raw_with_schema") as mock_query,
-        patch("backend.executor.manager.redis") as mock_redis_module,
-    ):
+    with patch("backend.data.credit.CreditTransaction") as mock_credit_tx, patch(
+        "backend.data.credit.query_raw_with_schema"
+    ) as mock_query, patch("backend.executor.manager.redis") as mock_redis_module:
+
         # Mock finding the pending transaction
         mock_transaction = MagicMock()
         mock_transaction.amount = 1000

@@ -123,25 +123,16 @@ class PostToInstagramBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield (
-                "error",
-                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
-            )
+            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
             return
 
         # Validate Instagram constraints
         if len(input_data.post) > 2200:
-            yield (
-                "error",
-                f"Instagram post text exceeds 2,200 character limit ({len(input_data.post)} characters)",
-            )
+            yield "error", f"Instagram post text exceeds 2,200 character limit ({len(input_data.post)} characters)"
             return
 
         if len(input_data.media_urls) > 10:
-            yield (
-                "error",
-                "Instagram supports a maximum of 10 images/videos in a carousel",
-            )
+            yield "error", "Instagram supports a maximum of 10 images/videos in a carousel"
             return
 
         if len(input_data.collaborators) > 3:
@@ -156,10 +147,7 @@ class PostToInstagramBlock(Block):
         ]
 
         if any(reel_options) and not all(reel_options):
-            yield (
-                "error",
-                "When posting a reel, all reel options must be set: share_reels_feed, audio_name, and either thumbnail or thumbnail_offset",
-            )
+            yield "error", "When posting a reel, all reel options must be set: share_reels_feed, audio_name, and either thumbnail or thumbnail_offset"
             return
 
         # Count hashtags and mentions
@@ -167,17 +155,11 @@ class PostToInstagramBlock(Block):
         mention_count = input_data.post.count("@")
 
         if hashtag_count > 30:
-            yield (
-                "error",
-                f"Instagram allows maximum 30 hashtags ({hashtag_count} found)",
-            )
+            yield "error", f"Instagram allows maximum 30 hashtags ({hashtag_count} found)"
             return
 
         if mention_count > 3:
-            yield (
-                "error",
-                f"Instagram allows maximum 3 @mentions ({mention_count} found)",
-            )
+            yield "error", f"Instagram allows maximum 3 @mentions ({mention_count} found)"
             return
 
         # Convert datetime to ISO format if provided
@@ -209,10 +191,7 @@ class PostToInstagramBlock(Block):
             # Validate alt text length
             for i, alt in enumerate(input_data.alt_text):
                 if len(alt) > 1000:
-                    yield (
-                        "error",
-                        f"Alt text {i + 1} exceeds 1,000 character limit ({len(alt)} characters)",
-                    )
+                    yield "error", f"Alt text {i+1} exceeds 1,000 character limit ({len(alt)} characters)"
                     return
             instagram_options["altText"] = input_data.alt_text
 
@@ -227,19 +206,13 @@ class PostToInstagramBlock(Block):
                 try:
                     tag_obj = InstagramUserTag(**tag)
                 except Exception as e:
-                    yield (
-                        "error",
-                        f"Invalid user tag: {e}, tages need to be a dictionary with a 3 items: username (str), x (float) and y (float)",
-                    )
+                    yield "error", f"Invalid user tag: {e}, tages need to be a dictionary with a 3 items: username (str), x (float) and y (float)"
                     return
                 tag_dict: dict[str, float | str] = {"username": tag_obj.username}
                 if tag_obj.x is not None and tag_obj.y is not None:
                     # Validate coordinates
                     if not (0.0 <= tag_obj.x <= 1.0) or not (0.0 <= tag_obj.y <= 1.0):
-                        yield (
-                            "error",
-                            f"User tag coordinates must be between 0.0 and 1.0 (user: {tag_obj.username})",
-                        )
+                        yield "error", f"User tag coordinates must be between 0.0 and 1.0 (user: {tag_obj.username})"
                         return
                     tag_dict["x"] = tag_obj.x
                     tag_dict["y"] = tag_obj.y
