@@ -68,9 +68,12 @@ export function NodeHeader({ data, nodeId }: Props) {
   }, [title, isEditingTitle]);
 
   const handleTitleEdit = () => {
-    updateNodeData(nodeId, {
-      metadata: { ...data.metadata, customized_name: editedTitle },
-    });
+    // Only persist if the title actually changed to avoid freezing agent-derived titles
+    if (editedTitle.trim() !== title.trim()) {
+      updateNodeData(nodeId, {
+        metadata: { ...data.metadata, customized_name: editedTitle },
+      });
+    }
     setIsEditingTitle(false);
   };
 
