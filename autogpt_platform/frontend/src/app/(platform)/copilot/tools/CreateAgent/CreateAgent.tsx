@@ -55,8 +55,17 @@ interface Props {
   part: CreateAgentToolPart;
 }
 
-function getAccordionMeta(output: CreateAgentToolOutput) {
+function getAccordionMeta(output: CreateAgentToolOutput | null) {
   const icon = <AccordionIcon />;
+
+  if (!output) {
+    return {
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
+  }
 
   if (isAgentSavedOutput(output)) {
     return { icon, title: output.agent_name, expanded: true };

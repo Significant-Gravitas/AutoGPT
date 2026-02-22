@@ -46,7 +46,7 @@ interface Props {
   part: EditAgentToolPart;
 }
 
-function getAccordionMeta(output: EditAgentToolOutput): {
+function getAccordionMeta(output: EditAgentToolOutput | null): {
   icon: React.ReactNode;
   title: string;
   titleClassName?: string;
@@ -54,6 +54,14 @@ function getAccordionMeta(output: EditAgentToolOutput): {
   expanded?: boolean;
 } {
   const icon = <AccordionIcon />;
+
+  if (!output) {
+    return {
+      icon: <OrbitLoader size={32} />,
+      title: "Editing agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
+  }
 
   if (isAgentSavedOutput(output)) {
     return { icon, title: output.agent_name };
