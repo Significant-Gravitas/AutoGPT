@@ -16,6 +16,7 @@ import {
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
 import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "./TextInputExpanderModal";
+import { removeCommas } from "@/components/atoms/Input/helpers";
 
 export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
@@ -42,15 +43,25 @@ export default function TextWidget(props: WidgetProps) {
       placeholder: "Enter secret text...",
       handleChange: (v: string) => (v === "" ? undefined : v),
     },
-    [InputType.NUMBER]: {
+[InputType.NUMBER]: {
       htmlType: "number",
       placeholder: "Enter number value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const cleaned = removeCommas(v.trim());
+        const num = Number(cleaned);
+        return isNaN(num) ? undefined : num;
+      },
     },
     [InputType.INTEGER]: {
       htmlType: "account",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const cleaned = removeCommas(v.trim());
+        const num = Number(cleaned);
+        return isNaN(num) ? undefined : Math.floor(num);
+      },
     },
   };
 
