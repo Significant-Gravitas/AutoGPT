@@ -1640,17 +1640,11 @@ async def _execute_long_running_tool_with_streaming(
             )
             return
 
-        # Pass operation_id and task_id to the tool for async processing
-        enriched_parameters = {
-            **parameters,
-            "_operation_id": operation_id,
-            "_task_id": task_id,
-        }
-
-        # Execute the actual tool
+        # Execute the tool synchronously (do NOT pass operation_id/task_id to force sync mode)
+        # The operation_id/task_id are only for our internal task tracking, not for the tool
         result = await execute_tool(
             tool_name=tool_name,
-            parameters=enriched_parameters,
+            parameters=parameters,  # No enrichment - forces synchronous execution
             tool_call_id=tool_call_id,
             user_id=user_id,
             session=session,
