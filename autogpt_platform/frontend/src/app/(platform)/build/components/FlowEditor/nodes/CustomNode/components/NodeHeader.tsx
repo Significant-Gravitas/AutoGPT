@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { beautifyString, cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomNodeData } from "../CustomNode";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -42,37 +42,60 @@ export function NodeHeader({ data, nodeId }: Props) {
   function getBeautifiedTitle(): string {
     const rawTitle = getTitle();
 
-    // Extract version suffix (e.g., "v1", "v2.0", "v3.1.4") to preserve casing
-    const versionMatch = rawTitle.match(/\s+(v\d+(?:\.\d+)*)$/i);
-
-    if (versionMatch) {
-      const nameOnly = rawTitle.slice(0, -versionMatch[0].length);
-      const versionSuffix = versionMatch[1]; // Preserve original case
-      return beautifyString(nameOnly).replace("Block", "").trim() + " " + versionSuffix;
+    // Don't beautify user-customized names or agent-derived names
+    if (data.metadata?.customized_name || data.hardcodedValues?.agent_name) {
+      return rawTitle;
     }
 
-    return beautifyString(rawTitle).replace("Block", "").trim();
+    // Only for block type names (from data.title): beautify and strip "Block" suffix
+    const beautified = beautifyString(rawTitle);
+
+    // Strip "Block" suffix only if it's at the end (e.g., "AITextGeneratorBlock" -> "AI Text Generator")
+    // Don't strip "Block" from middle of names (e.g., "Blockchain Analyzer" stays "Blockchain Analyzer")
+    if (beautified.endsWith(" Block")) {
+      return beautified.slice(0, -6).trim();
+    }
+
+    return beautified.trim();
   }
 
-  const title = getBeautifiedTitle();
+  // Memoize title to prevent unnecessary recalculations
+  const title = useMemo(() => getBeautifiedTitle(), [
+    data.metadata?.customized_name,
+    data.hardcodedValues?.agent_name,
+    data.hardcodedValues?.graph_version,
+    data.title,
+  ]);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
 
-  // Sync editedTitle when title changes (e.g., agent updated)
+  // Track the last synced title to detect external changes
+  const lastSyncedTitle = useRef(title);
+
+  // Sync editedTitle when title changes externally (e.g., agent updated)
   // Only sync when NOT editing to preserve user's in-progress edits
   useEffect(() => {
-    if (!isEditingTitle) {
+    if (!isEditingTitle && title !== lastSyncedTitle.current) {
       setEditedTitle(title);
+      lastSyncedTitle.current = title;
     }
   }, [title, isEditingTitle]);
 
   const handleTitleEdit = () => {
+    const trimmedEditedTitle = editedTitle.trim();
+    const trimmedOriginalTitle = title.trim();
+
     // Only persist if the title actually changed to avoid freezing agent-derived titles
-    if (editedTitle.trim() !== title.trim()) {
+    // Allow saving empty string if user explicitly wants to clear it
+    if (trimmedEditedTitle !== trimmedOriginalTitle) {
       updateNodeData(nodeId, {
-        metadata: { ...data.metadata, customized_name: editedTitle },
+        metadata: {
+          ...data.metadata,
+          customized_name: trimmedEditedTitle || undefined, // Clear customized_name if empty
+        },
       });
+      lastSyncedTitle.current = trimmedEditedTitle || title;
     }
     setIsEditingTitle(false);
   };
