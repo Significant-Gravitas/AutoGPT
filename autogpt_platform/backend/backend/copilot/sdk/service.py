@@ -940,10 +940,23 @@ async def stream_chat_completion_sdk(
             yield StreamFinish()
 
     except asyncio.CancelledError:
-        # Client disconnect / server shutdown — log but re-raise so
-        # the framework can clean up.  The finally block still runs
-        # for transcript upload.
+        # Client disconnect / server shutdown — save session before re-raising
+        # so accumulated messages aren't lost.
         logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
+        if session:
+            try:
+                await asyncio.shield(upsert_chat_session(session))
+                logger.info(
+                    "[SDK] [%s] Session saved on cancel (%d messages)",
+                    session_id[:12],
+                    len(session.messages),
+                )
+            except Exception as save_err:
+                logger.error(
+                    "[SDK] [%s] Failed to save session on cancel: %s",
+                    session_id[:12],
+                    save_err,
+                )
         raise
     except Exception as e:
         logger.error(f"[SDK] Error: {e}", exc_info=True)

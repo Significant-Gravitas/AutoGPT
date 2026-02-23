@@ -108,8 +108,9 @@ export function EditAgentTool({ part }: Props) {
 
   const isOperating = !output;
 
-  // Always show accordion for edit_agent (to show mini game during execution)
-  const hasExpandableContent = true;
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =
@@ -138,6 +139,46 @@ export function EditAgentTool({ part }: Props) {
             text={text}
             className={isError ? "text-red-500" : undefined}
           />
+        </div>
+      )}
+
+      {isError && output && isErrorOutput(output) && (
+        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <WarningDiamondIcon
+              size={20}
+              weight="regular"
+              className="mt-0.5 shrink-0 text-red-500"
+            />
+            <div className="flex-1 space-y-2">
+              <Text variant="body-medium" className="text-red-900">
+                {output.message ||
+                  "Failed to edit the agent. Please try again."}
+              </Text>
+              {output.error && (
+                <details className="text-xs text-red-700">
+                  <summary className="cursor-pointer font-medium">
+                    Technical details
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                    {formatMaybeJson(output.error)}
+                  </pre>
+                </details>
+              )}
+              {output.details && (
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
+                  {formatMaybeJson(output.details)}
+                </pre>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="small"
+            onClick={() => onSend("Please try editing the agent again.")}
+          >
+            Try again
+          </Button>
         </div>
       )}
 
@@ -229,22 +270,6 @@ export function EditAgentTool({ part }: Props) {
               message={output.message}
               onSubmitAnswers={handleClarificationAnswers}
             />
-          )}
-
-          {output && isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
-                </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-            </ContentGrid>
           )}
         </ToolAccordion>
       )}

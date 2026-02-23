@@ -615,22 +615,22 @@ async def resume_session_stream(
     """
     import asyncio
 
-    active_task, _last_id = await stream_registry.get_active_task_for_session(
+    active_task, last_message_id = await stream_registry.get_active_task_for_session(
         session_id, user_id
     )
 
     if not active_task:
         return Response(status_code=204)
 
-    # Subscribe from the latest position — hydrated messages from the REST
-    # endpoint already contain all persisted history.  The resume stream
-    # only needs to deliver NEW chunks (tool progress, heartbeats,
-    # StreamFinish) going forward.  Replaying from 0-0 would cause the
-    # AI SDK to duplicate the intro/early messages.
+    # Subscribe from the beginning ("0-0") to replay all chunks for this turn.
+    # This is necessary because hydrated messages filter out incomplete tool calls
+    # to avoid "No tool invocation found" errors. The resume stream delivers
+    # those tool calls fresh with proper SDK state.
+    # The AI SDK's deduplication will handle any duplicate chunks.
     subscriber_queue = await stream_registry.subscribe_to_task(
         session_id=session_id,
         user_id=user_id,
-        last_message_id="$",
+        last_message_id="0-0",
     )
 
     if subscriber_queue is None:

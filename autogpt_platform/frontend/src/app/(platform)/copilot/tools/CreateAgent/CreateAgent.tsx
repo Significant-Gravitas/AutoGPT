@@ -115,8 +115,9 @@ export function CreateAgentTool({ part }: Props) {
 
   const isOperating = !output;
 
-  // Always show accordion for create_agent (to show mini game during execution)
-  const hasExpandableContent = true;
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
@@ -149,6 +150,55 @@ export function CreateAgentTool({ part }: Props) {
             text={text}
             className={isError ? "text-red-500" : undefined}
           />
+        </div>
+      )}
+
+      {isError && output && isErrorOutput(output) && (
+        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <WarningDiamondIcon
+              size={20}
+              weight="regular"
+              className="mt-0.5 shrink-0 text-red-500"
+            />
+            <div className="flex-1 space-y-2">
+              <Text variant="body-medium" className="text-red-900">
+                {output.message ||
+                  "Failed to generate the agent. Please try again."}
+              </Text>
+              {output.error && (
+                <details className="text-xs text-red-700">
+                  <summary className="cursor-pointer font-medium">
+                    Technical details
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                    {formatMaybeJson(output.error)}
+                  </pre>
+                </details>
+              )}
+              {output.details && (
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
+                  {formatMaybeJson(output.details)}
+                </pre>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="small"
+              onClick={() => onSend("Please try creating the agent again.")}
+            >
+              Try again
+            </Button>
+            <Button
+              variant="outline"
+              size="small"
+              onClick={() => onSend("Can you help me simplify this goal?")}
+            >
+              Simplify goal
+            </Button>
+          </div>
         </div>
       )}
 
@@ -250,38 +300,6 @@ export function CreateAgentTool({ part }: Props) {
               goalType={output.goal_type ?? "vague"}
               onUseSuggestedGoal={handleUseSuggestedGoal}
             />
-          )}
-
-          {output && isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
-                </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Please try creating the agent again.")}
-                >
-                  Try again
-                </Button>
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Can you help me simplify this goal?")}
-                >
-                  Simplify goal
-                </Button>
-              </div>
-            </ContentGrid>
           )}
         </ToolAccordion>
       )}
