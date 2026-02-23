@@ -114,13 +114,13 @@ class SDKResponseAdapter:
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
                     )
-
-                    tool_input_obj = StreamToolInputAvailable(
-                        toolCallId=block.id,
-                        toolName=tool_name,
-                        input=block.input,
+                    responses.append(
+                        StreamToolInputAvailable(
+                            toolCallId=block.id,
+                            toolName=tool_name,
+                            input=block.input,
+                        )
                     )
-                    responses.append(tool_input_obj)
                     self.current_tool_calls[block.id] = {"name": tool_name}
 
         elif isinstance(sdk_message, UserMessage):
@@ -294,7 +294,7 @@ class SDKResponseAdapter:
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
                 logger.info(
-                    "[SDK] [%s] Flushed stashed output for %s (call %s, %d chars)",
+                    "[SDK] [%s] Flushed stashed output for %s " "(call %s, %d chars)",
                     sid,
                     tool_name,
                     tool_id[:12],
