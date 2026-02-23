@@ -501,6 +501,10 @@ async def _build_query_message(
     Hybrid mode: if the transcript is stale, compress only the gap.
     """
     msg_count = len(session.messages)
+    logger.info(
+        f"[DEBUG_CONVERSATION] [SDK] _build_query_message: use_resume={use_resume}, "
+        f"transcript_msg_count={transcript_msg_count}, msg_count={msg_count}"
+    )
 
     if use_resume and transcript_msg_count > 0:
         if transcript_msg_count < msg_count - 1:
@@ -511,17 +515,39 @@ async def _build_query_message(
                     f"[SDK] Transcript stale: covers {transcript_msg_count} "
                     f"of {msg_count} messages, compressing {len(gap)} missed"
                 )
+                logger.info(
+                    f"[DEBUG_CONVERSATION] [SDK] Using stale transcript path - gap_context:\n{gap_context!r}"
+                )
                 return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+        logger.info(
+            "[DEBUG_CONVERSATION] [SDK] Using resume with current transcript - returning current_message only"
+        )
     elif not use_resume and msg_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
             f"{session_id} ({msg_count} messages) — no transcript for --resume"
         )
+        logger.info(
+            f"[DEBUG_CONVERSATION] [SDK] Compressing {msg_count - 1} prior messages"
+        )
         compressed = await _compress_conversation_history(session)
+        logger.info(
+            f"[DEBUG_CONVERSATION] [SDK] After compression: {len(compressed)} messages"
+        )
         history_context = _format_conversation_context(compressed)
         if history_context:
+            logger.info(
+                f"[DEBUG_CONVERSATION] [SDK] History context:\n{history_context!r}"
+            )
             return f"{history_context}\n\nNow, the user says:\n{current_message}"
+    else:
+        logger.info(
+            f"[DEBUG_CONVERSATION] [SDK] No compression needed (msg_count={msg_count})"
+        )
 
+    logger.info(
+        f"[DEBUG_CONVERSATION] [SDK] Returning current_message only: {current_message!r}"
+    )
     return current_message
 
 
@@ -755,6 +781,16 @@ async def stream_chat_completion_sdk(
                     len(session.messages),
                     len(query_message),
                 )
+                logger.info(
+                    f"[DEBUG_CONVERSATION] [SDK] Full session history ({len(session.messages)} messages):"
+                )
+                for idx, msg in enumerate(session.messages):
+                    logger.info(
+                        f"[DEBUG_CONVERSATION] [SDK]   [{idx}] {msg.role}: {msg.content!r}"
+                    )
+                logger.info(
+                    f"[DEBUG_CONVERSATION] [SDK] Query message being sent to Claude:\n{query_message!r}"
+                )
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -899,6 +935,9 @@ async def stream_chat_completion_sdk(
 
                             if isinstance(response, StreamTextDelta):
                                 delta = response.delta or ""
+                                logger.info(
+                                    f"[DEBUG_CONVERSATION] [SDK] TEXT DELTA: {delta!r}"
+                                )
                                 # After tool results, start a new assistant
                                 # message for the post-tool text.
                                 if has_tool_results and has_appended_assistant:
@@ -1102,6 +1141,13 @@ async def stream_chat_completion_sdk(
             session_id[:12],
             len(session.messages),
         )
+        logger.info(
+            f"[DEBUG_CONVERSATION] [SDK] Final session state ({len(session.messages)} messages):"
+        )
+        for idx, msg in enumerate(session.messages):
+            logger.info(
+                f"[DEBUG_CONVERSATION] [SDK]   [{idx}] {msg.role}: {msg.content!r}"
+            )
         if not stream_completed:
             yield StreamFinish()
 

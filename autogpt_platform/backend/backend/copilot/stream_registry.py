@@ -25,7 +25,12 @@ import orjson
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
-from .response_model import StreamBaseResponse, StreamError, StreamFinish
+from .response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamFinish,
+    StreamHeartbeat,
+)
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -141,6 +146,7 @@ async def create_task(
 
     meta_key = _get_task_meta_key(session_id)
     op_key = _get_operation_mapping_key(operation_id)
+    logger.info(f"[DEBUG] create_task storing at key: {meta_key}, status=running")
 
     hset_start = time.perf_counter()
     await redis.hset(  # type: ignore[misc]
@@ -209,6 +215,22 @@ async def publish_chunk(
         redis = await get_redis_async()
         stream_key = _get_task_stream_key(session_id)
 
+        # DEBUG: Log what we're about to publish
+        from .response_model import StreamFinish, StreamTextDelta, StreamTextStart
+
+        if isinstance(chunk, StreamTextDelta):
+            logger.info(
+                f"[DEBUG_CONVERSATION] [PUBLISH] StreamTextDelta to {session_id[:12]}: {chunk.delta!r}"
+            )
+        elif isinstance(chunk, StreamTextStart):
+            logger.info(
+                f"[DEBUG_CONVERSATION] [PUBLISH] StreamTextStart to {session_id[:12]}"
+            )
+        elif isinstance(chunk, StreamFinish):
+            logger.info(
+                f"[DEBUG_CONVERSATION] [PUBLISH] StreamFinish to {session_id[:12]}"
+            )
+
         # Write to Redis Stream for persistence and real-time delivery
         xadd_start = time.perf_counter()
         raw_id = await redis.xadd(
@@ -276,6 +298,7 @@ async def subscribe_to_task(
         An asyncio Queue that will receive stream chunks, or None if task not found
         or user doesn't have access
     """
+    import asyncio
     import time
 
     start_time = time.perf_counter()
@@ -293,26 +316,41 @@ async def subscribe_to_task(
     redis_start = time.perf_counter()
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(session_id)
+    logger.info(f"[DEBUG] subscribe_to_task looking for key: {meta_key}")
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     hgetall_time = (time.perf_counter() - redis_start) * 1000
     logger.info(
-        f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms",
+        f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms, result={bool(meta)}, keys={list(meta.keys()) if meta else []}",
         extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
     )
 
+    # RACE CONDITION FIX: If task not found, retry once after small delay
+    # This handles the case where subscribe_to_task is called immediately
+    # after create_task but before Redis propagates the write
     if not meta:
-        elapsed = (time.perf_counter() - start_time) * 1000
-        logger.info(
-            f"[TIMING] Task not found in Redis after {elapsed:.1f}ms",
-            extra={
-                "json_fields": {
-                    **log_meta,
-                    "elapsed_ms": elapsed,
-                    "reason": "task_not_found",
-                }
-            },
+        logger.warning(
+            "[TIMING] Task not found on first attempt, retrying after 50ms delay",
+            extra={"json_fields": {**log_meta}},
         )
-        return None
+        await asyncio.sleep(0.05)  # 50ms
+        meta = await redis.hgetall(meta_key)  # type: ignore[misc]
+        if not meta:
+            elapsed = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                f"[TIMING] Task still not found in Redis after retry ({elapsed:.1f}ms total)",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "elapsed_ms": elapsed,
+                        "reason": "task_not_found_after_retry",
+                    }
+                },
+            )
+            return None
+        logger.info(
+            "[TIMING] Task found after retry",
+            extra={"json_fields": {**log_meta}},
+        )
 
     # Note: Redis client uses decode_responses=True, so keys are strings
     task_status = meta.get("status", "")
@@ -339,7 +377,7 @@ async def subscribe_to_task(
 
     # Step 1: Replay messages from Redis Stream
     xread_start = time.perf_counter()
-    messages = await redis.xread({stream_key: last_message_id}, block=0, count=1000)
+    messages = await redis.xread({stream_key: last_message_id}, block=None, count=1000)
     xread_time = (time.perf_counter() - xread_start) * 1000
     logger.info(
         f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={task_status}",
@@ -370,12 +408,13 @@ async def subscribe_to_task(
                         logger.warning(f"Failed to replay message: {e}")
 
     logger.info(
-        f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
+        f"[DEBUG_REPLAY] Replayed {replayed_count} messages from last_message_id={last_message_id} to {replay_last_id}",
         extra={
             "json_fields": {
                 **log_meta,
                 "n_messages_replayed": replayed_count,
                 "replay_last_id": replay_last_id,
+                "started_from_id": last_message_id,
             }
         },
     )
@@ -457,12 +496,13 @@ async def _stream_listener(
         current_id = last_replayed_id
 
         while True:
-            # Block for up to 30 seconds waiting for new messages
+            # Block for up to 5 seconds waiting for new messages
             # This allows periodic checking if task is still running
+            # Short timeout prevents frontend timeout (12s) while waiting for heartbeats (15s)
             xread_start = time.perf_counter()
             xread_count += 1
             messages = await redis.xread(
-                {stream_key: current_id}, block=30000, count=100
+                {stream_key: current_id}, block=5000, count=100
             )
             xread_time = (time.perf_counter() - xread_start) * 1000
 
@@ -508,6 +548,17 @@ async def _stream_listener(
                             f"Timeout delivering finish event for task {session_id}"
                         )
                     break
+                # Task still running - send heartbeat to keep connection alive
+                # This prevents frontend timeout (12s) during long-running operations
+                try:
+                    await asyncio.wait_for(
+                        subscriber_queue.put(StreamHeartbeat()),
+                        timeout=QUEUE_PUT_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Timeout delivering heartbeat for task {session_id}"
+                    )
                 continue
 
             for _stream_name, stream_messages in messages:

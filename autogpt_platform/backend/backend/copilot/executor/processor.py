@@ -12,7 +12,13 @@ import time
 from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamFinishStep,
+    StreamTextDelta,
+    StreamTextStart,
+)
 from backend.copilot.sdk import service as sdk_service
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
@@ -216,19 +222,34 @@ class CoPilotProcessor:
         try:
             # Choose service based on LaunchDarkly flag
             config = ChatConfig()
-            use_sdk = await is_feature_enabled(
-                Flag.COPILOT_SDK,
-                entry.user_id or "anonymous",
-                default=config.use_claude_agent_sdk,
-            )
-            stream_fn = (
-                sdk_service.stream_chat_completion_sdk
-                if use_sdk
-                else copilot_service.stream_chat_completion
-            )
-            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
+
+            # TEMPORARY: Use dummy service in test mode to avoid Claude-in-Claude errors
+            import os
+
+            if os.getenv("COPILOT_TEST_MODE") == "true":
+                from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+
+                stream_fn = stream_chat_completion_dummy
+                service_name = "dummy"
+                log.warning("[TEST MODE] Using dummy copilot service")
+            else:
+                use_sdk = await is_feature_enabled(
+                    Flag.COPILOT_SDK,
+                    entry.user_id or "anonymous",
+                    default=config.use_claude_agent_sdk,
+                )
+                stream_fn = (
+                    sdk_service.stream_chat_completion_sdk
+                    if use_sdk
+                    else copilot_service.stream_chat_completion
+                )
+                service_name = "SDK" if use_sdk else "standard"
+                log.info(f"Using {service_name} service")
 
             # Stream chat completion and publish chunks to Redis
+            log.info(
+                f"[DEBUG_CONVERSATION] [EXECUTOR] Starting to consume stream from {service_name} service"
+            )
             async for chunk in stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
@@ -259,8 +280,34 @@ class CoPilotProcessor:
                     cluster_lock.refresh()
                     last_refresh = current_time
 
+                # DEBUG: Log chunks being received from SDK service
+                if isinstance(chunk, StreamTextDelta):
+                    log.info(
+                        f"[DEBUG_CONVERSATION] [EXECUTOR] Received StreamTextDelta from SDK: {chunk.delta!r}"
+                    )
+                elif isinstance(chunk, StreamTextStart):
+                    log.info(
+                        "[DEBUG_CONVERSATION] [EXECUTOR] Received StreamTextStart from SDK"
+                    )
+                elif isinstance(chunk, StreamFinish):
+                    log.info(
+                        "[DEBUG_CONVERSATION] [EXECUTOR] Received StreamFinish from SDK"
+                    )
+
                 # Publish chunk to stream registry
-                await stream_registry.publish_chunk(entry.session_id, chunk)
+                log.info(
+                    f"[DEBUG_CONVERSATION] [EXECUTOR] About to call publish_chunk for {type(chunk).__name__}"
+                )
+                try:
+                    await stream_registry.publish_chunk(entry.session_id, chunk)
+                    log.info(
+                        f"[DEBUG_CONVERSATION] [EXECUTOR] Successfully published {type(chunk).__name__}"
+                    )
+                except Exception as e:
+                    log.error(
+                        f"[DEBUG_CONVERSATION] [EXECUTOR] ERROR publishing chunk: {e}",
+                        exc_info=True,
+                    )
 
             # Mark task as completed
             await stream_registry.mark_task_completed(

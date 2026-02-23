@@ -28,7 +28,13 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
 )
-from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamHeartbeat,
+    StreamTextDelta,
+    StreamTextStart,
+)
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -467,6 +473,47 @@ async def stream_chat_post(
         },
     )
 
+    # Get current stream position BEFORE enqueuing to avoid replaying old messages
+    # but still catch all new messages from the executor
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    stream_key = f"chat:task:stream:{session_id}"
+
+    # Get last message ID from stream (or use "$" to only get new messages)
+    try:
+        # XREVRANGE returns messages in reverse order, get the most recent one
+        recent = await redis.xrevrange(stream_key, "+", "-", count=1)
+        if recent:
+            # recent is list of (msg_id, data) tuples
+            subscribe_from_id = (
+                recent[0][0] if isinstance(recent[0][0], str) else recent[0][0].decode()
+            )
+        else:
+            # Stream doesn't exist yet or is empty - use "$" to only get NEW messages
+            # from this point forward, preventing replay of messages that arrive during
+            # the race window between this check and the subscribe call
+            subscribe_from_id = "$"
+    except Exception as e:
+        logger.warning(f"Failed to get last stream ID, using $: {e}")
+        subscribe_from_id = "$"
+
+    logger.info(
+        f"[DEBUG_STREAM_POSITION] Will subscribe from ID: {subscribe_from_id} "
+        f"({'new messages only' if subscribe_from_id == '$' else 'from position'})",
+        extra={"json_fields": {**log_meta, "subscribe_from_id": subscribe_from_id}},
+    )
+
+    # DEBUG: Log stream contents before subscribing
+    try:
+        all_messages = await redis.xrange(stream_key, "-", "+")
+        logger.info(
+            f"[DEBUG_STREAM_POSITION] Stream currently has {len(all_messages)} total messages",
+            extra={"json_fields": {**log_meta, "total_messages": len(all_messages)}},
+        )
+    except Exception:
+        pass
+
     await enqueue_copilot_task(
         task_id=task_id,
         session_id=session_id,
@@ -497,11 +544,12 @@ async def stream_chat_post(
         first_chunk_yielded = False
         chunks_yielded = 0
         try:
-            # Subscribe to the task stream (this replays existing messages + live updates)
+            # Subscribe from the position we captured before enqueuing
+            # This avoids replaying old messages while catching all new ones
             subscriber_queue = await stream_registry.subscribe_to_task(
                 session_id=session_id,
                 user_id=user_id,
-                last_message_id="0-0",  # Get all messages from the beginning
+                last_message_id=subscribe_from_id,
             )
 
             if subscriber_queue is None:
@@ -532,6 +580,20 @@ async def stream_chat_post(
                                     "elapsed_ms": elapsed * 1000,
                                 }
                             },
+                        )
+
+                    # DEBUG: Log text chunks being sent to frontend
+                    if isinstance(chunk, StreamTextDelta):
+                        logger.info(
+                            f"[DEBUG_CONVERSATION] [SSE] Yielding StreamTextDelta to frontend: {chunk.delta!r}"
+                        )
+                    elif isinstance(chunk, StreamTextStart):
+                        logger.info(
+                            "[DEBUG_CONVERSATION] [SSE] Yielding StreamTextStart to frontend"
+                        )
+                    elif isinstance(chunk, StreamFinish):
+                        logger.info(
+                            "[DEBUG_CONVERSATION] [SSE] Yielding StreamFinish to frontend"
                         )
 
                     yield chunk.to_sse()

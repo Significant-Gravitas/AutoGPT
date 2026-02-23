@@ -123,7 +123,7 @@ export function useCopilotPage() {
   );
 
   const {
-    messages,
+    messages: rawMessages,
     sendMessage,
     stop: sdkStop,
     status,
@@ -137,6 +137,34 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
   });
+
+  // Deduplicate messages continuously to prevent duplicates when resuming streams
+  const messages = useMemo(
+    () => deduplicateMessages(rawMessages),
+    [rawMessages],
+  );
+
+  // DEBUG: Log when messages change to track duplicates
+  useEffect(() => {
+    console.log("[COPILOT_DEBUG_STREAM] Total messages:", messages.length);
+    messages.forEach((msg, idx) => {
+      // Extract actual content from parts array
+      const textContent = msg.parts
+        ?.map((part) => {
+          if ("text" in part) return part.text;
+          return null;
+        })
+        .filter(Boolean)
+        .join(" ");
+
+      const preview =
+        textContent && textContent.length > 100
+          ? textContent.substring(0, 100) + "..."
+          : textContent || "(no text)";
+
+      console.log(`  [${idx}] ${msg.role} (id: ${msg.id}): ${preview}`);
+    });
+  }, [messages]);
 
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire

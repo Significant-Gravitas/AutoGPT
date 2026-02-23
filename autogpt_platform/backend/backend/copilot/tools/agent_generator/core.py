@@ -589,21 +589,15 @@ async def decompose_goal(
 async def generate_agent(
     instructions: DecompositionResult | dict[str, Any],
     library_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams
-            completion notification)
-        task_id: Task ID for async processing (enables Redis Streams persistence
-            and SSE delivery)
 
     Returns:
-        Agent JSON dict, {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
+        Agent JSON dict, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -611,12 +605,8 @@ async def generate_agent(
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
     result = await generate_agent_external(
-        dict(instructions), _to_dict_list(library_agents), operation_id, task_id
+        dict(instructions), _to_dict_list(library_agents)
     )
-
-    # Don't modify async response
-    if result and result.get("status") == "accepted":
-        return result
 
     if result:
         if isinstance(result, dict) and result.get("type") == "error":
@@ -808,8 +798,6 @@ async def generate_agent_patch(
     update_request: str,
     current_agent: dict[str, Any],
     library_agents: Sequence[AgentSummary] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Update an existing agent using natural language.
 
@@ -822,12 +810,10 @@ async def generate_agent_patch(
         update_request: Natural language description of changes
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
-        {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
+        error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -838,8 +824,6 @@ async def generate_agent_patch(
         update_request,
         current_agent,
         _to_dict_list(library_agents),
-        operation_id,
-        task_id,
     )
 
 
