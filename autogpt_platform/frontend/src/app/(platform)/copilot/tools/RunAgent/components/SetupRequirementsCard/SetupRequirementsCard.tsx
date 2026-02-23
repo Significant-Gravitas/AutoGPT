@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
-import { Button } from "@/components/atoms/Button/Button";
-import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import {
   ContentBadge,
@@ -38,40 +39,40 @@ export function SetupRequirementsCard({ output }: Props) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
   }
 
-  const isAllComplete =
-    credentialFields.length > 0 &&
+  const needsCredentials = credentialFields.length > 0;
+  const isAllCredentialsComplete =
+    needsCredentials &&
     [...requiredCredentials].every((key) => !!inputCredentials[key]);
+
+  const canProceed =
+    !hasSent && (!needsCredentials || isAllCredentialsComplete);
 
   function handleProceed() {
     setHasSent(true);
-    onSend(
-      "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
-    );
+    const message = needsCredentials
+      ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
+      : "Please proceed with running the agent.";
+    onSend(message);
   }
 
   return (
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
-      {credentialFields.length > 0 && (
+      {needsCredentials && (
         <div className="rounded-2xl border bg-background p-3">
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={{}}
-            onCredentialChange={handleCredentialChange}
-          />
-          {isAllComplete && !hasSent && (
-            <Button
-              variant="primary"
-              size="small"
-              className="mt-3 w-full"
-              onClick={handleProceed}
-            >
-              Proceed
-            </Button>
-          )}
+          <Text variant="small" className="w-fit border-b text-zinc-500">
+            Agent credentials
+          </Text>
+          <div className="mt-6">
+            <CredentialsGroupedView
+              credentialFields={credentialFields}
+              requiredCredentials={requiredCredentials}
+              inputCredentials={inputCredentials}
+              inputValues={{}}
+              onCredentialChange={handleCredentialChange}
+            />
+          </div>
         </div>
       )}
 
@@ -99,6 +100,18 @@ export function SetupRequirementsCard({ output }: Props) {
             ))}
           </div>
         </div>
+      )}
+
+      {(needsCredentials || expectedInputs.length > 0) && (
+        <Button
+          variant="primary"
+          size="small"
+          className="mt-4 w-fit"
+          disabled={!canProceed}
+          onClick={handleProceed}
+        >
+          Proceed
+        </Button>
       )}
     </div>
   );

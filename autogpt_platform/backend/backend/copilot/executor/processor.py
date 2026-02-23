@@ -266,7 +266,11 @@ class CoPilotProcessor:
 
         except asyncio.CancelledError:
             log.info("Task cancelled")
-            await stream_registry.mark_task_completed(entry.task_id, status="failed")
+            await stream_registry.mark_task_completed(
+                entry.task_id,
+                status="failed",
+                error_message="Task was cancelled",
+            )
             raise
 
         except Exception as e:

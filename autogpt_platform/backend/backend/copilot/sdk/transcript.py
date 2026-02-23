@@ -131,17 +131,20 @@ def read_transcript_file(transcript_path: str) -> str | None:
             content = f.read()
 
         if not content.strip():
+            logger.debug("[Transcript] File is empty: %s", transcript_path)
             return None
 
         lines = content.strip().split("\n")
-        if len(lines) < 3:
-            # Raw files with ≤2 lines are metadata-only
-            # (queue-operation + file-history-snapshot, no conversation).
-            return None
 
-        # Quick structural validation — parse first and last lines.
-        json.loads(lines[0])
-        json.loads(lines[-1])
+        # Validate that the transcript has real conversation content
+        # (not just metadata like queue-operation entries).
+        if not validate_transcript(content):
+            logger.debug(
+                "[Transcript] No conversation content (%d lines) in %s",
+                len(lines),
+                transcript_path,
+            )
+            return None
 
         logger.info(
             f"[Transcript] Read {len(lines)} lines, "
