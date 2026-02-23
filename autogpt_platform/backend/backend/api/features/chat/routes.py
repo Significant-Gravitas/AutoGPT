@@ -686,10 +686,15 @@ async def resume_session_stream(
     if not active_task:
         return Response(status_code=204)
 
+    # Subscribe from the latest position — hydrated messages from the REST
+    # endpoint already contain all persisted history.  The resume stream
+    # only needs to deliver NEW chunks (tool progress, heartbeats,
+    # StreamFinish) going forward.  Replaying from 0-0 would cause the
+    # AI SDK to duplicate the intro/early messages.
     subscriber_queue = await stream_registry.subscribe_to_task(
         session_id=session_id,
         user_id=user_id,
-        last_message_id="0-0",  # Full replay so useChat rebuilds the message
+        last_message_id="$",
     )
 
     if subscriber_queue is None:

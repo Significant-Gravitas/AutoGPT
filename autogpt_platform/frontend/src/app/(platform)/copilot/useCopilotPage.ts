@@ -35,12 +35,15 @@ function resolveInProgressTools(
   }));
 }
 
-/** Build a fingerprint from a message's role + text content for cross-boundary dedup. */
+/** Build a fingerprint from a message's role + text/tool content for cross-boundary dedup. */
 function messageFingerprint(msg: UIMessage): string {
-  const texts = msg.parts
-    .map((p) => ("text" in p && typeof p.text === "string" ? p.text : ""))
-    .join("\n");
-  return `${msg.role}::${texts}`;
+  const fragments = msg.parts.map((p) => {
+    if ("text" in p && typeof p.text === "string") return p.text;
+    if ("toolCallId" in p && typeof p.toolCallId === "string")
+      return `tool:${p.toolCallId}`;
+    return "";
+  });
+  return `${msg.role}::${fragments.join("\n")}`;
 }
 
 /**
