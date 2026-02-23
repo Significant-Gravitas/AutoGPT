@@ -244,7 +244,6 @@ export function useCopilotPage() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
-      hasResumedRef.current.delete(sessionId);
     }
   }, [status, sessionId, queryClient]);
 
