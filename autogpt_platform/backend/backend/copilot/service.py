@@ -1496,8 +1496,8 @@ async def _yield_tool_call(
                 )
             )
 
-            # Send heartbeats every 15 seconds while waiting
-            heartbeat_interval = 15.0
+            # Send heartbeats every 10 seconds while waiting (frontend timeout is 12s)
+            heartbeat_interval = 10.0
             while not tool_task.done():
                 try:
                     await asyncio.wait_for(
@@ -1564,8 +1564,9 @@ async def _yield_tool_call(
         )
     )
 
-    # Yield heartbeats every 15 seconds while waiting for tool to complete
-    heartbeat_interval = 15.0  # seconds
+    # Yield heartbeats every 10 seconds while waiting for tool to complete
+    # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
+    heartbeat_interval = 10.0  # seconds
     while not tool_task.done():
         try:
             # Wait for either the task to complete or the heartbeat interval
@@ -1609,21 +1610,14 @@ async def _execute_long_running_tool_with_streaming(
     tool_name: str,
     parameters: dict[str, Any],
     tool_call_id: str,
-    operation_id: str,
+    operation_id: str,  # Kept for backwards compatibility, but no longer used
     session_id: str,
     user_id: str | None,
 ) -> str | None:
-    """Execute a long-running tool with blocking wait for completion.
+    """Execute a tool synchronously with streaming support.
 
-    For agent generator tools (create_agent, edit_agent, customize_agent):
-    - Enables async mode on Agent Generator (passes operation_id/session_id)
-    - Agent Generator returns 202 Accepted immediately
-    - Subscribes to stream_registry for completion event (no polling!)
-    - Waits for completion while forwarding progress chunks to SSE
-    - Returns result when ready
-
-    For other tools:
-    - Executes synchronously and returns result immediately
+    All tools now execute synchronously with a 30-minute timeout.
+    The async operation_id/task_id pattern has been removed.
 
     Progress is published to stream_registry for SSE reconnection - clients can
     reconnect via GET /chat/sessions/{session_id}/stream if they disconnect.
@@ -1631,130 +1625,48 @@ async def _execute_long_running_tool_with_streaming(
     Returns:
         The tool result as a JSON string, or None on error.
     """
-    # Agent generator tools use async mode (202 Accepted + callback)
-    AGENT_GENERATOR_TOOLS = {"create_agent", "edit_agent", "customize_agent"}
-    is_agent_tool = tool_name in AGENT_GENERATOR_TOOLS
-
     try:
         # Load fresh session (not stale reference)
         session = await get_chat_session(session_id, user_id)
         if not session:
-            logger.error(f"Session {session_id} not found for background tool")
+            logger.error(f"Session {session_id} not found for tool {tool_name}")
             await stream_registry.mark_task_completed(
                 session_id,
                 status="failed",
                 error_message=f"Session {session_id} not found",
             )
-            return
+            return None
 
-        if is_agent_tool:
-            # Create task in stream_registry with blocking=True
-            # This enables completion_consumer to route the callback to us
-            await stream_registry.create_task(
-                session_id=session_id,
-                user_id=user_id,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                operation_id=operation_id,
-                blocking=True,  # HTTP request is waiting for completion
-            )
+        logger.info(f"Executing {tool_name} synchronously for session {session_id}")
 
-            # Subscribe to stream BEFORE executing tool (so we don't miss events)
-            queue = await stream_registry.subscribe_to_task(session_id, user_id)
-            if not queue:
-                logger.error(f"Failed to subscribe to task {session_id}")
-                return None
+        # Execute tool synchronously (30-minute timeout configured in tool implementation)
+        result = await execute_tool(
+            tool_name=tool_name,
+            parameters=parameters,
+            tool_call_id=tool_call_id,
+            user_id=user_id,
+            session=session,
+        )
 
-            logger.info(
-                f"[AGENT_ASYNC] Executing {tool_name} with async mode "
-                f"(operation_id={operation_id}, session_id={session_id})"
-            )
+        # Publish tool result to stream registry
+        await stream_registry.publish_chunk(session_id, result)
 
-            # Execute tool with operation_id/session_id to enable async mode
-            # Agent Generator will return 202 Accepted immediately
-            await execute_tool(
-                tool_name=tool_name,
-                parameters={
-                    **parameters,
-                    "operation_id": operation_id,
-                    "session_id": session_id,
-                },
-                tool_call_id=tool_call_id,
-                user_id=user_id,
-                session=session,
-            )
+        # Serialize result to string
+        result_str = (
+            result.output
+            if isinstance(result.output, str)
+            else orjson.dumps(result.output).decode("utf-8")
+        )
 
-            # Wait for completion via subscription (event-driven, no polling!)
-            logger.info(
-                f"[AGENT_ASYNC] Waiting for {tool_name} completion via stream subscription"
-            )
+        logger.info(
+            f"Tool {tool_name} completed successfully for session {session_id}, "
+            f"result length: {len(result_str) if result_str else 0}"
+        )
 
-            result_str = None
-            while True:
-                try:
-                    # Wait for next chunk with timeout (for heartbeats)
-                    chunk = await asyncio.wait_for(queue.get(), timeout=15.0)
+        # Mark operation as completed
+        await _mark_operation_completed(tool_call_id)
 
-                    logger.info(f"[AGENT_ASYNC] Received chunk: {type(chunk).__name__}")
-
-                    # Check if this is our tool result
-                    if isinstance(chunk, StreamToolOutputAvailable):
-                        if chunk.toolCallId == tool_call_id:
-                            # Serialize output to string if needed
-                            result_str = (
-                                chunk.output
-                                if isinstance(chunk.output, str)
-                                else orjson.dumps(chunk.output).decode("utf-8")
-                            )
-                            logger.info(
-                                f"[AGENT_ASYNC] {tool_name} completed! "
-                                f"Result length: {len(result_str) if result_str else 0}"
-                            )
-                            break
-
-                    elif isinstance(chunk, StreamError):
-                        logger.error(
-                            f"[AGENT_ASYNC] {tool_name} failed: {chunk.errorText}"
-                        )
-                        raise Exception(chunk.errorText)
-
-                except asyncio.TimeoutError:
-                    # Timeout is normal - just means no chunks in last 15s
-                    # Keep waiting (no heartbeat needed here, done by outer function)
-                    continue
-
-            return result_str
-
-        else:
-            # Non-agent tools: execute synchronously
-            logger.info(f"Executing {tool_name} synchronously")
-
-            result = await execute_tool(
-                tool_name=tool_name,
-                parameters=parameters,  # No enrichment for non-agent tools
-                tool_call_id=tool_call_id,
-                user_id=user_id,
-                session=session,
-            )
-
-            # Publish tool result to stream registry
-            await stream_registry.publish_chunk(session_id, result)
-
-            # Serialize result
-            result_str = (
-                result.output
-                if isinstance(result.output, str)
-                else orjson.dumps(result.output).decode("utf-8")
-            )
-
-            logger.info(
-                f"Tool {tool_name} completed synchronously for session {session_id}"
-            )
-
-            # Mark operation as completed
-            await _mark_operation_completed(tool_call_id)
-
-            return result_str
+        return result_str
 
     except Exception as e:
         logger.error(f"Tool {tool_name} failed: {e}", exc_info=True)

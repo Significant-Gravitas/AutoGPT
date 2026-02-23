@@ -82,7 +82,8 @@ class CapturedTranscript:
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
-_HEARTBEAT_INTERVAL = 15.0  # seconds
+# IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
+_HEARTBEAT_INTERVAL = 10.0  # seconds
 
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
