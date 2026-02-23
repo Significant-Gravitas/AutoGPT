@@ -28,7 +28,7 @@ class CoPilotLogMetadata(TruncatedLogger):
     Args:
         logger: The underlying logger instance
         max_length: Maximum log message length before truncation
-        **kwargs: Metadata key-value pairs (e.g., task_id="abc", session_id="xyz")
+        **kwargs: Metadata key-value pairs (e.g., session_id="xyz", turn_id="abc")
             These are added to json_fields in cloud mode, or to the prefix in local mode.
     """
 
@@ -157,8 +157,8 @@ class CoPilotExecutionEntry(BaseModel):
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
 
-    task_id: str
-    """Task ID to cancel"""
+    session_id: str
+    """Session ID to cancel"""
 
 
 # ============ Queue Publishing Helpers ============ #
@@ -201,15 +201,15 @@ async def enqueue_copilot_task(
     )
 
 
-async def enqueue_cancel_task(task_id: str) -> None:
-    """Publish a cancel request for a running CoPilot task.
+async def enqueue_cancel_task(session_id: str) -> None:
+    """Publish a cancel request for a running CoPilot session.
 
     Sends a ``CancelCoPilotEvent`` to the FANOUT exchange so all executor
     pods receive the cancellation signal.
     """
     from backend.util.clients import get_async_copilot_queue
 
-    event = CancelCoPilotEvent(task_id=task_id)
+    event = CancelCoPilotEvent(session_id=session_id)
     queue_client = await get_async_copilot_queue()
     await queue_client.publish_message(
         routing_key="",  # FANOUT ignores routing key

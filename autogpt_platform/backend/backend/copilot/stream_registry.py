@@ -141,7 +141,7 @@ async def create_task(
         extra={"json_fields": log_meta},
     )
 
-    # Create task (use session_id directly, no separate task_id)
+    # Create task
     task = ActiveTask(
         session_id=session_id,
         user_id=user_id,
@@ -691,7 +691,7 @@ async def mark_task_completed(
 ) -> bool:
     """Mark a task as completed and publish finish event.
 
-    This is idempotent - calling multiple times with the same task_id is safe.
+    This is idempotent - calling multiple times with the same session_id is safe.
     Uses atomic compare-and-swap via Lua script to prevent race conditions.
     Status is updated first (source of truth), then finish event is published (best-effort).
 
@@ -804,7 +804,7 @@ async def get_active_task_for_session(
 ) -> tuple[ActiveTask | None, str]:
     """Get the active (running) task for a session, if any.
 
-    Direct O(1) lookup by session_id (task_id == session_id).
+    Direct O(1) lookup by session_id.
 
     Args:
         session_id: Session ID to look up

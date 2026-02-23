@@ -102,12 +102,11 @@ async def generate_agent_dummy(
     instructions: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
-    task_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Return dummy agent synchronously (blocks for 30s, returns agent JSON).
 
-    Note: operation_id and task_id parameters are ignored - we always use synchronous mode
-    to match how we call the real agent-generator service (without operation_id/task_id).
+    Note: operation_id and session_id parameters are ignored - we always use synchronous mode.
     """
     logger.info(
         "Using dummy agent generator (sync mode): returning agent JSON after 30s"
@@ -121,11 +120,11 @@ async def generate_agent_patch_dummy(
     current_agent: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
-    task_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Return dummy patched agent synchronously (blocks for 30s, returns patched agent JSON).
 
-    Note: operation_id and task_id parameters are ignored - we always use synchronous mode.
+    Note: operation_id and session_id parameters are ignored - we always use synchronous mode.
     """
     logger.info(
         "Using dummy agent generator patch (sync mode): returning patched agent after 30s"

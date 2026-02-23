@@ -303,7 +303,7 @@ async def generate_agent_patch_external(
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
         operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
+        session_id: Session ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error
@@ -380,7 +380,7 @@ async def customize_template_external(
         modification_request: Natural language description of customizations
         context: Additional context (e.g., answers to previous questions)
         operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
+        session_id: Session ID for async processing (enables Redis Streams callback)
 
     Returns:
         Customized agent JSON, clarifying questions dict, or error dict on error

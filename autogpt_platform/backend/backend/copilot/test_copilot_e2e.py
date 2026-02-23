@@ -52,7 +52,7 @@ async def test_dummy_streaming_basic_flow():
     start_events = [e for e in events if isinstance(e, StreamStart)]
     assert len(start_events) == 1
     assert start_events[0].messageId
-    assert start_events[0].taskId
+    assert start_events[0].sessionId
 
     # Verify StreamTextDelta events
     text_events = [e for e in events if isinstance(e, StreamTextDelta)]

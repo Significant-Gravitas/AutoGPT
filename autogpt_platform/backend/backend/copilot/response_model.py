@@ -63,13 +63,13 @@ class StreamStart(StreamBaseResponse):
 
     type: ResponseType = ResponseType.START
     messageId: str = Field(..., description="Unique message ID")
-    taskId: str | None = Field(
+    sessionId: str | None = Field(
         default=None,
-        description="Task ID for SSE reconnection. Clients can reconnect using GET /tasks/{taskId}/stream",
+        description="Session ID for SSE reconnection.",
     )
 
     def to_sse(self) -> str:
-        """Convert to SSE format, excluding non-protocol fields like taskId."""
+        """Convert to SSE format, excluding non-protocol fields like sessionId."""
         data: dict[str, Any] = {
             "type": self.type.value,
             "messageId": self.messageId,

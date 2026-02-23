@@ -127,7 +127,6 @@ class CancelTaskResponse(BaseModel):
     """Response model for the cancel task endpoint."""
 
     cancelled: bool
-    task_id: str | None = None
     reason: str | None = None
 
 
@@ -253,7 +252,7 @@ async def get_session(
     Retrieve the details of a specific chat session.
 
     Looks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.
-    If there's an active stream for this session, returns the task_id for reconnection.
+    If there's an active stream for this session, returns active_stream info for reconnection.
 
     Args:
         session_id: The unique identifier for the desired chat session.
@@ -361,16 +360,15 @@ async def stream_chat_post(
       - Tool execution results
 
     The AI generation runs in a background task that continues even if the client disconnects.
-    All chunks are written to Redis for reconnection support. If the client disconnects,
-    they can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.
+    All chunks are written to a per-turn Redis stream for reconnection support. If the client
+    disconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.
 
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
         user_id: Optional authenticated user ID.
     Returns:
-        StreamingResponse: SSE-formatted response chunks. First chunk is a "start" event
-        containing the task_id for reconnection.
+        StreamingResponse: SSE-formatted response chunks.
 
     """
     import asyncio
@@ -722,168 +720,6 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
-
-
-# ========== Task Streaming (SSE Reconnection) ==========
-
-
-@router.get(
-    "/tasks/{task_id}/stream",
-)
-async def stream_task(
-    task_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
-    last_message_id: str = Query(
-        default="0-0",
-        description="Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
-    ),
-):
-    """
-    Reconnect to a long-running task's SSE stream.
-
-    When a long-running operation (like agent generation) starts, the client
-    receives a task_id. If the connection drops, the client can reconnect
-    using this endpoint to resume receiving updates.
-
-    Args:
-        task_id: The task ID from the operation_started response.
-        user_id: Authenticated user ID for ownership validation.
-        last_message_id: Last Redis Stream message ID received ("0-0" for full replay).
-
-    Returns:
-        StreamingResponse: SSE-formatted response chunks starting after last_message_id.
-
-    Raises:
-        HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.
-    """
-    # Check task existence and expiry before subscribing
-    task, error_code = await stream_registry.get_task_with_expiry_info(
-        session_id=task_id
-    )
-
-    if error_code == "TASK_EXPIRED":
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "code": "TASK_EXPIRED",
-                "message": "This operation has expired. Please try again.",
-            },
-        )
-
-    if error_code == "TASK_NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "TASK_NOT_FOUND",
-                "message": f"Task {task_id} not found.",
-            },
-        )
-
-    # Validate ownership if task has an owner
-    if task and task.user_id and user_id != task.user_id:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "ACCESS_DENIED",
-                "message": "You do not have access to this task.",
-            },
-        )
-
-    # Get subscriber queue from stream registry
-    subscriber_queue = await stream_registry.subscribe_to_task(
-        session_id=task_id,
-        user_id=user_id,
-        last_message_id=last_message_id,
-    )
-
-    if subscriber_queue is None:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "TASK_NOT_FOUND",
-                "message": f"Task {task_id} not found or access denied.",
-            },
-        )
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
-        try:
-            while True:
-                try:
-                    # Wait for next chunk with timeout for heartbeats
-                    chunk = await asyncio.wait_for(
-                        subscriber_queue.get(), timeout=heartbeat_interval
-                    )
-                    yield chunk.to_sse()
-
-                    # Check for finish signal
-                    if isinstance(chunk, StreamFinish):
-                        break
-                except asyncio.TimeoutError:
-                    # Send heartbeat to keep connection alive
-                    yield StreamHeartbeat().to_sse()
-        except Exception as e:
-            logger.error(f"Error in task stream {task_id}: {e}", exc_info=True)
-        finally:
-            # Unsubscribe when client disconnects or stream ends
-            try:
-                await stream_registry.unsubscribe_from_task(task_id, subscriber_queue)
-            except Exception as unsub_err:
-                logger.error(
-                    f"Error unsubscribing from task {task_id}: {unsub_err}",
-                    exc_info=True,
-                )
-            # AI SDK protocol termination - always yield even if unsubscribe fails
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "x-vercel-ai-ui-message-stream": "v1",
-        },
-    )
-
-
-@router.get(
-    "/tasks/{task_id}",
-)
-async def get_task_status(
-    task_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
-) -> dict:
-    """
-    Get the status of a long-running task.
-
-    Args:
-        task_id: The task ID to check.
-        user_id: Authenticated user ID for ownership validation.
-
-    Returns:
-        dict: Task status including task_id, status, and tool_name.
-
-    Raises:
-        NotFoundError: If task_id is not found or user doesn't have access.
-    """
-    task = await stream_registry.get_task(session_id=task_id)
-
-    if task is None:
-        raise NotFoundError(f"Task {task_id} not found.")
-
-    # Validate ownership - if task has an owner, requester must match
-    if task.user_id and user_id != task.user_id:
-        raise NotFoundError(f"Task {task_id} not found.")
-
-    return {
-        "task_id": task.session_id,
-        "session_id": task.session_id,
-        "status": task.status,
-        "tool_name": task.tool_name,
-        "created_at": task.created_at.isoformat(),
-    }
 
 
 # ========== Configuration ==========

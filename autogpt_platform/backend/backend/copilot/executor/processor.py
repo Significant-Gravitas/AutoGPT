@@ -152,7 +152,6 @@ class CoPilotProcessor:
         """
         log = CoPilotLogMetadata(
             logging.getLogger(__name__),
-            task_id=entry.session_id,
             session_id=entry.session_id,
             user_id=entry.user_id,
         )

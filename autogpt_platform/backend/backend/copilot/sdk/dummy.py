@@ -45,11 +45,10 @@ async def stream_chat_completion_dummy(
     )
 
     message_id = str(uuid.uuid4())
-    task_id = str(uuid.uuid4())
     text_block_id = str(uuid.uuid4())
 
     # Start the stream
-    yield StreamStart(messageId=message_id, taskId=task_id)
+    yield StreamStart(messageId=message_id, sessionId=session_id)
 
     # Simulate streaming text response with delays
     dummy_response = "I counted: 1... 2... 3. All done!"

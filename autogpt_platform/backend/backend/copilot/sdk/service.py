@@ -450,8 +450,7 @@ async def stream_chat_completion_sdk(
     )
     system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
-    task_id = str(uuid.uuid4())
-    stream_id = task_id  # Use task_id as unique stream identifier
+    stream_id = str(uuid.uuid4())
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -475,7 +474,7 @@ async def stream_chat_completion_sdk(
         yield StreamFinish()
         return
 
-    yield StreamStart(messageId=message_id, taskId=task_id)
+    yield StreamStart(messageId=message_id, sessionId=session_id)
 
     stream_completed = False
     # Initialise variables before the try so the finally block can
@@ -583,7 +582,6 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-            adapter.set_task_id(task_id)
 
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
