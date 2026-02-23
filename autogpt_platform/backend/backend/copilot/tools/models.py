@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,8 @@ class ResponseType(str, Enum):
     # Feature request types
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
+    # Goal refinement
+    SUGGESTED_GOAL = "suggested_goal"
 
 
 # Base response model
@@ -296,6 +298,22 @@ class ClarificationNeededResponse(ToolResponseBase):
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
 
 
+class SuggestedGoalResponse(ToolResponseBase):
+    """Response when the goal needs refinement with a suggested alternative."""
+
+    type: ResponseType = ResponseType.SUGGESTED_GOAL
+    suggested_goal: str = Field(description="The suggested alternative goal")
+    reason: str = Field(
+        default="", description="Why the original goal needs refinement"
+    )
+    original_goal: str = Field(
+        default="", description="The user's original goal for context"
+    )
+    goal_type: Literal["vague", "unachievable"] = Field(
+        default="vague", description="Type: 'vague' or 'unachievable'"
+    )
+
+
 # Documentation search models
 class DocSearchResult(BaseModel):
     """A single documentation search result."""
@@ -486,7 +504,6 @@ class FeatureRequestInfo(BaseModel):
     id: str
     identifier: str
     title: str
-    description: str | None = None
 
 
 class FeatureRequestSearchResponse(ToolResponseBase):

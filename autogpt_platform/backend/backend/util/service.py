@@ -599,6 +599,15 @@ def get_service_client(
                 if error_response and error_response.type in EXCEPTION_MAPPING:
                     exception_class = EXCEPTION_MAPPING[error_response.type]
                     args = error_response.args or [str(e)]
+
+                    # Prisma DataError subclasses expect a dict `data` arg,
+                    # but RPC serialization only preserves the string message
+                    # from exc.args.  Wrap it in the expected structure so
+                    # the constructor doesn't crash on `.get()`.
+                    if issubclass(exception_class, DataError):
+                        msg = str(args[0]) if args else str(e)
+                        raise exception_class({"user_facing_error": {"message": msg}})
+
                     raise exception_class(*args)
 
                 # Otherwise categorize by HTTP status code
