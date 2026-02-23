@@ -212,20 +212,25 @@ def _build_long_running_callback(
     async def _callback(
         tool_name: str, args: dict[str, Any], session: ChatSession
     ) -> dict[str, Any]:
+        from .tool_adapter import _current_tool_use_id
+
         operation_id = str(uuid.uuid4())
         session_id = session.session_id
 
-        # CRITICAL: Find the tool_use_id from the latest assistant message.
-        # The SDK has already saved the AssistantMessage with the ToolUseBlock,
-        # so we can query it to get the original Claude-generated tool_use_id.
-        # This ensures the background task result matches the tool_use in the conversation.
-        tool_call_id = await _find_latest_tool_use_id(session_id, tool_name)
+        # CRITICAL: Get the tool_use_id from the ContextVar set by security hooks.
+        # This is faster than querying the session messages and ensures we use
+        # the exact ID that Claude generated for this tool call.
+        tool_call_id = _current_tool_use_id.get()
 
         if not tool_call_id:
-            # Fallback: generate ID (shouldn't happen in normal flow)
+            # Fallback: query session messages if ContextVar not set
+            tool_call_id = await _find_latest_tool_use_id(session_id, tool_name)
+
+        if not tool_call_id:
+            # Final fallback: generate ID (shouldn't happen in normal flow)
             tool_call_id = f"sdk-{uuid.uuid4().hex[:12]}"
             logger.warning(
-                f"[SDK] No tool_call_id found in session messages for {tool_name}, "
+                f"[SDK] No tool_call_id found for {tool_name}, "
                 f"using generated ID: {tool_call_id}"
             )
 
