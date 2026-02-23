@@ -27,7 +27,6 @@ class ChatConfig(BaseSettings):
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
     # Streaming Configuration
-    stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
     max_retries: int = Field(
         default=3,
         description="Max retries for fallback path (SDK handles retries internally)",
@@ -39,14 +38,21 @@ class ChatConfig(BaseSettings):
 
     # Long-running operation configuration
     long_running_operation_ttl: int = Field(
-        default=600,
-        description="TTL in seconds for long-running operation tracking in Redis (safety net if pod dies)",
+        default=3600,
+        description="TTL in seconds for long-running operation deduplication lock "
+        "(1 hour, matches stream_ttl). Prevents duplicate operations if pod dies. "
+        "For longer operations, the stream_registry heartbeat keeps them alive.",
     )
 
     # Stream registry configuration for SSE reconnection
     stream_ttl: int = Field(
         default=3600,
         description="TTL in seconds for stream data in Redis (1 hour)",
+    )
+    stream_lock_ttl: int = Field(
+        default=120,
+        description="TTL in seconds for stream lock (2 minutes). Short timeout allows "
+        "reconnection after refresh/crash without long waits.",
     )
     stream_max_length: int = Field(
         default=10000,

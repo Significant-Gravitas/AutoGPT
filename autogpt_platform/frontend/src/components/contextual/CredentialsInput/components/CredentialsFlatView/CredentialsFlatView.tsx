@@ -119,7 +119,7 @@ export function CredentialsFlatView({
       ) : (
         !readOnly && (
           <Button
-            variant="secondary"
+            variant="primary"
             size="small"
             onClick={onAddCredential}
             className="w-fit"

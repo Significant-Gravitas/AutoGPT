@@ -704,6 +704,7 @@ export function GenericTool({ part }: Props) {
           title={accordionData.title}
           description={accordionData.description}
           titleClassName={isError ? "text-red-500" : undefined}
+          defaultExpanded={category === "todo"}
         >
           {accordionData.content}
         </ToolAccordion>
