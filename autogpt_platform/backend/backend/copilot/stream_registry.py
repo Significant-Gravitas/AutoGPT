@@ -26,6 +26,7 @@ import orjson
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
+from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
 from .response_model import (
     StreamBaseResponse,
     StreamError,
@@ -830,17 +831,22 @@ async def get_active_task_for_session(
     if task_user_id and user_id != task_user_id:
         return None, "0-0"
 
-    # Check if task is stale (running for >10 minutes without completion)
+    # Check if task is stale (running beyond tool timeout + buffer)
     # Auto-complete it to prevent infinite polling loops
+    # Note: Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour)
+    # so we add a 5-minute buffer to avoid false positives during legitimate operations
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
             created_at = datetime.fromisoformat(created_at_str)
             age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
-            if age_seconds > 600:  # 10 minutes
+            stale_threshold = (
+                COPILOT_CONSUMER_TIMEOUT_SECONDS + 300
+            )  # + 5 minutes buffer
+            if age_seconds > stale_threshold:
                 logger.warning(
                     f"[STALE_TASK] Auto-completing stale session {session_id[:8]}... "
-                    f"(running for {age_seconds:.0f}s)"
+                    f"(running for {age_seconds:.0f}s, threshold: {stale_threshold}s)"
                 )
                 await mark_task_completed(
                     session_id,
