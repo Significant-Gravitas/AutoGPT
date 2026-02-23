@@ -135,11 +135,8 @@ class CoPilotExecutionEntry(BaseModel):
     This model represents a chat generation task to be processed by the executor.
     """
 
-    task_id: str
-    """Unique identifier for this task (used for stream registry)"""
-
     session_id: str
-    """Chat session ID"""
+    """Chat session ID (also used for dedup/locking)"""
 
     turn_id: str = ""
     """Per-turn UUID for Redis stream isolation"""
@@ -168,7 +165,6 @@ class CancelCoPilotEvent(BaseModel):
 
 
 async def enqueue_copilot_task(
-    task_id: str,
     session_id: str,
     user_id: str | None,
     message: str,
@@ -179,8 +175,7 @@ async def enqueue_copilot_task(
     """Enqueue a CoPilot task for processing by the executor service.
 
     Args:
-        task_id: Unique identifier for this task (used for stream registry)
-        session_id: Chat session ID
+        session_id: Chat session ID (also used for dedup/locking)
         user_id: User ID (may be None for anonymous users)
         message: User's message to process
         turn_id: Per-turn UUID for Redis stream isolation
@@ -190,7 +185,6 @@ async def enqueue_copilot_task(
     from backend.util.clients import get_async_copilot_queue
 
     entry = CoPilotExecutionEntry(
-        task_id=task_id,
         session_id=session_id,
         turn_id=turn_id,
         user_id=user_id,

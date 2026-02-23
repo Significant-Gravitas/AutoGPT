@@ -352,7 +352,7 @@ class CoPilotExecutor(AppProcess):
             ack_message(reject=True, requeue=False)
             return
 
-        task_id = entry.task_id
+        task_id = entry.session_id
 
         # Check for local duplicate - task is already running on this executor
         if task_id in self.active_tasks:

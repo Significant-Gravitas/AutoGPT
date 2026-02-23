@@ -319,15 +319,10 @@ async def cancel_session_task(
     if not active_task:
         return CancelTaskResponse(cancelled=False, reason="no_active_task")
 
-    task_id = active_task.session_id
-    await enqueue_cancel_task(task_id)
-    logger.info(
-        f"[CANCEL] Published cancel for task ...{task_id[-8:]} "
-        f"session ...{session_id[-8:]}"
-    )
+    await enqueue_cancel_task(session_id)
+    logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 
     # Poll until the executor confirms the task is no longer running.
-    # Keep max_wait below typical reverse-proxy read timeouts.
     poll_interval = 0.5
     max_wait = 5.0
     waited = 0.0
@@ -337,15 +332,15 @@ async def cancel_session_task(
         task = await stream_registry.get_task(session_id)
         if task is None or task.status != "running":
             logger.info(
-                f"[CANCEL] Task ...{task_id[-8:]} confirmed stopped "
+                f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={task.status if task else 'gone'}) after {waited:.1f}s"
             )
-            return CancelTaskResponse(cancelled=True, task_id=task_id)
+            return CancelTaskResponse(cancelled=True)
 
-    logger.warning(f"[CANCEL] Task ...{task_id[-8:]} not confirmed after {max_wait}s")
-    return CancelTaskResponse(
-        cancelled=True, task_id=task_id, reason="cancel_published_not_confirmed"
+    logger.warning(
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s"
     )
+    return CancelTaskResponse(cancelled=True, reason="cancel_published_not_confirmed")
 
 
 @router.post(
@@ -448,7 +443,6 @@ async def stream_chat_post(
     subscribe_from_id = "0-0"
 
     await enqueue_copilot_task(
-        task_id=session_id,
         session_id=session_id,
         user_id=user_id,
         message=request.message,
