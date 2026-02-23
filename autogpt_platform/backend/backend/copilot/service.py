@@ -1651,6 +1651,13 @@ async def _execute_long_running_tool_with_streaming(
         # Publish tool result to stream registry
         await stream_registry.publish_chunk(session_id, result)
 
+        # Publish StreamFinish to signal completion to frontend
+        await stream_registry.publish_chunk(session_id, StreamFinishStep())
+        await stream_registry.publish_chunk(session_id, StreamFinish())
+
+        # Mark task as completed in stream registry
+        await stream_registry.mark_task_completed(session_id, status="completed")
+
         # Serialize result to string
         result_str = (
             result.output
