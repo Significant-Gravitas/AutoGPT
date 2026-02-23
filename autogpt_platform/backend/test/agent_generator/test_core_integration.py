@@ -173,9 +173,7 @@ class TestGenerateAgentPatch:
             current_agent = {"nodes": [], "links": []}
             result = await core.generate_agent_patch("Add a node", current_agent)
 
-            mock_external.assert_called_once_with(
-                "Add a node", current_agent, None
-            )
+            mock_external.assert_called_once_with("Add a node", current_agent, None)
             assert result == expected_result
 
     @pytest.mark.asyncio
