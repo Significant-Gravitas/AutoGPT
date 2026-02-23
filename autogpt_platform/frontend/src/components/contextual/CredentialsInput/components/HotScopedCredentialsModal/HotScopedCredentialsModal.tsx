@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -69,9 +69,10 @@ export function HostScopedCredentialsModal({
     Array<{ id: string; key: string; value: string }>
   >([{ id: crypto.randomUUID(), key: "", value: "" }]);
 
-  // Update form values when siblingInputs change (render-time sync instead of useEffect)
+  // Update form values when siblingInputs change
   const prevHostRef = useRef(currentHost);
-  if (currentHost !== prevHostRef.current) {
+  useEffect(() => {
+    if (currentHost === prevHostRef.current) return;
     prevHostRef.current = currentHost;
     if (currentHost) {
       form.setValue("host", currentHost);
@@ -80,7 +81,7 @@ export function HostScopedCredentialsModal({
       form.setValue("host", "");
       form.setValue("title", "Manual Entry");
     }
-  }
+  }, [currentHost, form]);
 
   if (
     !credentials ||
@@ -92,12 +93,12 @@ export function HostScopedCredentialsModal({
 
   const { provider, providerName, createHostScopedCredentials } = credentials;
 
-  const addHeaderPair = () => {
-    setHeaderPairs([
-      ...headerPairs,
+  function addHeaderPair() {
+    setHeaderPairs((prev) => [
+      ...prev,
       { id: crypto.randomUUID(), key: "", value: "" },
     ]);
-  };
+  }
 
   const removeHeaderPair = (index: number) => {
     if (headerPairs.length > 1) {
