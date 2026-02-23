@@ -58,6 +58,7 @@ function toToolInput(rawArguments: unknown): unknown {
 export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
+  options?: { isComplete?: boolean },
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -103,6 +104,16 @@ export function convertChatSessionMessagesToUiMessages(
             state: "output-available",
             input,
             output: typeof output === "string" ? safeJsonParse(output) : output,
+          });
+        } else if (options?.isComplete) {
+          // Session is complete (no active stream) but this tool call has
+          // no output in the DB — mark as completed to stop stale spinners.
+          parts.push({
+            type: `tool-${toolName}`,
+            toolCallId,
+            state: "output-available",
+            input,
+            output: "",
           });
         } else {
           parts.push({

@@ -39,12 +39,19 @@ export function RunBlockTool({ part }: Props) {
   const isError =
     part.state === "output-error" ||
     (!!output && isRunBlockErrorOutput(output));
+  const setupRequirementsOutput =
+    part.state === "output-available" &&
+    output &&
+    isRunBlockSetupRequirementsOutput(output)
+      ? output
+      : null;
+
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
+    !setupRequirementsOutput &&
     (isRunBlockBlockOutput(output) ||
       isRunBlockDetailsOutput(output) ||
-      isRunBlockSetupRequirementsOutput(output) ||
       isRunBlockErrorOutput(output));
 
   return (
@@ -57,16 +64,18 @@ export function RunBlockTool({ part }: Props) {
         />
       </div>
 
+      {setupRequirementsOutput && (
+        <div className="mt-2">
+          <SetupRequirementsCard output={setupRequirementsOutput} />
+        </div>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}
 
           {isRunBlockDetailsOutput(output) && (
             <BlockDetailsCard output={output} />
-          )}
-
-          {isRunBlockSetupRequirementsOutput(output) && (
-            <SetupRequirementsCard output={output} />
           )}
 
           {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}
