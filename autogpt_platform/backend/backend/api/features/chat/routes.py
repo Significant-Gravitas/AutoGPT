@@ -2,21 +2,16 @@
 
 import asyncio
 import logging
-import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.completion_handler import (
-    process_operation_failure,
-    process_operation_success,
-)
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_task
 from backend.copilot.model import (
@@ -52,7 +47,6 @@ from backend.copilot.tools.models import (
     InputValidationErrorResponse,
     NeedLoginResponse,
     NoResultsResponse,
-    OperationInProgressResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
     UnderstandingUpdatedResponse,
@@ -105,8 +99,6 @@ class ActiveStreamInfo(BaseModel):
 
     task_id: str
     last_message_id: str  # Redis Stream message ID for resumption
-    operation_id: str  # Operation ID for completion tracking
-    tool_name: str  # Name of the tool being executed
 
 
 class SessionDetailResponse(BaseModel):
@@ -142,14 +134,6 @@ class CancelTaskResponse(BaseModel):
     cancelled: bool
     task_id: str | None = None
     reason: str | None = None
-
-
-class OperationCompleteRequest(BaseModel):
-    """Request model for external completion webhook."""
-
-    success: bool
-    result: dict | str | None = None
-    error: str | None = None
 
 
 # ========== Routes ==========
@@ -312,8 +296,6 @@ async def get_session(
         active_stream_info = ActiveStreamInfo(
             task_id=active_task.session_id,
             last_message_id="0-0",
-            operation_id=active_task.operation_id,
-            tool_name=active_task.tool_name,
         )
 
     return SessionDetailResponse(
@@ -452,7 +434,6 @@ async def stream_chat_post(
     # Create a task in the stream registry for reconnection support
     # Note: task_id = session_id (no longer generating random UUIDs)
     task_id = session_id  # For backwards compatibility in responses
-    operation_id = str(uuid_module.uuid4())
     log_meta["task_id"] = task_id
 
     task_create_start = time.perf_counter()
@@ -461,7 +442,6 @@ async def stream_chat_post(
         user_id=user_id,
         tool_call_id="chat_stream",  # Not a tool call, but needed for the model
         tool_name="chat",
-        operation_id=operation_id,
     )
     logger.info(
         f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
@@ -518,7 +498,6 @@ async def stream_chat_post(
         task_id=task_id,
         session_id=session_id,
         user_id=user_id,
-        operation_id=operation_id,
         message=request.message,
         is_user_message=request.is_user_message,
         context=request.context,
@@ -946,7 +925,7 @@ async def get_task_status(
         user_id: Authenticated user ID for ownership validation.
 
     Returns:
-        dict: Task status including task_id, status, tool_name, and operation_id.
+        dict: Task status including task_id, status, and tool_name.
 
     Raises:
         NotFoundError: If task_id is not found or user doesn't have access.
@@ -965,71 +944,8 @@ async def get_task_status(
         "session_id": task.session_id,
         "status": task.status,
         "tool_name": task.tool_name,
-        "operation_id": task.operation_id,
         "created_at": task.created_at.isoformat(),
     }
-
-
-# ========== External Completion Webhook ==========
-
-
-@router.post(
-    "/operations/{operation_id}/complete",
-    status_code=200,
-)
-async def complete_operation(
-    operation_id: str,
-    request: OperationCompleteRequest,
-    x_api_key: str | None = Header(default=None),
-) -> dict:
-    """
-    External completion webhook for long-running operations.
-
-    Called by Agent Generator (or other services) when an operation completes.
-    This triggers the stream registry to publish completion and continue LLM generation.
-
-    Args:
-        operation_id: The operation ID to complete.
-        request: Completion payload with success status and result/error.
-        x_api_key: Internal API key for authentication.
-
-    Returns:
-        dict: Status of the completion.
-
-    Raises:
-        HTTPException: If API key is invalid or operation not found.
-    """
-    # Validate internal API key - reject if not configured or invalid
-    if not config.internal_api_key:
-        logger.error(
-            "Operation complete webhook rejected: CHAT_INTERNAL_API_KEY not configured"
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Webhook not available: internal API key not configured",
-        )
-    if x_api_key != config.internal_api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    # Find task by operation_id
-    task = await stream_registry.find_task_by_operation_id(operation_id)
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Operation {operation_id} not found",
-        )
-
-    logger.info(
-        f"Received completion webhook for operation {operation_id} "
-        f"(task_id={task.session_id}, success={request.success})"
-    )
-
-    if request.success:
-        await process_operation_success(task, request.result)
-    else:
-        await process_operation_failure(task, request.error)
-
-    return {"status": "ok", "task_id": task.session_id}
 
 
 # ========== Configuration ==========
@@ -1112,7 +1028,6 @@ ToolResponseUnion = (
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse
-    | OperationInProgressResponse
 )
 
 

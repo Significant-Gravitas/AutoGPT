@@ -66,7 +66,6 @@ class ActiveTask:
     user_id: str | None
     tool_call_id: str
     tool_name: str
-    operation_id: str
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -83,17 +82,11 @@ def _get_task_stream_key(session_id: str) -> str:
     return f"{config.task_stream_prefix}{session_id}"
 
 
-def _get_operation_mapping_key(operation_id: str) -> str:
-    """Get Redis key for operation_id to task_id mapping."""
-    return f"{config.task_op_prefix}{operation_id}"
-
-
 async def create_task(
     session_id: str,
     user_id: str | None,
     tool_call_id: str,
     tool_name: str,
-    operation_id: str,
     blocking: bool = False,
 ) -> ActiveTask:
     """Create a new streaming task in Redis (keyed by session_id).
@@ -103,7 +96,6 @@ async def create_task(
         user_id: User ID (may be None for anonymous)
         tool_call_id: Tool call ID from the LLM
         tool_name: Name of the tool being executed
-        operation_id: Operation ID for webhook callbacks
 
     Returns:
         The created ActiveTask instance (metadata only)
@@ -131,7 +123,6 @@ async def create_task(
         user_id=user_id,
         tool_call_id=tool_call_id,
         tool_name=tool_name,
-        operation_id=operation_id,
         blocking=blocking,
     )
 
@@ -145,7 +136,6 @@ async def create_task(
     )
 
     meta_key = _get_task_meta_key(session_id)
-    op_key = _get_operation_mapping_key(operation_id)
     logger.info(f"[DEBUG] create_task storing at key: {meta_key}, status=running")
 
     hset_start = time.perf_counter()
@@ -156,7 +146,6 @@ async def create_task(
             "user_id": user_id or "",
             "tool_call_id": tool_call_id,
             "tool_name": tool_name,
-            "operation_id": operation_id,
             "blocking": "1" if blocking else "0",
             "status": task.status,
             "created_at": task.created_at.isoformat(),
@@ -169,9 +158,6 @@ async def create_task(
     )
 
     await redis.expire(meta_key, config.stream_ttl)
-
-    # Create operation_id -> session_id mapping for webhook lookups
-    await redis.set(op_key, session_id, ex=config.stream_ttl)
 
     total_time = (time.perf_counter() - start_time) * 1000
     logger.info(
@@ -750,30 +736,6 @@ async def mark_task_completed(
     return True
 
 
-async def find_task_by_operation_id(operation_id: str) -> ActiveTask | None:
-    """Find a task by its operation ID.
-
-    Used by webhook callbacks to locate the task to update.
-
-    Args:
-        operation_id: Operation ID to search for
-
-    Returns:
-        ActiveTask if found, None otherwise
-    """
-    redis = await get_redis_async()
-    op_key = _get_operation_mapping_key(operation_id)
-    session_id = await redis.get(op_key)
-
-    if not session_id:
-        return None
-
-    session_id_str = (
-        session_id.decode() if isinstance(session_id, bytes) else session_id
-    )
-    return await get_task(session_id_str)
-
-
 async def get_task(session_id: str) -> ActiveTask | None:
     """Get a task by its ID from Redis.
 
@@ -796,7 +758,6 @@ async def get_task(session_id: str) -> ActiveTask | None:
         user_id=meta.get("user_id", "") or None,
         tool_call_id=meta.get("tool_call_id", ""),
         tool_name=meta.get("tool_name", ""),
-        operation_id=meta.get("operation_id", ""),
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
     )
@@ -838,7 +799,6 @@ async def get_task_with_expiry_info(
             user_id=meta.get("user_id", "") or None,
             tool_call_id=meta.get("tool_call_id", ""),
             tool_name=meta.get("tool_name", ""),
-            operation_id=meta.get("operation_id", ""),
             blocking=meta.get("blocking") == "1",
             status=meta.get("status", "running"),  # type: ignore[arg-type]
         ),
@@ -852,7 +812,7 @@ async def get_active_task_for_session(
 ) -> tuple[ActiveTask | None, str]:
     """Get the active (running) task for a session, if any.
 
-    Scans Redis for tasks matching the session_id with status="running".
+    Direct O(1) lookup by session_id (task_id == session_id).
 
     Args:
         session_id: Session ID to look up
@@ -863,84 +823,66 @@ async def get_active_task_for_session(
     """
 
     redis = await get_redis_async()
+    meta_key = _get_task_meta_key(session_id)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
-    # Scan Redis for task metadata keys
-    cursor = 0
-    tasks_checked = 0
+    if not meta:
+        return None, "0-0"
 
-    while True:
-        cursor, keys = await redis.scan(
-            cursor, match=f"{config.task_meta_prefix}*", count=100
-        )
+    task_status = meta.get("status", "")
+    task_user_id = meta.get("user_id", "") or None
 
-        for key in keys:
-            tasks_checked += 1
-            meta: dict[Any, Any] = await redis.hgetall(key)  # type: ignore[misc]
-            if not meta:
-                continue
+    if task_status != "running":
+        return None, "0-0"
 
-            # Note: Redis client uses decode_responses=True, so keys/values are strings
-            task_session_id = meta.get("session_id", "")
-            task_status = meta.get("status", "")
-            task_user_id = meta.get("user_id", "") or None
+    # Validate ownership - if task has an owner, requester must match
+    if task_user_id and user_id != task_user_id:
+        return None, "0-0"
 
-            if task_session_id == session_id and task_status == "running":
-                # Validate ownership - if task has an owner, requester must match
-                if task_user_id and user_id != task_user_id:
-                    continue
-
-                # Check if task is stale (running for >10 minutes without completion)
-                # Auto-complete it to prevent infinite polling loops
-                created_at_str = meta.get("created_at")
-                if created_at_str:
-                    try:
-                        created_at = datetime.fromisoformat(created_at_str)
-                        age_seconds = (
-                            datetime.now(timezone.utc) - created_at
-                        ).total_seconds()
-                        if age_seconds > 600:  # 10 minutes
-                            logger.warning(
-                                f"[STALE_TASK] Auto-completing stale session {session_id[:8]}... "
-                                f"(running for {age_seconds:.0f}s)"
-                            )
-                            await mark_task_completed(
-                                session_id,
-                                status="failed",
-                                error_message=f"Task timed out after {age_seconds:.0f}s",
-                            )
-                            continue  # Skip this task, it's now completed
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"Failed to parse created_at: {e}")
-
-                logger.info(f"[TASK_LOOKUP] Found running session {session_id[:8]}...")
-
-                # Get the last message ID from Redis Stream
-                stream_key = _get_task_stream_key(session_id)
-                last_id = "0-0"
-                try:
-                    messages = await redis.xrevrange(stream_key, count=1)
-                    if messages:
-                        msg_id = messages[0][0]
-                        last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
-                except Exception as e:
-                    logger.warning(f"Failed to get last message ID: {e}")
-
-                return (
-                    ActiveTask(
-                        session_id=session_id,
-                        user_id=task_user_id,
-                        tool_call_id=meta.get("tool_call_id", ""),
-                        tool_name=meta.get("tool_name", ""),
-                        operation_id=meta.get("operation_id", ""),
-                        status="running",
-                    ),
-                    last_id,
+    # Check if task is stale (running for >10 minutes without completion)
+    # Auto-complete it to prevent infinite polling loops
+    created_at_str = meta.get("created_at")
+    if created_at_str:
+        try:
+            created_at = datetime.fromisoformat(created_at_str)
+            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+            if age_seconds > 600:  # 10 minutes
+                logger.warning(
+                    f"[STALE_TASK] Auto-completing stale session {session_id[:8]}... "
+                    f"(running for {age_seconds:.0f}s)"
                 )
+                await mark_task_completed(
+                    session_id,
+                    status="failed",
+                    error_message=f"Task timed out after {age_seconds:.0f}s",
+                )
+                return None, "0-0"
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to parse created_at: {e}")
 
-        if cursor == 0:
-            break
+    logger.info(f"[TASK_LOOKUP] Found running session {session_id[:8]}...")
 
-    return None, "0-0"
+    # Get the last message ID from Redis Stream
+    stream_key = _get_task_stream_key(session_id)
+    last_id = "0-0"
+    try:
+        messages = await redis.xrevrange(stream_key, count=1)
+        if messages:
+            msg_id = messages[0][0]
+            last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
+    except Exception as e:
+        logger.warning(f"Failed to get last message ID: {e}")
+
+    return (
+        ActiveTask(
+            session_id=session_id,
+            user_id=task_user_id,
+            tool_call_id=meta.get("tool_call_id", ""),
+            tool_name=meta.get("tool_name", ""),
+            status="running",
+        ),
+        last_id,
+    )
 
 
 def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:

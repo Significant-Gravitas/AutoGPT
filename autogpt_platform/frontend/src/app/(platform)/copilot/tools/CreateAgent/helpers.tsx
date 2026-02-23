@@ -2,7 +2,6 @@ import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentP
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
 import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
-import type { OperationInProgressResponse } from "@/app/api/__generated__/models/operationInProgressResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
 import {
@@ -14,7 +13,6 @@ import type { ToolUIPart } from "ai";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 
 export type CreateAgentToolOutput =
-  | OperationInProgressResponse
   | AgentPreviewResponse
   | AgentSavedResponse
   | ClarificationNeededResponse
@@ -35,7 +33,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
   if (typeof output === "object") {
     const type = (output as { type?: unknown }).type;
     if (
-      type === ResponseType.operation_in_progress ||
       type === ResponseType.agent_preview ||
       type === ResponseType.agent_saved ||
       type === ResponseType.clarification_needed ||
@@ -44,7 +41,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
     ) {
       return output as CreateAgentToolOutput;
     }
-    if ("tool_call_id" in output) return output as OperationInProgressResponse;
     if ("agent_json" in output && "agent_name" in output)
       return output as AgentPreviewResponse;
     if ("agent_id" in output && "library_agent_id" in output)
@@ -62,15 +58,6 @@ export function getCreateAgentToolOutput(
 ): CreateAgentToolOutput | null {
   if (!part || typeof part !== "object") return null;
   return parseOutput((part as { output?: unknown }).output);
-}
-
-export function isOperationInProgressOutput(
-  output: CreateAgentToolOutput,
-): output is OperationInProgressResponse {
-  return (
-    output.type === ResponseType.operation_in_progress ||
-    "tool_call_id" in output
-  );
 }
 
 export function isAgentPreviewOutput(
@@ -121,8 +108,6 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Creating a new agent";
-      if (isOperationInProgressOutput(output))
-        return "Agent creation already in progress";
       if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isClarificationNeededOutput(output)) return "Needs clarification";

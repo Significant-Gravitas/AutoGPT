@@ -115,6 +115,7 @@ export function useChatSession() {
     hydratedMessages,
     hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
+    isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,
   };

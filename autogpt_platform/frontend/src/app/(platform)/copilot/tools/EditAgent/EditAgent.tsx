@@ -27,7 +27,6 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -80,13 +79,6 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     };
   }
-  if (isOperationInProgressOutput(output)) {
-    return {
-      icon,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
   return {
     icon: (
       <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
@@ -106,8 +98,7 @@ export function EditAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  // edit_agent is always long-running
-  const isOperating = !output || isOperationInProgressOutput(output);
+  const isOperating = !output;
 
   // Always show accordion for edit_agent (to show mini game during execution)
   const hasExpandableContent = true;

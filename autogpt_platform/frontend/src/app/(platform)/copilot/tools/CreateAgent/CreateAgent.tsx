@@ -36,7 +36,6 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
@@ -93,14 +92,6 @@ function getAccordionMeta(output: CreateAgentToolOutput | null) {
       expanded: true,
     };
   }
-  if (isOperationInProgressOutput(output)) {
-    return {
-      icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
   return {
     icon: (
       <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
@@ -122,8 +113,7 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  // create_agent is always long-running
-  const isOperating = !output || isOperationInProgressOutput(output);
+  const isOperating = !output;
 
   // Always show accordion for create_agent (to show mini game during execution)
   const hasExpandableContent = true;

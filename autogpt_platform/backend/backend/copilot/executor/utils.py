@@ -144,9 +144,6 @@ class CoPilotExecutionEntry(BaseModel):
     user_id: str | None
     """User ID (may be None for anonymous users)"""
 
-    operation_id: str
-    """Operation ID for webhook callbacks and completion tracking"""
-
     message: str
     """User's message to process"""
 
@@ -171,7 +168,6 @@ async def enqueue_copilot_task(
     task_id: str,
     session_id: str,
     user_id: str | None,
-    operation_id: str,
     message: str,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
@@ -182,7 +178,6 @@ async def enqueue_copilot_task(
         task_id: Unique identifier for this task (used for stream registry)
         session_id: Chat session ID
         user_id: User ID (may be None for anonymous users)
-        operation_id: Operation ID for webhook callbacks and completion tracking
         message: User's message to process
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
@@ -193,7 +188,6 @@ async def enqueue_copilot_task(
         task_id=task_id,
         session_id=session_id,
         user_id=user_id,
-        operation_id=operation_id,
         message=message,
         is_user_message=is_user_message,
         context=context,

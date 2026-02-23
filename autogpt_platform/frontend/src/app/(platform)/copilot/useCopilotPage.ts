@@ -35,12 +35,32 @@ function resolveInProgressTools(
   }));
 }
 
-/** Deduplicate messages by ID to prevent duplicate streams from showing duplicate UI. */
+/** Build a fingerprint from a message's role + text content for cross-boundary dedup. */
+function messageFingerprint(msg: UIMessage): string {
+  const texts = msg.parts
+    .map((p) => ("text" in p && typeof p.text === "string" ? p.text : ""))
+    .join("\n");
+  return `${msg.role}::${texts}`;
+}
+
+/**
+ * Deduplicate messages by ID *and* by content fingerprint.
+ * ID-based dedup catches duplicates within the same source (e.g. two
+ * identical stream events).  Fingerprint-based dedup catches duplicates
+ * across the hydration/stream boundary where IDs differ (synthetic
+ * `${sessionId}-${index}` vs AI SDK nanoid).
+ */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
   return messages.filter((msg) => {
-    if (seen.has(msg.id)) return false;
-    seen.add(msg.id);
+    if (seenIds.has(msg.id)) return false;
+    seenIds.add(msg.id);
+
+    const fp = messageFingerprint(msg);
+    if (fp !== "::" && seenFingerprints.has(fp)) return false;
+    seenFingerprints.add(fp);
+
     return true;
   });
 }
@@ -61,6 +81,7 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     isLoadingSession,
+    isSessionError,
     createSession,
     isCreatingSession,
   } = useChatSession();
@@ -143,28 +164,6 @@ export function useCopilotPage() {
     () => deduplicateMessages(rawMessages),
     [rawMessages],
   );
-
-  // DEBUG: Log when messages change to track duplicates
-  useEffect(() => {
-    console.log("[COPILOT_DEBUG_STREAM] Total messages:", messages.length);
-    messages.forEach((msg, idx) => {
-      // Extract actual content from parts array
-      const textContent = msg.parts
-        ?.map((part) => {
-          if ("text" in part) return part.text;
-          return null;
-        })
-        .filter(Boolean)
-        .join(" ");
-
-      const preview =
-        textContent && textContent.length > 100
-          ? textContent.substring(0, 100) + "..."
-          : textContent || "(no text)";
-
-      console.log(`  [${idx}] ${msg.role} (id: ${msg.id}): ${preview}`);
-    });
-  }, [messages]);
 
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
@@ -356,6 +355,7 @@ export function useCopilotPage() {
     stop,
     isReconnecting,
     isLoadingSession,
+    isSessionError,
     isCreatingSession,
     isUserLoading,
     isLoggedIn,

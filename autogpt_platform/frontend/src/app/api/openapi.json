@@ -961,63 +961,6 @@
         }
       }
     },
-    "/api/chat/operations/{operation_id}/complete": {
-      "post": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Complete Operation",
-        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
-        "operationId": "postV2CompleteOperation",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Operation Id" }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OperationCompleteRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Completeoperation"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/schema/tool-responses": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1057,10 +1000,7 @@
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" },
-                    {
-                      "$ref": "#/components/schemas/OperationInProgressResponse"
-                    }
+                    { "$ref": "#/components/schemas/DocPageResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1377,7 +1317,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Task Status",
-        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
+        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, and tool_name.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
         "operationId": "getV2GetTaskStatus",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6561,12 +6501,10 @@
       "ActiveStreamInfo": {
         "properties": {
           "task_id": { "type": "string", "title": "Task Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
+          "last_message_id": { "type": "string", "title": "Last Message Id" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "required": ["task_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
@@ -10104,45 +10042,6 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
-      },
-      "OperationCompleteRequest": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "result": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "OperationCompleteRequest",
-        "description": "Request model for external completion webhook."
-      },
-      "OperationInProgressResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_in_progress"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "tool_call_id": { "type": "string", "title": "Tool Call Id" }
-        },
-        "type": "object",
-        "required": ["message", "tool_call_id"],
-        "title": "OperationInProgressResponse",
-        "description": "Response when an operation is already in progress.\n\nReturned for idempotency when the same tool_call_id is requested again\nwhile the background task is still running."
       },
       "Pagination": {
         "properties": {

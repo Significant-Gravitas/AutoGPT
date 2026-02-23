@@ -13,6 +13,7 @@ export interface ChatContainerProps {
   error: Error | undefined;
   sessionId: string | null;
   isLoadingSession: boolean;
+  isSessionError?: boolean;
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
@@ -27,6 +28,7 @@ export const ChatContainer = ({
   error,
   sessionId,
   isLoadingSession,
+  isSessionError,
   isCreatingSession,
   isReconnecting,
   onCreateSession,
@@ -34,7 +36,11 @@ export const ChatContainer = ({
   onStop,
   headerSlot,
 }: ChatContainerProps) => {
-  const isBusy = status === "streaming" || !!isReconnecting;
+  const isBusy =
+    status === "streaming" ||
+    !!isReconnecting ||
+    isLoadingSession ||
+    !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
 
   return (

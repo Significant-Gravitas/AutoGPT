@@ -2,11 +2,6 @@
 
 This module provides the adapter layer that converts existing BaseTool implementations
 into in-process MCP tools that can be used with the Claude Agent SDK.
-
-Long-running tools (``is_long_running=True``) are delegated to the non-SDK
-background infrastructure (stream_registry, Redis persistence, SSE reconnection)
-via a callback provided by the service layer.  This avoids wasteful SDK polling
-and makes results survive page refreshes.
 """
 
 import asyncio
@@ -15,7 +10,6 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -55,27 +49,10 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
     "_stash_event", default=None
 )
 
-# Callback type for delegating long-running tools to the non-SDK infrastructure.
-# Args: (tool_name, arguments, session) → MCP-formatted response dict.
-LongRunningCallback = Callable[
-    [str, dict[str, Any], ChatSession], Awaitable[dict[str, Any]]
-]
-
-# ContextVar so the service layer can inject the callback per-request.
-_long_running_callback: ContextVar[LongRunningCallback | None] = ContextVar(
-    "long_running_callback", default=None
-)
-# ContextVar to store the current tool_use_id being executed, so the
-# long-running callback can use it instead of generating a new one.
-_current_tool_use_id: ContextVar[str | None] = ContextVar(
-    "current_tool_use_id", default=None
-)
-
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
-    long_running_callback: LongRunningCallback | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -85,14 +62,11 @@ def set_execution_context(
     Args:
         user_id: Current user's ID.
         session: Current chat session.
-        long_running_callback: Optional callback to delegate long-running tools
-            to the non-SDK background infrastructure (stream_registry + Redis).
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
-    _long_running_callback.set(long_running_callback)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -282,11 +256,6 @@ def create_tool_handler(base_tool: BaseTool):
 
     This wraps the existing BaseTool._execute method to be compatible
     with the Claude Agent SDK MCP tool format.
-
-    Long-running tools (``is_long_running=True``) are delegated to the
-    non-SDK background infrastructure via a callback set in the execution
-    context.  The callback persists the operation in Redis (stream_registry)
-    so results survive page refreshes and pod restarts.
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -296,32 +265,6 @@ def create_tool_handler(base_tool: BaseTool):
         if session is None:
             return _mcp_error("No session context available")
 
-        # --- Long-running: delegate to non-SDK background infrastructure ---
-        if base_tool.is_long_running:
-            callback = _long_running_callback.get(None)
-            logger.info(
-                f"[SDK] Tool {base_tool.name} is long-running, "
-                f"callback={'SET' if callback else 'NOT SET'}"
-            )
-            if callback:
-                try:
-                    logger.info(
-                        f"[SDK] Invoking long-running callback for {base_tool.name}"
-                    )
-                    return await callback(base_tool.name, args, session)
-                except Exception as e:
-                    logger.error(
-                        f"Long-running callback failed for {base_tool.name}: {e}",
-                        exc_info=True,
-                    )
-                    return _mcp_error(f"Failed to start {base_tool.name}: {e}")
-            # No callback — fall through to synchronous execution
-            logger.warning(
-                f"[SDK] No long-running callback for {base_tool.name}, "
-                f"executing synchronously (may block)"
-            )
-
-        # --- Normal (fast) tool: execute synchronously ---
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:

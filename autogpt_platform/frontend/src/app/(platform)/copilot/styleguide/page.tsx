@@ -1120,22 +1120,6 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (operation in progress)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_in_progress,
-                      tool_call_id: "tc-456",
-                      message:
-                        "An agent creation operation is already in progress. Please wait for it to finish.",
-                    },
-                  }}
-                />
-              </SubSection>
-
               <SubSection label="Output available (agent preview)">
                 <CreateAgentTool
                   part={{
