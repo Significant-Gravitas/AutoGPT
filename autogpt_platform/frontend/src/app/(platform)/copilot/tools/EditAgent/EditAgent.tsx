@@ -4,17 +4,15 @@ import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
@@ -81,9 +79,8 @@ function getAccordionMeta(output: EditAgentToolOutput): {
     isOperationInProgressOutput(output)
   ) {
     return {
-      icon: <OrbitLoader size={32} />,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
+      icon,
+      title: output.message || "Agent editing started",
     };
   }
   return {
@@ -148,15 +145,22 @@ export function EditAgentTool({ part }: Props) {
         />
       </div>
 
+      {isStreaming && (
+        <ToolAccordion
+          icon={<AccordionIcon />}
+          title="Editing agent, this may take a few minutes. Play while you wait."
+          expanded
+        >
+          <ContentGrid>
+            <MiniGame />
+          </ContentGrid>
+        </ToolAccordion>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
+          {isOperating && output.message && (
+            <ContentMessage>{output.message}</ContentMessage>
           )}
 
           {isAgentSavedOutput(output) && (
