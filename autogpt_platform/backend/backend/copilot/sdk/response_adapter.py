@@ -131,7 +131,7 @@ class SDKResponseAdapter:
 
             sid = (self.session_id or "?")[:12]
             parent_id_preview = getattr(sdk_message, "parent_tool_use_id", None)
-            logger.info(
+            logger.debug(
                 "[SDK] [%s] UserMessage: %d blocks, content_type=%s, "
                 "parent_tool_use_id=%s",
                 sid,
@@ -266,13 +266,13 @@ class SDKResponseAdapter:
         ]
         sid = (self.session_id or "?")[:12]
         if not unresolved:
-            logger.info(
+            logger.debug(
                 "[SDK] [%s] Flush called but all %d tool(s) already resolved",
                 sid,
                 len(self.current_tool_calls),
             )
             return
-        logger.info(
+        logger.debug(
             "[SDK] [%s] Flushing %d unresolved tool call(s): %s",
             sid,
             len(unresolved),
@@ -293,7 +293,7 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
-                logger.info(
+                logger.debug(
                     "[SDK] [%s] Flushed stashed output for %s " "(call %s, %d chars)",
                     sid,
                     tool_name,
