@@ -12,7 +12,7 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
@@ -159,7 +159,9 @@ export function EditAgentTool({ part }: Props) {
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && <ContentMessage>{output.message}</ContentMessage>}
+          {isOperating && output.message && (
+            <ContentMessage>{output.message}</ContentMessage>
+          )}
 
           {isAgentSavedOutput(output) && (
             <ContentGrid>

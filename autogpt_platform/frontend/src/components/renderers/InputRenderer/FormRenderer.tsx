@@ -16,14 +16,14 @@ type FormRendererProps = {
   className?: string;
 };
 
-export const FormRenderer = ({
+export function FormRenderer({
   jsonSchema,
   handleChange,
   uiSchema,
   initialValues,
   formContext,
   className,
-}: FormRendererProps) => {
+}: FormRendererProps) {
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
@@ -51,4 +51,4 @@ export const FormRenderer = ({
       />
     </div>
   );
-};
+}

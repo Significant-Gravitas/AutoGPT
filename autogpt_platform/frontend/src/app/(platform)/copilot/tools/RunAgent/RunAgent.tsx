@@ -9,7 +9,7 @@ import {
   ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import {
   getAccordionMeta,
   getAnimationText,

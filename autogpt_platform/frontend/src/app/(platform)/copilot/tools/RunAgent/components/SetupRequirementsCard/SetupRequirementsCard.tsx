@@ -44,13 +44,15 @@ export function SetupRequirementsCard({ output }: Props) {
     needsCredentials &&
     [...requiredCredentials].every((key) => !!inputCredentials[key]);
 
-  const canProceed = !hasSent && isAllCredentialsComplete;
+  const canProceed =
+    !hasSent && (!needsCredentials || isAllCredentialsComplete);
 
   function handleProceed() {
     setHasSent(true);
-    onSend(
-      "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
-    );
+    const message = needsCredentials
+      ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
+      : "Please proceed with running the agent.";
+    onSend(message);
   }
 
   return (
@@ -100,7 +102,7 @@ export function SetupRequirementsCard({ output }: Props) {
         </div>
       )}
 
-      {needsCredentials && (
+      {(needsCredentials || expectedInputs.length > 0) && (
         <Button
           variant="primary"
           size="small"

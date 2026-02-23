@@ -66,21 +66,25 @@ export function SetupRequirementsCard({ output }: Props) {
   function handleRun() {
     setHasSent(true);
 
+    const parts: string[] = [];
+    if (needsCredentials) {
+      parts.push("I've configured the required credentials.");
+    }
+
     if (needsInputs) {
       const nonEmpty = Object.fromEntries(
         Object.entries(inputValues).filter(
           ([, v]) => v !== undefined && v !== null && v !== "",
         ),
       );
-      onSend(
-        `I've configured the required credentials. Run the block with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
+      parts.push(
+        `Run the block with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
       );
     } else {
-      onSend(
-        "I've configured the required credentials. Please re-run the block now.",
-      );
+      parts.push("Please re-run the block now.");
     }
 
+    onSend(parts.join(" "));
     setInputValues({});
   }
 
