@@ -6500,11 +6500,11 @@
       },
       "ActiveStreamInfo": {
         "properties": {
-          "task_id": { "type": "string", "title": "Task Id" },
+          "turn_id": { "type": "string", "title": "Turn Id" },
           "last_message_id": { "type": "string", "title": "Last Message Id" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id"],
+        "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
