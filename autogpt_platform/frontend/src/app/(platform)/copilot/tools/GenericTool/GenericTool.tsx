@@ -550,9 +550,7 @@ function getFileAccordionData(
               ? fileObj.name
               : "unknown";
         const mimeType =
-          typeof fileObj.mime_type === "string"
-            ? fileObj.mime_type
-            : "unknown";
+          typeof fileObj.mime_type === "string" ? fileObj.mime_type : "unknown";
         const size =
           typeof fileObj.size_bytes === "number"
             ? ` (${(fileObj.size_bytes / 1024).toFixed(1)} KB, ${mimeType})`
