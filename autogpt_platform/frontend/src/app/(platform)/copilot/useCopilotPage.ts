@@ -52,6 +52,9 @@ function messageFingerprint(msg: UIMessage): string {
  * identical stream events).  Fingerprint-based dedup catches duplicates
  * across the hydration/stream boundary where IDs differ (synthetic
  * `${sessionId}-${index}` vs AI SDK nanoid).
+ *
+ * NOTE: Fingerprint dedup only applies to assistant messages, not user messages.
+ * Users should be able to send the same message multiple times.
  */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
@@ -60,9 +63,13 @@ function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
-    const fp = messageFingerprint(msg);
-    if (fp !== "::" && seenFingerprints.has(fp)) return false;
-    seenFingerprints.add(fp);
+    // Only apply fingerprint deduplication to assistant messages
+    // User messages should allow duplicates (same text sent multiple times)
+    if (msg.role === "assistant") {
+      const fp = messageFingerprint(msg);
+      if (fp !== "::" && seenFingerprints.has(fp)) return false;
+      seenFingerprints.add(fp);
+    }
 
     return true;
   });
