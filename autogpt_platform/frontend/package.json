@@ -23,6 +23,8 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
+    "react-doctor": "npx -y react-doctor@latest . --verbose",
+    "react-doctor:diff": "npx -y react-doctor@latest . --verbose --diff",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
     "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts"
   },

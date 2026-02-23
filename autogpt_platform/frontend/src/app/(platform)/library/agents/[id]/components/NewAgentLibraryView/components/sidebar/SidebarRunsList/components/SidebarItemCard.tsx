@@ -57,7 +57,13 @@ export function SidebarItemCard({
           </Text>
         </div>
         {actions ? (
-          <div onClick={(e) => e.stopPropagation()}>{actions}</div>
+          <div
+            role="presentation"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {actions}
+          </div>
         ) : null}
       </div>
     </div>

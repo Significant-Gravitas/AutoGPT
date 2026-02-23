@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { beautifyString, cn } from "@/lib/utils";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { CustomNodeData } from "../CustomNode";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -25,6 +25,9 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
+  const titleInputRef = useCallback((node: HTMLInputElement | null) => {
+    node?.focus();
+  }, []);
 
   const handleTitleEdit = () => {
     updateNodeData(nodeId, {
@@ -52,10 +55,10 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
           >
             {isEditingTitle ? (
               <input
+                ref={titleInputRef}
                 id="node-title-input"
                 value={editedTitle}
                 onChange={(e) => setEditedTitle(e.target.value)}
-                autoFocus
                 className={cn(
                   "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-none focus:ring-0",
                   "font-sans text-[1rem] font-semibold leading-[1.5rem] text-zinc-800",
