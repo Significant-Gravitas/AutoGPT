@@ -284,18 +284,13 @@ async def get_session(
         f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
     )
     if active_task:
-        # Filter out the in-progress assistant message from the session response.
-        # The client will receive the complete assistant response through the SSE
-        # stream replay instead, preventing duplicate content.
-        if messages and messages[-1].get("role") == "assistant":
-            messages = messages[:-1]
-
-        # Use "0-0" as last_message_id to replay the stream from the beginning.
-        # Since we filtered out the cached assistant message, the client needs
-        # the full stream to reconstruct the response.
+        # Keep the assistant message (including tool_calls) so the frontend can
+        # render the correct tool UI (e.g. CreateAgent with mini game).
+        # convertChatSessionToUiMessages handles isComplete=false by setting
+        # tool parts without output to state "input-available".
         active_stream_info = ActiveStreamInfo(
             task_id=active_task.session_id,
-            last_message_id="0-0",
+            last_message_id=last_message_id,
         )
 
     return SessionDetailResponse(
