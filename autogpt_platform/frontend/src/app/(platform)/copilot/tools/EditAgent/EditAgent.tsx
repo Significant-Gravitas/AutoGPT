@@ -13,7 +13,7 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,

@@ -24,8 +24,8 @@ import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
-import sparklesImg from "./components/MiniGame/assets/sparkles.png";
-import { MiniGame } from "./components/MiniGame/MiniGame";
+import sparklesImg from "../../components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
