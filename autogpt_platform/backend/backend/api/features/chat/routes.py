@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
+from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
@@ -416,8 +417,6 @@ async def stream_chat_post(
         logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
-    from uuid import uuid4
-
     turn_id = str(uuid4())
     log_meta["turn_id"] = turn_id
 

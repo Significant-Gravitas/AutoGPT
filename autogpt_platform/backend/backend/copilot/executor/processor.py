@@ -14,6 +14,7 @@ from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
 from backend.copilot.sdk import service as sdk_service
+from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -287,8 +288,6 @@ class CoPilotProcessor:
             # Clean up the per-turn Redis stream now that the turn is done
             if entry.turn_id:
                 try:
-                    from backend.data.redis_client import get_redis_async
-
                     redis = await get_redis_async()
                     stream_key = f"{ChatConfig().task_stream_prefix}{entry.turn_id}"
                     await redis.delete(stream_key)
