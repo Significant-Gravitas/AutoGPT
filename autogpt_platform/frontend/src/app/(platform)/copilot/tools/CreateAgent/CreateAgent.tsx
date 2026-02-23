@@ -180,7 +180,9 @@ export function CreateAgentTool({ part }: Props) {
 
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && <ContentMessage>{output.message}</ContentMessage>}
+          {isOperating && output.message && (
+            <ContentMessage>{output.message}</ContentMessage>
+          )}
 
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
