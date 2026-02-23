@@ -91,7 +91,7 @@ class CreateSessionResponse(BaseModel):
 class ActiveStreamInfo(BaseModel):
     """Information about an active stream for reconnection."""
 
-    task_id: str
+    turn_id: str
     last_message_id: str  # Redis Stream message ID for resumption
 
 
@@ -283,7 +283,7 @@ async def get_session(
         # convertChatSessionToUiMessages handles isComplete=false by setting
         # tool parts without output to state "input-available".
         active_stream_info = ActiveStreamInfo(
-            task_id=active_task.session_id,
+            turn_id=active_task.turn_id,
             last_message_id=last_message_id,
         )
 
@@ -421,16 +421,18 @@ async def stream_chat_post(
         logger.info(f"[STREAM] User message saved for session {session_id}")
 
     # Create a task in the stream registry for reconnection support
-    # Note: task_id = session_id (no longer generating random UUIDs)
-    task_id = session_id  # For backwards compatibility in responses
-    log_meta["task_id"] = task_id
+    from uuid import uuid4
+
+    turn_id = str(uuid4())
+    log_meta["turn_id"] = turn_id
 
     task_create_start = time.perf_counter()
     await stream_registry.create_task(
         session_id=session_id,
         user_id=user_id,
-        tool_call_id="chat_stream",  # Not a tool call, but needed for the model
+        tool_call_id="chat_stream",
         tool_name="chat",
+        turn_id=turn_id,
     )
     logger.info(
         f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
@@ -446,10 +448,11 @@ async def stream_chat_post(
     subscribe_from_id = "0-0"
 
     await enqueue_copilot_task(
-        task_id=task_id,
+        task_id=session_id,
         session_id=session_id,
         user_id=user_id,
         message=request.message,
+        turn_id=turn_id,
         is_user_message=request.is_user_message,
         context=request.context,
     )
@@ -466,7 +469,7 @@ async def stream_chat_post(
 
         event_gen_start = time_module.perf_counter()
         logger.info(
-            f"[TIMING] event_generator STARTED, task={task_id}, session={session_id}, "
+            f"[TIMING] event_generator STARTED, turn={turn_id}, session={session_id}, "
             f"user={user_id}",
             extra={"json_fields": log_meta},
         )
@@ -567,14 +570,14 @@ async def stream_chat_post(
                     )
                 except Exception as unsub_err:
                     logger.error(
-                        f"Error unsubscribing from task {task_id}: {unsub_err}",
+                        f"Error unsubscribing from session {session_id}: {unsub_err}",
                         exc_info=True,
                     )
             # AI SDK protocol termination - always yield even if unsubscribe fails
             total_time = time_module.perf_counter() - event_gen_start
             logger.info(
                 f"[TIMING] event_generator FINISHED in {total_time:.2f}s; "
-                f"task={task_id}, session={session_id}, n_chunks={chunks_yielded}",
+                f"turn={turn_id}, session={session_id}, n_chunks={chunks_yielded}",
                 extra={
                     "json_fields": {
                         **log_meta,
