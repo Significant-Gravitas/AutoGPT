@@ -5,6 +5,7 @@ This module implements the AI SDK UI Stream Protocol (v1) for streaming chat res
 See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 """
 
+import json
 import logging
 from enum import Enum
 from typing import Any
@@ -69,8 +70,6 @@ class StreamStart(StreamBaseResponse):
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-protocol fields like taskId."""
-        import json
-
         data: dict[str, Any] = {
             "type": self.type.value,
             "messageId": self.messageId,
@@ -167,8 +166,6 @@ class StreamToolOutputAvailable(StreamBaseResponse):
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-spec fields."""
-        import json
-
         data = {
             "type": self.type.value,
             "toolCallId": self.toolCallId,

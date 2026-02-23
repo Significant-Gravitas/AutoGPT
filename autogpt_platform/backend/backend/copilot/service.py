@@ -65,6 +65,9 @@ from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
 
+# Set to hold background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task[Any]] = set()
+
 config = ChatConfig()
 settings = Settings()
 client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
@@ -442,8 +445,6 @@ async def stream_chat_completion(
     if is_user_message and first_user_msg and not session.title:
         if len(user_messages) == 1:
             # First user message - generate title in background
-            import asyncio
-
             # Capture only the values we need (not the session object) to avoid
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
@@ -468,7 +469,9 @@ async def stream_chat_completion(
                     logger.warning(f"Failed to update session title: {e}")
 
             # Fire and forget - don't block the chat response
-            asyncio.create_task(_update_title())
+            task = asyncio.create_task(_update_title())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
     # Build system prompt with business understanding
     prompt_start = time.monotonic()
