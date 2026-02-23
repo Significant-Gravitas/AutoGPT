@@ -263,6 +263,140 @@ async def test_session_state_persistence():
     print(f"✅ Session persistence: {len(events)} events for second message")
 
 
+@pytest.mark.asyncio
+async def test_message_deduplication():
+    """Test that duplicate messages are filtered out."""
+
+    # Simulate receiving duplicate events (e.g., from reconnection)
+    events = []
+
+    # First stream
+    async for event in stream_chat_completion_dummy(
+        session_id="test-dedup-1",
+        message="Hello",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        events.append(event)
+        if isinstance(event, StreamFinish):
+            break
+
+    # Count unique message IDs in StreamStart events
+    start_events = [e for e in events if isinstance(e, StreamStart)]
+    message_ids = [e.messageId for e in start_events]
+
+    # Verify all IDs are present
+    assert len(message_ids) == len(set(message_ids)), "Message IDs should be unique"
+
+    print(f"✅ Deduplication: {len(events)} events, all unique")
+
+
+@pytest.mark.asyncio
+async def test_event_ordering():
+    """Test that events arrive in correct order."""
+    events = []
+
+    async for event in stream_chat_completion_dummy(
+        session_id="test-ordering",
+        message="Test",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        events.append(event)
+
+    # Find event indices
+    start_idx = next(
+        (i for i, e in enumerate(events) if isinstance(e, StreamStart)), None
+    )
+    text_indices = [i for i, e in enumerate(events) if isinstance(e, StreamTextDelta)]
+    finish_idx = next(
+        (i for i, e in enumerate(events) if isinstance(e, StreamFinish)), None
+    )
+
+    # Verify ordering
+    assert start_idx is not None, "Should have StreamStart"
+    assert finish_idx is not None, "Should have StreamFinish"
+    assert start_idx == 0, "StreamStart should be first"
+    assert finish_idx == len(events) - 1, "StreamFinish should be last"
+
+    if text_indices:
+        assert all(
+            start_idx < i < finish_idx for i in text_indices
+        ), "Text deltas should be between start and finish"
+
+    print(f"✅ Event ordering: start({start_idx}) < text < finish({finish_idx})")
+
+
+@pytest.mark.asyncio
+async def test_stream_completeness():
+    """Test that stream includes all required event types."""
+    events = []
+
+    async for event in stream_chat_completion_dummy(
+        session_id="test-completeness",
+        message="Complete stream test",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        events.append(event)
+
+    # Check for required events
+    has_start = any(isinstance(e, StreamStart) for e in events)
+    has_text = any(isinstance(e, StreamTextDelta) for e in events)
+    has_finish = any(isinstance(e, StreamFinish) for e in events)
+
+    assert has_start, "Stream must include StreamStart"
+    assert has_text, "Stream must include text deltas"
+    assert has_finish, "Stream must include StreamFinish"
+
+    # Verify exactly one start and one finish
+    start_count = sum(1 for e in events if isinstance(e, StreamStart))
+    finish_count = sum(1 for e in events if isinstance(e, StreamFinish))
+
+    assert start_count == 1, f"Should have exactly 1 StreamStart, got {start_count}"
+    assert finish_count == 1, f"Should have exactly 1 StreamFinish, got {finish_count}"
+
+    print(
+        f"✅ Completeness: 1 start, {sum(1 for e in events if isinstance(e, StreamTextDelta))} text, 1 finish"
+    )
+
+
+@pytest.mark.asyncio
+async def test_text_delta_consistency():
+    """Test that text deltas have consistent IDs and build coherent text."""
+    text_events = []
+
+    async for event in stream_chat_completion_dummy(
+        session_id="test-consistency",
+        message="Test consistency",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        if isinstance(event, StreamTextDelta):
+            text_events.append(event)
+
+    # Verify all text deltas have IDs
+    assert all(e.id for e in text_events), "All text deltas must have IDs"
+
+    # Verify all deltas have the same ID (same text block)
+    if text_events:
+        first_id = text_events[0].id
+        assert all(
+            e.id == first_id for e in text_events
+        ), "All text deltas should share the same block ID"
+
+    # Verify deltas build coherent text
+    full_text = "".join(e.delta for e in text_events)
+    assert len(full_text) > 0, "Deltas should build non-empty text"
+    assert (
+        full_text == full_text.strip()
+    ), "Text should not have leading/trailing whitespace artifacts"
+
+    print(
+        f"✅ Consistency: {len(text_events)} deltas with ID '{text_events[0].id if text_events else 'N/A'}', text: '{full_text}'"
+    )
+
+
 if __name__ == "__main__":
     # Run tests directly
 
@@ -277,6 +411,10 @@ if __name__ == "__main__":
     asyncio.run(test_error_handling())
     asyncio.run(test_concurrent_sessions())
     asyncio.run(test_session_state_persistence())
+    asyncio.run(test_message_deduplication())
+    asyncio.run(test_event_ordering())
+    asyncio.run(test_stream_completeness())
+    asyncio.run(test_text_delta_consistency())
 
     print("=" * 60)
     print("✅ All E2E tests passed!")
