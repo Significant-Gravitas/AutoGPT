@@ -363,7 +363,6 @@ async def stream_chat_completion(
             }
         },
     )
-    logger.info(f"[DEBUG_CONVERSATION] RAW MESSAGE: {message!r}")
 
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
@@ -394,12 +393,6 @@ async def stream_chat_completion(
 
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
-    logger.info(
-        f"[DEBUG_CONVERSATION] Before append check: "
-        f"message={message!r}, role={new_message_role}, "
-        f"n_messages={len(session.messages)}, "
-        f"last_msg={'None' if len(session.messages) == 0 else f'{session.messages[-1].role}: {session.messages[-1].content!r}'}"
-    )
     if message and (
         len(session.messages) == 0
         or not (
@@ -408,12 +401,6 @@ async def stream_chat_completion(
         )
     ):
         session.messages.append(ChatMessage(role=new_message_role, content=message))
-        logger.info(
-            f"[DEBUG_CONVERSATION] APPENDED message (role={'user' if is_user_message else 'assistant'}), "
-            f"new message_count={len(session.messages)}"
-        )
-    else:
-        logger.info("[DEBUG_CONVERSATION] SKIPPED appending duplicate message")
 
     # Track user message in PostHog
     if is_user_message and message:
@@ -935,15 +922,7 @@ async def _stream_chat_chunks(
         extra={"json_fields": {**log_meta, "n_messages": len(session.messages)}},
     )
 
-    # Log full conversation history
-    logger.info(
-        f"[DEBUG_CONVERSATION] FULL SESSION HISTORY ({len(session.messages)} messages):"
-    )
-    for idx, msg in enumerate(session.messages):
-        logger.info(f"[DEBUG_CONVERSATION]   [{idx}] {msg.role}: {msg.content!r}")
-
     messages = session.to_openai_messages()
-    logger.info(f"[DEBUG_CONVERSATION] Converted to {len(messages)} OpenAI messages")
     if system_prompt:
         system_message = ChatCompletionSystemMessageParam(
             role="system",
@@ -1106,9 +1085,6 @@ async def _stream_chat_chunks(
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
                                 delta=delta.content,
-                            )
-                            logger.info(
-                                f"[DEBUG_CONVERSATION] YIELDING TEXT: {delta.content!r}"
                             )
                             yield text_response
 

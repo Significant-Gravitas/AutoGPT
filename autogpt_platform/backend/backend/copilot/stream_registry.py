@@ -16,6 +16,7 @@ Subscribers:
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -30,6 +31,8 @@ from .response_model import (
     StreamError,
     StreamFinish,
     StreamHeartbeat,
+    StreamTextDelta,
+    StreamTextStart,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +69,7 @@ class ActiveTask:
     user_id: str | None
     tool_call_id: str
     tool_name: str
+    turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -77,9 +81,27 @@ def _get_task_meta_key(session_id: str) -> str:
     return f"{config.task_meta_prefix}{session_id}"
 
 
-def _get_task_stream_key(session_id: str) -> str:
-    """Get Redis key for task message stream (now keyed by session_id)."""
-    return f"{config.task_stream_prefix}{session_id}"
+def _get_task_stream_key(turn_id: str) -> str:
+    """Get Redis key for task message stream (keyed by turn_id for per-turn isolation)."""
+    return f"{config.task_stream_prefix}{turn_id}"
+
+
+def _parse_task_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveTask:
+    """Parse a raw Redis hash into a typed ActiveTask.
+
+    Centralises the ``meta.get(...)`` boilerplate so callers don't repeat it.
+    ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
+    pre-dates the turn_id field (backward compat for in-flight tasks).
+    """
+    return ActiveTask(
+        session_id=meta.get("session_id", "") or session_id,
+        user_id=meta.get("user_id", "") or None,
+        tool_call_id=meta.get("tool_call_id", ""),
+        tool_name=meta.get("tool_name", ""),
+        turn_id=meta.get("turn_id", "") or session_id,
+        blocking=meta.get("blocking") == "1",
+        status=meta.get("status", "running"),  # type: ignore[arg-type]
+    )
 
 
 async def create_task(
@@ -87,6 +109,7 @@ async def create_task(
     user_id: str | None,
     tool_call_id: str,
     tool_name: str,
+    turn_id: str = "",
     blocking: bool = False,
 ) -> ActiveTask:
     """Create a new streaming task in Redis (keyed by session_id).
@@ -96,12 +119,12 @@ async def create_task(
         user_id: User ID (may be None for anonymous)
         tool_call_id: Tool call ID from the LLM
         tool_name: Name of the tool being executed
+        turn_id: Unique per-turn UUID for stream isolation
+        blocking: If True, HTTP request is waiting for completion
 
     Returns:
         The created ActiveTask instance (metadata only)
     """
-    import time
-
     start_time = time.perf_counter()
 
     # Build log metadata for structured logging
@@ -113,7 +136,7 @@ async def create_task(
         log_meta["user_id"] = user_id
 
     logger.info(
-        f"[TIMING] create_task STARTED, session={session_id}, user={user_id}",
+        f"[TIMING] create_task STARTED, session={session_id}, user={user_id}, turn_id={turn_id}",
         extra={"json_fields": log_meta},
     )
 
@@ -123,6 +146,7 @@ async def create_task(
         user_id=user_id,
         tool_call_id=tool_call_id,
         tool_name=tool_name,
+        turn_id=turn_id,
         blocking=blocking,
     )
 
@@ -136,7 +160,7 @@ async def create_task(
     )
 
     meta_key = _get_task_meta_key(session_id)
-    logger.info(f"[DEBUG] create_task storing at key: {meta_key}, status=running")
+    # No need to delete old stream — each turn_id is a fresh UUID
 
     hset_start = time.perf_counter()
     await redis.hset(  # type: ignore[misc]
@@ -146,6 +170,7 @@ async def create_task(
             "user_id": user_id or "",
             "tool_call_id": tool_call_id,
             "tool_name": tool_name,
+            "turn_id": turn_id,
             "blocking": "1" if blocking else "0",
             "status": task.status,
             "created_at": task.created_at.isoformat(),
@@ -169,7 +194,7 @@ async def create_task(
 
 
 async def publish_chunk(
-    session_id: str,
+    turn_id: str,
     chunk: StreamBaseResponse,
 ) -> str:
     """Publish a chunk to Redis Stream.
@@ -177,14 +202,12 @@ async def publish_chunk(
     All delivery is via Redis Streams - no in-memory state.
 
     Args:
-        session_id: Session ID to publish to
+        turn_id: Turn ID (per-turn UUID) identifying the stream
         chunk: The stream response chunk to publish
 
     Returns:
         The Redis Stream message ID
     """
-    import time
-
     start_time = time.perf_counter()
     chunk_type = type(chunk).__name__
     chunk_json = chunk.model_dump_json()
@@ -193,29 +216,13 @@ async def publish_chunk(
     # Build log metadata
     log_meta = {
         "component": "StreamRegistry",
-        "session_id": session_id,
+        "turn_id": turn_id,
         "chunk_type": chunk_type,
     }
 
     try:
         redis = await get_redis_async()
-        stream_key = _get_task_stream_key(session_id)
-
-        # DEBUG: Log what we're about to publish
-        from .response_model import StreamFinish, StreamTextDelta, StreamTextStart
-
-        if isinstance(chunk, StreamTextDelta):
-            logger.info(
-                f"[DEBUG_CONVERSATION] [PUBLISH] StreamTextDelta to {session_id[:12]}: {chunk.delta!r}"
-            )
-        elif isinstance(chunk, StreamTextStart):
-            logger.info(
-                f"[DEBUG_CONVERSATION] [PUBLISH] StreamTextStart to {session_id[:12]}"
-            )
-        elif isinstance(chunk, StreamFinish):
-            logger.info(
-                f"[DEBUG_CONVERSATION] [PUBLISH] StreamFinish to {session_id[:12]}"
-            )
+        stream_key = _get_task_stream_key(turn_id)
 
         # Write to Redis Stream for persistence and real-time delivery
         xadd_start = time.perf_counter()
@@ -284,9 +291,6 @@ async def subscribe_to_task(
         An asyncio Queue that will receive stream chunks, or None if task not found
         or user doesn't have access
     """
-    import asyncio
-    import time
-
     start_time = time.perf_counter()
 
     # Build log metadata
@@ -302,11 +306,10 @@ async def subscribe_to_task(
     redis_start = time.perf_counter()
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(session_id)
-    logger.info(f"[DEBUG] subscribe_to_task looking for key: {meta_key}")
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     hgetall_time = (time.perf_counter() - redis_start) * 1000
     logger.info(
-        f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms, result={bool(meta)}, keys={list(meta.keys()) if meta else []}",
+        f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms",
         extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
     )
 
@@ -358,8 +361,9 @@ async def subscribe_to_task(
             )
             return None
 
+    task = _parse_task_meta(meta, session_id)
     subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
-    stream_key = _get_task_stream_key(session_id)
+    stream_key = _get_task_stream_key(task.turn_id)
 
     # Step 1: Replay messages from Redis Stream
     xread_start = time.perf_counter()
@@ -394,13 +398,12 @@ async def subscribe_to_task(
                         logger.warning(f"Failed to replay message: {e}")
 
     logger.info(
-        f"[DEBUG_REPLAY] Replayed {replayed_count} messages from last_message_id={last_message_id} to {replay_last_id}",
+        f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
         extra={
             "json_fields": {
                 **log_meta,
                 "n_messages_replayed": replayed_count,
                 "replay_last_id": replay_last_id,
-                "started_from_id": last_message_id,
             }
         },
     )
@@ -412,7 +415,9 @@ async def subscribe_to_task(
             extra={"json_fields": {**log_meta, "task_status": task_status}},
         )
         listener_task = asyncio.create_task(
-            _stream_listener(session_id, subscriber_queue, replay_last_id, log_meta)
+            _stream_listener(
+                session_id, subscriber_queue, replay_last_id, log_meta, task.turn_id
+            )
         )
         # Track listener task for cleanup on unsubscribe
         _listener_tasks[id(subscriber_queue)] = (session_id, listener_task)
@@ -444,6 +449,7 @@ async def _stream_listener(
     subscriber_queue: asyncio.Queue[StreamBaseResponse],
     last_replayed_id: str,
     log_meta: dict | None = None,
+    turn_id: str = "",
 ) -> None:
     """Listen to Redis Stream for new messages using blocking XREAD.
 
@@ -455,9 +461,8 @@ async def _stream_listener(
         subscriber_queue: Queue to deliver messages to
         last_replayed_id: Last message ID from replay (continue from here)
         log_meta: Structured logging metadata
+        turn_id: Per-turn UUID for stream key resolution
     """
-    import time
-
     start_time = time.perf_counter()
 
     # Use provided log_meta or build minimal one
@@ -478,7 +483,7 @@ async def _stream_listener(
 
     try:
         redis = await get_redis_async()
-        stream_key = _get_task_stream_key(session_id)
+        stream_key = _get_task_stream_key(turn_id)
         current_id = last_replayed_id
 
         while True:
@@ -703,6 +708,10 @@ async def mark_task_completed(
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(session_id)
 
+    # Resolve turn_id for publishing to the correct stream
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
+    turn_id = _parse_task_meta(meta, session_id).turn_id if meta else session_id
+
     # Atomic compare-and-swap: only update if status is "running"
     # This prevents race conditions when multiple callers try to complete simultaneously
     result = await redis.eval(COMPLETE_TASK_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
@@ -718,13 +727,13 @@ async def mark_task_completed(
     # listeners clean up.
     if status == "failed" and error_message:
         try:
-            await publish_chunk(session_id, StreamError(errorText=error_message))
+            await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
             logger.warning(f"Failed to publish error event for task {session_id}: {e}")
 
     # THEN publish finish event (best-effort - listeners can detect via status polling)
     try:
-        await publish_chunk(session_id, StreamFinish())
+        await publish_chunk(turn_id, StreamFinish())
     except Exception as e:
         logger.error(
             f"Failed to publish finish event for task {session_id}: {e}. "
@@ -752,15 +761,7 @@ async def get_task(session_id: str) -> ActiveTask | None:
     if not meta:
         return None
 
-    # Note: Redis client uses decode_responses=True, so keys/values are strings
-    return ActiveTask(
-        session_id=meta.get("session_id", ""),
-        user_id=meta.get("user_id", "") or None,
-        tool_call_id=meta.get("tool_call_id", ""),
-        tool_name=meta.get("tool_name", ""),
-        blocking=meta.get("blocking") == "1",
-        status=meta.get("status", "running"),  # type: ignore[arg-type]
-    )
+    return _parse_task_meta(meta, session_id)
 
 
 async def get_task_with_expiry_info(
@@ -781,29 +782,19 @@ async def get_task_with_expiry_info(
     """
     redis = await get_redis_async()
     meta_key = _get_task_meta_key(session_id)
-    stream_key = _get_task_stream_key(session_id)
 
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
-        # Check if stream still has data (metadata expired but stream hasn't)
+        # Metadata expired — we can't resolve turn_id, so check using
+        # session_id as a best-effort fallback for the stream key.
+        stream_key = _get_task_stream_key(session_id)
         stream_len = await redis.xlen(stream_key)
         if stream_len > 0:
             return None, "TASK_EXPIRED"
         return None, "TASK_NOT_FOUND"
 
-    # Note: Redis client uses decode_responses=True, so keys/values are strings
-    return (
-        ActiveTask(
-            session_id=meta.get("session_id", ""),
-            user_id=meta.get("user_id", "") or None,
-            tool_call_id=meta.get("tool_call_id", ""),
-            tool_name=meta.get("tool_name", ""),
-            blocking=meta.get("blocking") == "1",
-            status=meta.get("status", "running"),  # type: ignore[arg-type]
-        ),
-        None,
-    )
+    return _parse_task_meta(meta, session_id), None
 
 
 async def get_active_task_for_session(
@@ -860,10 +851,13 @@ async def get_active_task_for_session(
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse created_at: {e}")
 
-    logger.info(f"[TASK_LOOKUP] Found running session {session_id[:8]}...")
+    task = _parse_task_meta(meta, session_id)
+    logger.info(
+        f"[TASK_LOOKUP] Found running session {session_id[:8]}..., turn_id={task.turn_id[:8]}"
+    )
 
-    # Get the last message ID from Redis Stream
-    stream_key = _get_task_stream_key(session_id)
+    # Get the last message ID from Redis Stream (keyed by turn_id)
+    stream_key = _get_task_stream_key(task.turn_id)
     last_id = "0-0"
     try:
         messages = await redis.xrevrange(stream_key, count=1)
@@ -873,16 +867,7 @@ async def get_active_task_for_session(
     except Exception as e:
         logger.warning(f"Failed to get last message ID: {e}")
 
-    return (
-        ActiveTask(
-            session_id=session_id,
-            user_id=task_user_id,
-            tool_call_id=meta.get("tool_call_id", ""),
-            tool_name=meta.get("tool_name", ""),
-            status="running",
-        ),
-        last_id,
-    )
+    return task, last_id
 
 
 def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
@@ -902,9 +887,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         StreamHeartbeat,
         StreamStart,
         StreamStartStep,
-        StreamTextDelta,
         StreamTextEnd,
-        StreamTextStart,
         StreamToolInputAvailable,
         StreamToolInputStart,
         StreamToolOutputAvailable,

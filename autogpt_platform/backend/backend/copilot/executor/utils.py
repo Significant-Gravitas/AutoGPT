@@ -141,6 +141,9 @@ class CoPilotExecutionEntry(BaseModel):
     session_id: str
     """Chat session ID"""
 
+    turn_id: str = ""
+    """Per-turn UUID for Redis stream isolation"""
+
     user_id: str | None
     """User ID (may be None for anonymous users)"""
 
@@ -169,6 +172,7 @@ async def enqueue_copilot_task(
     session_id: str,
     user_id: str | None,
     message: str,
+    turn_id: str = "",
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
 ) -> None:
@@ -179,6 +183,7 @@ async def enqueue_copilot_task(
         session_id: Chat session ID
         user_id: User ID (may be None for anonymous users)
         message: User's message to process
+        turn_id: Per-turn UUID for Redis stream isolation
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
     """
@@ -187,6 +192,7 @@ async def enqueue_copilot_task(
     entry = CoPilotExecutionEntry(
         task_id=task_id,
         session_id=session_id,
+        turn_id=turn_id,
         user_id=user_id,
         message=message,
         is_user_message=is_user_message,

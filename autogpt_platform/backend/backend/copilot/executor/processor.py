@@ -12,13 +12,7 @@ import time
 from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.response_model import (
-    StreamError,
-    StreamFinish,
-    StreamFinishStep,
-    StreamTextDelta,
-    StreamTextStart,
-)
+from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
 from backend.copilot.sdk import service as sdk_service
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
@@ -247,9 +241,6 @@ class CoPilotProcessor:
                 log.info(f"Using {service_name} service")
 
             # Stream chat completion and publish chunks to Redis
-            log.info(
-                f"[DEBUG_CONVERSATION] [EXECUTOR] Starting to consume stream from {service_name} service"
-            )
             async for chunk in stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
@@ -261,14 +252,12 @@ class CoPilotProcessor:
                 if cancel.is_set():
                     log.info("Cancelled during streaming")
                     await stream_registry.publish_chunk(
-                        entry.session_id, StreamError(errorText="Operation cancelled")
+                        entry.turn_id, StreamError(errorText="Operation cancelled")
                     )
                     await stream_registry.publish_chunk(
-                        entry.session_id, StreamFinishStep()
+                        entry.turn_id, StreamFinishStep()
                     )
-                    await stream_registry.publish_chunk(
-                        entry.session_id, StreamFinish()
-                    )
+                    await stream_registry.publish_chunk(entry.turn_id, StreamFinish())
                     await stream_registry.mark_task_completed(
                         entry.session_id, status="failed"
                     )
@@ -280,32 +269,12 @@ class CoPilotProcessor:
                     cluster_lock.refresh()
                     last_refresh = current_time
 
-                # DEBUG: Log chunks being received from SDK service
-                if isinstance(chunk, StreamTextDelta):
-                    log.info(
-                        f"[DEBUG_CONVERSATION] [EXECUTOR] Received StreamTextDelta from SDK: {chunk.delta!r}"
-                    )
-                elif isinstance(chunk, StreamTextStart):
-                    log.info(
-                        "[DEBUG_CONVERSATION] [EXECUTOR] Received StreamTextStart from SDK"
-                    )
-                elif isinstance(chunk, StreamFinish):
-                    log.info(
-                        "[DEBUG_CONVERSATION] [EXECUTOR] Received StreamFinish from SDK"
-                    )
-
                 # Publish chunk to stream registry
-                log.info(
-                    f"[DEBUG_CONVERSATION] [EXECUTOR] About to call publish_chunk for {type(chunk).__name__}"
-                )
                 try:
-                    await stream_registry.publish_chunk(entry.session_id, chunk)
-                    log.info(
-                        f"[DEBUG_CONVERSATION] [EXECUTOR] Successfully published {type(chunk).__name__}"
-                    )
+                    await stream_registry.publish_chunk(entry.turn_id, chunk)
                 except Exception as e:
                     log.error(
-                        f"[DEBUG_CONVERSATION] [EXECUTOR] ERROR publishing chunk: {e}",
+                        f"Error publishing chunk {type(chunk).__name__}: {e}",
                         exc_info=True,
                     )
 
@@ -315,6 +284,17 @@ class CoPilotProcessor:
             )
             log.info("Task completed successfully")
 
+            # Clean up the per-turn Redis stream now that the turn is done
+            if entry.turn_id:
+                try:
+                    from backend.data.redis_client import get_redis_async
+
+                    redis = await get_redis_async()
+                    stream_key = f"{ChatConfig().task_stream_prefix}{entry.turn_id}"
+                    await redis.delete(stream_key)
+                except Exception as e:
+                    log.warning(f"Failed to clean up turn stream: {e}")
+
         except asyncio.CancelledError:
             log.info("Task cancelled")
             await stream_registry.mark_task_completed(
@@ -322,21 +302,23 @@ class CoPilotProcessor:
                 status="failed",
                 error_message="Task was cancelled",
             )
-            raise
+            raise  # mark_task_completed resolves turn_id internally
 
         except Exception as e:
             log.error(f"Task failed: {e}")
-            await self._mark_task_failed(entry.session_id, str(e))
+            await self._mark_task_failed(entry.session_id, str(e), entry.turn_id)
             raise
 
-    async def _mark_task_failed(self, session_id: str, error_message: str):
+    async def _mark_task_failed(
+        self, session_id: str, error_message: str, turn_id: str = ""
+    ):
         """Mark a task as failed and publish error to stream registry."""
         try:
             await stream_registry.publish_chunk(
-                session_id, StreamError(errorText=error_message)
+                turn_id, StreamError(errorText=error_message)
             )
-            await stream_registry.publish_chunk(session_id, StreamFinishStep())
-            await stream_registry.publish_chunk(session_id, StreamFinish())
+            await stream_registry.publish_chunk(turn_id, StreamFinishStep())
+            await stream_registry.publish_chunk(turn_id, StreamFinish())
             await stream_registry.mark_task_completed(session_id, status="failed")
         except Exception as e:
             logger.error(f"Failed to mark task {session_id} as failed: {e}")
