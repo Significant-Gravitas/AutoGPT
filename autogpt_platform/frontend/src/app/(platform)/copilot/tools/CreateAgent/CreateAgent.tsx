@@ -16,7 +16,6 @@ import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -93,9 +92,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
   ) {
     return {
       icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
+      title: output.message || "Agent creation started",
     };
   }
   return {
@@ -169,16 +166,21 @@ export function CreateAgentTool({ part }: Props) {
         />
       </div>
 
+      {isStreaming && (
+        <ToolAccordion
+          icon={<AccordionIcon />}
+          title="Creating agent, this may take a few minutes. Play while you wait."
+          expanded
+        >
+          <ContentGrid>
+            <MiniGame />
+          </ContentGrid>
+        </ToolAccordion>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
+          {isOperating && <ContentMessage>{output.message}</ContentMessage>}
 
           {isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
