@@ -217,29 +217,17 @@ class CoPilotProcessor:
         try:
             # Choose service based on LaunchDarkly flag
             config = ChatConfig()
-
-            # TEMPORARY: Use dummy service in test mode to avoid Claude-in-Claude errors
-            import os
-
-            if os.getenv("COPILOT_TEST_MODE") == "true":
-                from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-
-                stream_fn = stream_chat_completion_dummy
-                service_name = "dummy"
-                log.warning("[TEST MODE] Using dummy copilot service")
-            else:
-                use_sdk = await is_feature_enabled(
-                    Flag.COPILOT_SDK,
-                    entry.user_id or "anonymous",
-                    default=config.use_claude_agent_sdk,
-                )
-                stream_fn = (
-                    sdk_service.stream_chat_completion_sdk
-                    if use_sdk
-                    else copilot_service.stream_chat_completion
-                )
-                service_name = "SDK" if use_sdk else "standard"
-                log.info(f"Using {service_name} service")
+            use_sdk = await is_feature_enabled(
+                Flag.COPILOT_SDK,
+                entry.user_id or "anonymous",
+                default=config.use_claude_agent_sdk,
+            )
+            stream_fn = (
+                sdk_service.stream_chat_completion_sdk
+                if use_sdk
+                else copilot_service.stream_chat_completion
+            )
+            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
 
             # Stream chat completion and publish chunks to Redis
             async for chunk in stream_fn(

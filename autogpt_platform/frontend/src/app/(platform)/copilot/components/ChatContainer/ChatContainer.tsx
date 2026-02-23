@@ -38,6 +38,7 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isBusy =
     status === "streaming" ||
+    status === "submitted" ||
     !!isReconnecting ||
     isLoadingSession ||
     !!isSessionError;
