@@ -23,6 +23,13 @@ export function SidebarItemCard({
   onClick,
   actions,
 }: Props) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.();
+    }
+  }
+
   return (
     <div
       role="button"
@@ -32,12 +39,7 @@ export function SidebarItemCard({
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick?.();
-        }
-      }}
+      onKeyDown={handleKeyDown}
     >
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}

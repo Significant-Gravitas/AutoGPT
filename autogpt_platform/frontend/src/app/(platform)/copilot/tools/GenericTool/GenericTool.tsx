@@ -557,8 +557,11 @@ function getTodoAccordionData(input: unknown): AccordionData {
     description: `${completed}/${total} completed`,
     content: (
       <div className="space-y-1 py-1">
-        {todos.map((todo) => (
-          <div key={todo.content} className="flex items-start gap-2 text-xs">
+        {todos.map((todo, idx) => (
+          <div
+            key={`${todo.status}:${todo.content}:${idx}`}
+            className="flex items-start gap-2 text-xs"
+          >
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
                 <CheckCircleIcon

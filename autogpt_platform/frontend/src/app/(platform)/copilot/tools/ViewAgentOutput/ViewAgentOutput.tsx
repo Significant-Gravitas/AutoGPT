@@ -209,8 +209,10 @@ export function ViewAgentOutputTool({ part }: Props) {
                         </div>
                         <div className="mt-2">
                           {items.slice(0, 3).map((item, i) => (
-                            // eslint-disable-next-line react/no-array-index-key
-                            <RenderOutputValue key={i} value={item} />
+                            <RenderOutputValue
+                              key={`${key}-${i}`}
+                              value={item}
+                            />
                           ))}
                         </div>
                       </ContentCard>

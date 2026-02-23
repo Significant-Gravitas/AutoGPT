@@ -366,9 +366,11 @@ function renderMarkdown(
               return renderVideoEmbed(src);
             }
 
+            if (!src) return null;
+
             return (
               <Image
-                src={src || ""}
+                src={src}
                 alt={alt || "Image"}
                 width={0}
                 height={0}
