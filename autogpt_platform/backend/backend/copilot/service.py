@@ -1685,7 +1685,6 @@ async def _execute_long_running_tool_with_streaming(
             session_id,
             StreamError(errorText=str(e)),
         )
-        await stream_registry.publish_chunk(session_id, StreamFinishStep())
         await stream_registry.publish_chunk(session_id, StreamFinish())
 
         await _update_pending_operation(
