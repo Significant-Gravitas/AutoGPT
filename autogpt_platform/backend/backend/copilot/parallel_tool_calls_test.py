@@ -14,7 +14,6 @@ import pytest
 @pytest.mark.asyncio
 async def test_parallel_tool_calls_run_concurrently():
     """Multiple tool calls should complete in ~max(delays), not sum(delays)."""
-    # Import here to allow module-level mocking if needed
     from backend.copilot.response_model import (
         StreamToolInputAvailable,
         StreamToolOutputAvailable,
@@ -32,7 +31,6 @@ async def test_parallel_tool_calls_run_concurrently():
         for i in range(n_tools)
     ]
 
-    # Minimal session mock
     class FakeSession:
         session_id = "test"
         user_id = "test"
@@ -42,7 +40,7 @@ async def test_parallel_tool_calls_run_concurrently():
 
     original_yield = None
 
-    async def fake_yield(tc_list, idx, sess, lock=None):
+    async def fake_yield(tc_list, idx, sess):
         yield StreamToolInputAvailable(
             toolCallId=tc_list[idx]["id"],
             toolName=tc_list[idx]["function"]["name"],
@@ -101,7 +99,7 @@ async def test_single_tool_call_works():
         def __init__(self):
             self.messages = []
 
-    async def fake_yield(tc_list, idx, sess, lock=None):
+    async def fake_yield(tc_list, idx, sess):
         yield StreamToolInputAvailable(toolCallId="call_0", toolName="t", input={})
         yield StreamToolOutputAvailable(toolCallId="call_0", toolName="t", output="{}")
 
@@ -144,7 +142,7 @@ async def test_retryable_error_propagates():
         def __init__(self):
             self.messages = []
 
-    async def fake_yield(tc_list, idx, sess, lock=None):
+    async def fake_yield(tc_list, idx, sess):
         if idx == 1:
             raise KeyError("bad")
         from backend.copilot.response_model import StreamToolInputAvailable
@@ -175,8 +173,8 @@ async def test_retryable_error_propagates():
 
 
 @pytest.mark.asyncio
-async def test_session_lock_shared():
-    """All parallel tools should receive the same lock instance."""
+async def test_session_shared_across_parallel_tools():
+    """All parallel tools should receive the same session instance."""
     from backend.copilot.response_model import (
         StreamToolInputAvailable,
         StreamToolOutputAvailable,
@@ -199,10 +197,10 @@ async def test_session_lock_shared():
         def __init__(self):
             self.messages = []
 
-    observed_locks = []
+    observed_sessions = []
 
-    async def fake_yield(tc_list, idx, sess, lock=None):
-        observed_locks.append(lock)
+    async def fake_yield(tc_list, idx, sess):
+        observed_sessions.append(sess)
         yield StreamToolInputAvailable(
             toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={}
         )
@@ -222,9 +220,8 @@ async def test_session_lock_shared():
     finally:
         svc._yield_tool_call = orig
 
-    assert len(observed_locks) == 3
-    assert observed_locks[0] is observed_locks[1] is observed_locks[2]
-    assert isinstance(observed_locks[0], asyncio.Lock)
+    assert len(observed_sessions) == 3
+    assert observed_sessions[0] is observed_sessions[1] is observed_sessions[2]
 
 
 @pytest.mark.asyncio
@@ -251,7 +248,7 @@ async def test_cancellation_cleans_up():
 
     started = asyncio.Event()
 
-    async def fake_yield(tc_list, idx, sess, lock=None):
+    async def fake_yield(tc_list, idx, sess):
         yield StreamToolInputAvailable(
             toolCallId=tc_list[idx]["id"], toolName=f"t_{idx}", input={}
         )

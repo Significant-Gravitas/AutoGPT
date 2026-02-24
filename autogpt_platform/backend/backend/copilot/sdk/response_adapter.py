@@ -55,12 +55,7 @@ class SDKResponseAdapter:
         self.has_ended_text = False
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
-        self.task_id: str | None = None
         self.step_open = False
-
-    def set_task_id(self, task_id: str) -> None:
-        """Set the task ID for reconnection support."""
-        self.task_id = task_id
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -74,7 +69,7 @@ class SDKResponseAdapter:
         if isinstance(sdk_message, SystemMessage):
             if sdk_message.subtype == "init":
                 responses.append(
-                    StreamStart(messageId=self.message_id, taskId=self.task_id)
+                    StreamStart(messageId=self.message_id, sessionId=self.session_id)
                 )
                 # Open the first step (matches non-SDK: StreamStart then StreamStartStep)
                 responses.append(StreamStartStep())
