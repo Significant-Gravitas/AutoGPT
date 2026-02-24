@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 
 const getYouTubeVideoId = (url: string) => {
   const regExp =
@@ -76,6 +77,7 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
           width="100%"
           height="315"
           src={`https://www.youtube.com/embed/${videoId}`}
+          title="Embedded content"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         ></iframe>
@@ -92,15 +94,15 @@ const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
 const ImageRenderer: React.FC<{ imageUrl: string }> = ({ imageUrl }) => {
   return (
     <div className="w-full p-2">
-      <picture>
-        <img
-          src={imageUrl}
-          alt="Image"
-          className="h-auto max-w-full"
-          width="100%"
-          height="auto"
-        />
-      </picture>
+      <Image
+        src={imageUrl}
+        alt="Image"
+        width={0}
+        height={0}
+        sizes="100vw"
+        className="h-auto w-full"
+        unoptimized
+      />
     </div>
   );
 };

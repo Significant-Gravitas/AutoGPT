@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { LazyMotion, domAnimation, m } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
@@ -129,7 +129,7 @@ export function ChatSidebar() {
   }
 
   return (
-    <>
+    <LazyMotion features={domAnimation}>
       <Sidebar
         variant="inset"
         collapsible="icon"
@@ -144,7 +144,7 @@ export function ChatSidebar() {
                 : "flex-row items-center justify-between",
             )}
           >
-            <motion.div
+            <m.div
               key={isCollapsed ? "header-collapsed" : "header-expanded"}
               className="flex flex-col items-center gap-3 pt-4"
               initial={{ opacity: 0, filter: "blur(3px)" }}
@@ -162,12 +162,12 @@ export function ChatSidebar() {
                   <span className="sr-only">New Chat</span>
                 </Button>
               </div>
-            </motion.div>
+            </m.div>
           </SidebarHeader>
         )}
         <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {!isCollapsed && (
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.1 }}
@@ -179,11 +179,11 @@ export function ChatSidebar() {
               <div className="relative left-6">
                 <SidebarTrigger />
               </div>
-            </motion.div>
+            </m.div>
           )}
 
           {!isCollapsed && (
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.15 }}
@@ -256,12 +256,12 @@ export function ChatSidebar() {
                   </div>
                 ))
               )}
-            </motion.div>
+            </m.div>
           )}
         </SidebarContent>
         {!isCollapsed && sessionId && (
           <SidebarFooter className="shrink-0 bg-zinc-50 p-3 pb-1 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.2 }}
@@ -275,7 +275,7 @@ export function ChatSidebar() {
               >
                 New Chat
               </Button>
-            </motion.div>
+            </m.div>
           </SidebarFooter>
         )}
       </Sidebar>
@@ -286,6 +286,6 @@ export function ChatSidebar() {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
-    </>
+    </LazyMotion>
   );
 }

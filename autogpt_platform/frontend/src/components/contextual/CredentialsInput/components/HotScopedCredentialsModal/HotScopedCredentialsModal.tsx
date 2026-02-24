@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -66,16 +66,18 @@ export function HostScopedCredentialsModal({
   });
 
   const [headerPairs, setHeaderPairs] = useState<
-    Array<{ key: string; value: string }>
-  >([{ key: "", value: "" }]);
+    Array<{ id: string; key: string; value: string }>
+  >([{ id: crypto.randomUUID(), key: "", value: "" }]);
 
   // Update form values when siblingInputs change
+  const prevHostRef = useRef(currentHost);
   useEffect(() => {
+    if (currentHost === prevHostRef.current) return;
+    prevHostRef.current = currentHost;
     if (currentHost) {
       form.setValue("host", currentHost);
       form.setValue("title", currentHost);
     } else {
-      // Reset to empty when no current host
       form.setValue("host", "");
       form.setValue("title", "Manual Entry");
     }
@@ -91,9 +93,12 @@ export function HostScopedCredentialsModal({
 
   const { provider, providerName, createHostScopedCredentials } = credentials;
 
-  const addHeaderPair = () => {
-    setHeaderPairs([...headerPairs, { key: "", value: "" }]);
-  };
+  function addHeaderPair() {
+    setHeaderPairs((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), key: "", value: "" },
+    ]);
+  }
 
   const removeHeaderPair = (index: number) => {
     if (headerPairs.length > 1) {
@@ -192,7 +197,7 @@ export function HostScopedCredentialsModal({
               </FormDescription>
 
               {headerPairs.map((pair, index) => (
-                <div key={index} className="flex w-full items-center gap-4">
+                <div key={pair.id} className="flex w-full items-center gap-4">
                   <Input
                     id={`header-${index}-key`}
                     label="Header Name"

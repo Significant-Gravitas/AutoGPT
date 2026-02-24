@@ -85,12 +85,20 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                   <Tooltip delayDuration={300}>
                     <TooltipTrigger asChild>
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={`mx-4 my-2 flex h-20 cursor-pointer rounded-lg border border-zinc-200 bg-white ${
                           index === selectedIndex
                             ? "border-zinc-400 shadow-md"
                             : "hover:border-zinc-300 hover:shadow-sm"
                         }`}
                         onClick={() => onNodeSelect(node.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onNodeSelect(node.id);
+                          }
+                        }}
                         onMouseEnter={() => {
                           setSelectedIndex(index);
                           onNodeHover?.(node.id);

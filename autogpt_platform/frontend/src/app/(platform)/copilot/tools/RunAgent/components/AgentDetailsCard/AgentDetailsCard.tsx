@@ -4,7 +4,7 @@ import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentD
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, LazyMotion, domAnimation, m } from "framer-motion";
 import { useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
@@ -39,78 +39,83 @@ export function AgentDetailsCard({ output }: Props) {
   }
 
   return (
-    <div className="grid gap-2">
-      <ContentMessage>
-        Run this agent with example values or your own inputs.
-      </ContentMessage>
+    <LazyMotion features={domAnimation}>
+      <div className="grid gap-2">
+        <ContentMessage>
+          Run this agent with example values or your own inputs.
+        </ContentMessage>
 
-      <div className="flex gap-2 pt-4">
-        <Button size="small" className="w-fit" onClick={handleRunWithExamples}>
-          Run with example values
-        </Button>
-        <Button
-          variant="outline"
-          size="small"
-          className="w-fit"
-          onClick={() => setShowInputForm((prev) => !prev)}
-        >
-          Run with my inputs
-        </Button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {showInputForm && buildInputSchema(output.agent.inputs) && (
-          <motion.div
-            initial={{ height: 0, opacity: 0, filter: "blur(6px)" }}
-            animate={{ height: "auto", opacity: 1, filter: "blur(0px)" }}
-            exit={{ height: 0, opacity: 0, filter: "blur(6px)" }}
-            transition={{
-              height: { type: "spring", bounce: 0.15, duration: 0.5 },
-              opacity: { duration: 0.25 },
-              filter: { duration: 0.2 },
-            }}
-            className="overflow-hidden"
-            style={{ willChange: "height, opacity, filter" }}
+        <div className="flex gap-2 pt-4">
+          <Button
+            size="small"
+            className="w-fit"
+            onClick={handleRunWithExamples}
           >
-            <div className="mt-4 rounded-2xl border bg-background p-3 pt-4">
-              <Text variant="body-medium">Enter your inputs</Text>
-              <FormRenderer
-                jsonSchema={buildInputSchema(output.agent.inputs)!}
-                handleChange={(v) => setInputValues(v.formData ?? {})}
-                uiSchema={{
-                  "ui:submitButtonOptions": { norender: true },
-                }}
-                initialValues={inputValues}
-                formContext={{
-                  showHandles: false,
-                  size: "small",
-                }}
-              />
-              <div className="-mt-8 flex gap-2">
-                <Button
-                  variant="primary"
-                  size="small"
-                  className="w-fit"
-                  onClick={handleRunWithInputs}
-                >
-                  Run
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  className="w-fit"
-                  onClick={() => {
-                    setShowInputForm(false);
-                    setInputValues({});
+            Run with example values
+          </Button>
+          <Button
+            variant="outline"
+            size="small"
+            className="w-fit"
+            onClick={() => setShowInputForm((prev) => !prev)}
+          >
+            Run with my inputs
+          </Button>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {showInputForm && buildInputSchema(output.agent.inputs) && (
+            <m.div
+              initial={{ height: 0, opacity: 0, filter: "blur(6px)" }}
+              animate={{ height: "auto", opacity: 1, filter: "blur(0px)" }}
+              exit={{ height: 0, opacity: 0, filter: "blur(6px)" }}
+              transition={{
+                height: { type: "spring", bounce: 0.15, duration: 0.5 },
+                opacity: { duration: 0.25 },
+                filter: { duration: 0.2 },
+              }}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 rounded-2xl border bg-background p-3 pt-4">
+                <Text variant="body-medium">Enter your inputs</Text>
+                <FormRenderer
+                  jsonSchema={buildInputSchema(output.agent.inputs)!}
+                  handleChange={(v) => setInputValues(v.formData ?? {})}
+                  uiSchema={{
+                    "ui:submitButtonOptions": { norender: true },
                   }}
-                >
-                  Cancel
-                </Button>
+                  initialValues={inputValues}
+                  formContext={{
+                    showHandles: false,
+                    size: "small",
+                  }}
+                />
+                <div className="-mt-8 flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="small"
+                    className="w-fit"
+                    onClick={handleRunWithInputs}
+                  >
+                    Run
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    className="w-fit"
+                    onClick={() => {
+                      setShowInputForm(false);
+                      setInputValues({});
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+            </m.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </LazyMotion>
   );
 }

@@ -103,7 +103,7 @@ function OutputKeySection({
       </div>
       <div className="mt-2">
         {visibleItems.map((item, i) => (
-          <RenderOutputValue key={i} value={item} />
+          <RenderOutputValue key={`${outputKey}-${i}`} value={item} />
         ))}
       </div>
       {hasMoreItems && (

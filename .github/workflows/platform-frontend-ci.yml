@@ -83,6 +83,65 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+  react-doctor:
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run React Doctor
+        id: react-doctor
+        continue-on-error: true
+        run: |
+          OUTPUT=$(pnpm react-doctor:diff 2>&1) || true
+          echo "$OUTPUT"
+          SCORE=$(echo "$OUTPUT" | grep -oP '\d+(?= / 100)' | head -1)
+          echo "score=${SCORE:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Check React Doctor score
+        env:
+          RD_SCORE: ${{ steps.react-doctor.outputs.score }}
+          MIN_SCORE: "90"
+        run: |
+          echo "React Doctor score: ${RD_SCORE}/100 (minimum: ${MIN_SCORE})"
+          if [ "${RD_SCORE}" -lt "${MIN_SCORE}" ]; then
+            echo "::error::React Doctor score ${RD_SCORE} is below the minimum threshold of ${MIN_SCORE}."
+            echo ""
+            echo "=========================================="
+            echo "  React Doctor score too low!"
+            echo "=========================================="
+            echo ""
+            echo "To fix these issues, run Claude Code locally:"
+            echo ""
+            echo "  cd autogpt_platform/frontend"
+            echo "  claude"
+            echo ""
+            echo "Then ask Claude to run react-doctor and fix the issues."
+            echo "You can also run it manually:"
+            echo ""
+            echo "  pnpm react-doctor       # scan all files"
+            echo "  pnpm react-doctor:diff  # scan only changed files"
+            echo ""
+            exit 1
+          fi
+
   chromatic:
     runs-on: ubuntu-latest
     needs: setup

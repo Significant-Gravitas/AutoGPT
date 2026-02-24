@@ -209,7 +209,10 @@ export function ViewAgentOutputTool({ part }: Props) {
                         </div>
                         <div className="mt-2">
                           {items.slice(0, 3).map((item, i) => (
-                            <RenderOutputValue key={i} value={item} />
+                            <RenderOutputValue
+                              key={`${key}-${i}`}
+                              value={item}
+                            />
                           ))}
                         </div>
                       </ContentCard>

@@ -23,13 +23,23 @@ export function SidebarItemCard({
   onClick,
   actions,
 }: Props) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.();
+    }
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={cn(
         "w-full cursor-pointer rounded-large border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
     >
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}
@@ -49,7 +59,13 @@ export function SidebarItemCard({
           </Text>
         </div>
         {actions ? (
-          <div onClick={(e) => e.stopPropagation()}>{actions}</div>
+          <div
+            role="presentation"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {actions}
+          </div>
         ) : null}
       </div>
     </div>
