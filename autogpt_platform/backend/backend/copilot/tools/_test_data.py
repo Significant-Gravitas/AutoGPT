@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from os import getenv
 
 import pytest
+import pytest_asyncio
 from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
@@ -31,7 +32,7 @@ def make_session(user_id: str):
     )
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_test_data():
     """
     Set up test data for run_agent tests:
@@ -150,7 +151,7 @@ async def setup_test_data():
     }
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_llm_test_data():
     """
     Set up test data for LLM agent tests:
@@ -315,7 +316,7 @@ async def setup_llm_test_data():
     }
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_firecrawl_test_data():
     """
     Set up test data for Firecrawl agent tests (missing credentials scenario):
