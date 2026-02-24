@@ -24,8 +24,8 @@ import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
-import sparklesImg from "./components/MiniGame/assets/sparkles.png";
-import { MiniGame } from "./components/MiniGame/MiniGame";
+import sparklesImg from "../../components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
@@ -36,9 +36,6 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
@@ -57,8 +54,17 @@ interface Props {
   part: CreateAgentToolPart;
 }
 
-function getAccordionMeta(output: CreateAgentToolOutput) {
+function getAccordionMeta(output: CreateAgentToolOutput | null) {
   const icon = <AccordionIcon />;
+
+  if (!output) {
+    return {
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
+  }
 
   if (isAgentSavedOutput(output)) {
     return { icon, title: output.agent_name, expanded: true };
@@ -86,18 +92,6 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       expanded: true,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
-    return {
-      icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
   return {
     icon: (
       <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
@@ -119,23 +113,11 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
+  const isOperating = !output;
 
-  const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isSuggestedGoalOutput(output) ||
-      isErrorOutput(output));
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
@@ -161,15 +143,66 @@ export function CreateAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
+      {isOperating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming={isStreaming} isError={isError} />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
 
-      {hasExpandableContent && output && (
+      {isError && output && isErrorOutput(output) && (
+        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <WarningDiamondIcon
+              size={20}
+              weight="regular"
+              className="mt-0.5 shrink-0 text-red-500"
+            />
+            <div className="flex-1 space-y-2">
+              <Text variant="body-medium" className="text-red-900">
+                {output.message ||
+                  "Failed to generate the agent. Please try again."}
+              </Text>
+              {output.error && (
+                <details className="text-xs text-red-700">
+                  <summary className="cursor-pointer font-medium">
+                    Technical details
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                    {formatMaybeJson(output.error)}
+                  </pre>
+                </details>
+              )}
+              {output.details && (
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
+                  {formatMaybeJson(output.details)}
+                </pre>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="small"
+              onClick={() => onSend("Please try creating the agent again.")}
+            >
+              Try again
+            </Button>
+            <Button
+              variant="outline"
+              size="small"
+              onClick={() => onSend("Can you help me simplify this goal?")}
+            >
+              Simplify goal
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {hasExpandableContent && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -180,7 +213,7 @@ export function CreateAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentSavedOutput(output) && (
+          {output && isAgentSavedOutput(output) && (
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-baseline gap-2">
                 <Image
@@ -226,7 +259,7 @@ export function CreateAgentTool({ part }: Props) {
             </div>
           )}
 
-          {isAgentPreviewOutput(output) && (
+          {output && isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -240,7 +273,7 @@ export function CreateAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isClarificationNeededOutput(output) && (
+          {output && isClarificationNeededOutput(output) && (
             <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
                 const item: ClarifyingQuestion = {
@@ -259,7 +292,7 @@ export function CreateAgentTool({ part }: Props) {
             />
           )}
 
-          {isSuggestedGoalOutput(output) && (
+          {output && isSuggestedGoalOutput(output) && (
             <SuggestedGoalCard
               message={output.message}
               suggestedGoal={output.suggested_goal}
@@ -267,38 +300,6 @@ export function CreateAgentTool({ part }: Props) {
               goalType={output.goal_type ?? "vague"}
               onUseSuggestedGoal={handleUseSuggestedGoal}
             />
-          )}
-
-          {isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
-                </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Please try creating the agent again.")}
-                >
-                  Try again
-                </Button>
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Can you help me simplify this goal?")}
-                >
-                  Simplify goal
-                </Button>
-              </div>
-            </ContentGrid>
           )}
         </ToolAccordion>
       )}

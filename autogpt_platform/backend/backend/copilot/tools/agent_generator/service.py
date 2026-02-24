@@ -242,24 +242,18 @@ async def decompose_goal_external(
 async def generate_agent_external(
     instructions: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate an agent from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
-        Agent JSON dict, {"status": "accepted"} for async, or error dict {"type": "error", ...} on error
+        Agent JSON dict or error dict {"type": "error", ...} on error
     """
     if _is_dummy_mode():
-        return await generate_agent_dummy(
-            instructions, library_agents, operation_id, task_id
-        )
+        return await generate_agent_dummy(instructions, library_agents)
 
     client = _get_client()
 
@@ -267,25 +261,9 @@ async def generate_agent_external(
     payload: dict[str, Any] = {"instructions": instructions}
     if library_agents:
         payload["library_agents"] = library_agents
-    if operation_id and task_id:
-        payload["operation_id"] = operation_id
-        payload["task_id"] = task_id
 
     try:
         response = await client.post("/api/generate-agent", json=payload)
-
-        # Handle 202 Accepted for async processing
-        if response.status_code == 202:
-            logger.info(
-                f"Agent Generator accepted async request "
-                f"(operation_id={operation_id}, task_id={task_id})"
-            )
-            return {
-                "status": "accepted",
-                "operation_id": operation_id,
-                "task_id": task_id,
-            }
-
         response.raise_for_status()
         data = response.json()
 
@@ -317,8 +295,6 @@ async def generate_agent_patch_external(
     update_request: str,
     current_agent: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Call the external service to generate a patch for an existing agent.
 
@@ -327,14 +303,14 @@ async def generate_agent_patch_external(
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
         operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
+        session_id: Session ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error
     """
     if _is_dummy_mode():
         return await generate_agent_patch_dummy(
-            update_request, current_agent, library_agents, operation_id, task_id
+            update_request, current_agent, library_agents
         )
 
     client = _get_client()
@@ -346,25 +322,9 @@ async def generate_agent_patch_external(
     }
     if library_agents:
         payload["library_agents"] = library_agents
-    if operation_id and task_id:
-        payload["operation_id"] = operation_id
-        payload["task_id"] = task_id
 
     try:
         response = await client.post("/api/update-agent", json=payload)
-
-        # Handle 202 Accepted for async processing
-        if response.status_code == 202:
-            logger.info(
-                f"Agent Generator accepted async update request "
-                f"(operation_id={operation_id}, task_id={task_id})"
-            )
-            return {
-                "status": "accepted",
-                "operation_id": operation_id,
-                "task_id": task_id,
-            }
-
         response.raise_for_status()
         data = response.json()
 
@@ -419,6 +379,8 @@ async def customize_template_external(
         template_agent: The template agent JSON to customize
         modification_request: Natural language description of customizations
         context: Additional context (e.g., answers to previous questions)
+        operation_id: Operation ID for async processing (enables Redis Streams callback)
+        session_id: Session ID for async processing (enables Redis Streams callback)
 
     Returns:
         Customized agent JSON, clarifying questions dict, or error dict on error

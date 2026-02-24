@@ -44,11 +44,6 @@ async def test_vague_goal_returns_suggested_goal_response(tool, session):
 
     with (
         patch(
-            "backend.copilot.tools.create_agent.get_all_relevant_agents_for_generation",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
-        patch(
             "backend.copilot.tools.create_agent.decompose_goal",
             new_callable=AsyncMock,
             return_value=vague_result,
@@ -78,11 +73,6 @@ async def test_unachievable_goal_returns_suggested_goal_response(tool, session):
     }
 
     with (
-        patch(
-            "backend.copilot.tools.create_agent.get_all_relevant_agents_for_generation",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
         patch(
             "backend.copilot.tools.create_agent.decompose_goal",
             new_callable=AsyncMock,
@@ -120,11 +110,6 @@ async def test_clarifying_questions_returns_clarification_needed_response(
     }
 
     with (
-        patch(
-            "backend.copilot.tools.create_agent.get_all_relevant_agents_for_generation",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
         patch(
             "backend.copilot.tools.create_agent.decompose_goal",
             new_callable=AsyncMock,
