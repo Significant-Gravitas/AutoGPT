@@ -139,7 +139,9 @@ async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
 
     # Fire-and-forget: populate business understanding from Tally form.
-    # Detect new users via created_at (avoids caching issues with is_new flag).
+    # We use created_at proximity instead of an is_new flag because
+    # get_or_create_user is cached — a separate is_new return value would be
+    # unreliable on repeated calls within the cache TTL.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:

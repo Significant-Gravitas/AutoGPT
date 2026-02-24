@@ -20,16 +20,17 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 TALLY_API_BASE = "https://api.tally.so"
-TALLY_FORM_ID = "npGe0q"
+_settings = Settings()
+TALLY_FORM_ID = _settings.secrets.tally_form_id
 
 # Redis key templates
 _EMAIL_INDEX_KEY = "tally:form:{form_id}:email_index"
 _QUESTIONS_KEY = "tally:form:{form_id}:questions"
 _LAST_FETCH_KEY = "tally:form:{form_id}:last_fetch"
 
-# TTLs
+# TTLs — keep aligned so last_fetch never outlives the index
 _INDEX_TTL = 3600  # 1 hour
-_LAST_FETCH_TTL = 7200  # 2 hours
+_LAST_FETCH_TTL = 3600  # 1 hour (same as index)
 
 # Pagination
 _PAGE_LIMIT = 500
@@ -149,7 +150,7 @@ def _build_email_index(
 def _extract_email_from_submission(
     submission: dict, email_question_ids: list[str]
 ) -> Optional[str]:
-    """Extract email address from a submission's responses."""
+    """Extract email address from a submission by checking respondentEmail, then field responses."""
     # Try respondent email first (Tally often includes this)
     respondent_email = submission.get("respondentEmail")
     if respondent_email:
@@ -176,7 +177,7 @@ def _extract_email_from_submission(
 async def _get_cached_index(
     form_id: str,
 ) -> tuple[Optional[dict], Optional[list]]:
-    """Check Redis for cached email index and questions. Returns (index, questions) or (None, None)."""
+    """Return (email_index, questions) from Redis, or (None, None) on cache miss."""
     redis = await get_redis_async()
     index_key = _EMAIL_INDEX_KEY.format(form_id=form_id)
     questions_key = _QUESTIONS_KEY.format(form_id=form_id)
@@ -298,7 +299,7 @@ def format_submission_for_llm(submission: dict, questions: list[dict]) -> str:
 
 
 def _format_answer(value: object) -> str:
-    """Format an answer value for display."""
+    """Convert an answer value (str, list, dict, None) to a human-readable string."""
     if value is None:
         return "(no answer)"
     if isinstance(value, list):
