@@ -41,6 +41,10 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
+)
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
@@ -261,6 +265,10 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
+app.add_exception_handler(
+    FolderAlreadyExistsError, handle_internal_http_error(409, False)
+)
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
