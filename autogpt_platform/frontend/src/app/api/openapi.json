@@ -9433,7 +9433,7 @@
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": ["createdAt", "updatedAt"],
+        "enum": ["createdAt", "updatedAt", "lastExecuted"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },

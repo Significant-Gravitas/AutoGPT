@@ -106,18 +106,60 @@ async def list_library_agents(
         order_by = {"updatedAt": "desc"}
 
     try:
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=where_clause,
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=include_executions
-            ),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-        agent_count = await prisma.models.LibraryAgent.prisma().count(
-            where=where_clause
-        )
+        # For LAST_EXECUTED sorting, we need to fetch execution data and sort in Python
+        # since Prisma doesn't support sorting by nested relations
+        if sort_by == library_model.LibraryAgentSort.LAST_EXECUTED:
+            # TODO: This fetches all agents into memory for sorting, which may cause
+            # performance issues for users with many agents. Prisma doesn't support
+            # sorting by nested relations, so a dedicated lastExecutedAt column or
+            # raw SQL query would be needed for database-level pagination.
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(
+                    user_id,
+                    include_nodes=False,
+                    include_executions=True,
+                    execution_limit=1,
+                ),
+            )
+
+            def get_sort_key(
+                agent: prisma.models.LibraryAgent,
+            ) -> tuple[int, float]:
+                """
+                Returns a tuple for sorting: (has_no_executions, -timestamp).
+
+                Agents WITH executions come first (sorted by most recent execution),
+                agents WITHOUT executions come last (sorted by creation date).
+                """
+                graph = agent.AgentGraph
+                if graph and graph.Executions and len(graph.Executions) > 0:
+                    execution = graph.Executions[0]
+                    timestamp = execution.updatedAt or execution.createdAt
+                    return (0, -timestamp.timestamp())
+                return (1, -agent.createdAt.timestamp())
+
+            library_agents.sort(key=get_sort_key)
+
+            # Apply pagination after sorting
+            agent_count = len(library_agents)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            library_agents = library_agents[start_idx:end_idx]
+        else:
+            # Standard sorting via database
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(
+                    user_id, include_nodes=False, include_executions=False
+                ),
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            )
+            agent_count = await prisma.models.LibraryAgent.prisma().count(
+                where=where_clause
+            )
 
         logger.debug(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
@@ -347,6 +389,20 @@ async def get_library_agent_by_graph_id(
     graph_id: str,
     graph_version: Optional[int] = None,
 ) -> library_model.LibraryAgent | None:
+    """
+    Retrieves a library agent by its graph ID for a given user.
+
+    Args:
+        user_id: The ID of the user who owns the library agent.
+        graph_id: The ID of the agent graph to look up.
+        graph_version: Optional specific version of the graph to retrieve.
+
+    Returns:
+        The LibraryAgent if found, otherwise None.
+
+    Raises:
+        DatabaseError: If there's an error during retrieval.
+    """
     try:
         filter: prisma.types.LibraryAgentWhereInput = {
             "agentGraphId": graph_id,
@@ -716,6 +772,17 @@ async def update_library_agent(
 async def delete_library_agent(
     library_agent_id: str, user_id: str, soft_delete: bool = True
 ) -> None:
+    """
+    Deletes a library agent and cleans up associated schedules and webhooks.
+
+    Args:
+        library_agent_id: The ID of the library agent to delete.
+        user_id: The ID of the user who owns the library agent.
+        soft_delete: If True, marks the agent as deleted; if False, permanently removes it.
+
+    Raises:
+        NotFoundError: If the library agent is not found or doesn't belong to the user.
+    """
     # First get the agent to find the graph_id for cleanup
     library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent_id}, include={"AgentGraph": True}
@@ -1209,6 +1276,20 @@ async def update_preset(
 async def set_preset_webhook(
     user_id: str, preset_id: str, webhook_id: str | None
 ) -> library_model.LibraryAgentPreset:
+    """
+    Sets or removes a webhook connection for a preset.
+
+    Args:
+        user_id: The ID of the user who owns the preset.
+        preset_id: The ID of the preset to update.
+        webhook_id: The ID of the webhook to connect, or None to disconnect.
+
+    Returns:
+        The updated LibraryAgentPreset.
+
+    Raises:
+        NotFoundError: If the preset is not found or doesn't belong to the user.
+    """
     current = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset_id},
         include=AGENT_PRESET_INCLUDE,
