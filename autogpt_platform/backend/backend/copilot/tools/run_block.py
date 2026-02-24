@@ -160,9 +160,10 @@ class RunBlockTool(BaseTool):
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         creds_manager = IntegrationCredentialsManager()
-        matched_credentials, missing_credentials = (
-            await self._resolve_block_credentials(user_id, block, input_data)
-        )
+        (
+            matched_credentials,
+            missing_credentials,
+        ) = await self._resolve_block_credentials(user_id, block, input_data)
 
         # Get block schemas for details/validation
         try:

@@ -25,7 +25,7 @@ from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
-from .processor import execute_copilot_task, init_worker
+from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -181,13 +181,13 @@ class CoPilotExecutor(AppProcess):
             self._executor.shutdown(wait=False)
 
         # Release any remaining locks
-        for task_id, lock in list(self._task_locks.items()):
+        for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
-                logger.info(f"[cleanup {pid}] Released lock for {task_id}")
+                logger.info(f"[cleanup {pid}] Released lock for {session_id}")
             except Exception as e:
                 logger.error(
-                    f"[cleanup {pid}] Failed to release lock for {task_id}: {e}"
+                    f"[cleanup {pid}] Failed to release lock for {session_id}: {e}"
                 )
 
         logger.info(f"[cleanup {pid}] Graceful shutdown completed")
@@ -267,20 +267,20 @@ class CoPilotExecutor(AppProcess):
     ):
         """Handle cancel message from FANOUT exchange."""
         request = CancelCoPilotEvent.model_validate_json(body)
-        task_id = request.task_id
-        if not task_id:
-            logger.warning("Cancel message missing 'task_id'")
+        session_id = request.session_id
+        if not session_id:
+            logger.warning("Cancel message missing 'session_id'")
             return
-        if task_id not in self.active_tasks:
-            logger.debug(f"Cancel received for {task_id} but not active")
+        if session_id not in self.active_tasks:
+            logger.debug(f"Cancel received for {session_id} but not active")
             return
 
-        _, cancel_event = self.active_tasks[task_id]
-        logger.info(f"Received cancel for {task_id}")
+        _, cancel_event = self.active_tasks[session_id]
+        logger.info(f"Received cancel for {session_id}")
         if not cancel_event.is_set():
             cancel_event.set()
         else:
-            logger.debug(f"Cancel already set for {task_id}")
+            logger.debug(f"Cancel already set for {session_id}")
 
     def _handle_run_message(
         self,
@@ -352,12 +352,12 @@ class CoPilotExecutor(AppProcess):
             ack_message(reject=True, requeue=False)
             return
 
-        task_id = entry.task_id
+        session_id = entry.session_id
 
-        # Check for local duplicate - task is already running on this executor
-        if task_id in self.active_tasks:
+        # Check for local duplicate - session is already running on this executor
+        if session_id in self.active_tasks:
             logger.warning(
-                f"Task {task_id} already running locally, rejecting duplicate"
+                f"Session {session_id} already running locally, rejecting duplicate"
             )
             ack_message(reject=True, requeue=False)
             return
@@ -365,53 +365,53 @@ class CoPilotExecutor(AppProcess):
         # Try to acquire cluster-wide lock
         cluster_lock = ClusterLock(
             redis=redis.get_redis(),
-            key=f"copilot:task:{task_id}:lock",
+            key=f"copilot:session:{session_id}:lock",
             owner_id=self.executor_id,
             timeout=settings.config.cluster_lock_timeout,
         )
         current_owner = cluster_lock.try_acquire()
         if current_owner != self.executor_id:
             if current_owner is not None:
-                logger.warning(f"Task {task_id} already running on pod {current_owner}")
+                logger.warning(
+                    f"Session {session_id} already running on pod {current_owner}"
+                )
                 ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
-                    f"Could not acquire lock for {task_id} - Redis unavailable"
+                    f"Could not acquire lock for {session_id} - Redis unavailable"
                 )
                 ack_message(reject=True, requeue=True)
             return
 
         # Execute the task
         try:
-            self._task_locks[task_id] = cluster_lock
+            self._task_locks[session_id] = cluster_lock
 
             logger.info(
-                f"Acquired cluster lock for {task_id}, executor_id={self.executor_id}"
+                f"Acquired cluster lock for {session_id}, "
+                f"executor_id={self.executor_id}"
             )
 
             cancel_event = threading.Event()
             future = self.executor.submit(
-                execute_copilot_task, entry, cancel_event, cluster_lock
+                execute_copilot_turn, entry, cancel_event, cluster_lock
             )
-            self.active_tasks[task_id] = (future, cancel_event)
+            self.active_tasks[session_id] = (future, cancel_event)
         except Exception as e:
-            logger.warning(f"Failed to setup execution for {task_id}: {e}")
+            logger.warning(f"Failed to setup execution for {session_id}: {e}")
             cluster_lock.release()
-            if task_id in self._task_locks:
-                del self._task_locks[task_id]
+            if session_id in self._task_locks:
+                del self._task_locks[session_id]
             ack_message(reject=True, requeue=True)
             return
 
         self._update_metrics()
 
         def on_run_done(f: Future):
-            logger.info(f"Run completed for {task_id}")
+            logger.info(f"Run completed for {session_id}")
             try:
                 if exec_error := f.exception():
-                    logger.error(f"Execution for {task_id} failed: {exec_error}")
-                    # Don't requeue failed tasks - they've been marked as failed
-                    # in the stream registry. Requeuing would cause infinite retries
-                    # for deterministic failures.
+                    logger.error(f"Execution for {session_id} failed: {exec_error}")
                     ack_message(reject=True, requeue=False)
                 else:
                     ack_message(reject=False, requeue=False)
@@ -419,10 +419,10 @@ class CoPilotExecutor(AppProcess):
                 logger.exception(f"Error in run completion callback: {e}")
             finally:
                 # Release the cluster lock
-                if task_id in self._task_locks:
-                    logger.info(f"Releasing cluster lock for {task_id}")
-                    self._task_locks[task_id].release()
-                    del self._task_locks[task_id]
+                if session_id in self._task_locks:
+                    logger.info(f"Releasing cluster lock for {session_id}")
+                    self._task_locks[session_id].release()
+                    del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
 
         future.add_done_callback(on_run_done)
@@ -433,11 +433,11 @@ class CoPilotExecutor(AppProcess):
         """Remove completed futures from active_tasks and update metrics."""
         completed_tasks = []
         with self._active_tasks_lock:
-            for task_id, (future, _) in list(self.active_tasks.items()):
+            for session_id, (future, _) in list(self.active_tasks.items()):
                 if future.done():
-                    completed_tasks.append(task_id)
-                    self.active_tasks.pop(task_id, None)
-                    logger.info(f"Cleaned up completed task {task_id}")
+                    completed_tasks.append(session_id)
+                    self.active_tasks.pop(session_id, None)
+                    logger.info(f"Cleaned up completed session {session_id}")
 
         self._update_metrics()
         return completed_tasks

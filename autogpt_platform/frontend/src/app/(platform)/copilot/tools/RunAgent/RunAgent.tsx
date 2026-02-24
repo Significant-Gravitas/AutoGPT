@@ -69,13 +69,20 @@ export function RunAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
+      {/* Only show loading text when NOT showing accordion or other content */}
+      {!isStreaming &&
+        !setupRequirementsOutput &&
+        !agentDetailsOutput &&
+        !needLoginOutput &&
+        !hasExpandableContent && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ToolIcon isStreaming={isStreaming} isError={isError} />
+            <MorphingTextAnimation
+              text={text}
+              className={isError ? "text-red-500" : undefined}
+            />
+          </div>
+        )}
 
       {isStreaming && !output && (
         <ToolAccordion

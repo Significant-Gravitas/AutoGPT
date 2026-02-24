@@ -116,12 +116,10 @@ export function convertChatSessionMessagesToUiMessages(
             output: "",
           });
         } else {
-          parts.push({
-            type: `tool-${toolName}`,
-            toolCallId,
-            state: "input-available",
-            input,
-          });
+          // Active stream exists: Skip incomplete tool calls during hydration.
+          // The resume stream will deliver them fresh with proper SDK state.
+          // This prevents "No tool invocation found" errors on page refresh.
+          continue;
         }
       }
     }
