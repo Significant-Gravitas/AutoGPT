@@ -28,7 +28,7 @@ class CoPilotLogMetadata(TruncatedLogger):
     Args:
         logger: The underlying logger instance
         max_length: Maximum log message length before truncation
-        **kwargs: Metadata key-value pairs (e.g., task_id="abc", session_id="xyz")
+        **kwargs: Metadata key-value pairs (e.g., session_id="xyz", turn_id="abc")
             These are added to json_fields in cloud mode, or to the prefix in local mode.
     """
 
@@ -135,17 +135,14 @@ class CoPilotExecutionEntry(BaseModel):
     This model represents a chat generation task to be processed by the executor.
     """
 
-    task_id: str
-    """Unique identifier for this task (used for stream registry)"""
-
     session_id: str
-    """Chat session ID"""
+    """Chat session ID (also used for dedup/locking)"""
+
+    turn_id: str = ""
+    """Per-turn UUID for Redis stream isolation"""
 
     user_id: str | None
     """User ID (may be None for anonymous users)"""
-
-    operation_id: str
-    """Operation ID for webhook callbacks and completion tracking"""
 
     message: str
     """User's message to process"""
@@ -160,40 +157,37 @@ class CoPilotExecutionEntry(BaseModel):
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
 
-    task_id: str
-    """Task ID to cancel"""
+    session_id: str
+    """Session ID to cancel"""
 
 
 # ============ Queue Publishing Helpers ============ #
 
 
-async def enqueue_copilot_task(
-    task_id: str,
+async def enqueue_copilot_turn(
     session_id: str,
     user_id: str | None,
-    operation_id: str,
     message: str,
+    turn_id: str,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
     Args:
-        task_id: Unique identifier for this task (used for stream registry)
-        session_id: Chat session ID
+        session_id: Chat session ID (also used for dedup/locking)
         user_id: User ID (may be None for anonymous users)
-        operation_id: Operation ID for webhook callbacks and completion tracking
         message: User's message to process
+        turn_id: Per-turn UUID for Redis stream isolation
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
     """
     from backend.util.clients import get_async_copilot_queue
 
     entry = CoPilotExecutionEntry(
-        task_id=task_id,
         session_id=session_id,
+        turn_id=turn_id,
         user_id=user_id,
-        operation_id=operation_id,
         message=message,
         is_user_message=is_user_message,
         context=context,
@@ -207,15 +201,15 @@ async def enqueue_copilot_task(
     )
 
 
-async def enqueue_cancel_task(task_id: str) -> None:
-    """Publish a cancel request for a running CoPilot task.
+async def enqueue_cancel_task(session_id: str) -> None:
+    """Publish a cancel request for a running CoPilot session.
 
     Sends a ``CancelCoPilotEvent`` to the FANOUT exchange so all executor
     pods receive the cancellation signal.
     """
     from backend.util.clients import get_async_copilot_queue
 
-    event = CancelCoPilotEvent(task_id=task_id)
+    event = CancelCoPilotEvent(session_id=session_id)
     queue_client = await get_async_copilot_queue()
     await queue_client.publish_message(
         routing_key="",  # FANOUT ignores routing key

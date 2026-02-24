@@ -24,7 +24,7 @@ def run_processes(*processes: "AppProcess", **kwargs):
         # Run the last process in the foreground.
         processes[-1].start(background=False, **kwargs)
     finally:
-        for process in processes:
+        for process in reversed(processes):
             try:
                 process.stop()
             except Exception as e:

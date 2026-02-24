@@ -366,12 +366,15 @@ class TestFindBlockFiltering:
             return_value=(search_results, len(search_results))
         )
 
-        with patch(
-            "backend.copilot.tools.find_block.search",
-            return_value=mock_search_db,
-        ), patch(
-            "backend.copilot.tools.find_block.get_block",
-            side_effect=lambda bid: mock_blocks.get(bid),
+        with (
+            patch(
+                "backend.copilot.tools.find_block.search",
+                return_value=mock_search_db,
+            ),
+            patch(
+                "backend.copilot.tools.find_block.get_block",
+                side_effect=lambda bid: mock_blocks.get(bid),
+            ),
         ):
             tool = FindBlockTool()
             response = await tool._execute(

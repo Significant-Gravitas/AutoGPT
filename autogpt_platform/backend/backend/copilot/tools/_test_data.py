@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from os import getenv
 
 import pytest
+import pytest_asyncio
 from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
@@ -31,14 +32,16 @@ def make_session(user_id: str):
     )
 
 
-@pytest.fixture(scope="session")
-async def setup_test_data():
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def setup_test_data(server):
     """
     Set up test data for run_agent tests:
     1. Create a test user
     2. Create a test graph (agent input -> agent output)
     3. Create a store listing and store listing version
     4. Approve the store listing version
+
+    Depends on ``server`` to ensure Prisma is connected.
     """
     # 1. Create a test user
     user_data = {
@@ -150,14 +153,16 @@ async def setup_test_data():
     }
 
 
-@pytest.fixture(scope="session")
-async def setup_llm_test_data():
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def setup_llm_test_data(server):
     """
     Set up test data for LLM agent tests:
     1. Create a test user
     2. Create test OpenAI credentials for the user
     3. Create a test graph with input -> LLM block -> output
     4. Create and approve a store listing
+
+    Depends on ``server`` to ensure Prisma is connected.
     """
     key = getenv("OPENAI_API_KEY")
     if not key:
@@ -315,13 +320,15 @@ async def setup_llm_test_data():
     }
 
 
-@pytest.fixture(scope="session")
-async def setup_firecrawl_test_data():
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def setup_firecrawl_test_data(server):
     """
     Set up test data for Firecrawl agent tests (missing credentials scenario):
     1. Create a test user (WITHOUT Firecrawl credentials)
     2. Create a test graph with input -> Firecrawl block -> output
     3. Create and approve a store listing
+
+    Depends on ``server`` to ensure Prisma is connected.
     """
     # 1. Create a test user
     user_data = {
