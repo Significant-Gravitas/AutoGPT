@@ -14,7 +14,6 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
-import { useLongRunningToolPolling } from "./hooks/useLongRunningToolPolling";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
 
@@ -36,6 +35,46 @@ function resolveInProgressTools(
   }));
 }
 
+/** Build a fingerprint from a message's role + text/tool content for cross-boundary dedup. */
+function messageFingerprint(msg: UIMessage): string {
+  const fragments = msg.parts.map((p) => {
+    if ("text" in p && typeof p.text === "string") return p.text;
+    if ("toolCallId" in p && typeof p.toolCallId === "string")
+      return `tool:${p.toolCallId}`;
+    return "";
+  });
+  return `${msg.role}::${fragments.join("\n")}`;
+}
+
+/**
+ * Deduplicate messages by ID *and* by content fingerprint.
+ * ID-based dedup catches duplicates within the same source (e.g. two
+ * identical stream events).  Fingerprint-based dedup catches duplicates
+ * across the hydration/stream boundary where IDs differ (synthetic
+ * `${sessionId}-${index}` vs AI SDK nanoid).
+ *
+ * NOTE: Fingerprint dedup only applies to assistant messages, not user messages.
+ * Users should be able to send the same message multiple times.
+ */
+function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  return messages.filter((msg) => {
+    if (seenIds.has(msg.id)) return false;
+    seenIds.add(msg.id);
+
+    // Only apply fingerprint deduplication to assistant messages
+    // User messages should allow duplicates (same text sent multiple times)
+    if (msg.role === "assistant") {
+      const fp = messageFingerprint(msg);
+      if (fp !== "::" && seenFingerprints.has(fp)) return false;
+      seenFingerprints.add(fp);
+    }
+
+    return true;
+  });
+}
+
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -52,6 +91,7 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     isLoadingSession,
+    isSessionError,
     createSession,
     isCreatingSession,
   } = useChatSession();
@@ -114,7 +154,7 @@ export function useCopilotPage() {
   );
 
   const {
-    messages,
+    messages: rawMessages,
     sendMessage,
     stop: sdkStop,
     status,
@@ -128,6 +168,12 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
   });
+
+  // Deduplicate messages continuously to prevent duplicates when resuming streams
+  const messages = useMemo(
+    () => deduplicateMessages(rawMessages),
+    [rawMessages],
+  );
 
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
@@ -184,14 +230,14 @@ export function useCopilotPage() {
     if (status === "streaming" || status === "submitted") return;
     setMessages((prev) => {
       if (prev.length >= hydratedMessages.length) return prev;
-      return hydratedMessages;
+      // Deduplicate to handle rare cases where duplicate streams might occur
+      return deduplicateMessages(hydratedMessages);
     });
   }, [hydratedMessages, setMessages, status]);
 
   // Ref: tracks whether we've already resumed for a given session.
-  // Reset when the stream ends so re-resume is possible if the backend
-  // task is still running (SSE dropped but executor didn't finish).
-  const hasResumedRef = useRef<string | null>(null);
+  // Format: Map<sessionId, hasResumed>
+  const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
   // When the stream ends (or drops), invalidate the session cache so the
   // next hydration fetches fresh messages from the backend.  Without this,
@@ -208,29 +254,27 @@ export function useCopilotPage() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
-      // Allow re-resume if the backend task is still running.
-      hasResumedRef.current = null;
     }
   }, [status, sessionId, queryClient]);
 
   // Resume an active stream AFTER hydration completes.
-  // The backend returns active_stream info when a task is still running.
-  // We wait for hydration so the AI SDK has the conversation history
-  // before the resumed stream appends the in-progress assistant message.
+  // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
+  // Does NOT run when new streams start during active conversation.
   useEffect(() => {
-    if (!hasActiveStream || !sessionId) return;
+    if (!sessionId) return;
+    if (!hasActiveStream) return;
     if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    // Only resume once per session to avoid re-triggering after stream ends
-    if (hasResumedRef.current === sessionId) return;
-    hasResumedRef.current = sessionId;
-    resumeStream();
-  }, [hasActiveStream, sessionId, hydratedMessages, status, resumeStream]);
 
-  // Poll session endpoint when a long-running tool (create_agent, edit_agent)
-  // is in progress. When the backend completes, the session data will contain
-  // the final tool output — this hook detects the change and updates messages.
-  useLongRunningToolPolling(sessionId, messages, setMessages);
+    // Never resume if currently streaming
+    if (status === "streaming" || status === "submitted") return;
+
+    // Only resume once per session
+    if (hasResumedRef.current.get(sessionId)) return;
+
+    // Mark as resumed immediately to prevent race conditions
+    hasResumedRef.current.set(sessionId, true);
+    resumeStream();
+  }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
 
   // Clear messages when session is null
   useEffect(() => {
@@ -321,6 +365,7 @@ export function useCopilotPage() {
     stop,
     isReconnecting,
     isLoadingSession,
+    isSessionError,
     isCreatingSession,
     isUserLoading,
     isLoggedIn,

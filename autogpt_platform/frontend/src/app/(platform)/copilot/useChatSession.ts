@@ -20,7 +20,8 @@ export function useChatSession() {
       enabled: !!sessionId,
       staleTime: Infinity,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
     },
   });
 
@@ -115,6 +116,7 @@ export function useChatSession() {
     hydratedMessages,
     hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
+    isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,
   };

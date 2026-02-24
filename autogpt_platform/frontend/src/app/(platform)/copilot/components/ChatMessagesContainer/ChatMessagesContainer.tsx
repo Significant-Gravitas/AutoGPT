@@ -10,9 +10,8 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -129,27 +128,12 @@ export const ChatMessagesContainer = ({
   headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-  const lastToastTimeRef = useRef(0);
 
   useEffect(() => {
     if (status === "submitted") {
       setThinkingPhrase(getRandomPhrase());
     }
   }, [status]);
-
-  // Show a toast when a new error occurs, debounced to avoid spam
-  useEffect(() => {
-    if (!error) return;
-    const now = Date.now();
-    if (now - lastToastTimeRef.current < 3_000) return;
-    lastToastTimeRef.current = now;
-    toast({
-      variant: "destructive",
-      title: "Something went wrong",
-      description:
-        "The assistant encountered an error. Please try sending your message again.",
-    });
-  }, [error]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
@@ -314,13 +298,15 @@ export const ChatMessagesContainer = ({
           </Message>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            <p className="font-medium">Something went wrong</p>
-            <p className="mt-1 text-red-600">
+          <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your
               message again.
-            </p>
-          </div>
+            </summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+              {error instanceof Error ? error.message : String(error)}
+            </pre>
+          </details>
         )}
       </ConversationContent>
       <ConversationScrollButton />

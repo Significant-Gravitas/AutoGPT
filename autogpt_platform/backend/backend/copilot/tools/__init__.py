@@ -10,7 +10,6 @@ from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .check_operation_status import CheckOperationStatusTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
@@ -47,7 +46,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "view_agent_output": AgentOutputTool(),
-    "check_operation_status": CheckOperationStatusTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
     # Web fetch for safe URL retrieval
