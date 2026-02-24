@@ -691,6 +691,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
 
+    tally_api_key: str = Field(
+        default="",
+        description="Tally API key for form submission lookup on signup",
+    )
+    tally_form_id: str = Field(
+        default="npGe0q",
+        description="Tally form ID for signup business understanding form",
+    )
+
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
