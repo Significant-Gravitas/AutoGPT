@@ -5,6 +5,10 @@ for agent generator and SDK service, allowing automated testing without
 external LLM calls.
 
 Enable test mode with COPILOT_TEST_MODE=true environment variable.
+
+Note: StreamFinish is NOT emitted by the dummy service — it is published
+by mark_session_completed in the processor layer.  These tests only cover
+the service-level streaming output (StreamStart + StreamTextDelta).
 """
 
 import asyncio
@@ -16,7 +20,6 @@ import pytest
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import (
     StreamError,
-    StreamFinish,
     StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
@@ -60,16 +63,11 @@ async def test_dummy_streaming_basic_flow():
     full_text = "".join(e.delta for e in text_events)
     assert len(full_text) > 0
 
-    # Verify StreamFinish
-    finish_events = [e for e in events if isinstance(e, StreamFinish)]
-    assert len(finish_events) == 1
-
-    # Verify order: start before text before finish
+    # Verify order: start before text
     start_idx = events.index(start_events[0])
-    finish_idx = events.index(finish_events[0])
     first_text_idx = events.index(text_events[0]) if text_events else -1
     if first_text_idx >= 0:
-        assert start_idx < first_text_idx < finish_idx
+        assert start_idx < first_text_idx
 
     print(f"✅ Basic flow: {len(events)} events, {len(text_events)} text deltas")
 
@@ -82,7 +80,7 @@ async def test_streaming_no_timeout():
     start_time = time.monotonic()
     event_count = 0
 
-    async for event in stream_chat_completion_dummy(
+    async for _event in stream_chat_completion_dummy(
         session_id="test-session-timeout",
         message="count to 10",
         is_user_message=True,
@@ -112,10 +110,9 @@ async def test_streaming_event_types():
     ):
         event_types.add(type(event).__name__)
 
-    # Required event types
+    # Required event types (StreamFinish is published by processor, not service)
     assert "StreamStart" in event_types, "Missing StreamStart"
     assert "StreamTextDelta" in event_types, "Missing StreamTextDelta"
-    assert "StreamFinish" in event_types, "Missing StreamFinish"
 
     print(f"✅ Event types: {sorted(event_types)}")
 
@@ -196,7 +193,7 @@ async def test_concurrent_sessions():
 
     async def stream_session(session_id: str) -> int:
         count = 0
-        async for event in stream_chat_completion_dummy(
+        async for _event in stream_chat_completion_dummy(
             session_id=session_id,
             message="test",
             is_user_message=True,
@@ -256,10 +253,6 @@ async def test_session_state_persistence():
     # Verify events were produced
     assert len(events) > 0, "Should produce events for second message"
 
-    # Verify we got a complete response
-    finish_events = [e for e in events if isinstance(e, StreamFinish)]
-    assert len(finish_events) == 1, "Should have StreamFinish"
-
     print(f"✅ Session persistence: {len(events)} events for second message")
 
 
@@ -278,8 +271,6 @@ async def test_message_deduplication():
         user_id="test-user",
     ):
         events.append(event)
-        if isinstance(event, StreamFinish):
-            break
 
     # Count unique message IDs in StreamStart events
     start_events = [e for e in events if isinstance(e, StreamStart)]
@@ -309,22 +300,17 @@ async def test_event_ordering():
         (i for i, e in enumerate(events) if isinstance(e, StreamStart)), None
     )
     text_indices = [i for i, e in enumerate(events) if isinstance(e, StreamTextDelta)]
-    finish_idx = next(
-        (i for i, e in enumerate(events) if isinstance(e, StreamFinish)), None
-    )
 
     # Verify ordering
     assert start_idx is not None, "Should have StreamStart"
-    assert finish_idx is not None, "Should have StreamFinish"
     assert start_idx == 0, "StreamStart should be first"
-    assert finish_idx == len(events) - 1, "StreamFinish should be last"
 
     if text_indices:
         assert all(
-            start_idx < i < finish_idx for i in text_indices
-        ), "Text deltas should be between start and finish"
+            start_idx < i for i in text_indices
+        ), "Text deltas should be after start"
 
-    print(f"✅ Event ordering: start({start_idx}) < text < finish({finish_idx})")
+    print(f"✅ Event ordering: start({start_idx}) < text deltas")
 
 
 @pytest.mark.asyncio
@@ -340,24 +326,19 @@ async def test_stream_completeness():
     ):
         events.append(event)
 
-    # Check for required events
+    # Check for required events (StreamFinish is published by processor)
     has_start = any(isinstance(e, StreamStart) for e in events)
     has_text = any(isinstance(e, StreamTextDelta) for e in events)
-    has_finish = any(isinstance(e, StreamFinish) for e in events)
 
     assert has_start, "Stream must include StreamStart"
     assert has_text, "Stream must include text deltas"
-    assert has_finish, "Stream must include StreamFinish"
 
-    # Verify exactly one start and one finish
+    # Verify exactly one start
     start_count = sum(1 for e in events if isinstance(e, StreamStart))
-    finish_count = sum(1 for e in events if isinstance(e, StreamFinish))
-
     assert start_count == 1, f"Should have exactly 1 StreamStart, got {start_count}"
-    assert finish_count == 1, f"Should have exactly 1 StreamFinish, got {finish_count}"
 
     print(
-        f"✅ Completeness: 1 start, {sum(1 for e in events if isinstance(e, StreamTextDelta))} text, 1 finish"
+        f"✅ Completeness: 1 start, {sum(1 for e in events if isinstance(e, StreamTextDelta))} text deltas"
     )
 
 
