@@ -91,7 +91,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         <div className="flex w-full flex-1 flex-col px-4 pb-2">
           <Link
             href={`/library/agents/${id}`}
-            className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline"
+            className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline focus:ring-0"
           >
             <Text
               variant="h5"
