@@ -478,22 +478,31 @@ export async function clickRunButton(page: Page): Promise<void> {
     );
   }
 
+  // Helper to click "Start Task" inside the modal after it opens.
+  // The modal animates in and re-renders multiple times (credential
+  // initialization, overflow detection via setTimeout). We wait for
+  // the network to settle and the button to stabilize before clicking.
+  async function clickStartTaskInModal() {
+    const startTaskButton = page
+      .getByRole("button", { name: /Start Task/i })
+      .first();
+    await startTaskButton.waitFor({ state: "attached", timeout: 10000 });
+    // Allow the modal's post-open effects (credential init, overflow
+    // check at +100ms, animation) to complete so the DOM stabilizes.
+    await page.waitForTimeout(600);
+    await startTaskButton.click({ timeout: 10000 });
+  }
+
   // Check which button is visible and click it
   if (await setupTaskButton.isVisible()) {
     await setupTaskButton.click();
-    await page
-      .getByRole("button", { name: /Start Task/i })
-      .first()
-      .click({ timeout: 10000 });
+    await clickStartTaskInModal();
     return;
   }
 
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
-    await page
-      .getByRole("button", { name: /Start Task/i })
-      .first()
-      .click({ timeout: 10000 });
+    await clickStartTaskInModal();
     return;
   }
 
