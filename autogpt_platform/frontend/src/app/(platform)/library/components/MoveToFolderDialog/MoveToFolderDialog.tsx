@@ -13,7 +13,8 @@ import {
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
 
 interface Props {
   agentId: string;
@@ -64,13 +65,30 @@ export function MoveToFolderDialog({
     },
   });
 
-  const folders = (foldersData?.folders ?? []).filter(
-    (f) =>
+  const hierarchicalFolders = useMemo(() => {
+    const allFolders = foldersData?.folders ?? [];
+    const result: { folder: LibraryFolder; depth: number }[] = [];
+
+    function addChildren(parentId: string | null, depth: number) {
+      for (const f of allFolders) {
+        if ((f.parent_id ?? null) === parentId) {
+          result.push({ folder: f, depth });
+          addChildren(f.id, depth + 1);
+        }
+      }
+    }
+
+    addChildren(null, 0);
+    return result;
+  }, [foldersData]);
+
+  const folders = hierarchicalFolders.filter(
+    ({ folder: f }) =>
       f.id !== currentFolderId &&
       f.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  function handleMoveToFolder(folderId: string) {
+  function handleMoveToFolder(folderId: string | null) {
     moveAgent({
       data: {
         agent_ids: [agentId],
@@ -107,11 +125,28 @@ export function MoveToFolderDialog({
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                {folders.map((folder) => (
+                {currentFolderId && (
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-3 px-3 py-2.5"
+                    disabled={isPending}
+                    onClick={() => handleMoveToFolder(null)}
+                  >
+                    <span className="text-lg">📂</span>
+                    <div className="flex flex-col items-start">
+                      <Text variant="small-medium">My Library (root)</Text>
+                      <Text variant="small" className="text-zinc-400">
+                        Remove from folder
+                      </Text>
+                    </div>
+                  </Button>
+                )}
+                {folders.map(({ folder, depth }) => (
                   <Button
                     key={folder.id}
                     variant="ghost"
-                    className="w-full justify-start gap-3 px-3 py-2.5"
+                    className="w-full justify-start gap-3 py-2.5"
+                    style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(folder.id)}
                   >

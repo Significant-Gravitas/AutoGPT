@@ -98,7 +98,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       await bulkMoveAgents({
         data: {
           agent_ids: [agent.id],
-          folder_id: undefined,
+          folder_id: null,
         },
       });
 

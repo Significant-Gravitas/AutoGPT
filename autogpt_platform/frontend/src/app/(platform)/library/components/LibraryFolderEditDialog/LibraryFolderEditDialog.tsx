@@ -17,7 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { EmojiPicker } from "@ferrucc-io/emoji-picker";
+import dynamic from "next/dynamic";
 import {
   usePatchV2UpdateFolder,
   getGetV2ListLibraryFoldersQueryKey,
@@ -26,17 +26,21 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { FOLDER_COLORS } from "../folder-constants";
 
-const FOLDER_COLORS = [
-  { value: "#3B82F6", label: "Blue" },
-  { value: "#A855F7", label: "Purple" },
-  { value: "#10B981", label: "Green" },
-  { value: "#F97316", label: "Orange" },
-  { value: "#EC4899", label: "Pink" },
-];
+const LazyEmojiPicker = dynamic(
+  () =>
+    import("../LazyEmojiPicker").then((mod) => ({
+      default: mod.LazyEmojiPicker,
+    })),
+  { ssr: false },
+);
 
 const editFolderSchema = z.object({
-  folderName: z.string().min(1, "Folder name is required"),
+  folderName: z
+    .string()
+    .min(1, "Folder name is required")
+    .max(100, "Folder name must be 100 characters or less"),
   folderColor: z.string().min(1, "Folder color is required"),
   folderIcon: z.string().min(1, "Folder icon is required"),
 });
@@ -249,20 +253,11 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                       </div>
                     </div>
                     <div className="h-[295px] w-full overflow-hidden">
-                      <EmojiPicker
+                      <LazyEmojiPicker
                         onEmojiSelect={(emoji) => {
                           field.onChange(emoji);
                         }}
-                        emojiSize={32}
-                        className="w-full rounded-2xl px-2"
-                      >
-                        <EmojiPicker.Group className="pt-2">
-                          <EmojiPicker.List
-                            hideStickyHeader
-                            containerHeight={295}
-                          />
-                        </EmojiPicker.Group>
-                      </EmojiPicker>
+                      />
                     </div>
                   </div>
                   <FormMessage />

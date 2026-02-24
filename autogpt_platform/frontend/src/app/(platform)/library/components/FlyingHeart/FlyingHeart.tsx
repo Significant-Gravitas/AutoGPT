@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { HeartIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
@@ -16,6 +16,7 @@ export function FlyingHeart({
   onAnimationComplete,
 }: FlyingHeartProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (startPosition && targetPosition) {
@@ -37,18 +38,22 @@ export function FlyingHeart({
             opacity: 1,
           }}
           animate={{
-            x: targetPosition.x,
-            y: targetPosition.y,
+            x: shouldReduceMotion ? targetPosition.x : targetPosition.x,
+            y: shouldReduceMotion ? targetPosition.y : targetPosition.y,
             scale: 0.5,
             opacity: 0,
           }}
           exit={{ opacity: 0 }}
-          transition={{
-            type: "spring",
-            damping: 20,
-            stiffness: 200,
-            duration: 0.5,
-          }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : {
+                  type: "spring",
+                  damping: 20,
+                  stiffness: 200,
+                  duration: 0.5,
+                }
+          }
           onAnimationComplete={() => {
             setIsVisible(false);
             onAnimationComplete();

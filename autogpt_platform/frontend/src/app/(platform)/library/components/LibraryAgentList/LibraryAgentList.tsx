@@ -136,20 +136,25 @@ export function LibraryAgentList({
 
       <div>
         {selectedFolderId && (
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-2">
             <Button
               variant="ghost"
               size="small"
               onClick={() => onFolderSelect(null)}
-              className="gap-2"
+              className="gap-1 text-zinc-500 hover:text-zinc-900"
             >
               <ArrowLeftIcon className="h-4 w-4" />
-              Back to Library
+              My Library
             </Button>
             {currentFolder && (
-              <Text variant="h4" className="text-zinc-700">
-                {currentFolder.icon} {currentFolder.name}
-              </Text>
+              <>
+                <Text variant="small" className="text-zinc-400">
+                  /
+                </Text>
+                <Text variant="h4" className="text-zinc-700">
+                  {currentFolder.icon} {currentFolder.name}
+                </Text>
+              </>
             )}
           </div>
         )}

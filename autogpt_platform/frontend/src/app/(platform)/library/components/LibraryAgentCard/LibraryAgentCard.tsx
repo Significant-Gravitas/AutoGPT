@@ -46,7 +46,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
     <div
       draggable={draggable}
       onDragStart={handleDragStart}
-      className="cursor-grab active:cursor-grabbing"
+      className="[@media(pointer:fine)]:cursor-grab [@media(pointer:fine)]:active:cursor-grabbing"
     >
       <motion.div
         layoutId={`agent-card-${id}`}
