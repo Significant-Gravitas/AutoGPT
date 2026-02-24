@@ -484,9 +484,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   // Check which button is visible and click it
   if (await setupTaskButton.isVisible()) {
     await setupTaskButton.click();
-    const startBtn = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
     await startBtn.waitFor({ state: "visible", timeout: 15000 });
     await startBtn.click();
     return;
@@ -494,9 +492,7 @@ export async function clickRunButton(page: Page): Promise<void> {
 
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
-    const startBtn = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
     await startBtn.waitFor({ state: "visible", timeout: 15000 });
     await startBtn.click();
     return;
