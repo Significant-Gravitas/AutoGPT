@@ -135,8 +135,6 @@ export const ChatMessagesContainer = ({
     }
   }, [status]);
 
-  // Error is now shown inline as collapsible details, not as toast
-
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
     lastMessage?.role === "assistant" &&

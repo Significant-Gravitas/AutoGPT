@@ -997,3 +997,13 @@ async def unsubscribe_from_task(
         )
 
     logger.debug(f"Successfully unsubscribed from task {session_id}")
+
+
+async def cleanup_turn_stream(turn_id: str) -> None:
+    """Delete the per-turn Redis stream after the turn completes."""
+    try:
+        redis = await get_redis_async()
+        stream_key = _get_task_stream_key(turn_id)
+        await redis.delete(stream_key)
+    except Exception as e:
+        logger.warning(f"Failed to clean up turn stream {turn_id}: {e}")

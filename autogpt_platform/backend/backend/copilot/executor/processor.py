@@ -14,7 +14,6 @@ from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
 from backend.copilot.sdk import service as sdk_service
-from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -272,14 +271,8 @@ class CoPilotProcessor:
             )
             log.info("Task completed successfully")
 
-            # Clean up the per-turn Redis stream now that the turn is done
             if entry.turn_id:
-                try:
-                    redis = await get_redis_async()
-                    stream_key = f"{ChatConfig().task_stream_prefix}{entry.turn_id}"
-                    await redis.delete(stream_key)
-                except Exception as e:
-                    log.warning(f"Failed to clean up turn stream: {e}")
+                await stream_registry.cleanup_turn_stream(entry.turn_id)
 
         except asyncio.CancelledError:
             log.info("Task cancelled")
@@ -288,7 +281,7 @@ class CoPilotProcessor:
                 status="failed",
                 error_message="Task was cancelled",
             )
-            raise  # mark_task_completed resolves turn_id internally
+            raise
 
         except Exception as e:
             log.error(f"Task failed: {e}")
