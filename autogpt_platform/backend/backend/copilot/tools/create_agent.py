@@ -10,7 +10,6 @@ from .agent_generator import (
     decompose_goal,
     enrich_library_agents_from_steps,
     generate_agent,
-    get_all_relevant_agents_for_generation,
     get_user_message_for_error,
     save_agent_to_library,
 )
@@ -18,7 +17,6 @@ from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
-    AsyncProcessingResponse,
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
@@ -40,15 +38,14 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent workflow from a natural language description. "
-            "First generates a preview, then saves to library if save=true."
+            "First generates a preview, then saves to library if save=true. "
+            "\n\nIMPORTANT: Before calling this tool, search for relevant existing agents "
+            "using find_library_agent that could be used as building blocks. "
+            "Pass their IDs in the library_agent_ids parameter so the generator can compose them."
         )
 
     @property
     def requires_auth(self) -> bool:
-        return True
-
-    @property
-    def is_long_running(self) -> bool:
         return True
 
     @property
@@ -68,6 +65,15 @@ class CreateAgentTool(BaseTool):
                     "description": (
                         "Additional context or answers to previous clarifying questions. "
                         "Include any preferences or constraints mentioned by the user."
+                    ),
+                },
+                "library_agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of library agent IDs to use as building blocks. "
+                        "Search for relevant agents using find_library_agent first, "
+                        "then pass their IDs here so they can be composed into the new agent."
                     ),
                 },
                 "save": {
@@ -97,12 +103,14 @@ class CreateAgentTool(BaseTool):
         """
         description = kwargs.get("description", "").strip()
         context = kwargs.get("context", "")
+        library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
 
-        # Extract async processing params (passed by long-running tool handler)
-        operation_id = kwargs.get("_operation_id")
-        task_id = kwargs.get("_task_id")
+        logger.info(
+            f"[AGENT_CREATE_DEBUG] START - description_len={len(description)}, "
+            f"library_agent_ids={library_agent_ids}, save={save}, user_id={user_id}, session_id={session_id}"
+        )
 
         if not description:
             return ErrorResponse(
@@ -111,25 +119,34 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch library agents by IDs if provided
         library_agents = None
-        if user_id:
+        if user_id and library_agent_ids:
             try:
-                library_agents = await get_all_relevant_agents_for_generation(
+                from .agent_generator import get_library_agents_by_ids
+
+                library_agents = await get_library_agents_by_ids(
                     user_id=user_id,
-                    search_query=description,
-                    include_marketplace=True,
+                    agent_ids=library_agent_ids,
                 )
                 logger.debug(
-                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
                 )
             except Exception as e:
-                logger.warning(f"Failed to fetch library agents: {e}")
+                logger.warning(f"Failed to fetch library agents by IDs: {e}")
 
         try:
             decomposition_result = await decompose_goal(
                 description, context, library_agents
             )
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] DECOMPOSE - type={decomposition_result.get('type') if decomposition_result else None}, "
+                f"session_id={session_id}"
+            )
         except AgentGeneratorNotConfiguredError:
+            logger.error(
+                f"[AGENT_CREATE_DEBUG] ERROR - AgentGeneratorNotConfigured, session_id={session_id}"
+            )
             return ErrorResponse(
                 message=(
                     "Agent generation is not available. "
@@ -230,10 +247,17 @@ class CreateAgentTool(BaseTool):
             agent_json = await generate_agent(
                 decomposition_result,
                 library_agents,
-                operation_id=operation_id,
-                task_id=task_id,
+            )
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] GENERATE - "
+                f"success={agent_json is not None}, "
+                f"is_error={isinstance(agent_json, dict) and agent_json.get('type') == 'error'}, "
+                f"session_id={session_id}"
             )
         except AgentGeneratorNotConfiguredError:
+            logger.error(
+                f"[AGENT_CREATE_DEBUG] ERROR - AgentGeneratorNotConfigured during generation, session_id={session_id}"
+            )
             return ErrorResponse(
                 message=(
                     "Agent generation is not available. "
@@ -276,25 +300,20 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Check if Agent Generator accepted for async processing
-        if agent_json.get("status") == "accepted":
-            logger.info(
-                f"Agent generation delegated to async processing "
-                f"(operation_id={operation_id}, task_id={task_id})"
-            )
-            return AsyncProcessingResponse(
-                message="Agent generation started. You'll be notified when it's complete.",
-                operation_id=operation_id,
-                task_id=task_id,
-                session_id=session_id,
-            )
-
         agent_name = agent_json.get("name", "Generated Agent")
         agent_description = agent_json.get("description", "")
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
+        logger.info(
+            f"[AGENT_CREATE_DEBUG] AGENT_JSON - name={agent_name}, "
+            f"nodes={node_count}, links={link_count}, save={save}, session_id={session_id}"
+        )
+
         if not save:
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] RETURN - AgentPreviewResponse, session_id={session_id}"
+            )
             return AgentPreviewResponse(
                 message=(
                     f"I've generated an agent called '{agent_name}' with {node_count} blocks. "
@@ -320,6 +339,13 @@ class CreateAgentTool(BaseTool):
                 agent_json, user_id
             )
 
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] SAVED - graph_id={created_graph.id}, "
+                f"library_agent_id={library_agent.id}, session_id={session_id}"
+            )
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] RETURN - AgentSavedResponse, session_id={session_id}"
+            )
             return AgentSavedResponse(
                 message=f"Agent '{created_graph.name}' has been saved to your library!",
                 agent_id=created_graph.id,
@@ -330,6 +356,12 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
+            logger.error(
+                f"[AGENT_CREATE_DEBUG] ERROR - save_failed: {str(e)}, session_id={session_id}"
+            )
+            logger.info(
+                f"[AGENT_CREATE_DEBUG] RETURN - ErrorResponse (save_failed), session_id={session_id}"
+            )
             return ErrorResponse(
                 message=f"Failed to save the agent: {str(e)}",
                 error="save_failed",

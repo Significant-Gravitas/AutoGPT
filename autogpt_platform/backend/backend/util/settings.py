@@ -372,7 +372,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the Agent Generator service",
     )
     agentgenerator_timeout: int = Field(
-        default=600,
+        default=1800,
         description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
     )
     agentgenerator_use_dummy: bool = Field(
@@ -690,6 +690,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    tally_api_key: str = Field(
+        default="",
+        description="Tally API key for form submission lookup on signup",
+    )
+    tally_form_id: str = Field(
+        default="npGe0q",
+        description="Tally form ID for signup business understanding form",
+    )
 
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")

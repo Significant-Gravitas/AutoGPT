@@ -738,17 +738,20 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon
-          category={category}
-          isStreaming={isStreaming}
-          isError={isError}
-        />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
+      {/* Only show loading text when NOT showing accordion */}
+      {!showAccordion && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon
+            category={category}
+            isStreaming={isStreaming}
+            isError={isError}
+          />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
 
       {showAccordion && accordionData ? (
         <ToolAccordion
