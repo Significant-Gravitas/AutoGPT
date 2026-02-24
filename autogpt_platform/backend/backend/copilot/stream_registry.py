@@ -529,7 +529,8 @@ async def _stream_listener(
                 # Timeout - check if session is still running
                 meta_key = _get_session_meta_key(session_id)
                 status = await redis.hget(meta_key, "status")  # type: ignore[misc]
-                if status and status != "running":
+                # Stop if session metadata is gone (TTL expired) or status is not "running"
+                if status != "running":
                     try:
                         await asyncio.wait_for(
                             subscriber_queue.put(StreamFinish()),
@@ -830,18 +831,16 @@ async def get_active_session(
     if session_user_id and user_id != session_user_id:
         return None, "0-0"
 
-    # Check if session is stale (running beyond tool timeout + buffer)
-    # Auto-complete it to prevent infinite polling loops
-    # Note: Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour)
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations
+    # Check if session is stale (running beyond tool timeout + buffer).
+    # Auto-complete it to prevent infinite polling loops.
+    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
+    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
             created_at = datetime.fromisoformat(created_at_str)
             age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
-            stale_threshold = (
-                COPILOT_CONSUMER_TIMEOUT_SECONDS + 300
-            )  # + 5 minutes buffer
+            stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
             if age_seconds > stale_threshold:
                 logger.warning(
                     f"[STALE_SESSION] Auto-completing stale session {session_id[:8]}... "

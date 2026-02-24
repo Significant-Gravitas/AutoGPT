@@ -25,7 +25,6 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
-    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
@@ -471,7 +470,6 @@ async def stream_chat_completion_sdk(
             "Please wait or stop it.",
             code="stream_already_active",
         )
-        yield StreamFinish()
         return
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
@@ -595,7 +593,6 @@ async def stream_chat_completion_sdk(
                         errorText="Message cannot be empty.",
                         code="empty_prompt",
                     )
-                    yield StreamFinish()
                     return
 
                 query_message = await _build_query_message(
@@ -857,25 +854,20 @@ async def stream_chat_completion_sdk(
                             )
                         yield response
 
-                # If the stream ended without a ResultMessage (no
-                # StreamFinish), the SDK CLI exited unexpectedly.  Close
-                # the open step and emit StreamFinish so the frontend
-                # transitions to the "ready" state.
+                # If the stream ended without a ResultMessage, the SDK
+                # CLI exited unexpectedly.  Close any open text/step so
+                # the chunks are well-formed.  StreamFinish is published
+                # by mark_session_completed in the processor.
                 if not stream_completed:
                     logger.warning(
                         "[SDK] [%s] Stream ended without ResultMessage "
-                        "(StopAsyncIteration) — emitting StreamFinish",
+                        "(StopAsyncIteration)",
                         session_id[:12],
                     )
-                    if adapter.step_open:
-                        yield StreamFinishStep()
-                        adapter.step_open = False
                     closing_responses: list[StreamBaseResponse] = []
                     adapter._end_text_if_open(closing_responses)
                     for r in closing_responses:
                         yield r
-                    yield StreamFinish()
-                    stream_completed = True
 
                 if (
                     assistant_response.content or assistant_response.tool_calls
@@ -936,9 +928,6 @@ async def stream_chat_completion_sdk(
             session_id[:12],
             len(session.messages),
         )
-        if not stream_completed:
-            yield StreamFinish()
-
     except asyncio.CancelledError:
         # Client disconnect / server shutdown — save session before re-raising
         # so accumulated messages aren't lost.
@@ -969,7 +958,6 @@ async def stream_chat_completion_sdk(
             errorText="An error occurred. Please try again.",
             code="sdk_error",
         )
-        yield StreamFinish()
     finally:
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when

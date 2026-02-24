@@ -20,7 +20,8 @@ export function useChatSession() {
       enabled: !!sessionId,
       staleTime: Infinity,
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
     },
   });
 

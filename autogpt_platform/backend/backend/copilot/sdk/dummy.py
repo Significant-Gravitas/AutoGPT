@@ -12,12 +12,7 @@ import uuid
 from collections.abc import AsyncGenerator
 
 from ..model import ChatSession
-from ..response_model import (
-    StreamBaseResponse,
-    StreamFinish,
-    StreamStart,
-    StreamTextDelta,
-)
+from ..response_model import StreamBaseResponse, StreamStart, StreamTextDelta
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +33,7 @@ async def stream_chat_completion_dummy(
     - Streaming infrastructure works
     - No timeout occurs
     - Text arrives in chunks
-    - StreamFinish is sent
+    - StreamFinish is sent by mark_session_completed
     """
     logger.warning(
         f"[TEST MODE] Using dummy copilot streaming for session {session_id}"
@@ -60,6 +55,3 @@ async def stream_chat_completion_dummy(
         yield StreamTextDelta(id=text_block_id, delta=text)
         # Small delay to simulate real streaming
         await asyncio.sleep(0.1)
-
-    # Finish the stream
-    yield StreamFinish()

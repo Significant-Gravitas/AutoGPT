@@ -625,9 +625,9 @@ async def stream_chat_completion(
                             has_saved_assistant_message = True
 
                     has_yielded_end = True
-                    # Emit finish-step before finish (resets AI SDK text/reasoning state)
+                    # Emit finish-step (resets AI SDK text/reasoning state).
+                    # StreamFinish is published by mark_session_completed.
                     yield StreamFinishStep()
-                    yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
                 yield chunk
@@ -716,7 +716,6 @@ async def stream_chat_completion(
                 yield error_response
             if not has_yielded_end:
                 yield StreamFinishStep()
-                yield StreamFinish()
             return
 
     # Handle retry outside of exception handler to avoid nesting
@@ -961,7 +960,6 @@ async def _stream_chat_chunks(
                     "Please start a new conversation."
                 )
             )
-            yield StreamFinish()
             return
 
     messages = context_result.messages
@@ -1164,7 +1162,6 @@ async def _stream_chat_chunks(
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )
-                yield StreamFinish()
                 return
             except Exception as e:
                 last_error = e
@@ -1216,7 +1213,6 @@ async def _stream_chat_chunks(
                         code=error_code,
                     )
                     yield error_response
-                    yield StreamFinish()
                     return
 
         # If we exit the retry loop without returning, it means we exhausted retries
@@ -1230,7 +1226,6 @@ async def _stream_chat_chunks(
                 retry_count=MAX_RETRIES,
             )
             yield StreamError(errorText=f"Max retries exceeded: {last_error!s}")
-            yield StreamFinish()
             return
 
 

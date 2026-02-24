@@ -315,7 +315,7 @@ async def cancel_session_task(
 
     active_session, _ = await stream_registry.get_active_session(session_id, user_id)
     if not active_session:
-        return CancelSessionResponse(cancelled=False, reason="no_active_session")
+        return CancelSessionResponse(cancelled=True, reason="no_active_session")
 
     await enqueue_cancel_task(session_id)
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
@@ -336,11 +336,10 @@ async def cancel_session_task(
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
-        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s"
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
     )
-    return CancelSessionResponse(
-        cancelled=True, reason="cancel_published_not_confirmed"
-    )
+    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    return CancelSessionResponse(cancelled=True)
 
 
 @router.post(
