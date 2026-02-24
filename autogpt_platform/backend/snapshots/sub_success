@@ -1,6 +1,7 @@
 {
   "submissions": [
     {
+      "listing_id": "test-listing-id",
       "agent_id": "test-agent-id",
       "agent_version": 1,
       "name": "Test Agent",

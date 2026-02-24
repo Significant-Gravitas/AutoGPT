@@ -14,13 +14,14 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
@@ -95,8 +96,7 @@ def _make_mime_text(
 
 async def create_mime_message(
     input_data,
-    graph_exec_id: str,
-    user_id: str,
+    execution_context: ExecutionContext,
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
@@ -117,12 +117,12 @@ async def create_mime_message(
     if input_data.attachments:
         for attach in input_data.attachments:
             local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
                 file=attach,
-                return_content=False,
+                execution_context=execution_context,
+                return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
@@ -353,7 +353,7 @@ class GmailReadBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="25310c70-b89b-43ba-b25c-4dfa7e2a481c",
-            description="This block reads emails from Gmail.",
+            description="A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments.",
             categories={BlockCategory.COMMUNICATION},
             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
             input_schema=GmailReadBlock.Input,
@@ -582,27 +582,25 @@ class GmailSendBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._send_email(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "result", result
 
     async def _send_email(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to or not input_data.subject or not input_data.body:
             raise ValueError(
                 "At least one recipient, subject, and body are required for sending an email"
             )
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(input_data, execution_context)
         sent_message = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -692,30 +690,28 @@ class GmailCreateDraftBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._create_draft(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "result", GmailDraftResult(
             id=result["id"], message_id=result["message"]["id"], status="draft_created"
         )
 
     async def _create_draft(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to or not input_data.subject:
             raise ValueError(
                 "At least one recipient and subject are required for creating a draft"
             )
 
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(input_data, execution_context)
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
@@ -743,7 +739,7 @@ class GmailListLabelsBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="3e1c2c1c-c689-4520-b956-1f3bf4e02bb7",
-            description="This block lists all labels in Gmail.",
+            description="A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailListLabelsBlock.Input,
             output_schema=GmailListLabelsBlock.Output,
@@ -807,7 +803,7 @@ class GmailAddLabelBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="f884b2fb-04f4-4265-9658-14f433926ac9",
-            description="This block adds a label to a Gmail message.",
+            description="A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailAddLabelBlock.Input,
             output_schema=GmailAddLabelBlock.Output,
@@ -893,7 +889,7 @@ class GmailRemoveLabelBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="0afc0526-aba1-4b2b-888e-a22b7c3f359d",
-            description="This block removes a label from a Gmail message.",
+            description="A block that removes a label from a specific email message in a Gmail account.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailRemoveLabelBlock.Input,
             output_schema=GmailRemoveLabelBlock.Output,
@@ -961,7 +957,7 @@ class GmailGetThreadBlock(GmailBase):
     def __init__(self):
         super().__init__(
             id="21a79166-9df7-4b5f-9f36-96f639d86112",
-            description="Get a full Gmail thread by ID",
+            description="A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=GmailGetThreadBlock.Input,
             output_schema=GmailGetThreadBlock.Output,
@@ -1100,7 +1096,7 @@ class GmailGetThreadBlock(GmailBase):
 
 
 async def _build_reply_message(
-    service, input_data, graph_exec_id: str, user_id: str
+    service, input_data, execution_context: ExecutionContext
 ) -> tuple[str, str]:
     """
     Builds a reply MIME message for Gmail threads.
@@ -1190,12 +1186,12 @@ async def _build_reply_message(
     # Handle attachments
     for attach in input_data.attachments:
         local_path = await store_media_file(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
             file=attach,
-            return_content=False,
+            execution_context=execution_context,
+            return_format="for_local_processing",
         )
-        abs_path = get_exec_file_path(graph_exec_id, local_path)
+        assert execution_context.graph_exec_id  # Validated by store_media_file
+        abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
             part.set_payload(f.read())
@@ -1311,16 +1307,14 @@ class GmailReplyBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         message = await self._reply(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
@@ -1343,11 +1337,11 @@ class GmailReplyBlock(GmailBase):
         yield "email", email
 
     async def _reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, execution_context
         )
 
         # Send the message
@@ -1441,16 +1435,14 @@ class GmailDraftReplyBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         draft = await self._create_draft_reply(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "draftId", draft["id"]
         yield "messageId", draft["message"]["id"]
@@ -1458,11 +1450,11 @@ class GmailDraftReplyBlock(GmailBase):
         yield "status", "draft_created"
 
     async def _create_draft_reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, execution_context
         )
 
         # Create draft with proper thread association
@@ -1629,23 +1621,21 @@ class GmailForwardBlock(GmailBase):
         input_data: Input,
         *,
         credentials: GoogleCredentials,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
         result = await self._forward_message(
             service,
             input_data,
-            graph_exec_id,
-            user_id,
+            execution_context,
         )
         yield "messageId", result["id"]
         yield "threadId", result.get("threadId", "")
         yield "status", "forwarded"
 
     async def _forward_message(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self, service, input_data: Input, execution_context: ExecutionContext
     ) -> dict:
         if not input_data.to:
             raise ValueError("At least one recipient is required for forwarding")
@@ -1727,12 +1717,12 @@ To: {original_to}
         # Add any additional attachments
         for attach in input_data.additionalAttachments:
             local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
                 file=attach,
-                return_content=False,
+                execution_context=execution_context,
+                return_format="for_local_processing",
             )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            assert execution_context.graph_exec_id  # Validated by store_media_file
+            abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())

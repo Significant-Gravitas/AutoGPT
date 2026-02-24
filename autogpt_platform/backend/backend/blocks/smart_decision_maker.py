@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel
 
 import backend.blocks.llm as llm
-from backend.blocks.agent import AgentExecutorBlock
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockInput,
@@ -17,6 +16,7 @@ from backend.data.block import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -226,7 +226,7 @@ class SmartDecisionMakerBlock(Block):
         )
         model: llm.LlmModel = SchemaField(
             title="LLM Model",
-            default=llm.LlmModel.GPT4O,
+            default=llm.DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -391,8 +391,12 @@ class SmartDecisionMakerBlock(Block):
         """
         block = sink_node.block
 
+        # Use custom name from node metadata if set, otherwise fall back to block.name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else block.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(block.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -489,14 +493,24 @@ class SmartDecisionMakerBlock(Block):
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
             )
 
+        # Use custom name from node metadata if set, otherwise fall back to graph name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else sink_graph_meta.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": sink_graph_meta.description,
         }
 
         properties = {}
+        field_mapping = {}
 
         for link in links:
+            field_name = link.sink_name
+
+            clean_field_name = SmartDecisionMakerBlock.cleanup(field_name)
+            field_mapping[clean_field_name] = field_name
+
             sink_block_input_schema = sink_node.input_default["input_schema"]
             sink_block_properties = sink_block_input_schema.get("properties", {}).get(
                 link.sink_name, {}
@@ -506,7 +520,7 @@ class SmartDecisionMakerBlock(Block):
                 if "description" in sink_block_properties
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name] = {
+            properties[clean_field_name] = {
                 "type": "string",
                 "description": description,
                 "default": json.dumps(sink_block_properties.get("default", None)),
@@ -519,7 +533,7 @@ class SmartDecisionMakerBlock(Block):
             "strict": True,
         }
 
-        # Store node info for later use in output processing
+        tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
         return {"type": "function", "function": tool_function}
@@ -975,10 +989,28 @@ class SmartDecisionMakerBlock(Block):
         graph_version: int,
         execution_context: ExecutionContext,
         execution_processor: "ExecutionProcessor",
+        nodes_to_skip: set[str] | None = None,
         **kwargs,
     ) -> BlockOutput:
 
         tool_functions = await self._create_tool_node_signatures(node_id)
+        original_tool_count = len(tool_functions)
+
+        # Filter out tools for nodes that should be skipped (e.g., missing optional credentials)
+        if nodes_to_skip:
+            tool_functions = [
+                tf
+                for tf in tool_functions
+                if tf.get("function", {}).get("_sink_node_id") not in nodes_to_skip
+            ]
+
+            # Only raise error if we had tools but they were all filtered out
+            if original_tool_count > 0 and not tool_functions:
+                raise ValueError(
+                    "No available tools to execute - all downstream nodes are unavailable "
+                    "(possibly due to missing optional credentials)"
+                )
+
         yield "tool_functions", json.dumps(tool_functions)
 
         conversation_history = input_data.conversation_history or []
@@ -1129,8 +1161,9 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
                 arg_value = tool_args.get(clean_arg_name)
 
-                sanitized_arg_name = self.cleanup(original_field_name)
-                emit_key = f"tools_^_{sink_node_id}_~_{sanitized_arg_name}"
+                # Use original_field_name directly (not sanitized) to match link sink_name
+                # The field_mapping already translates from LLM's cleaned names to original names
+                emit_key = f"tools_^_{sink_node_id}_~_{original_field_name}"
 
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",

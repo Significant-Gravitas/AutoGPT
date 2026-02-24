@@ -5,6 +5,7 @@ This is the frontend for AutoGPT's next generation
 This project uses [**pnpm**](https://pnpm.io/) as the package manager via **corepack**. [Corepack](https://github.com/nodejs/corepack) is a Node.js tool that automatically manages package managers without requiring global installations.
 
 For architecture, conventions, data fetching, feature flags, design system usage, state management, and PR process, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+For Playwright and Storybook testing setup, see [TESTING.md](./TESTING.md).
 
 ### Prerequisites
 

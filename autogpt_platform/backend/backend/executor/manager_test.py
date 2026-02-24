@@ -1,4 +1,5 @@
 import logging
+from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
 import pytest
@@ -17,6 +18,17 @@ from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_embedding_functions():
+    """Mock embedding functions for all tests to avoid database/API dependencies."""
+    with patch(
+        "backend.api.features.store.db.ensure_embedding",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:

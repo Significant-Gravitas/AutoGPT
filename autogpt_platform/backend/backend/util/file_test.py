@@ -7,8 +7,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.execution import ExecutionContext
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType
+
+
+def make_test_context(
+    graph_exec_id: str = "test-exec-123",
+    user_id: str = "test-user-123",
+) -> ExecutionContext:
+    """Helper to create test ExecutionContext."""
+    return ExecutionContext(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+    )
 
 
 class TestFileCloudIntegration:
@@ -70,10 +82,9 @@ class TestFileCloudIntegration:
             mock_path_class.side_effect = path_constructor
 
             result = await store_media_file(
-                graph_exec_id,
-                MediaFileType(cloud_path),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(cloud_path),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud storage operations
@@ -144,10 +155,9 @@ class TestFileCloudIntegration:
             mock_path_obj.name = "image.png"
             with patch("backend.util.file.Path", return_value=mock_path_obj):
                 result = await store_media_file(
-                    graph_exec_id,
-                    MediaFileType(cloud_path),
-                    "test-user-123",
-                    return_content=True,
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_external_api",
                 )
 
             # Verify result is a data URI
@@ -198,10 +208,9 @@ class TestFileCloudIntegration:
             mock_resolved_path.relative_to.return_value = Path("test-uuid-789.txt")
 
             await store_media_file(
-                graph_exec_id,
-                MediaFileType(data_uri),
-                "test-user-123",
-                return_content=False,
+                file=MediaFileType(data_uri),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
             )
 
             # Verify cloud handler was checked but not used for retrieval
@@ -234,5 +243,104 @@ class TestFileCloudIntegration:
                 FileNotFoundError, match="File not found in cloud storage"
             ):
                 await store_media_file(
-                    graph_exec_id, MediaFileType(cloud_path), "test-user-123"
+                    file=MediaFileType(cloud_path),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
+                )
+
+    @pytest.mark.asyncio
+    async def test_store_media_file_local_path_scanned(self):
+        """Test that local file paths are scanned for viruses."""
+        graph_exec_id = "test-exec-123"
+        local_file = "test_video.mp4"
+        file_content = b"fake video content"
+
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
+            # Mock cloud storage handler - not a cloud path
+            mock_handler = MagicMock()
+            mock_handler.is_cloud_path.return_value = False
+            mock_handler_getter.return_value = mock_handler
+
+            # Mock virus scanner
+            mock_scan.return_value = None
+
+            # Mock file system operations
+            mock_base_path = MagicMock()
+            mock_target_path = MagicMock()
+            mock_resolved_path = MagicMock()
+
+            mock_path_class.return_value = mock_base_path
+            mock_base_path.mkdir = MagicMock()
+            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
+            mock_target_path.resolve.return_value = mock_resolved_path
+            mock_resolved_path.is_relative_to.return_value = True
+            mock_resolved_path.is_file.return_value = True
+            mock_resolved_path.read_bytes.return_value = file_content
+            mock_resolved_path.relative_to.return_value = Path(local_file)
+            mock_resolved_path.name = local_file
+
+            result = await store_media_file(
+                file=MediaFileType(local_file),
+                execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                return_format="for_local_processing",
+            )
+
+            # Verify virus scan was called for local file
+            mock_scan.assert_called_once_with(file_content, filename=local_file)
+
+            # Result should be the relative path
+            assert str(result) == local_file
+
+    @pytest.mark.asyncio
+    async def test_store_media_file_local_path_virus_detected(self):
+        """Test that infected local files raise VirusDetectedError."""
+        from backend.api.features.store.exceptions import VirusDetectedError
+
+        graph_exec_id = "test-exec-123"
+        local_file = "infected.exe"
+        file_content = b"malicious content"
+
+        with patch(
+            "backend.util.file.get_cloud_storage_handler"
+        ) as mock_handler_getter, patch(
+            "backend.util.file.scan_content_safe"
+        ) as mock_scan, patch(
+            "backend.util.file.Path"
+        ) as mock_path_class:
+
+            # Mock cloud storage handler - not a cloud path
+            mock_handler = MagicMock()
+            mock_handler.is_cloud_path.return_value = False
+            mock_handler_getter.return_value = mock_handler
+
+            # Mock virus scanner to detect virus
+            mock_scan.side_effect = VirusDetectedError(
+                "EICAR-Test-File", "File rejected due to virus detection"
+            )
+
+            # Mock file system operations
+            mock_base_path = MagicMock()
+            mock_target_path = MagicMock()
+            mock_resolved_path = MagicMock()
+
+            mock_path_class.return_value = mock_base_path
+            mock_base_path.mkdir = MagicMock()
+            mock_base_path.__truediv__ = MagicMock(return_value=mock_target_path)
+            mock_target_path.resolve.return_value = mock_resolved_path
+            mock_resolved_path.is_relative_to.return_value = True
+            mock_resolved_path.is_file.return_value = True
+            mock_resolved_path.read_bytes.return_value = file_content
+
+            with pytest.raises(VirusDetectedError):
+                await store_media_file(
+                    file=MediaFileType(local_file),
+                    execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
                 )

@@ -6,6 +6,7 @@ import {
   useGetV1GetNotificationPreferences,
   useGetV1GetUserTimezone,
 } from "@/app/api/__generated__/endpoints/auth/auth";
+import { okData } from "@/app/api/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -24,7 +25,7 @@ export default function SettingsPage() {
   } = useGetV1GetNotificationPreferences({
     query: {
       enabled: !!user,
-      select: (res) => (res.status === 200 ? res.data : null),
+      select: okData,
     },
   });
 
@@ -32,9 +33,7 @@ export default function SettingsPage() {
     useGetV1GetUserTimezone({
       query: {
         enabled: !!user,
-        select: (res) => {
-          return res.status === 200 ? String(res.data.timezone) : "not-set";
-        },
+        select: (res) => okData(res)?.timezone ?? "not-set",
       },
     });
 

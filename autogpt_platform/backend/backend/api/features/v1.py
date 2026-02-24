@@ -40,10 +40,11 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.blocks import get_block, get_blocks
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -64,7 +65,6 @@ from backend.data.onboarding import (
     complete_re_run_agent,
     get_recommended_agents,
     get_user_onboarding,
-    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -102,7 +102,6 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
-from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -127,6 +126,9 @@ v1_router = APIRouter()
 ########################################################
 
 
+_tally_background_tasks: set[asyncio.Task] = set()
+
+
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
@@ -135,6 +137,24 @@ v1_router = APIRouter()
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
+
+    # Fire-and-forget: populate business understanding from Tally form.
+    # We use created_at proximity instead of an is_new flag because
+    # get_or_create_user is cached — a separate is_new return value would be
+    # unreliable on repeated calls within the cache TTL.
+    age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
+    if age_seconds < 30:
+        try:
+            from backend.data.tally import populate_understanding_from_tally
+
+            task = asyncio.create_task(
+                populate_understanding_from_tally(user.id, user.email)
+            )
+            _tally_background_tasks.add(task)
+            task.add_done_callback(_tally_background_tasks.discard)
+        except Exception:
+            logger.debug("Failed to start Tally population task", exc_info=True)
+
     return user.model_dump()
 
 
@@ -262,14 +282,36 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding status check."""
+
+    is_onboarding_enabled: bool
+    is_chat_enabled: bool
+
+
 @v1_router.get(
     "/onboarding/enabled",
     summary="Is onboarding enabled",
     tags=["onboarding", "public"],
-    dependencies=[Security(requires_user)],
+    response_model=OnboardingStatusResponse,
 )
-async def is_onboarding_enabled() -> bool:
-    return await onboarding_enabled()
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> OnboardingStatusResponse:
+    # Check if chat is enabled for user
+    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
+
+    # If chat is enabled, skip legacy onboarding
+    if is_chat_enabled:
+        return OnboardingStatusResponse(
+            is_onboarding_enabled=False,
+            is_chat_enabled=True,
+        )
+
+    return OnboardingStatusResponse(
+        is_onboarding_enabled=await onboarding_enabled(),
+        is_chat_enabled=False,
+    )
 
 
 @v1_router.post(
@@ -365,6 +407,8 @@ async def execute_graph_block(
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
+    if obj.disabled:
+        raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
     user = await get_user_by_id(user_id)
     if not user:
@@ -762,10 +806,8 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    # The return value of the create graph & library function is intentionally not used here,
-    # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
-    await library_db.create_library_agent(graph, user_id=user_id)
+    await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
     if create_graph.source == "builder":
@@ -802,18 +844,16 @@ async def update_graph(
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> graph_db.GraphModel:
-    # Sanity check
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
-    # Determine new version
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
-    latest_version_number = max(g.version for g in existing_versions)
-    graph.version = latest_version_number + 1
 
+    graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
+
     graph = graph_db.make_graph_model(graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
@@ -821,27 +861,23 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
-        # Keep the library agent up to date with the new active version
-        await _update_library_agent_version_and_settings(user_id, new_graph_version)
-
-        # Handle activation of the new graph first to ensure continuity
+        await library_db.update_library_agent_version_and_settings(
+            user_id, new_graph_version
+        )
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
-        # Ensure new version is the only active version
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
-            # Handle deactivation of the previously active version
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
-    # Fetch new graph version *with sub-graphs* (needed for credentials input schema)
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
         user_id=user_id,
         include_subgraphs=True,
     )
-    assert new_graph_version_with_subgraphs  # make type checker happy
+    assert new_graph_version_with_subgraphs
     return new_graph_version_with_subgraphs
 
 
@@ -879,33 +915,13 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await _update_library_agent_version_and_settings(user_id, new_active_graph)
+    await library_db.update_library_agent_version_and_settings(
+        user_id, new_active_graph
+    )
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
-
-
-async def _update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
-) -> library_model.LibraryAgent:
-    # Keep the library agent up to date with the new active version
-    library = await library_db.update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
-    )
-    # If the graph has HITL node, initialize the setting if it's not already set.
-    if (
-        agent_graph.has_human_in_the_loop
-        and library.settings.human_in_the_loop_safe_mode is None
-    ):
-        await library_db.update_library_agent_settings(
-            user_id=user_id,
-            agent_id=library.id,
-            settings=library.settings.model_copy(
-                update={"human_in_the_loop_safe_mode": True}
-            ),
-        )
-    return library
 
 
 @v1_router.patch(
@@ -920,21 +936,18 @@ async def update_graph_settings(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> GraphSettings:
     """Update graph settings for the user's library agent."""
-    # Get the library agent for this graph
     library_agent = await library_db.get_library_agent_by_graph_id(
         graph_id=graph_id, user_id=user_id
     )
     if not library_agent:
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
 
-    # Update the library agent settings
-    updated_agent = await library_db.update_library_agent_settings(
+    updated_agent = await library_db.update_library_agent(
+        library_agent_id=library_agent.id,
         user_id=user_id,
-        agent_id=library_agent.id,
         settings=settings,
     )
 
-    # Return the updated settings
     return GraphSettings.model_validate(updated_agent.settings)
 
 
@@ -975,7 +988,6 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await increment_runs(user_id)
         await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(

@@ -79,9 +79,22 @@ class TestHostScopedCredentials:
             headers={"Authorization": SecretStr("Bearer token")},
         )
 
-        assert creds.matches_url("http://localhost:8080/api/v1")
+        # Non-standard ports require explicit port in credential host
+        assert not creds.matches_url("http://localhost:8080/api/v1")
         assert creds.matches_url("https://localhost:443/secure/endpoint")
         assert creds.matches_url("http://localhost/simple")
+
+    def test_matches_url_with_explicit_port(self):
+        """Test URL matching with explicit port in credential host."""
+        creds = HostScopedCredentials(
+            provider="custom",
+            host="localhost:8080",
+            headers={"Authorization": SecretStr("Bearer token")},
+        )
+
+        assert creds.matches_url("http://localhost:8080/api/v1")
+        assert not creds.matches_url("http://localhost:3000/api/v1")
+        assert not creds.matches_url("http://localhost/simple")
 
     def test_empty_headers_dict(self):
         """Test HostScopedCredentials with empty headers."""
@@ -128,8 +141,20 @@ class TestHostScopedCredentials:
             ("*.example.com", "https://sub.api.example.com/test", True),
             ("*.example.com", "https://example.com/test", True),
             ("*.example.com", "https://example.org/test", False),
-            ("localhost", "http://localhost:3000/test", True),
+            # Non-standard ports require explicit port in credential host
+            ("localhost", "http://localhost:3000/test", False),
+            ("localhost:3000", "http://localhost:3000/test", True),
             ("localhost", "http://127.0.0.1:3000/test", False),
+            # IPv6 addresses (frontend stores with brackets via URL.hostname)
+            ("[::1]", "http://[::1]/test", True),
+            ("[::1]", "http://[::1]:80/test", True),
+            ("[::1]", "https://[::1]:443/test", True),
+            ("[::1]", "http://[::1]:8080/test", False),  # Non-standard port
+            ("[::1]:8080", "http://[::1]:8080/test", True),
+            ("[::1]:8080", "http://[::1]:9090/test", False),
+            ("[2001:db8::1]", "http://[2001:db8::1]/path", True),
+            ("[2001:db8::1]", "https://[2001:db8::1]:443/path", True),
+            ("[2001:db8::1]", "http://[2001:db8::ff]/path", False),
         ],
     )
     def test_url_matching_parametrized(self, host: str, test_url: str, expected: bool):

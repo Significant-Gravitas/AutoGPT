@@ -3,10 +3,10 @@ import type {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import type { InputValues } from "./types";
-import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 
 export function computeInitialAgentInputs(
-  agent: GraphMeta | null,
+  agent: GraphModel | null,
   existingInputs?: InputValues | null,
 ): InputValues {
   const properties = agent?.input_schema?.properties || {};
@@ -29,7 +29,7 @@ export function computeInitialAgentInputs(
 }
 
 type IsRunDisabledParams = {
-  agent: GraphMeta | null;
+  agent: GraphModel | null;
   isRunning: boolean;
   agentInputs: InputValues | null | undefined;
 };

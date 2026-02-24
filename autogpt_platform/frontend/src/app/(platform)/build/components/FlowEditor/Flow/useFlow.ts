@@ -3,6 +3,7 @@ import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/def
 import {
   useGetV1GetExecutionDetails,
   useGetV1GetSpecificGraph,
+  useGetV1ListUserGraphs,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
@@ -17,10 +18,12 @@ import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { okData } from "@/app/api/helpers";
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [hasAutoFramed, setHasAutoFramed] = useState(false);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -34,6 +37,9 @@ export const useFlow = () => {
   );
   const setGraphExecutionStatus = useGraphStore(
     useShallow((state) => state.setGraphExecutionStatus),
+  );
+  const setAvailableSubGraphs = useGraphStore(
+    useShallow((state) => state.setAvailableSubGraphs),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -60,6 +66,11 @@ export const useFlow = () => {
       },
     },
   );
+
+  // Fetch all available graphs for sub-agent update detection
+  const { data: availableGraphs } = useGetV1ListUserGraphs({
+    query: { select: okData },
+  });
 
   const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -115,10 +126,18 @@ export const useFlow = () => {
     }
   }, [graph]);
 
+  // Update available sub-graphs in store for sub-agent update detection
+  useEffect(() => {
+    if (availableGraphs) {
+      setAvailableSubGraphs(availableGraphs);
+    }
+  }, [availableGraphs, setAvailableSubGraphs]);
+
   // adding nodes
   useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       addNodes(customNodes);
     }
   }, [customNodes, addNodes]);
@@ -130,6 +149,14 @@ export const useFlow = () => {
       addLinks(graph.links);
     }
   }, [graph?.links, addLinks]);
+
+  useEffect(() => {
+    if (customNodes.length > 0 && graph?.links) {
+      customNodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
+    }
+  }, [customNodes, graph?.links]);
 
   // update node execution status in nodes
   useEffect(() => {
@@ -174,14 +201,27 @@ export const useFlow = () => {
     if (customNodes.length > 0 && graph?.links) {
       const timer = setTimeout(() => {
         useHistoryStore.getState().initializeHistory();
+        // Mark initial load as complete after history is initialized
+        setIsInitialLoadComplete(true);
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [customNodes, graph?.links]);
 
+  // Also mark as complete for new flows (no flowID) after a short delay
+  useEffect(() => {
+    if (!flowID && !isGraphLoading && !isBlocksLoading) {
+      const timer = setTimeout(() => {
+        setIsInitialLoadComplete(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [flowID, isGraphLoading, isBlocksLoading]);
+
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();
@@ -217,6 +257,7 @@ export const useFlow = () => {
 
   useEffect(() => {
     setHasAutoFramed(false);
+    setIsInitialLoadComplete(false);
   }, [flowID, flowVersion]);
 
   // Drag and drop block from block menu
@@ -253,6 +294,7 @@ export const useFlow = () => {
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
+    isInitialLoadComplete,
     onDragOver,
     onDrop,
     isLocked,

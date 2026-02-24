@@ -23,10 +23,6 @@ export const loggedInLinks: Link[] = [
     href: "/marketplace",
   },
   {
-    name: "Library",
-    href: "/library",
-  },
-  {
     name: "Build",
     href: "/build",
   },

@@ -26,12 +26,14 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
+import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -39,7 +41,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -52,6 +54,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
@@ -113,7 +116,7 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
+    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
@@ -123,6 +126,11 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    try:
+        await shutdown_workspace_storage()
+    except Exception as e:
+        logger.warning(f"Error shutting down workspace storage: {e}")
 
     await backend.data.db.disconnect()
 
@@ -314,6 +322,16 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
+)
+app.include_router(
+    workspace_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    mcp_routes.router,
+    tags=["v2", "mcp"],
+    prefix="/api/mcp",
 )
 app.include_router(
     backend.api.features.oauth.router,

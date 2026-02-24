@@ -10,6 +10,7 @@ export enum Key {
   LIBRARY_AGENTS_CACHE = "library-agents-cache",
   CHAT_SESSION_ID = "chat_session_id",
   COOKIE_CONSENT = "autogpt_cookie_consent",
+  AI_AGENT_SAFETY_POPUP_SHOWN = "ai-agent-safety-popup-shown",
 }
 
 function get(key: Key) {

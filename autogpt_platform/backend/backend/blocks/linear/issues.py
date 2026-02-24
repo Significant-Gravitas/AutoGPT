@@ -17,7 +17,7 @@ from ._config import (
     LinearScope,
     linear,
 )
-from .models import CreateIssueResponse, Issue
+from .models import CreateIssueResponse, Issue, State
 
 
 class LinearCreateIssueBlock(Block):
@@ -135,9 +135,20 @@ class LinearSearchIssuesBlock(Block):
             description="Linear credentials with read permissions",
             required_scopes={LinearScope.READ},
         )
+        max_results: int = SchemaField(
+            description="Maximum number of results to return",
+            default=10,
+            ge=1,
+            le=100,
+        )
+        team_name: str | None = SchemaField(
+            description="Optional team name to filter results (e.g., 'Internal', 'Open Source')",
+            default=None,
+        )
 
     class Output(BlockSchemaOutput):
         issues: list[Issue] = SchemaField(description="List of issues")
+        error: str = SchemaField(description="Error message if the search failed")
 
     def __init__(self):
         super().__init__(
@@ -145,8 +156,11 @@ class LinearSearchIssuesBlock(Block):
             description="Searches for issues on Linear",
             input_schema=self.Input,
             output_schema=self.Output,
+            categories={BlockCategory.PRODUCTIVITY, BlockCategory.ISSUE_TRACKING},
             test_input={
                 "term": "Test issue",
+                "max_results": 10,
+                "team_name": None,
                 "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
             },
             test_credentials=TEST_CREDENTIALS_OAUTH,
@@ -156,10 +170,14 @@ class LinearSearchIssuesBlock(Block):
                     [
                         Issue(
                             id="abc123",
-                            identifier="abc123",
+                            identifier="TST-123",
                             title="Test issue",
                             description="Test description",
                             priority=1,
+                            state=State(
+                                id="state1", name="In Progress", type="started"
+                            ),
+                            createdAt="2026-01-15T10:00:00.000Z",
                         )
                     ],
                 )
@@ -168,10 +186,12 @@ class LinearSearchIssuesBlock(Block):
                 "search_issues": lambda *args, **kwargs: [
                     Issue(
                         id="abc123",
-                        identifier="abc123",
+                        identifier="TST-123",
                         title="Test issue",
                         description="Test description",
                         priority=1,
+                        state=State(id="state1", name="In Progress", type="started"),
+                        createdAt="2026-01-15T10:00:00.000Z",
                     )
                 ]
             },
@@ -181,10 +201,22 @@ class LinearSearchIssuesBlock(Block):
     async def search_issues(
         credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
+        max_results: int = 10,
+        team_name: str | None = None,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
-        response: list[Issue] = await client.try_search_issues(term=term)
-        return response
+
+        # Resolve team name to ID if provided
+        # Raises LinearAPIException with descriptive message if team not found
+        team_id: str | None = None
+        if team_name:
+            team_id = await client.try_get_team_by_name(team_name=team_name)
+
+        return await client.try_search_issues(
+            term=term,
+            max_results=max_results,
+            team_id=team_id,
+        )
 
     async def run(
         self,
@@ -196,7 +228,10 @@ class LinearSearchIssuesBlock(Block):
         """Execute the issue search"""
         try:
             issues = await self.search_issues(
-                credentials=credentials, term=input_data.term
+                credentials=credentials,
+                term=input_data.term,
+                max_results=input_data.max_results,
+                team_name=input_data.team_name,
             )
             yield "issues", issues
         except LinearAPIException as e:

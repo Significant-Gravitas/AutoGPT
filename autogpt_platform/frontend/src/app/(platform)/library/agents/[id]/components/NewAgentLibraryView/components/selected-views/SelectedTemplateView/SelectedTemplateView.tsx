@@ -4,11 +4,11 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { CredentialsInput } from "../../../../../../../../../../components/contextual/CredentialsInput/CredentialsInput";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
-import { CredentialsInput } from "../../modals/CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
@@ -24,6 +24,7 @@ interface Props {
   onClearSelectedRun?: () => void;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onSwitchToRunsTab?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedTemplateView({
@@ -32,6 +33,7 @@ export function SelectedTemplateView({
   onClearSelectedRun,
   onRunCreated,
   onSwitchToRunsTab,
+  banner,
 }: Props) {
   const {
     template,
@@ -87,7 +89,7 @@ export function SelectedTemplateView({
   }
 
   if (isLoading && !template) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   if (!template) {
@@ -100,7 +102,7 @@ export function SelectedTemplateView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 

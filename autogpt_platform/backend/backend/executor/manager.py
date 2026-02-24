@@ -16,16 +16,13 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
-from backend.data.block import (
-    BlockInput,
-    BlockOutput,
-    BlockOutputEntry,
-    BlockSchema,
-    get_block,
-)
+from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
@@ -96,7 +93,10 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
+    from backend.data.db_manager import (
+        DatabaseManagerAsyncClient,
+        DatabaseManagerClient,
+    )
 
 
 _logger = logging.getLogger(__name__)
@@ -113,6 +113,40 @@ utilization_gauge = Gauge(
     "execution_manager_utilization_ratio",
     "Ratio of active graph runs to max graph workers",
 )
+
+# Redis key prefix for tracking insufficient funds Discord notifications.
+# We only send one notification per user per agent until they top up credits.
+INSUFFICIENT_FUNDS_NOTIFIED_PREFIX = "insufficient_funds_discord_notified"
+# TTL for the notification flag (30 days) - acts as a fallback cleanup
+INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
+async def clear_insufficient_funds_notifications(user_id: str) -> int:
+    """
+    Clear all insufficient funds notification flags for a user.
+
+    This should be called when a user tops up their credits, allowing
+    Discord notifications to be sent again if they run out of funds.
+
+    Args:
+        user_id: The user ID to clear notifications for.
+
+    Returns:
+        The number of keys that were deleted.
+    """
+    try:
+        redis_client = await redis.get_redis_async()
+        pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
+        keys = [key async for key in redis_client.scan_iter(match=pattern)]
+        if keys:
+            return await redis_client.delete(*keys)
+        return 0
+    except Exception as e:
+        logger.warning(
+            f"Failed to clear insufficient funds notification flags for user "
+            f"{user_id}: {e}"
+        )
+        return 0
 
 
 # Thread-local storage for ExecutionProcessor instances
@@ -144,6 +178,7 @@ async def execute_node(
     execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_to_skip: Optional[set[str]] = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -178,6 +213,9 @@ async def execute_node(
         block_name=node_block.name,
     )
 
+    if node_block.disabled:
+        raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
+
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(node, data.inputs, resolve_input=False)
     if input_data is None:
@@ -194,6 +232,18 @@ async def execute_node(
             _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
+    elif isinstance(node_block, MCPToolBlock):
+        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        # Dynamic tool fields are flattened to top-level by validate_exec
+        # (via get_input_defaults). Collect them back into tool_arguments.
+        tool_schema = _mcp_data.tool_input_schema
+        tool_props = set(tool_schema.get("properties", {}).keys())
+        merged_args = {**_mcp_data.tool_arguments}
+        for key in tool_props:
+            if key in input_data:
+                merged_args[key] = input_data[key]
+        _mcp_data.tool_arguments = merged_args
+        input_data = _mcp_data.model_dump()
     data.inputs = input_data
 
     # Execute the node
@@ -201,7 +251,14 @@ async def execute_node(
     input_size = len(input_data_str)
     log_metadata.debug("Executed node with input", input=input_data_str)
 
+    # Create node-specific execution context to avoid race conditions
+    # (multiple nodes can execute concurrently and would otherwise mutate shared state)
+    execution_context = execution_context.model_copy(
+        update={"node_id": node_id, "node_exec_id": node_exec_id}
+    )
+
     # Inject extra execution arguments for the blocks via kwargs
+    # Keep individual kwargs for backwards compatibility with existing blocks
     extra_exec_kwargs: dict = {
         "graph_id": graph_id,
         "graph_version": graph_version,
@@ -211,6 +268,7 @@ async def execute_node(
         "user_id": user_id,
         "execution_context": execution_context,
         "execution_processor": execution_processor,
+        "nodes_to_skip": nodes_to_skip or set(),
     }
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
@@ -222,8 +280,34 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
-        credentials_meta = input_type(**input_data[field_name])
-        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        field_value = input_data.get(field_name)
+        if not field_value or (
+            isinstance(field_value, dict) and not field_value.get("id")
+        ):
+            # No credentials configured — nullify so JSON schema validation
+            # doesn't choke on the empty default `{}`.
+            input_data[field_name] = None
+            continue  # Block runs without credentials
+
+        credentials_meta = input_type(**field_value)
+        # Write normalized values back so JSON schema validation also passes
+        # (model_validator may have fixed legacy formats like "ProviderName.MCP")
+        input_data[field_name] = credentials_meta.model_dump(mode="json")
+        try:
+            credentials, lock = await creds_manager.acquire(
+                user_id, credentials_meta.id
+            )
+        except ValueError:
+            # Credential was deleted or doesn't exist.
+            # If the field has a default, run without credentials.
+            if input_model.model_fields[field_name].default is not None:
+                log_metadata.warning(
+                    f"Credentials #{credentials_meta.id} not found, "
+                    "running without (field has default)"
+                )
+                input_data[field_name] = None
+                continue
+            raise
         creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 
@@ -508,6 +592,7 @@ class ExecutionProcessor:
         node_exec_progress: NodeExecutionProgress,
         nodes_input_masks: Optional[NodesInputMasks],
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
@@ -530,6 +615,7 @@ class ExecutionProcessor:
             db_client=db_client,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
+            nodes_to_skip=nodes_to_skip,
         )
         if isinstance(status, BaseException):
             raise status
@@ -575,6 +661,7 @@ class ExecutionProcessor:
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[NodesInputMasks] = None,
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
 
@@ -611,6 +698,7 @@ class ExecutionProcessor:
                 execution_processor=self,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
+                nodes_to_skip=nodes_to_skip,
             ):
                 await persist_output(output_name, output_data)
 
@@ -922,6 +1010,21 @@ class ExecutionProcessor:
 
                 queued_node_exec = execution_queue.get()
 
+                # Check if this node should be skipped due to optional credentials
+                if queued_node_exec.node_id in graph_exec.nodes_to_skip:
+                    log_metadata.info(
+                        f"Skipping node execution {queued_node_exec.node_exec_id} "
+                        f"for node {queued_node_exec.node_id} - optional credentials not configured"
+                    )
+                    # Mark the node as completed without executing
+                    # No outputs will be produced, so downstream nodes won't trigger
+                    update_node_execution_status(
+                        db_client=db_client,
+                        exec_id=queued_node_exec.node_exec_id,
+                        status=ExecutionStatus.COMPLETED,
+                    )
+                    continue
+
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
                     f"for node {queued_node_exec.node_id}",
@@ -982,6 +1085,7 @@ class ExecutionProcessor:
                             execution_stats,
                             execution_stats_lock,
                         ),
+                        nodes_to_skip=graph_exec.nodes_to_skip,
                     ),
                     self.node_execution_loop,
                 )
@@ -1261,12 +1365,40 @@ class ExecutionProcessor:
         graph_id: str,
         e: InsufficientBalanceError,
     ):
+        # Check if we've already sent a notification for this user+agent combo.
+        # We only send one notification per user per agent until they top up credits.
+        redis_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+        try:
+            redis_client = redis.get_redis()
+            # SET NX returns True only if the key was newly set (didn't exist)
+            is_new_notification = redis_client.set(
+                redis_key,
+                "1",
+                nx=True,
+                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
+            )
+            if not is_new_notification:
+                # Already notified for this user+agent, skip all notifications
+                logger.debug(
+                    f"Skipping duplicate insufficient funds notification for "
+                    f"user={user_id}, graph={graph_id}"
+                )
+                return
+        except Exception as redis_error:
+            # If Redis fails, log and continue to send the notification
+            # (better to occasionally duplicate than to never notify)
+            logger.warning(
+                f"Failed to check/set insufficient funds notification flag in Redis: "
+                f"{redis_error}"
+            )
+
         shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
 
+        # Queue user email notification
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
@@ -1280,6 +1412,7 @@ class ExecutionProcessor:
             )
         )
 
+        # Send Discord system alert
         try:
             user_email = db_client.get_user_email_by_id(user_id)
 

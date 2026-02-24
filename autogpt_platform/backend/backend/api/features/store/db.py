@@ -1,8 +1,7 @@
 import asyncio
 import logging
-import typing
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal, overload
 
 import fastapi
 import prisma.enums
@@ -10,10 +9,10 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db import transaction
 from backend.data.graph import (
-    GraphMeta,
     GraphModel,
+    GraphModelWithoutNodes,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -30,6 +29,8 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from .embeddings import ensure_embedding
+from .hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -50,128 +51,78 @@ async def get_store_agents(
     page_size: int = 20,
 ) -> store_model.StoreAgentsResponse:
     """
-    Get PUBLIC store agents from the StoreAgent view
+    Get PUBLIC store agents from the StoreAgent view.
+
+    Search behavior:
+    - With search_query: Uses hybrid search (semantic + lexical)
+    - Fallback: If embeddings unavailable, gracefully degrades to lexical-only
+    - Rationale: User-facing endpoint prioritizes availability over accuracy
+
+    Note: Admin operations (approval) use fail-fast to prevent inconsistent state.
     """
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
 
+    search_used_hybrid = False
+    store_agents: list[store_model.StoreAgent] = []
+    agents: list[dict[str, Any]] = []
+    total = 0
+    total_pages = 0
+
     try:
-        # If search_query is provided, use full-text search
+        # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:
-            offset = (page - 1) * page_size
+            # Try hybrid search combining semantic and lexical signals
+            # Falls back to lexical-only if OpenAI unavailable (user-facing, high SLA)
+            try:
+                agents, total = await hybrid_search(
+                    query=search_query,
+                    featured=featured,
+                    creators=creators,
+                    category=category,
+                    sorted_by="relevance",  # Use hybrid scoring for relevance
+                    page=page,
+                    page_size=page_size,
+                )
+                search_used_hybrid = True
+            except Exception as e:
+                # Log error but fall back to lexical search for better UX
+                logger.error(
+                    f"Hybrid search failed (likely OpenAI unavailable), "
+                    f"falling back to lexical search: {e}"
+                )
+                # search_used_hybrid remains False, will use fallback path below
 
-            # Whitelist allowed order_by columns
-            ALLOWED_ORDER_BY = {
-                "rating": "rating DESC, rank DESC",
-                "runs": "runs DESC, rank DESC",
-                "name": "agent_name ASC, rank ASC",
-                "updated_at": "updated_at DESC, rank DESC",
-            }
+            # Convert hybrid search results (dict format) if hybrid succeeded
+            if search_used_hybrid:
+                total_pages = (total + page_size - 1) // page_size
+                store_agents: list[store_model.StoreAgent] = []
+                for agent in agents:
+                    try:
+                        store_agent = store_model.StoreAgent(
+                            slug=agent["slug"],
+                            agent_name=agent["agent_name"],
+                            agent_image=(
+                                agent["agent_image"][0] if agent["agent_image"] else ""
+                            ),
+                            creator=agent["creator_username"] or "Needs Profile",
+                            creator_avatar=agent["creator_avatar"] or "",
+                            sub_heading=agent["sub_heading"],
+                            description=agent["description"],
+                            runs=agent["runs"],
+                            rating=agent["rating"],
+                            agent_graph_id=agent.get("agentGraphId", ""),
+                        )
+                        store_agents.append(store_agent)
+                    except Exception as e:
+                        logger.error(
+                            f"Error parsing Store agent from hybrid search results: {e}"
+                        )
+                        continue
 
-            # Validate and get order clause
-            if sorted_by and sorted_by in ALLOWED_ORDER_BY:
-                order_by_clause = ALLOWED_ORDER_BY[sorted_by]
-            else:
-                order_by_clause = "updated_at DESC, rank DESC"
-
-            # Build WHERE conditions and parameters list
-            where_parts: list[str] = []
-            params: list[typing.Any] = [search_query]  # $1 - search term
-            param_index = 2  # Start at $2 for next parameter
-
-            # Always filter for available agents
-            where_parts.append("is_available = true")
-
-            if featured:
-                where_parts.append("featured = true")
-
-            if creators and creators:
-                # Use ANY with array parameter
-                where_parts.append(f"creator_username = ANY(${param_index})")
-                params.append(creators)
-                param_index += 1
-
-            if category and category:
-                where_parts.append(f"${param_index} = ANY(categories)")
-                params.append(category)
-                param_index += 1
-
-            sql_where_clause: str = " AND ".join(where_parts) if where_parts else "1=1"
-
-            # Add pagination params
-            params.extend([page_size, offset])
-            limit_param = f"${param_index}"
-            offset_param = f"${param_index + 1}"
-
-            # Execute full-text search query with parameterized values
-            sql_query = f"""
-                SELECT
-                    slug,
-                    agent_name,
-                    agent_image,
-                    creator_username,
-                    creator_avatar,
-                    sub_heading,
-                    description,
-                    runs,
-                    rating,
-                    categories,
-                    featured,
-                    is_available,
-                    updated_at,
-                    ts_rank_cd(search, query) AS rank
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
-                WHERE {sql_where_clause}
-                    AND search @@ query
-                ORDER BY {order_by_clause}
-                LIMIT {limit_param} OFFSET {offset_param}
-            """
-
-            # Count query for pagination - only uses search term parameter
-            count_query = f"""
-                SELECT COUNT(*) as count
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
-                WHERE {sql_where_clause}
-                    AND search @@ query
-            """
-
-            # Execute both queries with parameters
-            agents = await query_raw_with_schema(sql_query, *params)
-
-            # For count, use params without pagination (last 2 params)
-            count_params = params[:-2]
-            count_result = await query_raw_with_schema(count_query, *count_params)
-
-            total = count_result[0]["count"] if count_result else 0
-            total_pages = (total + page_size - 1) // page_size
-
-            # Convert raw results to StoreAgent models
-            store_agents: list[store_model.StoreAgent] = []
-            for agent in agents:
-                try:
-                    store_agent = store_model.StoreAgent(
-                        slug=agent["slug"],
-                        agent_name=agent["agent_name"],
-                        agent_image=(
-                            agent["agent_image"][0] if agent["agent_image"] else ""
-                        ),
-                        creator=agent["creator_username"] or "Needs Profile",
-                        creator_avatar=agent["creator_avatar"] or "",
-                        sub_heading=agent["sub_heading"],
-                        description=agent["description"],
-                        runs=agent["runs"],
-                        rating=agent["rating"],
-                    )
-                    store_agents.append(store_agent)
-                except Exception as e:
-                    logger.error(f"Error parsing Store agent from search results: {e}")
-                    continue
-
-        else:
-            # Non-search query path (original logic)
+        if not search_used_hybrid:
+            # Fallback path - use basic search or no search
             where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
             if featured:
                 where_clause["featured"] = featured
@@ -179,6 +130,14 @@ async def get_store_agents(
                 where_clause["creator_username"] = {"in": creators}
             if category:
                 where_clause["categories"] = {"has": category}
+
+            # Add basic text search if search_query provided but hybrid failed
+            if search_query:
+                where_clause["OR"] = [
+                    {"agent_name": {"contains": search_query, "mode": "insensitive"}},
+                    {"sub_heading": {"contains": search_query, "mode": "insensitive"}},
+                    {"description": {"contains": search_query, "mode": "insensitive"}},
+                ]
 
             order_by = []
             if sorted_by == "rating":
@@ -188,7 +147,7 @@ async def get_store_agents(
             elif sorted_by == "name":
                 order_by.append({"agent_name": "asc"})
 
-            agents = await prisma.models.StoreAgent.prisma().find_many(
+            db_agents = await prisma.models.StoreAgent.prisma().find_many(
                 where=where_clause,
                 order=order_by,
                 skip=(page - 1) * page_size,
@@ -199,7 +158,7 @@ async def get_store_agents(
             total_pages = (total + page_size - 1) // page_size
 
             store_agents: list[store_model.StoreAgent] = []
-            for agent in agents:
+            for agent in db_agents:
                 try:
                     # Create the StoreAgent object safely
                     store_agent = store_model.StoreAgent(
@@ -212,6 +171,7 @@ async def get_store_agents(
                         description=agent.description,
                         runs=agent.runs,
                         rating=agent.rating,
+                        agent_graph_id=agent.agentGraphId,
                     )
                     # Add to the list only if creation was successful
                     store_agents.append(store_agent)
@@ -257,7 +217,7 @@ async def log_search_term(search_query: str):
 
 
 async def get_store_agent_details(
-    username: str, agent_name: str
+    username: str, agent_name: str, include_changelog: bool = False
 ) -> store_model.StoreAgentDetails:
     """Get PUBLIC store agent details from the StoreAgent view"""
     logger.debug(f"Getting store agent details for {username}/{agent_name}")
@@ -322,6 +282,27 @@ async def get_store_agent_details(
         else:
             recommended_schedule_cron = None
 
+        # Fetch changelog data if requested
+        changelog_data = None
+        if include_changelog and store_listing:
+            changelog_versions = (
+                await prisma.models.StoreListingVersion.prisma().find_many(
+                    where={
+                        "storeListingId": store_listing.id,
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    },
+                    order=[{"version": "desc"}],
+                )
+            )
+            changelog_data = [
+                store_model.ChangelogEntry(
+                    version=str(version.version),
+                    changes_summary=version.changesSummary or "No changes recorded",
+                    date=version.createdAt,
+                )
+                for version in changelog_versions
+            ]
+
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return store_model.StoreAgentDetails(
             store_listing_version_id=agent.storeListingVersionId,
@@ -338,10 +319,13 @@ async def get_store_agent_details(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
             active_version_id=active_version_id,
             has_approved_version=has_approved_version,
             recommended_schedule_cron=recommended_schedule_cron,
+            changelog=changelog_data,
         )
     except store_exceptions.AgentNotFoundError:
         raise
@@ -350,7 +334,22 @@ async def get_store_agent_details(
         raise DatabaseError("Failed to fetch agent details") from e
 
 
-async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[False]
+) -> GraphModel: ...
+
+
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[True] = True
+) -> GraphModelWithoutNodes: ...
+
+
+async def get_available_graph(
+    store_listing_version_id: str,
+    hide_nodes: bool = True,
+) -> GraphModelWithoutNodes | GraphModel:
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -360,7 +359,7 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                     "isAvailable": True,
                     "isDeleted": False,
                 },
-                include={"AgentGraph": {"include": {"Nodes": True}}},
+                include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             )
         )
 
@@ -370,7 +369,9 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        return GraphModel.from_db(store_listing_version.AgentGraph).meta()
+        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+            store_listing_version.AgentGraph
+        )
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
@@ -409,6 +410,8 @@ async def get_store_agent_by_version_id(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
     except store_exceptions.AgentNotFoundError:
@@ -588,6 +591,7 @@ async def get_store_submissions(
         submission_models = []
         for sub in submissions:
             submission_model = store_model.StoreSubmission(
+                listing_id=sub.listing_id,
                 agent_id=sub.agent_id,
                 agent_version=sub.agent_version,
                 name=sub.name,
@@ -641,35 +645,48 @@ async def delete_store_submission(
     submission_id: str,
 ) -> bool:
     """
-    Delete a store listing submission as the submitting user.
+    Delete a store submission version as the submitting user.
 
     Args:
         user_id: ID of the authenticated user
-        submission_id: ID of the submission to be deleted
+        submission_id: StoreListingVersion ID to delete
 
     Returns:
-        bool: True if the submission was successfully deleted, False otherwise
+        bool: True if successfully deleted
     """
-    logger.debug(f"Deleting store submission {submission_id} for user {user_id}")
-
     try:
-        # Verify the submission belongs to this user
-        submission = await prisma.models.StoreListing.prisma().find_first(
-            where={"agentGraphId": submission_id, "owningUserId": user_id}
+        # Find the submission version with ownership check
+        version = await prisma.models.StoreListingVersion.prisma().find_first(
+            where={"id": submission_id}, include={"StoreListing": True}
         )
 
-        if not submission:
-            logger.warning(f"Submission not found for user {user_id}: {submission_id}")
-            raise store_exceptions.SubmissionNotFoundError(
-                f"Submission not found for this user. User ID: {user_id}, Submission ID: {submission_id}"
+        if (
+            not version
+            or not version.StoreListing
+            or version.StoreListing.owningUserId != user_id
+        ):
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+        # Prevent deletion of approved submissions
+        if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+            raise store_exceptions.InvalidOperationError(
+                "Cannot delete approved submissions"
             )
 
-        # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
-
-        logger.debug(
-            f"Successfully deleted submission {submission_id} for user {user_id}"
+        # Delete the version
+        await prisma.models.StoreListingVersion.prisma().delete(
+            where={"id": version.id}
         )
+
+        # Clean up empty listing if this was the last version
+        remaining = await prisma.models.StoreListingVersion.prisma().count(
+            where={"storeListingId": version.storeListingId}
+        )
+        if remaining == 0:
+            await prisma.models.StoreListing.prisma().delete(
+                where={"id": version.storeListingId}
+            )
+
         return True
 
     except Exception as e:
@@ -733,9 +750,15 @@ async def create_store_submission(
             logger.warning(
                 f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
             )
-            raise store_exceptions.AgentNotFoundError(
-                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
-            )
+            # Provide more user-friendly error message when agent_id is empty
+            if not agent_id or agent_id.strip() == "":
+                raise store_exceptions.AgentNotFoundError(
+                    "No agent selected. Please select an agent before submitting to the store."
+                )
+            else:
+                raise store_exceptions.AgentNotFoundError(
+                    f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+                )
 
         # Check if listing already exists for this agent
         existing_listing = await prisma.models.StoreListing.prisma().find_first(
@@ -807,6 +830,7 @@ async def create_store_submission(
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return store_model.StoreSubmission(
+            listing_id=listing.id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -918,81 +942,56 @@ async def edit_store_submission(
         # Currently we are not allowing user to update the agent associated with a submission
         # If we allow it in future, then we need a check here to verify the agent belongs to this user.
 
-        # Check if we can edit this submission
-        if current_version.submissionStatus == prisma.enums.SubmissionStatus.REJECTED:
+        # Only allow editing of PENDING submissions
+        if current_version.submissionStatus != prisma.enums.SubmissionStatus.PENDING:
             raise store_exceptions.InvalidOperationError(
-                "Cannot edit a rejected submission"
-            )
-
-        # For APPROVED submissions, we need to create a new version
-        if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            # Create a new version for the existing listing
-            return await create_store_version(
-                user_id=user_id,
-                agent_id=current_version.agentGraphId,
-                agent_version=current_version.agentGraphVersion,
-                store_listing_id=current_version.storeListingId,
-                name=name,
-                video_url=video_url,
-                agent_output_demo_url=agent_output_demo_url,
-                image_urls=image_urls,
-                description=description,
-                sub_heading=sub_heading,
-                categories=categories,
-                changes_summary=changes_summary,
-                recommended_schedule_cron=recommended_schedule_cron,
-                instructions=instructions,
+                f"Cannot edit a {current_version.submissionStatus.value.lower()} submission. Only pending submissions can be edited."
             )
 
         # For PENDING submissions, we can update the existing version
-        elif current_version.submissionStatus == prisma.enums.SubmissionStatus.PENDING:
-            # Update the existing version
-            updated_version = await prisma.models.StoreListingVersion.prisma().update(
-                where={"id": store_listing_version_id},
-                data=prisma.types.StoreListingVersionUpdateInput(
-                    name=name,
-                    videoUrl=video_url,
-                    agentOutputDemoUrl=agent_output_demo_url,
-                    imageUrls=image_urls,
-                    description=description,
-                    categories=categories,
-                    subHeading=sub_heading,
-                    changesSummary=changes_summary,
-                    recommendedScheduleCron=recommended_schedule_cron,
-                    instructions=instructions,
-                ),
-            )
-
-            logger.debug(
-                f"Updated existing version {store_listing_version_id} for agent {current_version.agentGraphId}"
-            )
-
-            if not updated_version:
-                raise DatabaseError("Failed to update store listing version")
-            return store_model.StoreSubmission(
-                agent_id=current_version.agentGraphId,
-                agent_version=current_version.agentGraphVersion,
+        # Update the existing version
+        updated_version = await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": store_listing_version_id},
+            data=prisma.types.StoreListingVersionUpdateInput(
                 name=name,
-                sub_heading=sub_heading,
-                slug=current_version.StoreListing.slug,
+                videoUrl=video_url,
+                agentOutputDemoUrl=agent_output_demo_url,
+                imageUrls=image_urls,
                 description=description,
-                instructions=instructions,
-                image_urls=image_urls,
-                date_submitted=updated_version.submittedAt or updated_version.createdAt,
-                status=updated_version.submissionStatus,
-                runs=0,
-                rating=0.0,
-                store_listing_version_id=updated_version.id,
-                changes_summary=changes_summary,
-                video_url=video_url,
                 categories=categories,
-                version=updated_version.version,
-            )
+                subHeading=sub_heading,
+                changesSummary=changes_summary,
+                recommendedScheduleCron=recommended_schedule_cron,
+                instructions=instructions,
+            ),
+        )
 
-        else:
-            raise store_exceptions.InvalidOperationError(
-                f"Cannot edit submission with status: {current_version.submissionStatus}"
-            )
+        logger.debug(
+            f"Updated existing version {store_listing_version_id} for agent {current_version.agentGraphId}"
+        )
+
+        if not updated_version:
+            raise DatabaseError("Failed to update store listing version")
+        return store_model.StoreSubmission(
+            listing_id=current_version.StoreListing.id,
+            agent_id=current_version.agentGraphId,
+            agent_version=current_version.agentGraphVersion,
+            name=name,
+            sub_heading=sub_heading,
+            slug=current_version.StoreListing.slug,
+            description=description,
+            instructions=instructions,
+            image_urls=image_urls,
+            date_submitted=updated_version.submittedAt or updated_version.createdAt,
+            status=updated_version.submissionStatus,
+            runs=0,
+            rating=0.0,
+            store_listing_version_id=updated_version.id,
+            changes_summary=changes_summary,
+            video_url=video_url,
+            categories=categories,
+            version=updated_version.version,
+        )
 
     except (
         store_exceptions.SubmissionNotFoundError,
@@ -1071,38 +1070,78 @@ async def create_store_version(
                 f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
 
-        # Get the latest version number
-        latest_version = listing.Versions[0] if listing.Versions else None
-
-        next_version = (latest_version.version + 1) if latest_version else 1
-
-        # Create a new version for the existing listing
-        new_version = await prisma.models.StoreListingVersion.prisma().create(
-            data=prisma.types.StoreListingVersionCreateInput(
-                version=next_version,
-                agentGraphId=agent_id,
-                agentGraphVersion=agent_version,
-                name=name,
-                videoUrl=video_url,
-                agentOutputDemoUrl=agent_output_demo_url,
-                imageUrls=image_urls,
-                description=description,
-                instructions=instructions,
-                categories=categories,
-                subHeading=sub_heading,
-                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
-                submittedAt=datetime.now(),
-                changesSummary=changes_summary,
-                recommendedScheduleCron=recommended_schedule_cron,
-                storeListingId=store_listing_id,
+        # Check if there's already a PENDING submission for this agent (any version)
+        existing_pending_submission = (
+            await prisma.models.StoreListingVersion.prisma().find_first(
+                where=prisma.types.StoreListingVersionWhereInput(
+                    storeListingId=store_listing_id,
+                    agentGraphId=agent_id,
+                    submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                    isDeleted=False,
+                )
             )
         )
+
+        # Handle existing pending submission and create new one atomically
+        async with transaction() as tx:
+            # Get the latest version number first
+            latest_listing = await prisma.models.StoreListing.prisma(tx).find_first(
+                where=prisma.types.StoreListingWhereInput(
+                    id=store_listing_id, owningUserId=user_id
+                ),
+                include={"Versions": {"order_by": {"version": "desc"}, "take": 1}},
+            )
+
+            if not latest_listing:
+                raise store_exceptions.ListingNotFoundError(
+                    f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
+                )
+
+            latest_version = (
+                latest_listing.Versions[0] if latest_listing.Versions else None
+            )
+            next_version = (latest_version.version + 1) if latest_version else 1
+
+            # If there's an existing pending submission, delete it atomically before creating new one
+            if existing_pending_submission:
+                logger.info(
+                    f"Found existing PENDING submission for agent {agent_id} (was v{existing_pending_submission.agentGraphVersion}, now v{agent_version}), replacing existing submission instead of creating duplicate"
+                )
+                await prisma.models.StoreListingVersion.prisma(tx).delete(
+                    where={"id": existing_pending_submission.id}
+                )
+                logger.debug(
+                    f"Deleted existing pending submission {existing_pending_submission.id}"
+                )
+
+            # Create a new version for the existing listing
+            new_version = await prisma.models.StoreListingVersion.prisma(tx).create(
+                data=prisma.types.StoreListingVersionCreateInput(
+                    version=next_version,
+                    agentGraphId=agent_id,
+                    agentGraphVersion=agent_version,
+                    name=name,
+                    videoUrl=video_url,
+                    agentOutputDemoUrl=agent_output_demo_url,
+                    imageUrls=image_urls,
+                    description=description,
+                    instructions=instructions,
+                    categories=categories,
+                    subHeading=sub_heading,
+                    submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                    submittedAt=datetime.now(),
+                    changesSummary=changes_summary,
+                    recommendedScheduleCron=recommended_schedule_cron,
+                    storeListingId=store_listing_id,
+                )
+            )
 
         logger.debug(
             f"Created new version for listing {store_listing_id} of agent {agent_id}"
         )
         # Return submission details
         return store_model.StoreSubmission(
+            listing_id=listing.id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -1515,7 +1554,7 @@ async def review_store_submission(
                 )
 
                 # Update the AgentGraph with store listing data
-                await prisma.models.AgentGraph.prisma().update(
+                await prisma.models.AgentGraph.prisma(tx).update(
                     where={
                         "graphVersionId": {
                             "id": store_listing_version.agentGraphId,
@@ -1528,6 +1567,17 @@ async def review_store_submission(
                         "recommendedScheduleCron": store_listing_version.recommendedScheduleCron,
                         "instructions": store_listing_version.instructions,
                     },
+                )
+
+                # Generate embedding for approved listing (blocking - admin operation)
+                # Inside transaction: if embedding fails, entire transaction rolls back
+                await ensure_embedding(
+                    version_id=store_listing_version_id,
+                    name=store_listing_version.name,
+                    description=store_listing_version.description,
+                    sub_heading=store_listing_version.subHeading,
+                    categories=store_listing_version.categories or [],
+                    tx=tx,
                 )
 
                 await prisma.models.StoreListing.prisma(tx).update(
@@ -1682,15 +1732,12 @@ async def review_store_submission(
 
         # Convert to Pydantic model for consistency
         return store_model.StoreSubmission(
+            listing_id=(submission.StoreListing.id if submission.StoreListing else ""),
             agent_id=submission.agentGraphId,
             agent_version=submission.agentGraphVersion,
             name=submission.name,
             sub_heading=submission.subHeading,
-            slug=(
-                submission.StoreListing.slug
-                if hasattr(submission, "storeListing") and submission.StoreListing
-                else ""
-            ),
+            slug=(submission.StoreListing.slug if submission.StoreListing else ""),
             description=submission.description,
             instructions=submission.instructions,
             image_urls=submission.imageUrls or [],
@@ -1792,9 +1839,7 @@ async def get_admin_listings_with_versions(
         where = prisma.types.StoreListingWhereInput(**where_dict)
         include = prisma.types.StoreListingInclude(
             Versions=prisma.types.FindManyStoreListingVersionArgsFromStoreListing(
-                order_by=prisma.types._StoreListingVersion_version_OrderByInput(
-                    version="desc"
-                )
+                order_by={"version": "desc"}
             ),
             OwningUser=True,
         )
@@ -1819,6 +1864,7 @@ async def get_admin_listings_with_versions(
             # If we have versions, turn them into StoreSubmission models
             for version in listing.Versions or []:
                 version_model = store_model.StoreSubmission(
+                    listing_id=listing.id,
                     agent_id=version.agentGraphId,
                     agent_version=version.agentGraphVersion,
                     name=version.name,

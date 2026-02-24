@@ -15,6 +15,11 @@ import { useEdgeStore } from "../stores/edgeStore";
 import { graphsEquivalent } from "../components/NewControlPanel/NewSaveControl/helpers";
 import { useGraphStore } from "../stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import {
+  draftService,
+  clearTempFlowId,
+  getTempFlowId,
+} from "@/services/builder-draft/draft-service";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -52,12 +57,19 @@ export const useSaveGraph = ({
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
       mutation: {
-        onSuccess: (response) => {
+        onSuccess: async (response) => {
           const data = response.data as GraphModel;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
           });
+
+          const tempFlowId = getTempFlowId();
+          if (tempFlowId) {
+            await draftService.deleteDraft(tempFlowId);
+            clearTempFlowId();
+          }
+
           onSuccess?.(data);
           if (showToast) {
             toast({
@@ -82,12 +94,18 @@ export const useSaveGraph = ({
   const { mutateAsync: updateGraph, isPending: isUpdating } =
     usePutV1UpdateGraphVersion({
       mutation: {
-        onSuccess: (response) => {
+        onSuccess: async (response) => {
           const data = response.data as GraphModel;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
           });
+
+          // Clear the draft for this flow after successful save
+          if (data.id) {
+            await draftService.deleteDraft(data.id);
+          }
+
           onSuccess?.(data);
           if (showToast) {
             toast({

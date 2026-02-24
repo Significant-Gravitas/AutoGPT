@@ -8,6 +8,7 @@ from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
+from .reddit import RedditOAuthHandler
 from .twitter import TwitterOAuthHandler
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ _ORIGINAL_HANDLERS = [
     GitHubOAuthHandler,
     GoogleOAuthHandler,
     NotionOAuthHandler,
+    RedditOAuthHandler,
     TwitterOAuthHandler,
     TodoistOAuthHandler,
 ]

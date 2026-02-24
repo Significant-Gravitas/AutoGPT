@@ -41,13 +41,18 @@ jobs:
         ports:
           - 6379:6379
       rabbitmq:
-        image: rabbitmq:3.12-management
+        image: rabbitmq:4.1.4
         ports:
           - 5672:5672
-          - 15672:15672
         env:
           RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+          --health-start-period 10s
       clamav:
         image: clamav/clamav-debian:latest
         ports:
@@ -68,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: true
@@ -88,7 +93,7 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -134,7 +139,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate
+        run: poetry run prisma generate && poetry run gen-prisma-stub
 
       - id: supabase
         name: Start Supabase
@@ -176,7 +181,7 @@ jobs:
           }
 
       - name: Run Database Migrations
-        run: poetry run prisma migrate dev --name updates
+        run: poetry run prisma migrate deploy
         env:
           DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
           DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}

@@ -29,7 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           href: "/profile/dashboard",
           icon: <StorefrontIcon className="size-5" />,
         },
-        ...(isPaymentEnabled || true
+        ...(isPaymentEnabled
           ? [
               {
                 text: "Billing",

@@ -2,9 +2,7 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
-# Import for Google Drive file input block
-from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -12,6 +10,10 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockType,
 )
+
+# Import for Google Drive file input block
+from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -76,7 +78,7 @@ class AgentInputBlock(Block):
         super().__init__(
             **{
                 "id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-                "description": "Base block for user inputs.",
+                "description": "A block that accepts and processes user input values within a workflow, supporting various input types and validation.",
                 "input_schema": AgentInputBlock.Input,
                 "output_schema": AgentInputBlock.Output,
                 "test_input": [
@@ -168,7 +170,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description="Stores the output of the graph for users to see.",
+            description="A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[
@@ -462,18 +464,21 @@ class AgentFileInputBlock(AgentInputBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
             return
 
+        # Determine return format based on user preference
+        # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
+        return_format = "for_external_api" if input_data.base_64 else "for_block_output"
+
         yield "result", await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.value,
-            user_id=user_id,
-            return_content=input_data.base_64,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 

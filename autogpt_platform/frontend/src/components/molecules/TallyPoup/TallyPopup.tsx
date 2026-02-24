@@ -3,9 +3,14 @@
 import React from "react";
 import { useTallyPopup } from "./useTallyPopup";
 import { Button } from "@/components/atoms/Button/Button";
+import { usePathname, useSearchParams } from "next/navigation";
 
 export function TallyPopupSimple() {
   const { state, handlers } = useTallyPopup();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const isNewBuilder =
+    pathname.includes("build") && searchParams.get("view") === "new";
 
   if (state.isFormVisible) {
     return null;
@@ -13,7 +18,7 @@ export function TallyPopupSimple() {
 
   return (
     <div className="fixed bottom-1 right-0 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
-      {state.showTutorial && (
+      {state.showTutorial && !isNewBuilder && (
         <Button
           variant="primary"
           onClick={handlers.handleResetTutorial}

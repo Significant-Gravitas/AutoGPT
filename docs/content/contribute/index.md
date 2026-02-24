@@ -1,48 +1,35 @@
 # Contributing to the Docs
 
-We welcome contributions to our documentation! If you would like to contribute, please follow the steps below.
+We welcome contributions to our documentation! Our docs are hosted on GitBook and synced with GitHub.
 
-## Setting up the Docs
+## How It Works
 
-1. Clone the repository:
+- Documentation lives in the `docs/` directory on the `gitbook` branch
+- GitBook automatically syncs changes from GitHub
+- You can edit docs directly on GitHub or locally
 
-    ```shell
-    git clone github.com/Significant-Gravitas/AutoGPT.git
-    ```
+## Editing Docs Locally
 
-1. Install the dependencies:
-
-    ```shell
-    python -m pip install -r docs/requirements.txt
-    ```
-
-    or
+1. Clone the repository and switch to the gitbook branch:
 
     ```shell
-    python3 -m pip install -r docs/requirements.txt
+    git clone https://github.com/Significant-Gravitas/AutoGPT.git
+    cd AutoGPT
+    git checkout gitbook
     ```
 
-1. Start iterating using mkdocs' live server:
+2. Make your changes to markdown files in `docs/`
 
-    ```shell
-    mkdocs serve
-    ```
+3. Preview changes:
+   - Push to a branch and create a PR - GitBook will generate a preview
+   - Or use any markdown preview tool locally
 
-1. Open your browser and navigate to `http://127.0.0.1:8000`.
+## Adding a New Page
 
-1. The server will automatically reload the docs when you save your changes.
-
-## Adding a new page
-
-1. Create a new markdown file in the `docs/content` directory.
-1. Add the new page to the `nav` section in the `mkdocs.yml` file.
-1. Add the content to the new markdown file.
-1. Run `mkdocs serve` to see your changes.
-
-## Checking links
-
-To check for broken links in the documentation, run `mkdocs build` and look for warnings in the console output.
+1. Create a new markdown file in the appropriate `docs/` subdirectory
+2. Add the new page to the relevant `SUMMARY.md` file to include it in the navigation
+3. Submit a pull request to the `gitbook` branch
 
 ## Submitting a Pull Request
 
-When you're ready to submit your changes, please create a pull request. We will review your changes and merge them if they are appropriate.
+When you're ready to submit your changes, create a pull request targeting the `gitbook` branch. We will review your changes and merge them if appropriate.

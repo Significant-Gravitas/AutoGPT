@@ -1,8 +1,8 @@
 import test, { expect } from "@playwright/test";
-import { ProfileFormPage } from "./pages/profile-form.page";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
+import { ProfileFormPage } from "./pages/profile-form.page";
 import { hasUrl } from "./utils/assertion";
-import { TEST_CREDENTIALS } from "./credentials";
 
 test.describe("Profile Form", () => {
   let profileFormPage: ProfileFormPage;
@@ -12,7 +12,8 @@ test.describe("Profile Form", () => {
 
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 

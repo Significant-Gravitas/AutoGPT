@@ -9,7 +9,7 @@ from youtube_transcript_api._transcripts import FetchedTranscript
 from youtube_transcript_api.formatters import TextFormatter
 from youtube_transcript_api.proxies import WebshareProxyConfig
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -111,6 +111,8 @@ class TranscribeYoutubeVideoBlock(Block):
                 return parsed_url.path.split("/")[2]
             if parsed_url.path[:3] == "/v/":
                 return parsed_url.path.split("/")[2]
+            if parsed_url.path.startswith("/shorts/"):
+                return parsed_url.path.split("/")[2]
         raise ValueError(f"Invalid YouTube URL: {url}")
 
     def get_transcript(
@@ -163,10 +165,13 @@ class TranscribeYoutubeVideoBlock(Block):
         credentials: WebshareProxyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        video_id = self.extract_video_id(input_data.youtube_url)
-        yield "video_id", video_id
+        try:
+            video_id = self.extract_video_id(input_data.youtube_url)
+            transcript = self.get_transcript(video_id, credentials)
+            transcript_text = self.format_transcript(transcript=transcript)
 
-        transcript = self.get_transcript(video_id, credentials)
-        transcript_text = self.format_transcript(transcript=transcript)
-
-        yield "transcript", transcript_text
+            # Only yield after all operations succeed
+            yield "video_id", video_id
+            yield "transcript", transcript_text
+        except Exception as e:
+            yield "error", str(e)

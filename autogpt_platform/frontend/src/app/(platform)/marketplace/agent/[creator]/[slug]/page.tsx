@@ -1,15 +1,15 @@
-import { Metadata } from "next";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { prefetchGetV2GetAgentByStoreIdQuery } from "@/app/api/__generated__/endpoints/library/library";
 import {
   getV2GetSpecificAgent,
   prefetchGetV2GetSpecificAgentQuery,
   prefetchGetV2ListStoreAgentsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
-import { MainAgentPage } from "../../../components/MainAgentPage/MainAgentPage";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { prefetchGetV2GetAgentByStoreIdQuery } from "@/app/api/__generated__/endpoints/library/library";
+import { getServerUser } from "@/lib/supabase/server/getServerUser";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { Metadata } from "next";
+import { MainAgentPage } from "../../../components/MainAgentPage/MainAgentPage";
 
 export const dynamic = "force-dynamic";
 

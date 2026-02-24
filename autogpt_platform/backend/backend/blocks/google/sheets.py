@@ -7,14 +7,14 @@ from enum import Enum
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from backend.blocks.google._drive import GoogleDriveFile, GoogleDriveFileField
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.google._drive import GoogleDriveFile, GoogleDriveFileField
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
 
@@ -282,7 +282,7 @@ class GoogleSheetsReadBlock(Block):
     def __init__(self):
         super().__init__(
             id="5724e902-3635-47e9-a108-aaa0263a4988",
-            description="This block reads data from a Google Sheets spreadsheet.",
+            description="A block that reads data from a Google Sheets spreadsheet using A1 notation range selection.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadBlock.Input,
             output_schema=GoogleSheetsReadBlock.Output,
@@ -409,7 +409,7 @@ class GoogleSheetsWriteBlock(Block):
     def __init__(self):
         super().__init__(
             id="d9291e87-301d-47a8-91fe-907fb55460e5",
-            description="This block writes data to a Google Sheets spreadsheet.",
+            description="A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsWriteBlock.Input,
             output_schema=GoogleSheetsWriteBlock.Output,

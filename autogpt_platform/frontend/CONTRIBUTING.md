@@ -175,6 +175,8 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 - Prefer [React Query](https://tanstack.com/query/latest/docs/framework/react/overview) for server state, colocated near consumers (see [state colocation](https://kentcdodds.com/blog/state-colocation-will-make-your-react-app-faster))
 - Co-locate UI state inside components/hooks; keep global state minimal
+- Avoid `useMemo` and `useCallback` unless you have a measured performance issue
+- Do not abuse `useEffect`; prefer state colocation and derive values directly when possible
 
 ### Styling and components
 
@@ -549,8 +551,47 @@ Files:
 Types:
 
 - Prefer `interface` for object shapes
-- Component props should be `interface Props { ... }`
+- Component props should be `interface Props { ... }` (not exported)
+- Only use specific exported names (e.g., `export interface MyComponentProps`) when the interface needs to be used outside the component
+- Keep type definitions inline with the component - do not create separate `types.ts` files unless types are shared across multiple files
 - Use precise types; avoid `any` and unsafe casts
+
+**Props naming examples:**
+
+```tsx
+// ✅ Good - internal props, not exported
+interface Props {
+  title: string;
+  onClose: () => void;
+}
+
+export function Modal({ title, onClose }: Props) {
+  // ...
+}
+
+// ✅ Good - exported when needed externally
+export interface ModalProps {
+  title: string;
+  onClose: () => void;
+}
+
+export function Modal({ title, onClose }: ModalProps) {
+  // ...
+}
+
+// ❌ Bad - unnecessarily specific name for internal use
+interface ModalComponentProps {
+  title: string;
+  onClose: () => void;
+}
+
+// ❌ Bad - separate types.ts file for single component
+// types.ts
+export interface ModalProps { ... }
+
+// Modal.tsx
+import type { ModalProps } from './types';
+```
 
 Parameters:
 
@@ -708,10 +749,7 @@ export function CreateButton() {
 
 ## 🧪 Testing & Storybook
 
-- End-to-end: [Playwright](https://playwright.dev/docs/intro) (`pnpm test`, `pnpm test-ui`)
-- [Storybook](https://storybook.js.org/docs) for isolated UI development (`pnpm storybook` / `pnpm build-storybook`)
-- For Storybook tests in CI, see [`@storybook/test-runner`](https://storybook.js.org/docs/writing-tests/test-runner) (`test-storybook:ci`)
-- When changing components in `src/components`, update or add stories and visually verify in Storybook/Chromatic
+- See `TESTING.md` for Playwright setup, E2E data seeding, and Storybook usage.
 
 ---
 

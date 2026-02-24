@@ -106,9 +106,14 @@ export function getTimezoneDisplayName(timezone: string): string {
     const parts = timezone.split("/");
     const city = parts[parts.length - 1].replace(/_/g, " ");
     const abbr = getTimezoneAbbreviation(timezone);
-    return abbr ? `${city} (${abbr})` : city;
+    if (abbr && abbr !== timezone) {
+      return `${city} (${abbr})`;
+    }
+    // If abbreviation is same as timezone or not found, show timezone with underscores replaced
+    const timezoneDisplay = timezone.replace(/_/g, " ");
+    return `${city} (${timezoneDisplay})`;
   } catch {
-    return timezone;
+    return timezone.replace(/_/g, " ");
   }
 }
 

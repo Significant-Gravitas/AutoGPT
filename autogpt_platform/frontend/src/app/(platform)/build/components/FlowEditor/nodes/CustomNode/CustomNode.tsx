@@ -1,24 +1,27 @@
-import React from "react";
-import { Node as XYNode, NodeProps } from "@xyflow/react";
-import { RJSFSchema } from "@rjsf/utils";
-import { BlockUIType } from "../../../types";
-import { StickyNoteBlock } from "./components/StickyNoteBlock";
-import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
-import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { BlockCost } from "@/app/api/__generated__/models/blockCost";
+import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
-import { NodeContainer } from "./components/NodeContainer";
-import { NodeHeader } from "./components/NodeHeader";
-import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
-import { OutputHandler } from "../OutputHandler";
-import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
-import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
-import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
-import { cn } from "@/lib/utils";
-import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 import { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
+import { preprocessInputSchema } from "@/components/renderers/InputRenderer/utils/input-schema-pre-processor";
+import { cn } from "@/lib/utils";
+import { RJSFSchema } from "@rjsf/utils";
+import { NodeProps, Node as XYNode } from "@xyflow/react";
+import React from "react";
+import { BlockUIType } from "../../../types";
+import { FormCreator } from "../FormCreator";
+import { OutputHandler } from "../OutputHandler";
+import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
+import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
+import { NodeContainer } from "./components/NodeContainer";
+import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
+import { NodeHeader } from "./components/NodeHeader";
+import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
+import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
+import { StickyNoteBlock } from "./components/StickyNoteBlock";
+import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
+import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
+import { useCustomNode } from "./useCustomNode";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -31,7 +34,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
   block_id: string;
   status?: AgentExecutionStatus;
-  nodeExecutionResult?: NodeExecutionResult;
+  nodeExecutionResults?: NodeExecutionResult[];
   staticOutput?: boolean;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
@@ -44,6 +47,13 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
+    const { inputSchema, outputSchema, isMCPWithTool } = useCustomNode({
+      data,
+      nodeId,
+    });
+
+    const isAgent = data.uiType === BlockUIType.AGENT;
+
     if (data.uiType === BlockUIType.NOTE) {
       return (
         <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
@@ -62,23 +72,17 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
 
-    const inputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.input_schema ?? {})
-        : data.inputSchema;
-
-    const outputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.output_schema ?? {})
-        : data.outputSchema;
-
     const hasConfigErrors =
       data.errors &&
       Object.values(data.errors).some(
         (value) => value !== null && value !== undefined && value !== "",
       );
 
-    const outputData = data.nodeExecutionResult?.output_data;
+    const latestResult =
+      data.nodeExecutionResults && data.nodeExecutionResults.length > 0
+        ? data.nodeExecutionResults[data.nodeExecutionResults.length - 1]
+        : undefined;
+    const outputData = latestResult?.output_data;
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&
@@ -86,20 +90,20 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const hasErrors = hasConfigErrors || hasOutputError;
 
-    // Currently all blockTypes design are similar - that's why i am using the same component for all of them
-    // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
-    return (
+    const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
+          {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
           {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            isMCPWithTool={isMCPWithTool}
             className={cn(
-              "bg-white pr-6",
+              "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}
@@ -116,6 +120,15 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         </div>
         <NodeExecutionBadge nodeId={nodeId} />
       </NodeContainer>
+    );
+
+    return (
+      <NodeRightClickMenu
+        nodeId={nodeId}
+        subGraphID={data.hardcodedValues?.graph_id}
+      >
+        {node}
+      </NodeRightClickMenu>
     );
   },
 );

@@ -26,7 +26,7 @@ export function useLoginPage() {
 
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push(nextUrl || "/marketplace");
+      router.push(nextUrl || "/");
     }
   }, [isLoggedIn, isLoggingIn, nextUrl, router]);
 
@@ -93,13 +93,8 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (nextUrl) {
-        router.replace(nextUrl);
-      } else if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace("/marketplace");
-      }
+      // Prefer URL's next parameter, then use backend-determined route
+      router.replace(nextUrl || result.next || "/");
     } catch (error) {
       toast({
         title:

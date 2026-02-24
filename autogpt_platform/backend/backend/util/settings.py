@@ -211,14 +211,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for execution manager daemon to run on",
     )
 
+    num_copilot_workers: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Number of concurrent CoPilot executor workers",
+    )
+
+    copilot_executor_port: int = Field(
+        default=8008,
+        description="The port for CoPilot executor daemon to run on",
+    )
+
     execution_scheduler_port: int = Field(
         default=8003,
         description="The port for execution scheduler daemon to run on",
-    )
-
-    agent_server_port: int = Field(
-        default=8004,
-        description="The port for agent server daemon to run on",
     )
 
     database_api_port: int = Field(
@@ -263,8 +270,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    workspace_storage_dir: str = Field(
+        default="",
+        description="Local directory for workspace file storage when GCS is not configured. "
+        "If empty, defaults to {app_data}/workspaces. Used for self-hosted deployments.",
+    )
+
     reddit_user_agent: str = Field(
-        default="AutoGPT:1.0 (by /u/autogpt)",
+        default="web:AutoGPT:v0.6.0 (by /u/autogpt)",
         description="The user agent for the Reddit API",
     )
 
@@ -350,6 +363,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
+    agentgenerator_host: str = Field(
+        default="",
+        description="The host for the Agent Generator service (empty to use built-in)",
+    )
+    agentgenerator_port: int = Field(
+        default=8000,
+        description="The port for the Agent Generator service",
+    )
+    agentgenerator_timeout: int = Field(
+        default=1800,
+        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
+    )
+    agentgenerator_use_dummy: bool = Field(
+        default=False,
+        description="Use dummy agent generator responses for testing (bypasses external service)",
+    )
+
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -374,6 +404,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
+    max_file_size_mb: int = Field(
+        default=100,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
     # AutoMod configuration
@@ -630,7 +667,19 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
+    copilot_linear_api_key: str = Field(
+        default="", description="Linear API key for system-level operations"
+    )
+    linear_feature_request_project_id: str = Field(
+        default="",
+        description="Linear project ID where feature requests are tracked",
+    )
+    linear_feature_request_team_id: str = Field(
+        default="",
+        description="Linear team ID used when creating feature request issues",
+    )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
@@ -641,6 +690,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    tally_api_key: str = Field(
+        default="",
+        description="Tally API key for form submission lookup on signup",
+    )
+    tally_form_id: str = Field(
+        default="npGe0q",
+        description="Tally form ID for signup business understanding form",
+    )
 
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
@@ -658,6 +716,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
+
+    # Langfuse prompt management
+    langfuse_public_key: str = Field(default="", description="Langfuse public key")
+    langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
+    langfuse_host: str = Field(
+        default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+
+    # PostHog analytics
+    posthog_api_key: str = Field(default="", description="PostHog API key")
+    posthog_host: str = Field(
+        default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

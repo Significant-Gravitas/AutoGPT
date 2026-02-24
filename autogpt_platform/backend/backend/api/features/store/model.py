@@ -7,6 +7,12 @@ import pydantic
 from backend.util.models import Pagination
 
 
+class ChangelogEntry(pydantic.BaseModel):
+    version: str
+    changes_summary: str
+    date: datetime.datetime
+
+
 class MyAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
@@ -32,6 +38,7 @@ class StoreAgent(pydantic.BaseModel):
     description: str
     runs: int
     rating: float
+    agent_graph_id: str
 
 
 class StoreAgentsResponse(pydantic.BaseModel):
@@ -55,11 +62,16 @@ class StoreAgentDetails(pydantic.BaseModel):
     runs: int
     rating: float
     versions: list[str]
+    agentGraphVersions: list[str]
+    agentGraphId: str
     last_updated: datetime.datetime
     recommended_schedule_cron: str | None = None
 
     active_version_id: str | None = None
     has_approved_version: bool = False
+
+    # Optional changelog data when include_changelog=True
+    changelog: list[ChangelogEntry] | None = None
 
 
 class Creator(pydantic.BaseModel):
@@ -99,6 +111,7 @@ class Profile(pydantic.BaseModel):
 
 
 class StoreSubmission(pydantic.BaseModel):
+    listing_id: str
     agent_id: str
     agent_version: int
     name: str
@@ -153,8 +166,12 @@ class StoreListingsWithVersionsResponse(pydantic.BaseModel):
 
 
 class StoreSubmissionRequest(pydantic.BaseModel):
-    agent_id: str
-    agent_version: int
+    agent_id: str = pydantic.Field(
+        ..., min_length=1, description="Agent ID cannot be empty"
+    )
+    agent_version: int = pydantic.Field(
+        ..., gt=0, description="Agent version must be greater than 0"
+    )
     slug: str
     name: str
     sub_heading: str
@@ -205,3 +222,23 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
     is_approved: bool
     comments: str  # External comments visible to creator
     internal_comments: str | None = None  # Private admin notes
+
+
+class UnifiedSearchResult(pydantic.BaseModel):
+    """A single result from unified hybrid search across all content types."""
+
+    content_type: str  # STORE_AGENT, BLOCK, DOCUMENTATION
+    content_id: str
+    searchable_text: str
+    metadata: dict | None = None
+    updated_at: datetime.datetime | None = None
+    combined_score: float | None = None
+    semantic_score: float | None = None
+    lexical_score: float | None = None
+
+
+class UnifiedSearchResponse(pydantic.BaseModel):
+    """Response model for unified search across all content types."""
+
+    results: list[UnifiedSearchResult]
+    pagination: Pagination

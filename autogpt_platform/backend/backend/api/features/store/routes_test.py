@@ -82,6 +82,7 @@ def test_get_agents_featured(
                 description="Featured agent description",
                 runs=100,
                 rating=4.5,
+                agent_graph_id="test-graph-1",
             )
         ],
         pagination=store_model.Pagination(
@@ -127,6 +128,7 @@ def test_get_agents_by_creator(
                 description="Creator agent description",
                 runs=50,
                 rating=4.0,
+                agent_graph_id="test-graph-2",
             )
         ],
         pagination=store_model.Pagination(
@@ -172,6 +174,7 @@ def test_get_agents_sorted(
                 description="Top agent description",
                 runs=1000,
                 rating=5.0,
+                agent_graph_id="test-graph-3",
             )
         ],
         pagination=store_model.Pagination(
@@ -217,6 +220,7 @@ def test_get_agents_search(
                 description="Specific search term description",
                 runs=75,
                 rating=4.2,
+                agent_graph_id="test-graph-search",
             )
         ],
         pagination=store_model.Pagination(
@@ -262,6 +266,7 @@ def test_get_agents_category(
                 description="Category agent description",
                 runs=60,
                 rating=4.1,
+                agent_graph_id="test-graph-category",
             )
         ],
         pagination=store_model.Pagination(
@@ -306,6 +311,7 @@ def test_get_agents_pagination(
                 description=f"Agent {i} description",
                 runs=i * 10,
                 rating=4.0,
+                agent_graph_id="test-graph-2",
             )
             for i in range(5)
         ],
@@ -374,6 +380,8 @@ def test_get_agent_details(
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
+        agentGraphVersions=["1", "2"],
+        agentGraphId="test-graph-id",
         last_updated=FIXED_NOW,
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agent_details")
@@ -387,7 +395,9 @@ def test_get_agent_details(
     assert data.creator == "creator1"
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agt_details")
-    mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
+    mock_db_call.assert_called_once_with(
+        username="creator1", agent_name="test-agent", include_changelog=False
+    )
 
 
 def test_get_creators_defaults(
@@ -517,6 +527,7 @@ def test_get_submissions_success(
     mocked_value = store_model.StoreSubmissionsResponse(
         submissions=[
             store_model.StoreSubmission(
+                listing_id="test-listing-id",
                 name="Test Agent",
                 description="Test agent description",
                 image_urls=["test.jpg"],

@@ -2,8 +2,9 @@
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
+import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
+import { isSystemCredential } from "@/components/contextual/CredentialsInput/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { CredentialsInput } from "../CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
 import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
 
@@ -71,6 +72,7 @@ export function AgentInputsReadOnly({
           {credentialFieldEntries.map(([key, inputSubSchema]) => {
             const credential = credentialInputs![key];
             if (!credential) return null;
+            if (isSystemCredential(credential)) return null;
 
             return (
               <CredentialsInput

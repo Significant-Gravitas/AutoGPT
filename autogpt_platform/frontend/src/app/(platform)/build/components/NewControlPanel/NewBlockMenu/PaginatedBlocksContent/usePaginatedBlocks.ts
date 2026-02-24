@@ -1,5 +1,5 @@
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { useGetV2GetBuilderBlocksInfinite } from "@/app/api/__generated__/endpoints/default/default";
-import { BlockResponse } from "@/app/api/__generated__/models/blockResponse";
 
 interface UsePaginatedBlocksProps {
   type?: "all" | "input" | "action" | "output" | null;
@@ -8,7 +8,7 @@ interface UsePaginatedBlocksProps {
 const PAGE_SIZE = 10;
 export const usePaginatedBlocks = ({ type }: UsePaginatedBlocksProps) => {
   const {
-    data: blocks,
+    data: blocksQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -22,26 +22,14 @@ export const usePaginatedBlocks = ({ type }: UsePaginatedBlocksProps) => {
       type,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as BlockResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 
-  const allBlocks =
-    blocks?.pages?.flatMap((page) => {
-      const response = page.data as BlockResponse;
-      return response.blocks;
-    }) ?? [];
-
-  const status = blocks?.pages[0]?.status;
+  const allBlocks = blocksQueryData
+    ? unpaginate(blocksQueryData, "blocks")
+    : [];
+  const status = blocksQueryData?.pages[0]?.status;
 
   return {
     allBlocks,

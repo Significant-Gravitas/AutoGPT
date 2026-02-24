@@ -92,7 +92,7 @@ export function Input({
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] rounded-medium",
+            "-mb-1 h-auto min-h-[2.875rem] rounded-3xl",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -107,6 +107,11 @@ export function Input({
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
+          onKeyDown={
+            props.onKeyDown as
+              | React.KeyboardEventHandler<HTMLTextAreaElement>
+              | undefined
+          }
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
           id={props.id}

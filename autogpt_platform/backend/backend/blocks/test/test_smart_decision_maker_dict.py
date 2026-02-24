@@ -15,6 +15,7 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
     mock_node.block = CreateDictionaryBlock()
     mock_node.block_id = CreateDictionaryBlock().id
     mock_node.input_default = {}
+    mock_node.metadata = {}
 
     # Create mock links with dynamic dictionary fields
     mock_links = [
@@ -77,6 +78,7 @@ async def test_smart_decision_maker_handles_dynamic_list_fields():
     mock_node.block = AddToListBlock()
     mock_node.block_id = AddToListBlock().id
     mock_node.input_default = {}
+    mock_node.metadata = {}
 
     # Create mock links with dynamic list fields
     mock_links = [

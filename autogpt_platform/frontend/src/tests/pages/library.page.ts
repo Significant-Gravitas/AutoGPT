@@ -1,6 +1,6 @@
-import { BasePage } from "./base.page";
 import { Locator, Page } from "@playwright/test";
 import { getSelectors } from "../utils/selectors";
+import { BasePage } from "./base.page";
 
 export interface Agent {
   id: string;
@@ -109,7 +109,7 @@ export class LibraryPage extends BasePage {
 
   async openUploadDialog(): Promise<void> {
     console.log(`opening upload dialog`);
-    await this.page.getByRole("button", { name: "Upload an agent" }).click();
+    await this.page.getByRole("button", { name: "Upload agent" }).click();
 
     // Wait for dialog to appear
     await this.page.getByRole("dialog", { name: "Upload Agent" }).waitFor({
@@ -149,7 +149,7 @@ export class LibraryPage extends BasePage {
 
     // Fill description
     await this.page
-      .getByRole("textbox", { name: "Description" })
+      .getByRole("textbox", { name: "Agent description" })
       .fill(description);
   }
 
@@ -157,7 +157,7 @@ export class LibraryPage extends BasePage {
     console.log(`checking if upload button is enabled`);
     try {
       const uploadButton = this.page.getByRole("button", {
-        name: "Upload Agent",
+        name: "Upload",
       });
       return await uploadButton.isEnabled();
     } catch {
@@ -175,26 +175,32 @@ export class LibraryPage extends BasePage {
     const agentCards = await getId("library-agent-card").all();
 
     for (const card of agentCards) {
-      const name = await card.locator("h3").textContent();
-      const description = await card.locator("p").textContent();
-      const seeRunsLink = card.locator("a", { hasText: "See runs" });
-      const openInBuilderLink = card.locator("a", {
-        hasText: "Open in builder",
-      });
+      const name = await getId("library-agent-card-name", card).textContent();
+      const seeRunsLink = getId("library-agent-card-see-runs-link", card);
+      const openInBuilderLink = getId(
+        "library-agent-card-open-in-builder-link",
+        card,
+      );
 
       const seeRunsUrl = await seeRunsLink.getAttribute("href");
-      const openInBuilderUrl = await openInBuilderLink.getAttribute("href");
 
-      if (name && description && seeRunsUrl && openInBuilderUrl) {
+      // Check if the "Open in builder" link exists before getting its href
+      const openInBuilderLinkCount = await openInBuilderLink.count();
+      const openInBuilderUrl =
+        openInBuilderLinkCount > 0
+          ? await openInBuilderLink.getAttribute("href")
+          : null;
+
+      if (name && seeRunsUrl) {
         const idMatch = seeRunsUrl.match(/\/library\/agents\/([^\/]+)/);
         const id = idMatch ? idMatch[1] : "";
 
         agents.push({
           id,
           name: name.trim(),
-          description: description.trim(),
+          description: "", // Description is not currently rendered in the card
           seeRunsUrl,
-          openInBuilderUrl,
+          openInBuilderUrl: openInBuilderUrl || "",
         });
       }
     }
@@ -204,28 +210,36 @@ export class LibraryPage extends BasePage {
   }
 
   async clickAgent(agent: Agent): Promise<void> {
-    await this.page
-      .getByRole("heading", { name: agent.name, level: 3 })
-      .first()
-      .click();
+    const { getId } = getSelectors(this.page);
+    const nameElement = getId("library-agent-card-name").filter({
+      hasText: agent.name,
+    });
+    await nameElement.first().click();
   }
 
   async clickSeeRuns(agent: Agent): Promise<void> {
     console.log(`clicking see runs for agent: ${agent.name}`);
 
-    // Find the "See runs" link for this specific agent
-    const agentCard = this.page.locator(`[href="${agent.seeRunsUrl}"]`).first();
-    await agentCard.click();
+    const { getId } = getSelectors(this.page);
+    const agentCard = getId("library-agent-card").filter({
+      hasText: agent.name,
+    });
+    const seeRunsLink = getId("library-agent-card-see-runs-link", agentCard);
+    await seeRunsLink.first().click();
   }
 
   async clickOpenInBuilder(agent: Agent): Promise<void> {
     console.log(`clicking open in builder for agent: ${agent.name}`);
 
-    // Find the "Open in builder" link for this specific agent
-    const builderLink = this.page
-      .locator(`[href="${agent.openInBuilderUrl}"]`)
-      .first();
-    await builderLink.click();
+    const { getId } = getSelectors(this.page);
+    const agentCard = getId("library-agent-card").filter({
+      hasText: agent.name,
+    });
+    const builderLink = getId(
+      "library-agent-card-open-in-builder-link",
+      agentCard,
+    );
+    await builderLink.first().click();
   }
 
   async waitForAgentsToLoad(): Promise<void> {
@@ -236,21 +250,6 @@ export class LibraryPage extends BasePage {
         .waitFor({ state: "visible", timeout: 10_000 }),
       getId("agents-count").waitFor({ state: "visible", timeout: 10_000 }),
     ]);
-  }
-
-  async clickMonitoringLink(): Promise<void> {
-    console.log(`clicking monitoring link in alert`);
-    await this.page.getByRole("link", { name: "here" }).click();
-  }
-
-  async isMonitoringAlertVisible(): Promise<boolean> {
-    console.log(`checking if monitoring alert is visible`);
-    try {
-      const alertText = this.page.locator("text=/Prefer the old experience/");
-      return await alertText.isVisible();
-    } catch {
-      return false;
-    }
   }
 
   async getSearchValue(): Promise<string> {
@@ -286,21 +285,27 @@ export class LibraryPage extends BasePage {
   async scrollToLoadMore(): Promise<void> {
     console.log(`scrolling to load more agents`);
 
-    // Get initial agent count
-    const initialCount = await this.getAgentCount();
-    console.log(`Initial agent count: ${initialCount}`);
+    const initialCount = await this.getAgentCountByListLength();
+    console.log(`Initial agent count (DOM cards): ${initialCount}`);
 
-    // Scroll down to trigger pagination
     await this.scrollToBottom();
 
-    // Wait for potential new agents to load
-    await this.page.waitForTimeout(2000);
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 10000 })
+      .catch(() => console.log("Network idle timeout, continuing..."));
 
-    // Check if more agents loaded
-    const newCount = await this.getAgentCount();
-    console.log(`New agent count after scroll: ${newCount}`);
+    await this.page
+      .waitForFunction(
+        (prevCount) =>
+          document.querySelectorAll('[data-testid="library-agent-card"]')
+            .length > prevCount,
+        initialCount,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
 
-    return;
+    const newCount = await this.getAgentCountByListLength();
+    console.log(`New agent count after scroll (DOM cards): ${newCount}`);
   }
 
   async testPagination(): Promise<{
@@ -359,9 +364,9 @@ export class LibraryPage extends BasePage {
     let previousCount = 0;
     let currentCount = 0;
     let stableChecks = 0;
-    const maxChecks = 10;
+    const maxChecks = 5; // Reduced from 10 to prevent excessive waiting
 
-    while (stableChecks < 3 && stableChecks < maxChecks) {
+    while (stableChecks < 2 && stableChecks < maxChecks) {
       currentCount = await this.getAgentCount();
 
       if (currentCount === previousCount) {
@@ -371,7 +376,10 @@ export class LibraryPage extends BasePage {
       }
 
       previousCount = currentCount;
-      await this.page.waitForTimeout(500);
+      if (stableChecks < 2) {
+        // Only wait if we haven't stabilized yet
+        await this.page.waitForTimeout(500);
+      }
     }
 
     console.log(`Pagination load stabilized with ${currentCount} agents`);
@@ -433,21 +441,73 @@ export async function navigateToAgentByName(
   agentName: string,
 ): Promise<void> {
   const agentCard = getAgentCards(page).filter({ hasText: agentName }).first();
+  // Wait for the agent card to be visible before clicking
+  // This handles async loading of agents after page navigation
+  await agentCard.waitFor({ state: "visible", timeout: 15000 });
   await agentCard.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
+
+  // Wait for sidebar loading to complete before detecting buttons.
+  // During sidebar loading, the "New task" button appears transiently
+  // even for agents with no items, then switches to "Setup your task"
+  // once loading finishes. Waiting for network idle ensures the page
+  // has settled into its final state.
+  await page.waitForLoadState("networkidle");
+
+  const setupTaskButton = page.getByRole("button", {
+    name: /Setup your task/i,
+  });
+  const newTaskButton = page.getByRole("button", { name: /New task/i });
   const runButton = getId("agent-run-button");
   const runAgainButton = getId("run-again-button");
 
+  // Wait for any of the buttons to appear
+  try {
+    await Promise.race([
+      setupTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      newTaskButton.waitFor({ state: "visible", timeout: 15000 }),
+      runButton.waitFor({ state: "visible", timeout: 15000 }),
+      runAgainButton.waitFor({ state: "visible", timeout: 15000 }),
+    ]);
+  } catch {
+    throw new Error(
+      "Could not find run/start task button - none of the expected buttons appeared",
+    );
+  }
+
+  // Check which button is visible and click it
+  if (await setupTaskButton.isVisible()) {
+    await setupTaskButton.click();
+    await page
+      .getByRole("button", { name: /Start Task/i })
+      .first()
+      .click({ timeout: 10000 });
+    return;
+  }
+
+  if (await newTaskButton.isVisible()) {
+    await newTaskButton.click();
+    await page
+      .getByRole("button", { name: /Start Task/i })
+      .first()
+      .click({ timeout: 10000 });
+    return;
+  }
+
   if (await runButton.isVisible()) {
     await runButton.click();
-  } else if (await runAgainButton.isVisible()) {
-    await runAgainButton.click();
-  } else {
-    throw new Error("Neither run button nor run again button is visible");
+    return;
   }
+
+  if (await runAgainButton.isVisible()) {
+    await runAgainButton.click();
+    return;
+  }
+
+  throw new Error("Could not find run/start task button");
 }
 
 export async function clickNewRunButton(page: Page): Promise<void> {
@@ -460,7 +520,9 @@ export async function runAgent(page: Page): Promise<void> {
 
 export async function waitForAgentPageLoad(page: Page): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
-  await page.getByTestId("Run actions").isVisible({ timeout: 10000 });
+  // Wait for sidebar data to finish loading so the page settles
+  // into its final state (empty view vs sidebar view)
+  await page.waitForLoadState("networkidle");
 }
 
 export async function getAgentName(page: Page): Promise<string> {

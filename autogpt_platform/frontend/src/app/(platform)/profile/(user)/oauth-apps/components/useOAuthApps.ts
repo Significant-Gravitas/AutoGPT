@@ -7,7 +7,6 @@ import {
   usePostOauthUploadAppLogo,
   getGetOauthListMyOauthAppsQueryKey,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
-import { OAuthApplicationInfo } from "@/app/api/__generated__/models/oAuthApplicationInfo";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
@@ -19,7 +18,7 @@ export const useOAuthApps = () => {
   const [uploadingAppId, setUploadingAppId] = useState<string | null>(null);
 
   const { data: oauthAppsResponse, isLoading } = useGetOauthListMyOauthApps({
-    query: { select: okData<OAuthApplicationInfo[]> },
+    query: { select: okData },
   });
 
   const { mutateAsync: updateStatus } = usePatchOauthUpdateAppStatus({

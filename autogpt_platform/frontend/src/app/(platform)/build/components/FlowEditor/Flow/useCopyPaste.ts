@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -150,6 +150,17 @@ export function useCopyPaste() {
     },
     [getViewport, toast],
   );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleCopyPaste(event);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCopyPaste]);
 
   return handleCopyPaste;
 }
