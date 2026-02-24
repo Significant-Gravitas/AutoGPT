@@ -1221,7 +1221,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CancelTaskResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CancelSessionResponse"
+                }
               }
             }
           },
@@ -7423,7 +7425,7 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
-      "CancelTaskResponse": {
+      "CancelSessionResponse": {
         "properties": {
           "cancelled": { "type": "boolean", "title": "Cancelled" },
           "reason": {
@@ -7433,8 +7435,8 @@
         },
         "type": "object",
         "required": ["cancelled"],
-        "title": "CancelTaskResponse",
-        "description": "Response model for the cancel task endpoint."
+        "title": "CancelSessionResponse",
+        "description": "Response model for the cancel session endpoint."
       },
       "ChangelogEntry": {
         "properties": {

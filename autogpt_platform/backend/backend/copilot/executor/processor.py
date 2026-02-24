@@ -1,6 +1,6 @@
 """CoPilot execution processor - per-worker execution logic.
 
-This module contains the processor class that handles CoPilot task execution
+This module contains the processor class that handles CoPilot session execution
 in a thread-local context, following the graph executor pattern.
 """
 
@@ -32,17 +32,17 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 _tls = threading.local()
 
 
-def execute_copilot_task(
+def execute_copilot_turn(
     entry: CoPilotExecutionEntry,
     cancel: threading.Event,
     cluster_lock: ClusterLock,
 ):
-    """Execute a CoPilot task using the thread-local processor.
+    """Execute a single CoPilot turn (user message → AI response).
 
     This function is the entry point called by the thread pool executor.
 
     Args:
-        entry: The task payload
+        entry: The turn payload
         cancel: Threading event to signal cancellation
         cluster_lock: Distributed lock for this execution
     """
@@ -76,16 +76,16 @@ def cleanup_worker():
 
 
 class CoPilotProcessor:
-    """Per-worker execution logic for CoPilot tasks.
+    """Per-worker execution logic for CoPilot sessions.
 
     This class is instantiated once per worker thread and handles the execution
-    of CoPilot chat generation tasks. It maintains an async event loop for
+    of CoPilot chat generation sessions. It maintains an async event loop for
     running the async service code.
 
     The execution flow:
-        1. CoPilot task is picked from RabbitMQ queue
-        2. Manager submits task to thread pool
-        3. Processor executes the task in its event loop
+        1. Session entry is picked from RabbitMQ queue
+        2. Manager submits to thread pool
+        3. Processor executes in its event loop
         4. Results are published to Redis Streams
     """
 
@@ -139,13 +139,12 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
     ):
-        """Execute a CoPilot task.
+        """Execute a CoPilot turn.
 
-        This is the main entry point for task execution. It runs the async
-        execution logic in the worker's event loop and handles errors.
+        Runs the async logic in the worker's event loop and handles errors.
 
         Args:
-            entry: The task payload containing session and message info
+            entry: The turn payload containing session and message info
             cancel: Threading event to signal cancellation
             cluster_lock: Distributed lock to prevent duplicate execution
         """
@@ -187,8 +186,19 @@ class CoPilotProcessor:
         except Exception as e:
             elapsed = time.monotonic() - start_time
             log.error(f"Execution failed after {elapsed:.2f}s: {e}")
-            # Note: _execute_async already marks the task as failed before re-raising,
-            # so we don't call _mark_task_failed here to avoid duplicate error events.
+            # Safety net: if _execute_async's error handler failed to mark
+            # the session (e.g. RuntimeError from SDK cleanup), do it here.
+            try:
+                loop = self.execution_loop
+                fut = asyncio.run_coroutine_threadsafe(
+                    stream_registry.mark_session_completed(
+                        entry.session_id, error_message=str(e) or "Unknown error"
+                    ),
+                    loop,
+                )
+                fut.result(timeout=5.0)
+            except Exception:
+                pass
             raise
 
     async def _execute_async(
@@ -198,16 +208,16 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
     ):
-        """Async execution logic for CoPilot task.
+        """Async execution logic for a CoPilot turn.
 
-        This method calls the existing stream_chat_completion service function
-        and publishes results to the stream registry.
+        Calls the stream_chat_completion service function and publishes
+        results to the stream registry.
 
         Args:
-            entry: The task payload
+            entry: The turn payload
             cancel: Threading event to signal cancellation
             cluster_lock: Distributed lock for refresh
-            log: Structured logger for this task
+            log: Structured logger
         """
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -264,17 +274,17 @@ class CoPilotProcessor:
                     )
 
             await stream_registry.mark_session_completed(entry.session_id)
-            log.info("Task completed successfully")
+            log.info("Turn completed successfully")
 
         except asyncio.CancelledError:
-            log.info("Task cancelled")
+            log.info("Turn cancelled")
             await stream_registry.mark_session_completed(
-                entry.session_id, error_message="Task was cancelled"
+                entry.session_id, error_message="Turn was cancelled"
             )
             raise
 
         except Exception as e:
-            log.error(f"Task failed: {e}")
+            log.error(f"Turn failed: {e}")
             try:
                 await stream_registry.publish_chunk(entry.turn_id, StreamFinishStep())
                 await stream_registry.mark_session_completed(

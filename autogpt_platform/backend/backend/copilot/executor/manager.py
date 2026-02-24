@@ -25,7 +25,7 @@ from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
-from .processor import execute_copilot_task, init_worker
+from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -394,7 +394,7 @@ class CoPilotExecutor(AppProcess):
 
             cancel_event = threading.Event()
             future = self.executor.submit(
-                execute_copilot_task, entry, cancel_event, cluster_lock
+                execute_copilot_turn, entry, cancel_event, cluster_lock
             )
             self.active_tasks[session_id] = (future, cancel_event)
         except Exception as e:

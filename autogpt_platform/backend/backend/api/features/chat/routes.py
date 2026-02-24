@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_task
+from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -123,8 +123,8 @@ class ListSessionsResponse(BaseModel):
     total: int
 
 
-class CancelTaskResponse(BaseModel):
-    """Response model for the cancel task endpoint."""
+class CancelSessionResponse(BaseModel):
+    """Response model for the cancel session endpoint."""
 
     cancelled: bool
     reason: str | None = None
@@ -304,7 +304,7 @@ async def get_session(
 async def cancel_session_task(
     session_id: str,
     user_id: Annotated[str | None, Depends(auth.get_user_id)],
-) -> CancelTaskResponse:
+) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
     Publishes a cancel event to the executor via RabbitMQ FANOUT, then
@@ -315,7 +315,7 @@ async def cancel_session_task(
 
     active_session, _ = await stream_registry.get_active_session(session_id, user_id)
     if not active_session:
-        return CancelTaskResponse(cancelled=False, reason="no_active_task")
+        return CancelSessionResponse(cancelled=False, reason="no_active_session")
 
     await enqueue_cancel_task(session_id)
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
@@ -327,18 +327,20 @@ async def cancel_session_task(
     while waited < max_wait:
         await asyncio.sleep(poll_interval)
         waited += poll_interval
-        task = await stream_registry.get_session(session_id)
-        if task is None or task.status != "running":
+        session_state = await stream_registry.get_session(session_id)
+        if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
-                f"(status={task.status if task else 'gone'}) after {waited:.1f}s"
+                f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
             )
-            return CancelTaskResponse(cancelled=True)
+            return CancelSessionResponse(cancelled=True)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s"
     )
-    return CancelTaskResponse(cancelled=True, reason="cancel_published_not_confirmed")
+    return CancelSessionResponse(
+        cancelled=True, reason="cancel_published_not_confirmed"
+    )
 
 
 @router.post(
@@ -416,8 +418,8 @@ async def stream_chat_post(
     turn_id = str(uuid4())
     log_meta["turn_id"] = turn_id
 
-    task_create_start = time.perf_counter()
-    await stream_registry.create_session_task(
+    session_create_start = time.perf_counter()
+    await stream_registry.create_session(
         session_id=session_id,
         user_id=user_id,
         tool_call_id="chat_stream",
@@ -425,11 +427,11 @@ async def stream_chat_post(
         turn_id=turn_id,
     )
     logger.info(
-        f"[TIMING] create_session_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
+        f"[TIMING] create_session completed in {(time.perf_counter() - session_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
-                "duration_ms": (time.perf_counter() - task_create_start) * 1000,
+                "duration_ms": (time.perf_counter() - session_create_start) * 1000,
             }
         },
     )
@@ -437,7 +439,7 @@ async def stream_chat_post(
     # Per-turn stream is always fresh (unique turn_id), subscribe from beginning
     subscribe_from_id = "0-0"
 
-    await enqueue_copilot_task(
+    await enqueue_copilot_turn(
         session_id=session_id,
         user_id=user_id,
         message=request.message,

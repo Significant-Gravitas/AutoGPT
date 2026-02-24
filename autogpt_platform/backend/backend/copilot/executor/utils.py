@@ -164,11 +164,11 @@ class CancelCoPilotEvent(BaseModel):
 # ============ Queue Publishing Helpers ============ #
 
 
-async def enqueue_copilot_task(
+async def enqueue_copilot_turn(
     session_id: str,
     user_id: str | None,
     message: str,
-    turn_id: str = "",
+    turn_id: str,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
 ) -> None:

@@ -105,7 +105,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     )
 
 
-async def create_session_task(
+async def create_session(
     session_id: str,
     user_id: str | None,
     tool_call_id: str,
@@ -137,7 +137,7 @@ async def create_session_task(
         log_meta["user_id"] = user_id
 
     logger.info(
-        f"[TIMING] create_session_task STARTED, session={session_id}, user={user_id}, turn_id={turn_id}",
+        f"[TIMING] create_session STARTED, session={session_id}, user={user_id}, turn_id={turn_id}",
         extra={"json_fields": log_meta},
     )
 
@@ -187,7 +187,7 @@ async def create_session_task(
 
     total_time = (time.perf_counter() - start_time) * 1000
     logger.info(
-        f"[TIMING] create_session_task COMPLETED in {total_time:.1f}ms; session={session_id}",
+        f"[TIMING] create_session COMPLETED in {total_time:.1f}ms; session={session_id}",
         extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
     )
 
@@ -316,7 +316,7 @@ async def subscribe_to_session(
 
     # RACE CONDITION FIX: If session not found, retry once after small delay
     # This handles the case where subscribe_to_session is called immediately
-    # after create_session_task but before Redis propagates the write
+    # after create_session but before Redis propagates the write
     if not meta:
         logger.warning(
             "[TIMING] Session not found on first attempt, retrying after 50ms delay",
@@ -771,8 +771,8 @@ async def get_session_with_expiry_info(
 
     Returns (session, error_code) where error_code is:
     - None if session found
-    - "TASK_EXPIRED" if stream exists but metadata is gone (TTL expired)
-    - "TASK_NOT_FOUND" if neither exists
+    - "SESSION_EXPIRED" if stream exists but metadata is gone (TTL expired)
+    - "SESSION_NOT_FOUND" if neither exists
 
     Args:
         session_id: Session ID to look up
@@ -791,8 +791,8 @@ async def get_session_with_expiry_info(
         stream_key = _get_turn_stream_key(session_id)
         stream_len = await redis.xlen(stream_key)
         if stream_len > 0:
-            return None, "TASK_EXPIRED"
-        return None, "TASK_NOT_FOUND"
+            return None, "SESSION_EXPIRED"
+        return None, "SESSION_NOT_FOUND"
 
     return _parse_session_meta(meta, session_id), None
 
