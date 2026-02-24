@@ -16,7 +16,6 @@ import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -24,8 +23,8 @@ import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
 } from "./components/ClarificationQuestionsCard";
-import sparklesImg from "./components/MiniGame/assets/sparkles.png";
-import { MiniGame } from "./components/MiniGame/MiniGame";
+import sparklesImg from "../../components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
@@ -93,9 +92,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
   ) {
     return {
       icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
+      title: output.message || "Agent creation started",
     };
   }
   return {
@@ -169,15 +166,22 @@ export function CreateAgentTool({ part }: Props) {
         />
       </div>
 
+      {isStreaming && (
+        <ToolAccordion
+          icon={<AccordionIcon />}
+          title="Creating agent, this may take a few minutes. Play while you wait."
+          expanded
+        >
+          <ContentGrid>
+            <MiniGame />
+          </ContentGrid>
+        </ToolAccordion>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
+          {isOperating && output.message && (
+            <ContentMessage>{output.message}</ContentMessage>
           )}
 
           {isAgentSavedOutput(output) && (
