@@ -12,7 +12,7 @@ import time
 from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.response_model import StreamError, StreamFinish, StreamFinishStep
+from backend.copilot.response_model import StreamFinish, StreamFinishStep
 from backend.copilot.sdk import service as sdk_service
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
@@ -239,24 +239,22 @@ class CoPilotProcessor:
                 if cancel.is_set():
                     log.info("Cancelled during streaming")
                     await stream_registry.publish_chunk(
-                        entry.turn_id, StreamError(errorText="Operation cancelled")
-                    )
-                    await stream_registry.publish_chunk(
                         entry.turn_id, StreamFinishStep()
                     )
-                    await stream_registry.publish_chunk(entry.turn_id, StreamFinish())
                     await stream_registry.mark_session_completed(
-                        entry.session_id, status="failed"
+                        entry.session_id,
+                        error_message="Operation cancelled",
                     )
                     return
 
-                # Refresh cluster lock periodically
                 current_time = time.monotonic()
                 if current_time - last_refresh >= refresh_interval:
                     cluster_lock.refresh()
                     last_refresh = current_time
 
-                # Publish chunk to stream registry
+                if isinstance(chunk, StreamFinish):
+                    break
+
                 try:
                     await stream_registry.publish_chunk(entry.turn_id, chunk)
                 except Exception as e:
@@ -265,39 +263,25 @@ class CoPilotProcessor:
                         exc_info=True,
                     )
 
-            # Mark session as completed
-            await stream_registry.mark_session_completed(
-                entry.session_id, status="completed"
-            )
+            await stream_registry.mark_session_completed(entry.session_id)
             log.info("Task completed successfully")
-
-            if entry.turn_id:
-                await stream_registry.cleanup_turn_stream(entry.turn_id)
 
         except asyncio.CancelledError:
             log.info("Task cancelled")
             await stream_registry.mark_session_completed(
-                entry.session_id,
-                status="failed",
-                error_message="Task was cancelled",
+                entry.session_id, error_message="Task was cancelled"
             )
             raise
 
         except Exception as e:
             log.error(f"Task failed: {e}")
-            await self._mark_task_failed(entry.session_id, str(e), entry.turn_id)
+            try:
+                await stream_registry.publish_chunk(entry.turn_id, StreamFinishStep())
+                await stream_registry.mark_session_completed(
+                    entry.session_id, error_message=str(e)
+                )
+            except Exception as mark_err:
+                logger.error(
+                    f"Failed to mark session {entry.session_id} as failed: {mark_err}"
+                )
             raise
-
-    async def _mark_task_failed(
-        self, session_id: str, error_message: str, turn_id: str = ""
-    ):
-        """Mark a task as failed and publish error to stream registry."""
-        try:
-            await stream_registry.publish_chunk(
-                turn_id, StreamError(errorText=error_message)
-            )
-            await stream_registry.publish_chunk(turn_id, StreamFinishStep())
-            await stream_registry.publish_chunk(turn_id, StreamFinish())
-            await stream_registry.mark_session_completed(session_id, status="failed")
-        except Exception as e:
-            logger.error(f"Failed to mark session {session_id} as failed: {e}")

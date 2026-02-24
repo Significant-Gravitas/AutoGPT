@@ -685,27 +685,28 @@ async def _stream_listener(
 
 async def mark_session_completed(
     session_id: str,
-    status: Literal["completed", "failed"] = "completed",
-    *,
     error_message: str | None = None,
 ) -> bool:
-    """Mark a session as completed and publish finish event.
+    """Mark a session as completed, then publish StreamFinish.
 
-    This is idempotent - calling multiple times with the same session_id is safe.
+    This is the SINGLE place that publishes StreamFinish to the turn stream.
+    Services must NOT yield StreamFinish themselves — the processor intercepts
+    it and calls this function instead, ensuring status is set before
+    StreamFinish reaches the frontend.
+
     Uses atomic compare-and-swap via Lua script to prevent race conditions.
-    Status is updated first (source of truth), then finish event is published (best-effort).
+    Idempotent — calling multiple times is safe (returns False on no-op).
 
     Args:
         session_id: Session ID to mark as completed
-        status: Final status ("completed" or "failed")
-        error_message: If provided and status="failed", publish a StreamError
-            before StreamFinish so connected clients see why the session ended.
-            If not provided, no StreamError is published (caller should publish
-            manually if needed to avoid duplicates).
+        error_message: If provided, marks as "failed" and publishes a
+            StreamError before StreamFinish. Otherwise marks as "completed".
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
     """
+    status: Literal["completed", "failed"] = "failed" if error_message else "completed"
+
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
 
@@ -714,19 +715,13 @@ async def mark_session_completed(
     turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
     # Atomic compare-and-swap: only update if status is "running"
-    # This prevents race conditions when multiple callers try to complete simultaneously
     result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
 
     if result == 0:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    # Publish error event before finish so connected clients know WHY the
-    # session ended. Only publish if caller provided an explicit error message
-    # to avoid duplicates with code paths that manually publish StreamError.
-    # This is best-effort — if it fails, the StreamFinish still ensures
-    # listeners clean up.
-    if status == "failed" and error_message:
+    if error_message:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
@@ -734,13 +729,15 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # THEN publish finish event (best-effort - listeners can detect via status polling)
+    # Publish StreamFinish AFTER status is set to "completed"/"failed".
+    # This is the SINGLE place that publishes StreamFinish — services and
+    # the processor must NOT publish it themselves.
     try:
         await publish_chunk(turn_id, StreamFinish())
     except Exception as e:
         logger.error(
-            f"Failed to publish finish event for session {session_id}: {e}. "
-            "Listeners will detect completion via status polling."
+            f"Failed to publish StreamFinish for session {session_id}: {e}. "
+            "The _stream_listener will detect completion via status polling."
         )
 
     # Clean up local session reference if exists
@@ -852,7 +849,6 @@ async def get_active_session(
                 )
                 await mark_session_completed(
                     session_id,
-                    status="failed",
                     error_message=f"Session timed out after {age_seconds:.0f}s",
                 )
                 return None, "0-0"
@@ -999,13 +995,3 @@ async def unsubscribe_from_session(
         )
 
     logger.debug(f"Successfully unsubscribed from session {session_id}")
-
-
-async def cleanup_turn_stream(turn_id: str) -> None:
-    """Delete the per-turn Redis stream after the turn completes."""
-    try:
-        redis = await get_redis_async()
-        stream_key = _get_turn_stream_key(turn_id)
-        await redis.delete(stream_key)
-    except Exception as e:
-        logger.warning(f"Failed to clean up turn stream {turn_id}: {e}")
