@@ -32,7 +32,6 @@ const containerVariants = {
   },
 };
 
-// Reduced motion fallback
 const reducedContainerVariants = {
   hidden: {},
   show: {},
