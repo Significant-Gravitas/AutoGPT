@@ -5,12 +5,16 @@ This module implements the AI SDK UI Stream Protocol (v1) for streaming chat res
 See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 """
 
+import json
+import logging
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
+
+logger = logging.getLogger(__name__)
 
 
 class ResponseType(str, Enum):
@@ -47,7 +51,8 @@ class StreamBaseResponse(BaseModel):
 
     def to_sse(self) -> str:
         """Convert to SSE format."""
-        return f"data: {self.model_dump_json()}\n\n"
+        json_str = self.model_dump_json(exclude_none=True)
+        return f"data: {json_str}\n\n"
 
 
 # ========== Message Lifecycle ==========
@@ -58,15 +63,13 @@ class StreamStart(StreamBaseResponse):
 
     type: ResponseType = ResponseType.START
     messageId: str = Field(..., description="Unique message ID")
-    taskId: str | None = Field(
+    sessionId: str | None = Field(
         default=None,
-        description="Task ID for SSE reconnection. Clients can reconnect using GET /tasks/{taskId}/stream",
+        description="Session ID for SSE reconnection.",
     )
 
     def to_sse(self) -> str:
-        """Convert to SSE format, excluding non-protocol fields like taskId."""
-        import json
-
+        """Convert to SSE format, excluding non-protocol fields like sessionId."""
         data: dict[str, Any] = {
             "type": self.type.value,
             "messageId": self.messageId,
@@ -163,8 +166,6 @@ class StreamToolOutputAvailable(StreamBaseResponse):
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-spec fields."""
-        import json
-
         data = {
             "type": self.type.value,
             "toolCallId": self.toolCallId,

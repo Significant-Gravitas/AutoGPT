@@ -37,9 +37,7 @@ from .tool_adapter import wait_for_stash
 
 
 def _adapter() -> SDKResponseAdapter:
-    a = SDKResponseAdapter(message_id="msg-1")
-    a.set_task_id("task-1")
-    return a
+    return SDKResponseAdapter(message_id="msg-1", session_id="session-1")
 
 
 # -- SystemMessage -----------------------------------------------------------
@@ -51,7 +49,7 @@ def test_system_init_emits_start_and_step():
     assert len(results) == 2
     assert isinstance(results[0], StreamStart)
     assert results[0].messageId == "msg-1"
-    assert results[0].taskId == "task-1"
+    assert results[0].sessionId == "session-1"
     assert isinstance(results[1], StreamStartStep)
 
 

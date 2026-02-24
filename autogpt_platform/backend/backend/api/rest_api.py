@@ -42,10 +42,6 @@ import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import DEFAULT_LLM_MODEL
-from backend.copilot.completion_consumer import (
-    start_completion_consumer,
-    stop_completion_consumer,
-)
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -123,20 +119,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
-    # Start chat completion consumer for Redis Streams notifications
-    try:
-        await start_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Could not start chat completion consumer: {e}")
-
     with launch_darkly_context():
         yield
-
-    # Stop chat completion consumer
-    try:
-        await stop_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Error stopping chat completion consumer: {e}")
 
     try:
         await shutdown_cloud_storage_handler()
