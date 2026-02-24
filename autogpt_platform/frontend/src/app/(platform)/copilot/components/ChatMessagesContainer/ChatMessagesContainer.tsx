@@ -300,7 +300,8 @@ export const ChatMessagesContainer = ({
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
-              Something went wrong (click to expand)
+              The assistant encountered an error. Please try sending your
+              message again.
             </summary>
             <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
               {error instanceof Error ? error.message : String(error)}
