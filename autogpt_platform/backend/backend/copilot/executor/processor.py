@@ -245,7 +245,7 @@ class CoPilotProcessor:
                         entry.turn_id, StreamFinishStep()
                     )
                     await stream_registry.publish_chunk(entry.turn_id, StreamFinish())
-                    await stream_registry.mark_task_completed(
+                    await stream_registry.mark_session_completed(
                         entry.session_id, status="failed"
                     )
                     return
@@ -265,8 +265,8 @@ class CoPilotProcessor:
                         exc_info=True,
                     )
 
-            # Mark task as completed
-            await stream_registry.mark_task_completed(
+            # Mark session as completed
+            await stream_registry.mark_session_completed(
                 entry.session_id, status="completed"
             )
             log.info("Task completed successfully")
@@ -276,7 +276,7 @@ class CoPilotProcessor:
 
         except asyncio.CancelledError:
             log.info("Task cancelled")
-            await stream_registry.mark_task_completed(
+            await stream_registry.mark_session_completed(
                 entry.session_id,
                 status="failed",
                 error_message="Task was cancelled",
@@ -298,6 +298,6 @@ class CoPilotProcessor:
             )
             await stream_registry.publish_chunk(turn_id, StreamFinishStep())
             await stream_registry.publish_chunk(turn_id, StreamFinish())
-            await stream_registry.mark_task_completed(session_id, status="failed")
+            await stream_registry.mark_session_completed(session_id, status="failed")
         except Exception as e:
-            logger.error(f"Failed to mark task {session_id} as failed: {e}")
+            logger.error(f"Failed to mark session {session_id} as failed: {e}")

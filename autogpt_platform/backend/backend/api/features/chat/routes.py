@@ -270,20 +270,20 @@ async def get_session(
 
     # Check if there's an active stream for this session
     active_stream_info = None
-    active_task, last_message_id = await stream_registry.get_active_task_for_session(
+    active_session, last_message_id = await stream_registry.get_active_session(
         session_id, user_id
     )
     logger.info(
-        f"[GET_SESSION] session={session_id}, active_task={active_task is not None}, "
+        f"[GET_SESSION] session={session_id}, active_session={active_session is not None}, "
         f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
     )
-    if active_task:
+    if active_session:
         # Keep the assistant message (including tool_calls) so the frontend can
         # render the correct tool UI (e.g. CreateAgent with mini game).
         # convertChatSessionToUiMessages handles isComplete=false by setting
         # tool parts without output to state "input-available".
         active_stream_info = ActiveStreamInfo(
-            turn_id=active_task.turn_id,
+            turn_id=active_session.turn_id,
             last_message_id=last_message_id,
         )
 
@@ -313,10 +313,8 @@ async def cancel_session_task(
     """
     await _validate_and_get_session(session_id, user_id)
 
-    active_task, _ = await stream_registry.get_active_task_for_session(
-        session_id, user_id
-    )
-    if not active_task:
+    active_session, _ = await stream_registry.get_active_session(session_id, user_id)
+    if not active_session:
         return CancelTaskResponse(cancelled=False, reason="no_active_task")
 
     await enqueue_cancel_task(session_id)
@@ -329,7 +327,7 @@ async def cancel_session_task(
     while waited < max_wait:
         await asyncio.sleep(poll_interval)
         waited += poll_interval
-        task = await stream_registry.get_task(session_id)
+        task = await stream_registry.get_session(session_id)
         if task is None or task.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
@@ -419,7 +417,7 @@ async def stream_chat_post(
     log_meta["turn_id"] = turn_id
 
     task_create_start = time.perf_counter()
-    await stream_registry.create_task(
+    await stream_registry.create_session_task(
         session_id=session_id,
         user_id=user_id,
         tool_call_id="chat_stream",
@@ -427,7 +425,7 @@ async def stream_chat_post(
         turn_id=turn_id,
     )
     logger.info(
-        f"[TIMING] create_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
+        f"[TIMING] create_session_task completed in {(time.perf_counter() - task_create_start) * 1000:.1f}ms",
         extra={
             "json_fields": {
                 **log_meta,
@@ -470,7 +468,7 @@ async def stream_chat_post(
         try:
             # Subscribe from the position we captured before enqueuing
             # This avoids replaying old messages while catching all new ones
-            subscriber_queue = await stream_registry.subscribe_to_task(
+            subscriber_queue = await stream_registry.subscribe_to_session(
                 session_id=session_id,
                 user_id=user_id,
                 last_message_id=subscribe_from_id,
@@ -556,7 +554,7 @@ async def stream_chat_post(
             # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
-                    await stream_registry.unsubscribe_from_task(
+                    await stream_registry.unsubscribe_from_session(
                         session_id, subscriber_queue
                     )
                 except Exception as unsub_err:
@@ -615,11 +613,11 @@ async def resume_session_stream(
     """
     import asyncio
 
-    active_task, last_message_id = await stream_registry.get_active_task_for_session(
+    active_session, last_message_id = await stream_registry.get_active_session(
         session_id, user_id
     )
 
-    if not active_task:
+    if not active_session:
         return Response(status_code=204)
 
     # Subscribe from the beginning ("0-0") to replay all chunks for this turn.
@@ -627,7 +625,7 @@ async def resume_session_stream(
     # to avoid "No tool invocation found" errors. The resume stream delivers
     # those tool calls fresh with proper SDK state.
     # The AI SDK's deduplication will handle any duplicate chunks.
-    subscriber_queue = await stream_registry.subscribe_to_task(
+    subscriber_queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
         last_message_id="0-0",
@@ -666,12 +664,12 @@ async def resume_session_stream(
             logger.error(f"Error in resume stream for session {session_id}: {e}")
         finally:
             try:
-                await stream_registry.unsubscribe_from_task(
+                await stream_registry.unsubscribe_from_session(
                     session_id, subscriber_queue
                 )
             except Exception as unsub_err:
                 logger.error(
-                    f"Error unsubscribing from task {active_task.session_id}: {unsub_err}",
+                    f"Error unsubscribing from session {active_session.session_id}: {unsub_err}",
                     exc_info=True,
                 )
             logger.info(

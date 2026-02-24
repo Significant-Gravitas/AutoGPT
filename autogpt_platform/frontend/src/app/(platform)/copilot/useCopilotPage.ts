@@ -276,6 +276,32 @@ export function useCopilotPage() {
     resumeStream();
   }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
 
+  // Poll for task completion when streaming to detect stuck streams
+  // This prevents UI from getting stuck if StreamFinish event is missed
+  useEffect(() => {
+    if (!sessionId) return;
+    if (status !== "streaming" && status !== "submitted") return;
+
+    const pollInterval = setInterval(() => {
+      // Invalidate session query to check if backend task has completed
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [sessionId, status, queryClient]);
+
+  // If backend says no active stream but frontend thinks it's streaming, stop it
+  useEffect(() => {
+    if (!sessionId) return;
+    if (!hasActiveStream && (status === "streaming" || status === "submitted")) {
+      // Backend has completed but frontend is still streaming - force stop
+      sdkStop();
+      setMessages((prev) => resolveInProgressTools(prev, "completed"));
+    }
+  }, [hasActiveStream, status, sessionId, sdkStop, setMessages]);
+
   // Clear messages when session is null
   useEffect(() => {
     if (!sessionId) setMessages([]);

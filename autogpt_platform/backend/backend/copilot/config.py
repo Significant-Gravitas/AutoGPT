@@ -52,13 +52,13 @@ class ChatConfig(BaseSettings):
     )
 
     # Redis key prefixes for stream registry
-    task_meta_prefix: str = Field(
+    session_meta_prefix: str = Field(
         default="chat:task:meta:",
-        description="Prefix for task metadata hash keys",
+        description="Prefix for session metadata hash keys",
     )
-    task_stream_prefix: str = Field(
+    turn_stream_prefix: str = Field(
         default="chat:stream:",
-        description="Prefix for task message stream keys",
+        description="Prefix for turn message stream keys",
     )
 
     # Langfuse Prompt Management Configuration
