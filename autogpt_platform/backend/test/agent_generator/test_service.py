@@ -2,7 +2,7 @@
 Tests for the Agent Generator external service client.
 
 This test suite verifies the external Agent Generator service integration,
-including service detection, API calls, and error handling.
+including service detection, async polling, and error handling.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -49,6 +49,199 @@ class TestServiceConfiguration:
             assert url == "http://agent-generator.local:8000"
 
 
+class TestSubmitAndPoll:
+    """Test the _submit_and_poll helper that handles async job polling."""
+
+    def setup_method(self):
+        service._settings = None
+        service._client = None
+
+    @pytest.mark.asyncio
+    async def test_successful_submit_and_poll(self):
+        """Test normal submit -> poll -> completed flow."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-123", "status": "accepted"}
+        submit_resp.raise_for_status = MagicMock()
+
+        poll_resp = MagicMock()
+        poll_resp.json.return_value = {
+            "job_id": "job-123",
+            "status": "completed",
+            "result": {"type": "instructions", "steps": ["Step 1"]},
+        }
+        poll_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.return_value = poll_resp
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {"key": "value"})
+
+        assert result == {"type": "instructions", "steps": ["Step 1"]}
+        mock_client.post.assert_called_once_with("/api/test", json={"key": "value"})
+        mock_client.get.assert_called_once_with("/api/jobs/job-123")
+
+    @pytest.mark.asyncio
+    async def test_poll_returns_failed_job(self):
+        """Test submit -> poll -> failed flow."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-456", "status": "accepted"}
+        submit_resp.raise_for_status = MagicMock()
+
+        poll_resp = MagicMock()
+        poll_resp.json.return_value = {
+            "job_id": "job-456",
+            "status": "failed",
+            "error": "Generation failed",
+        }
+        poll_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.return_value = poll_resp
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "job_failed"
+        assert "Generation failed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_submit_http_error(self):
+        """Test HTTP error during job submission."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.HTTPStatusError(
+            "Server error", request=MagicMock(), response=mock_response
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "http_error"
+
+    @pytest.mark.asyncio
+    async def test_submit_connection_error(self):
+        """Test connection error during job submission."""
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.RequestError("Connection failed")
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "connection_error"
+
+    @pytest.mark.asyncio
+    async def test_no_job_id_in_submit_response(self):
+        """Test submit response missing job_id."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"status": "accepted"}  # no job_id
+        submit_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "invalid_response"
+
+    @pytest.mark.asyncio
+    async def test_poll_retries_on_transient_network_error(self):
+        """Test that transient network errors during polling are retried."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-789"}
+        submit_resp.raise_for_status = MagicMock()
+
+        ok_poll_resp = MagicMock()
+        ok_poll_resp.json.return_value = {
+            "job_id": "job-789",
+            "status": "completed",
+            "result": {"data": "ok"},
+        }
+        ok_poll_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        # First poll fails with transient error, second succeeds
+        mock_client.get.side_effect = [
+            httpx.RequestError("transient"),
+            ok_poll_resp,
+        ]
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result == {"data": "ok"}
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_poll_returns_404_for_expired_job(self):
+        """Test that 404 during polling returns job_not_found error."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-expired"}
+        submit_resp.raise_for_status = MagicMock()
+
+        mock_404_response = MagicMock()
+        mock_404_response.status_code = 404
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.side_effect = httpx.HTTPStatusError(
+            "Not Found", request=MagicMock(), response=mock_404_response
+        )
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "job_not_found"
+
+    @pytest.mark.asyncio
+    async def test_poll_timeout(self):
+        """Test that polling times out after MAX_POLL_TIME_SECONDS."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-slow"}
+        submit_resp.raise_for_status = MagicMock()
+
+        running_resp = MagicMock()
+        running_resp.json.return_value = {"job_id": "job-slow", "status": "running"}
+        running_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.return_value = running_resp
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch.object(service, "MAX_POLL_TIME_SECONDS", 0.05),
+            patch.object(service, "POLL_INTERVAL_SECONDS", 0.01),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "timeout"
+
+
 class TestDecomposeGoalExternal:
     """Test decompose_goal_external function."""
 
@@ -60,40 +253,37 @@ class TestDecomposeGoalExternal:
     @pytest.mark.asyncio
     async def test_decompose_goal_returns_instructions(self):
         """Test successful decomposition returning instructions."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "instructions",
-            "steps": ["Step 1", "Step 2"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "instructions",
+                "steps": ["Step 1", "Step 2"],
+            }
             result = await service.decompose_goal_external("Build a chatbot")
 
         assert result == {"type": "instructions", "steps": ["Step 1", "Step 2"]}
-        mock_client.post.assert_called_once_with(
-            "/api/decompose-description", json={"description": "Build a chatbot"}
+        mock_poll.assert_called_once_with(
+            "/api/decompose-description",
+            {"description": "Build a chatbot"},
         )
 
     @pytest.mark.asyncio
     async def test_decompose_goal_returns_clarifying_questions(self):
         """Test decomposition returning clarifying questions."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "clarifying_questions",
-            "questions": ["What platform?", "What language?"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "clarifying_questions",
+                "questions": ["What platform?", "What language?"],
+            }
             result = await service.decompose_goal_external("Build something")
 
         assert result == {
@@ -104,18 +294,13 @@ class TestDecomposeGoalExternal:
     @pytest.mark.asyncio
     async def test_decompose_goal_with_context(self):
         """Test decomposition with additional context enriched into description."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "instructions",
-            "steps": ["Step 1"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"type": "instructions", "steps": ["Step 1"]}
             await service.decompose_goal_external(
                 "Build a chatbot", context="Use Python"
             )
@@ -123,27 +308,25 @@ class TestDecomposeGoalExternal:
         expected_description = (
             "Build a chatbot\n\nAdditional context from user:\nUse Python"
         )
-        mock_client.post.assert_called_once_with(
+        mock_poll.assert_called_once_with(
             "/api/decompose-description",
-            json={"description": expected_description},
+            {"description": expected_description},
         )
 
     @pytest.mark.asyncio
     async def test_decompose_goal_returns_unachievable_goal(self):
         """Test decomposition returning unachievable goal response."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "unachievable_goal",
-            "reason": "Cannot do X",
-            "suggested_goal": "Try Y instead",
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "unachievable_goal",
+                "reason": "Cannot do X",
+                "suggested_goal": "Try Y instead",
+            }
             result = await service.decompose_goal_external("Do something impossible")
 
         assert result == {
@@ -153,58 +336,40 @@ class TestDecomposeGoalExternal:
         }
 
     @pytest.mark.asyncio
-    async def test_decompose_goal_handles_http_error(self):
-        """Test decomposition handles HTTP errors gracefully."""
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Server error", request=MagicMock(), response=mock_response
-        )
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+    async def test_decompose_goal_handles_poll_error(self):
+        """Test that errors from _submit_and_poll are passed through."""
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "error",
+                "error": "HTTP error calling Agent Generator: Server error",
+                "error_type": "http_error",
+            }
             result = await service.decompose_goal_external("Build a chatbot")
 
         assert result is not None
         assert result.get("type") == "error"
         assert result.get("error_type") == "http_error"
-        assert "Server error" in result.get("error", "")
 
     @pytest.mark.asyncio
-    async def test_decompose_goal_handles_request_error(self):
-        """Test decomposition handles request errors gracefully."""
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.RequestError("Connection failed")
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+    async def test_decompose_goal_handles_unexpected_exception(self):
+        """Test that unexpected exceptions are caught and returned as errors."""
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.side_effect = RuntimeError("unexpected")
             result = await service.decompose_goal_external("Build a chatbot")
 
         assert result is not None
         assert result.get("type") == "error"
-        assert result.get("error_type") == "connection_error"
-        assert "Connection failed" in result.get("error", "")
-
-    @pytest.mark.asyncio
-    async def test_decompose_goal_handles_service_error(self):
-        """Test decomposition handles service returning error."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": False,
-            "error": "Internal error",
-            "error_type": "internal_error",
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.decompose_goal_external("Build a chatbot")
-
-        assert result is not None
-        assert result.get("type") == "error"
-        assert result.get("error") == "Internal error"
-        assert result.get("error_type") == "internal_error"
+        assert result.get("error_type") == "unexpected_error"
 
 
 class TestGenerateAgentExternal:
@@ -223,39 +388,43 @@ class TestGenerateAgentExternal:
             "nodes": [],
             "links": [],
         }
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "agent_json": agent_json,
-        }
-        mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"success": True, "agent_json": agent_json}
 
-        instructions = {"type": "instructions", "steps": ["Step 1"]}
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+            instructions = {"type": "instructions", "steps": ["Step 1"]}
             result = await service.generate_agent_external(instructions)
 
         assert result == agent_json
-        mock_client.post.assert_called_once_with(
-            "/api/generate-agent", json={"instructions": instructions}
+        mock_poll.assert_called_once_with(
+            "/api/generate-agent",
+            {"instructions": instructions},
         )
 
     @pytest.mark.asyncio
     async def test_generate_agent_handles_error(self):
         """Test agent generation handles errors gracefully."""
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.RequestError("Connection failed")
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "error",
+                "error": "Connection failed",
+                "error_type": "connection_error",
+            }
             result = await service.generate_agent_external({"steps": []})
 
         assert result is not None
         assert result.get("type") == "error"
         assert result.get("error_type") == "connection_error"
-        assert "Connection failed" in result.get("error", "")
 
 
 class TestGenerateAgentPatchExternal:
@@ -274,27 +443,24 @@ class TestGenerateAgentPatchExternal:
             "nodes": [{"id": "1", "block_id": "test"}],
             "links": [],
         }
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "agent_json": updated_agent,
-        }
-        mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"success": True, "agent_json": updated_agent}
 
-        current_agent = {"name": "Old Agent", "nodes": [], "links": []}
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+            current_agent = {"name": "Old Agent", "nodes": [], "links": []}
             result = await service.generate_agent_patch_external(
                 "Add a new node", current_agent
             )
 
         assert result == updated_agent
-        mock_client.post.assert_called_once_with(
+        mock_poll.assert_called_once_with(
             "/api/update-agent",
-            json={
+            {
                 "update_request": "Add a new node",
                 "current_agent_json": current_agent,
             },
@@ -303,18 +469,16 @@ class TestGenerateAgentPatchExternal:
     @pytest.mark.asyncio
     async def test_generate_patch_returns_clarifying_questions(self):
         """Test patch generation returning clarifying questions."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "clarifying_questions",
-            "questions": ["What type of node?"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "type": "clarifying_questions",
+                "questions": ["What type of node?"],
+            }
             result = await service.generate_agent_patch_external(
                 "Add something", {"nodes": []}
             )
@@ -355,9 +519,12 @@ class TestHealthCheck:
         mock_client = AsyncMock()
         mock_client.get.return_value = mock_response
 
-        with patch.object(service, "is_external_service_configured", return_value=True):
-            with patch.object(service, "_get_client", return_value=mock_client):
-                result = await service.health_check()
+        with (
+            patch.object(service, "is_external_service_configured", return_value=True),
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(service, "_get_client", return_value=mock_client),
+        ):
+            result = await service.health_check()
 
         assert result is True
         mock_client.get.assert_called_once_with("/health")
@@ -375,9 +542,12 @@ class TestHealthCheck:
         mock_client = AsyncMock()
         mock_client.get.return_value = mock_response
 
-        with patch.object(service, "is_external_service_configured", return_value=True):
-            with patch.object(service, "_get_client", return_value=mock_client):
-                result = await service.health_check()
+        with (
+            patch.object(service, "is_external_service_configured", return_value=True),
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(service, "_get_client", return_value=mock_client),
+        ):
+            result = await service.health_check()
 
         assert result is False
 
@@ -387,9 +557,12 @@ class TestHealthCheck:
         mock_client = AsyncMock()
         mock_client.get.side_effect = httpx.RequestError("Connection failed")
 
-        with patch.object(service, "is_external_service_configured", return_value=True):
-            with patch.object(service, "_get_client", return_value=mock_client):
-                result = await service.health_check()
+        with (
+            patch.object(service, "is_external_service_configured", return_value=True),
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(service, "_get_client", return_value=mock_client),
+        ):
+            result = await service.health_check()
 
         assert result is False
 
@@ -419,7 +592,10 @@ class TestGetBlocksExternal:
         mock_client = AsyncMock()
         mock_client.get.return_value = mock_response
 
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(service, "_get_client", return_value=mock_client),
+        ):
             result = await service.get_blocks_external()
 
         assert result == blocks
@@ -431,7 +607,10 @@ class TestGetBlocksExternal:
         mock_client = AsyncMock()
         mock_client.get.side_effect = httpx.RequestError("Connection failed")
 
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(service, "_get_client", return_value=mock_client),
+        ):
             result = await service.get_blocks_external()
 
         assert result is None
@@ -459,26 +638,22 @@ class TestLibraryAgentsPassthrough:
             },
         ]
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "instructions",
-            "steps": ["Step 1"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"type": "instructions", "steps": ["Step 1"]}
             await service.decompose_goal_external(
                 "Send an email",
                 library_agents=library_agents,
             )
 
         # Verify library_agents was passed in the payload
-        call_args = mock_client.post.call_args
-        assert call_args[1]["json"]["library_agents"] == library_agents
+        call_args = mock_poll.call_args
+        payload = call_args[0][1]
+        assert payload["library_agents"] == library_agents
 
     @pytest.mark.asyncio
     async def test_generate_agent_passes_library_agents(self):
@@ -494,25 +669,24 @@ class TestLibraryAgentsPassthrough:
             },
         ]
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "agent_json": {"name": "Test Agent", "nodes": []},
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "agent_json": {"name": "Test Agent", "nodes": []},
+            }
             await service.generate_agent_external(
                 {"steps": ["Step 1"]},
                 library_agents=library_agents,
             )
 
         # Verify library_agents was passed in the payload
-        call_args = mock_client.post.call_args
-        assert call_args[1]["json"]["library_agents"] == library_agents
+        call_args = mock_poll.call_args
+        payload = call_args[0][1]
+        assert payload["library_agents"] == library_agents
 
     @pytest.mark.asyncio
     async def test_generate_agent_patch_passes_library_agents(self):
@@ -528,17 +702,15 @@ class TestLibraryAgentsPassthrough:
             },
         ]
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "agent_json": {"name": "Updated Agent", "nodes": []},
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {
+                "agent_json": {"name": "Updated Agent", "nodes": []},
+            }
             await service.generate_agent_patch_external(
                 "Add error handling",
                 {"name": "Original Agent", "nodes": []},
@@ -546,29 +718,26 @@ class TestLibraryAgentsPassthrough:
             )
 
         # Verify library_agents was passed in the payload
-        call_args = mock_client.post.call_args
-        assert call_args[1]["json"]["library_agents"] == library_agents
+        call_args = mock_poll.call_args
+        payload = call_args[0][1]
+        assert payload["library_agents"] == library_agents
 
     @pytest.mark.asyncio
     async def test_decompose_goal_without_library_agents(self):
         """Test that decompose goal works without library_agents."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "success": True,
-            "type": "instructions",
-            "steps": ["Step 1"],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-
-        with patch.object(service, "_get_client", return_value=mock_client):
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"type": "instructions", "steps": ["Step 1"]}
             await service.decompose_goal_external("Build a workflow")
 
         # Verify library_agents was NOT passed when not provided
-        call_args = mock_client.post.call_args
-        assert "library_agents" not in call_args[1]["json"]
+        call_args = mock_poll.call_args
+        payload = call_args[0][1]
+        assert "library_agents" not in payload
 
 
 if __name__ == "__main__":

@@ -372,8 +372,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the Agent Generator service",
     )
     agentgenerator_timeout: int = Field(
-        default=1800,
-        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
+        default=30,
+        description="The timeout in seconds for individual Agent Generator HTTP requests (submit and poll)",
     )
     agentgenerator_use_dummy: bool = Field(
         default=False,
