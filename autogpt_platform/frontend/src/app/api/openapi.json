@@ -961,63 +961,6 @@
         }
       }
     },
-    "/api/chat/operations/{operation_id}/complete": {
-      "post": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Complete Operation",
-        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
-        "operationId": "postV2CompleteOperation",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Operation Id" }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OperationCompleteRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Completeoperation"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/schema/tool-responses": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1052,16 +995,12 @@
                     {
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
+                    { "$ref": "#/components/schemas/SuggestedGoalResponse" },
                     { "$ref": "#/components/schemas/BlockListResponse" },
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" },
-                    { "$ref": "#/components/schemas/OperationStartedResponse" },
-                    { "$ref": "#/components/schemas/OperationPendingResponse" },
-                    {
-                      "$ref": "#/components/schemas/OperationInProgressResponse"
-                    }
+                    { "$ref": "#/components/schemas/DocPageResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1151,10 +1090,40 @@
       }
     },
     "/api/chat/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1232,6 +1201,46 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/cancel": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel Session Task",
+        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "operationId": "postV2CancelSessionTask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1268,7 +1277,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1287,94 +1296,6 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/tasks/{task_id}": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Get Task Status",
-        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
-        "operationId": "getV2GetTaskStatus",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Getv2Gettaskstatus"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/tasks/{task_id}/stream": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Task",
-        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
-        "operationId": "getV2StreamTask",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
-          },
-          {
-            "name": "last_message_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
-              "default": "0-0",
-              "title": "Last Message Id"
-            },
-            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3589,6 +3510,29 @@
               "title": "Page Size"
             },
             "description": "Number of agents per page (must be >= 1)"
+          },
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by folder ID",
+              "title": "Folder Id"
+            },
+            "description": "Filter by folder ID"
+          },
+          {
+            "name": "include_root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return agents without a folder (root-level agents)",
+              "default": false,
+              "title": "Include Root Only"
+            },
+            "description": "Only return agents without a folder (root-level agents)"
           }
         ],
         "responses": {
@@ -3956,6 +3900,338 @@
         }
       }
     },
+    "/api/library/folders": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "List Library Folders",
+        "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_relations: Whether to include agent and subfolder relations for counts.\n\nReturns:\n    A FolderListResponse containing folders.",
+        "operationId": "getV2List library folders",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by parent folder ID. If not provided, returns root-level folders.",
+              "title": "Parent Id"
+            },
+            "description": "Filter by parent folder ID. If not provided, returns root-level folders."
+          },
+          {
+            "name": "include_relations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include agent and subfolder relations (for counts)",
+              "default": true,
+              "title": "Include Relations"
+            },
+            "description": "Include agent and subfolder relations (for counts)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of folders",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Create Folder",
+        "description": "Create a new folder.\n\nArgs:\n    payload: The folder creation request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The created LibraryFolder.",
+        "operationId": "postV2Create folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Folder created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Parent folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/agents/bulk-move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Bulk Move Agents",
+        "description": "Move multiple agents to a folder.\n\nArgs:\n    payload: The bulk move request with agent IDs and target folder.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryAgents.",
+        "operationId": "postV2Bulk move agents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkMoveAgentsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agents moved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "type": "array",
+                  "title": "Response Postv2Bulk Move Agents"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/tree": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder Tree",
+        "description": "Get the full folder tree for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n\nReturns:\n    A FolderTreeResponse containing the nested folder structure.",
+        "operationId": "getV2Get folder tree",
+        "responses": {
+          "200": {
+            "description": "Folder tree structure",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderTreeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/{folder_id}": {
+      "delete": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Delete Folder",
+        "description": "Soft-delete a folder and all its contents.\n\nArgs:\n    folder_id: ID of the folder to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.",
+        "operationId": "deleteV2Delete folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Folder deleted successfully" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder",
+        "description": "Get a specific folder.\n\nArgs:\n    folder_id: ID of the folder to retrieve.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The requested LibraryFolder.",
+        "operationId": "getV2Get folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folder details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Update Folder",
+        "description": "Update a folder's properties.\n\nArgs:\n    folder_id: ID of the folder to update.\n    payload: The folder update request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryFolder.",
+        "operationId": "patchV2Update folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/{folder_id}/move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Move Folder",
+        "description": "Move a folder to a new parent.\n\nArgs:\n    folder_id: ID of the folder to move.\n    payload: The move request with target parent.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The moved LibraryFolder.",
+        "operationId": "postV2Move folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderMoveRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder moved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error (circular reference)" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder or target parent not found" },
+          "409": { "description": "Folder name conflict in target location" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -4267,925 +4543,6 @@
             }
           }
         }
-      }
-    },
-    "/api/llm/admin/creators": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "List model creators",
-        "description": "List all model creators.\n\nCreators are organizations that create/train models (e.g., OpenAI, Meta, Anthropic).\nThis is distinct from providers who host/serve the models (e.g., OpenRouter).",
-        "operationId": "getV2List model creators",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmCreatorsResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      },
-      "post": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Create model creator",
-        "description": "Create a new model creator.\n\nA creator represents an organization that creates/trains AI models,\nsuch as OpenAI, Anthropic, Meta, or Google.",
-        "operationId": "postV2Create model creator",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertLlmCreatorRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelCreator" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/llm/admin/creators/{creator_id}": {
-      "delete": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Delete model creator",
-        "description": "Delete a model creator.\n\nThis will remove the creator association from all models that reference it\n(sets creatorId to NULL), but will not delete the models themselves.",
-        "operationId": "deleteV2Delete model creator",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "creator_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Creator Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Deletev2Delete Model Creator"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Get creator details",
-        "description": "Get details of a specific model creator.",
-        "operationId": "getV2Get creator details",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "creator_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Creator Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelCreator" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Update model creator",
-        "description": "Update an existing model creator.",
-        "operationId": "patchV2Update model creator",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "creator_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Creator Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertLlmCreatorRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelCreator" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/migrations": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "List model migrations",
-        "description": "List all model migrations.\n\nMigrations are created when disabling a model with the migrate_to_slug option.\nThey can be reverted to restore the original model configuration.",
-        "operationId": "getV2List model migrations",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "include_reverted",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Include reverted migrations in the list",
-              "default": false,
-              "title": "Include Reverted"
-            },
-            "description": "Include reverted migrations in the list"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmMigrationsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/migrations/{migration_id}": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Get migration details",
-        "description": "Get details of a specific migration.",
-        "operationId": "getV2Get migration details",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "migration_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Migration Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelMigration" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/migrations/{migration_id}/revert": {
-      "post": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Revert a model migration",
-        "description": "Revert a model migration, restoring affected workflows to their original model.\n\nThis only reverts the specific nodes that were part of the migration.\nThe source model must exist for the revert to succeed.\n\nOptions:\n- `re_enable_source_model`: Whether to re-enable the source model if disabled (default: True)\n\nResponse includes:\n- `nodes_reverted`: Number of nodes successfully reverted\n- `nodes_already_changed`: Number of nodes that were modified since migration (not reverted)\n- `source_model_re_enabled`: Whether the source model was re-enabled\n\nRequirements:\n- Migration must not already be reverted\n- Source model must exist",
-        "operationId": "postV2Revert a model migration",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "migration_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Migration Id" }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/RevertMigrationRequest" },
-                  { "type": "null" }
-                ],
-                "title": "Request"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevertMigrationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/models": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "List LLM models",
-        "operationId": "getV2List llm models",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Provider Id"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Page number (1-indexed)",
-              "default": 1,
-              "title": "Page"
-            },
-            "description": "Page number (1-indexed)"
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "description": "Number of models per page",
-              "default": 50,
-              "title": "Page Size"
-            },
-            "description": "Number of models per page"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelsResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Create LLM model",
-        "operationId": "postV2Create llm model",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateLlmModelRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModel" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/models/{model_id}": {
-      "delete": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Delete LLM model and migrate workflows",
-        "description": "Delete a model and optionally migrate workflows using it to a replacement model.\n\nIf no workflows are using this model, it can be deleted without providing a\nreplacement. If workflows exist, replacement_model_slug is required.\n\nThis endpoint:\n1. Counts how many workflow nodes use the model being deleted\n2. If nodes exist, validates the replacement model and migrates them\n3. Deletes the model record\n4. Refreshes all caches and notifies executors\n\nExample: DELETE /api/llm/admin/models/{id}?replacement_model_slug=gpt-4o\nExample (no usage): DELETE /api/llm/admin/models/{id}",
-        "operationId": "deleteV2Delete llm model and migrate workflows",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Model Id" }
-          },
-          {
-            "name": "replacement_model_slug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "description": "Slug of the model to migrate existing workflows to (required only if workflows use this model)",
-              "title": "Replacement Model Slug"
-            },
-            "description": "Slug of the model to migrate existing workflows to (required only if workflows use this model)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeleteLlmModelResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Update LLM model",
-        "operationId": "patchV2Update llm model",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Model Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/UpdateLlmModelRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModel" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/models/{model_id}/toggle": {
-      "patch": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Toggle LLM model availability",
-        "description": "Toggle a model's enabled status, optionally migrating workflows when disabling.\n\nIf disabling a model and `migrate_to_slug` is provided, all workflows using\nthis model will be migrated to the specified replacement model before disabling.\nA migration record is created which can be reverted later using the revert endpoint.\n\nOptional fields:\n- `migration_reason`: Reason for the migration (e.g., \"Provider outage\")\n- `custom_credit_cost`: Custom pricing override for billing during migration",
-        "operationId": "patchV2Toggle llm model availability",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Model Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/ToggleLlmModelRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ToggleLlmModelResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/models/{model_id}/usage": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Get model usage count",
-        "description": "Get the number of workflow nodes using this model.",
-        "operationId": "getV2Get model usage count",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Model Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmModelUsageResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/providers": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "List LLM providers",
-        "operationId": "getV2List llm providers",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "include_models",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": true,
-              "title": "Include Models"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Create LLM provider",
-        "operationId": "postV2Create llm provider",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertLlmProviderRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmProvider" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/providers/{provider_id}": {
-      "delete": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Delete LLM provider",
-        "description": "Delete an LLM provider.\n\nA provider can only be deleted if it has no associated models.\nDelete all models from the provider first before deleting the provider.",
-        "operationId": "deleteV2Delete llm provider",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Provider Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Deletev2Delete Llm Provider"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Update LLM provider",
-        "operationId": "patchV2Update llm provider",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Provider Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertLlmProviderRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmProvider" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/admin/recommended-model": {
-      "get": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Get recommended model",
-        "description": "Get the currently recommended LLM model.\n\nThe recommended model is shown to users as the default/suggested option\nin model selection dropdowns.",
-        "operationId": "getV2Get recommended model",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecommendedModelResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      },
-      "post": {
-        "tags": ["v2", "admin", "llm", "llm", "admin"],
-        "summary": "Set recommended model",
-        "description": "Set a model as the recommended model.\n\nThis clears the recommended flag from any other model and sets it on\nthe specified model. The model must be enabled to be set as recommended.\n\nThe recommended model is displayed to users as the default/suggested\noption in model selection dropdowns throughout the platform.",
-        "operationId": "postV2Set recommended model",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetRecommendedModelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetRecommendedModelResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/llm/models": {
-      "get": {
-        "tags": ["v2", "llm", "llm"],
-        "summary": "List Models",
-        "description": "List all enabled LLM models available to users.",
-        "operationId": "getV2ListModels",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Page number (1-indexed)",
-              "default": 1,
-              "title": "Page"
-            },
-            "description": "Page number (1-indexed)"
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "description": "Number of models per page",
-              "default": 50,
-              "title": "Page Size"
-            },
-            "description": "Number of models per page"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LlmModelsResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/llm/providers": {
-      "get": {
-        "tags": ["v2", "llm", "llm"],
-        "summary": "List Providers",
-        "description": "List all LLM providers with their enabled models.",
-        "operationId": "getV2ListProviders",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/mcp/discover-tools": {
@@ -6544,7 +5901,7 @@
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
         "description": "Get the details of a creator.\n- Creator Details Page",
-        "operationId": "getV2GetCreatorDetails",
+        "operationId": "getV2Get creator details",
         "parameters": [
           {
             "name": "username",
@@ -7412,13 +6769,11 @@
       },
       "ActiveStreamInfo": {
         "properties": {
-          "task_id": { "type": "string", "title": "Task Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
+          "turn_id": { "type": "string", "title": "Turn Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
@@ -8425,6 +7780,36 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "BulkMoveAgentsRequest": {
+        "properties": {
+          "agent_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Agent Ids"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          }
+        },
+        "type": "object",
+        "required": ["agent_ids"],
+        "title": "BulkMoveAgentsRequest",
+        "description": "Request model for moving multiple agents to a folder."
+      },
+      "CancelSessionResponse": {
+        "properties": {
+          "cancelled": { "type": "boolean", "title": "Cancelled" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["cancelled"],
+        "title": "CancelSessionResponse",
+        "description": "Response model for the cancel session endpoint."
+      },
       "ChangelogEntry": {
         "properties": {
           "version": { "type": "string", "title": "Version" },
@@ -8559,55 +7944,6 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
-      },
-      "CreateLlmModelRequest": {
-        "properties": {
-          "slug": { "type": "string", "title": "Slug" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "provider_id": { "type": "string", "title": "Provider Id" },
-          "creator_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Creator Id"
-          },
-          "context_window": { "type": "integer", "title": "Context Window" },
-          "max_output_tokens": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Max Output Tokens"
-          },
-          "is_enabled": {
-            "type": "boolean",
-            "title": "Is Enabled",
-            "default": true
-          },
-          "capabilities": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Capabilities"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          },
-          "costs": {
-            "items": { "$ref": "#/components/schemas/LlmModelCostInput" },
-            "type": "array",
-            "title": "Costs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "slug",
-          "display_name",
-          "provider_id",
-          "context_window",
-          "costs"
-        ],
-        "title": "CreateLlmModelRequest"
       },
       "CreateSessionResponse": {
         "properties": {
@@ -8800,32 +8136,6 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
-      },
-      "DeleteLlmModelResponse": {
-        "properties": {
-          "deleted_model_slug": {
-            "type": "string",
-            "title": "Deleted Model Slug"
-          },
-          "deleted_model_display_name": {
-            "type": "string",
-            "title": "Deleted Model Display Name"
-          },
-          "replacement_model_slug": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Replacement Model Slug"
-          },
-          "nodes_migrated": { "type": "integer", "title": "Nodes Migrated" },
-          "message": { "type": "string", "title": "Message" }
-        },
-        "type": "object",
-        "required": [
-          "deleted_model_slug",
-          "deleted_model_display_name",
-          "nodes_migrated",
-          "message"
-        ],
-        "title": "DeleteLlmModelResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -9222,6 +8532,96 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "FolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Color",
+            "description": "Hex color code (#RRGGBB)"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "FolderCreateRequest",
+        "description": "Request model for creating a folder."
+      },
+      "FolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/LibraryFolder" },
+            "type": "array",
+            "title": "Folders"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["folders", "pagination"],
+        "title": "FolderListResponse",
+        "description": "Response schema for a list of folders."
+      },
+      "FolderMoveRequest": {
+        "properties": {
+          "target_parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Parent Id"
+          }
+        },
+        "type": "object",
+        "title": "FolderMoveRequest",
+        "description": "Request model for moving a folder to a new parent."
+      },
+      "FolderTreeResponse": {
+        "properties": {
+          "tree": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Tree"
+          }
+        },
+        "type": "object",
+        "required": ["tree"],
+        "title": "FolderTreeResponse",
+        "description": "Response schema for folder tree structure."
+      },
+      "FolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "title": "FolderUpdateRequest",
+        "description": "Request model for updating a folder."
       },
       "Graph": {
         "properties": {
@@ -10111,6 +9511,14 @@
             "title": "Is Latest Version"
           },
           "is_favorite": { "type": "boolean", "title": "Is Favorite" },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
+          "folder_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Name"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -10378,11 +9786,108 @@
               { "type": "null" }
             ],
             "description": "User-specific settings for this library agent"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id",
+            "description": "Folder ID to move agent to (None to move to root)"
           }
         },
         "type": "object",
         "title": "LibraryAgentUpdateRequest",
         "description": "Schema for updating a library agent via PUT.\n\nIncludes flags for auto-updating version, marking as favorite,\narchiving, or deleting."
+      },
+      "LibraryFolder": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolder",
+        "description": "Represents a folder for organizing library agents."
+      },
+      "LibraryFolderTree": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          },
+          "children": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Children",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolderTree",
+        "description": "Folder with nested children for tree view."
       },
       "Link": {
         "properties": {
@@ -10414,335 +9919,6 @@
         "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
-      },
-      "LlmCostUnit": {
-        "type": "string",
-        "enum": ["RUN", "TOKENS"],
-        "title": "LlmCostUnit"
-      },
-      "LlmCreatorsResponse": {
-        "properties": {
-          "creators": {
-            "items": { "$ref": "#/components/schemas/LlmModelCreator" },
-            "type": "array",
-            "title": "Creators"
-          }
-        },
-        "type": "object",
-        "required": ["creators"],
-        "title": "LlmCreatorsResponse"
-      },
-      "LlmMigrationsResponse": {
-        "properties": {
-          "migrations": {
-            "items": { "$ref": "#/components/schemas/LlmModelMigration" },
-            "type": "array",
-            "title": "Migrations"
-          }
-        },
-        "type": "object",
-        "required": ["migrations"],
-        "title": "LlmMigrationsResponse"
-      },
-      "LlmModel": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "slug": { "type": "string", "title": "Slug" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "provider_id": { "type": "string", "title": "Provider Id" },
-          "creator_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Creator Id"
-          },
-          "creator": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/LlmModelCreator" },
-              { "type": "null" }
-            ]
-          },
-          "context_window": { "type": "integer", "title": "Context Window" },
-          "max_output_tokens": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Max Output Tokens"
-          },
-          "is_enabled": {
-            "type": "boolean",
-            "title": "Is Enabled",
-            "default": true
-          },
-          "is_recommended": {
-            "type": "boolean",
-            "title": "Is Recommended",
-            "default": false
-          },
-          "capabilities": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Capabilities"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          },
-          "costs": {
-            "items": { "$ref": "#/components/schemas/LlmModelCost" },
-            "type": "array",
-            "title": "Costs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "slug",
-          "display_name",
-          "provider_id",
-          "context_window"
-        ],
-        "title": "LlmModel"
-      },
-      "LlmModelCost": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "unit": {
-            "$ref": "#/components/schemas/LlmCostUnit",
-            "default": "RUN"
-          },
-          "credit_cost": { "type": "integer", "title": "Credit Cost" },
-          "credential_provider": {
-            "type": "string",
-            "title": "Credential Provider"
-          },
-          "credential_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credential Id"
-          },
-          "credential_type": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credential Type"
-          },
-          "currency": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Currency"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": ["id", "credit_cost", "credential_provider"],
-        "title": "LlmModelCost"
-      },
-      "LlmModelCostInput": {
-        "properties": {
-          "unit": {
-            "$ref": "#/components/schemas/LlmCostUnit",
-            "default": "RUN"
-          },
-          "credit_cost": { "type": "integer", "title": "Credit Cost" },
-          "credential_provider": {
-            "type": "string",
-            "title": "Credential Provider"
-          },
-          "credential_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credential Id"
-          },
-          "credential_type": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credential Type",
-            "default": "api_key"
-          },
-          "currency": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Currency"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": ["credit_cost", "credential_provider"],
-        "title": "LlmModelCostInput"
-      },
-      "LlmModelCreator": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "website_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Website Url"
-          },
-          "logo_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Logo Url"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": ["id", "name", "display_name"],
-        "title": "LlmModelCreator",
-        "description": "Represents the organization that created/trained the model (e.g., OpenAI, Meta)."
-      },
-      "LlmModelMigration": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "source_model_slug": {
-            "type": "string",
-            "title": "Source Model Slug"
-          },
-          "target_model_slug": {
-            "type": "string",
-            "title": "Target Model Slug"
-          },
-          "reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reason"
-          },
-          "node_count": { "type": "integer", "title": "Node Count" },
-          "custom_credit_cost": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Custom Credit Cost"
-          },
-          "is_reverted": {
-            "type": "boolean",
-            "title": "Is Reverted",
-            "default": false
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "reverted_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reverted At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "source_model_slug",
-          "target_model_slug",
-          "node_count",
-          "created_at"
-        ],
-        "title": "LlmModelMigration"
-      },
-      "LlmModelUsageResponse": {
-        "properties": {
-          "model_slug": { "type": "string", "title": "Model Slug" },
-          "node_count": { "type": "integer", "title": "Node Count" }
-        },
-        "type": "object",
-        "required": ["model_slug", "node_count"],
-        "title": "LlmModelUsageResponse"
-      },
-      "LlmModelsResponse": {
-        "properties": {
-          "models": {
-            "items": { "$ref": "#/components/schemas/LlmModel" },
-            "type": "array",
-            "title": "Models"
-          },
-          "pagination": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/Pagination" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": ["models"],
-        "title": "LlmModelsResponse"
-      },
-      "LlmProvider": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "default_credential_provider": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Provider"
-          },
-          "default_credential_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Id"
-          },
-          "default_credential_type": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Type"
-          },
-          "supports_tools": {
-            "type": "boolean",
-            "title": "Supports Tools",
-            "default": true
-          },
-          "supports_json_output": {
-            "type": "boolean",
-            "title": "Supports Json Output",
-            "default": true
-          },
-          "supports_reasoning": {
-            "type": "boolean",
-            "title": "Supports Reasoning",
-            "default": false
-          },
-          "supports_parallel_tool": {
-            "type": "boolean",
-            "title": "Supports Parallel Tool",
-            "default": false
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          },
-          "models": {
-            "items": { "$ref": "#/components/schemas/LlmModel" },
-            "type": "array",
-            "title": "Models"
-          }
-        },
-        "type": "object",
-        "required": ["id", "name", "display_name"],
-        "title": "LlmProvider"
-      },
-      "LlmProvidersResponse": {
-        "properties": {
-          "providers": {
-            "items": { "$ref": "#/components/schemas/LlmProvider" },
-            "type": "array",
-            "title": "Providers"
-          }
-        },
-        "type": "object",
-        "required": ["providers"],
-        "title": "LlmProvidersResponse"
       },
       "LogRawMetricRequest": {
         "properties": {
@@ -11344,87 +10520,6 @@
         ],
         "title": "OnboardingStep"
       },
-      "OperationCompleteRequest": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "result": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "OperationCompleteRequest",
-        "description": "Request model for external completion webhook."
-      },
-      "OperationInProgressResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_in_progress"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "tool_call_id": { "type": "string", "title": "Tool Call Id" }
-        },
-        "type": "object",
-        "required": ["message", "tool_call_id"],
-        "title": "OperationInProgressResponse",
-        "description": "Response when an operation is already in progress.\n\nReturned for idempotency when the same tool_call_id is requested again\nwhile the background task is still running."
-      },
-      "OperationPendingResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_pending"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationPendingResponse",
-        "description": "Response stored in chat history while a long-running operation is executing.\n\nThis is persisted to the database so users see a pending state when they\nrefresh before the operation completes."
-      },
-      "OperationStartedResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_started"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" },
-          "task_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Task Id"
-          }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationStartedResponse",
-        "description": "Response when a long-running operation has been started in the background.\n\nThis is returned immediately to the client while the operation continues\nto execute. The user can close the tab and check back later.\n\nThe task_id can be used to reconnect to the SSE stream via\nGET /chat/tasks/{task_id}/stream?last_idx=0"
-      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -12012,22 +11107,6 @@
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
-      "RecommendedModelResponse": {
-        "properties": {
-          "model": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/LlmModel" },
-              { "type": "null" }
-            ]
-          },
-          "slug": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Slug"
-          }
-        },
-        "type": "object",
-        "title": "RecommendedModelResponse"
-      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -12097,63 +11176,16 @@
           "workspace_file_metadata",
           "workspace_file_written",
           "workspace_file_deleted",
-          "operation_started",
-          "operation_pending",
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
           "bash_exec",
-          "operation_status",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "suggested_goal"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
-      },
-      "RevertMigrationRequest": {
-        "properties": {
-          "re_enable_source_model": {
-            "type": "boolean",
-            "title": "Re Enable Source Model",
-            "default": true
-          }
-        },
-        "type": "object",
-        "title": "RevertMigrationRequest"
-      },
-      "RevertMigrationResponse": {
-        "properties": {
-          "migration_id": { "type": "string", "title": "Migration Id" },
-          "source_model_slug": {
-            "type": "string",
-            "title": "Source Model Slug"
-          },
-          "target_model_slug": {
-            "type": "string",
-            "title": "Target Model Slug"
-          },
-          "nodes_reverted": { "type": "integer", "title": "Nodes Reverted" },
-          "nodes_already_changed": {
-            "type": "integer",
-            "title": "Nodes Already Changed",
-            "default": 0
-          },
-          "source_model_re_enabled": {
-            "type": "boolean",
-            "title": "Source Model Re Enabled",
-            "default": false
-          },
-          "message": { "type": "string", "title": "Message" }
-        },
-        "type": "object",
-        "required": [
-          "migration_id",
-          "source_model_slug",
-          "target_model_slug",
-          "nodes_reverted",
-          "message"
-        ],
-        "title": "RevertMigrationResponse"
       },
       "ReviewItem": {
         "properties": {
@@ -12417,25 +11449,6 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
-      },
-      "SetRecommendedModelRequest": {
-        "properties": { "model_id": { "type": "string", "title": "Model Id" } },
-        "type": "object",
-        "required": ["model_id"],
-        "title": "SetRecommendedModelRequest"
-      },
-      "SetRecommendedModelResponse": {
-        "properties": {
-          "model": { "$ref": "#/components/schemas/LlmModel" },
-          "previous_recommended_slug": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Previous Recommended Slug"
-          },
-          "message": { "type": "string", "title": "Message" }
-        },
-        "type": "object",
-        "required": ["model", "message"],
-        "title": "SetRecommendedModelResponse"
       },
       "SetupInfo": {
         "properties": {
@@ -13049,6 +12062,47 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SuggestedGoalResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "suggested_goal"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggested_goal": {
+            "type": "string",
+            "title": "Suggested Goal",
+            "description": "The suggested alternative goal"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the original goal needs refinement",
+            "default": ""
+          },
+          "original_goal": {
+            "type": "string",
+            "title": "Original Goal",
+            "description": "The user's original goal for context",
+            "default": ""
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": ["vague", "unachievable"],
+            "title": "Goal Type",
+            "description": "Type: 'vague' or 'unachievable'",
+            "default": "vague"
+          }
+        },
+        "type": "object",
+        "required": ["message", "suggested_goal"],
+        "title": "SuggestedGoalResponse",
+        "description": "Response when the goal needs refinement with a suggested alternative."
       },
       "SuggestionsResponse": {
         "properties": {
@@ -13701,47 +12755,6 @@
         "required": ["timezone"],
         "title": "TimezoneResponse"
       },
-      "ToggleLlmModelRequest": {
-        "properties": {
-          "is_enabled": { "type": "boolean", "title": "Is Enabled" },
-          "migrate_to_slug": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Migrate To Slug"
-          },
-          "migration_reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Migration Reason"
-          },
-          "custom_credit_cost": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Custom Credit Cost"
-          }
-        },
-        "type": "object",
-        "required": ["is_enabled"],
-        "title": "ToggleLlmModelRequest"
-      },
-      "ToggleLlmModelResponse": {
-        "properties": {
-          "model": { "$ref": "#/components/schemas/LlmModel" },
-          "nodes_migrated": {
-            "type": "integer",
-            "title": "Nodes Migrated",
-            "default": 0
-          },
-          "migrated_to_slug": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Migrated To Slug"
-          },
-          "migration_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Migration Id"
-          }
-        },
-        "type": "object",
-        "required": ["model"],
-        "title": "ToggleLlmModelResponse"
-      },
       "TokenIntrospectionResult": {
         "properties": {
           "active": { "type": "boolean", "title": "Active" },
@@ -14005,64 +13018,6 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
-      },
-      "UpdateLlmModelRequest": {
-        "properties": {
-          "display_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Display Name"
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "context_window": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Context Window"
-          },
-          "max_output_tokens": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Max Output Tokens"
-          },
-          "is_enabled": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Is Enabled"
-          },
-          "capabilities": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Capabilities"
-          },
-          "metadata": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Metadata"
-          },
-          "provider_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Provider Id"
-          },
-          "creator_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Creator Id"
-          },
-          "costs": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/LlmModelCostInput" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Costs"
-          }
-        },
-        "type": "object",
-        "title": "UpdateLlmModelRequest"
       },
       "UpdatePermissionsRequest": {
         "properties": {
@@ -14704,83 +13659,6 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
-      },
-      "UpsertLlmCreatorRequest": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "website_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Website Url"
-          },
-          "logo_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Logo Url"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": ["name", "display_name"],
-        "title": "UpsertLlmCreatorRequest"
-      },
-      "UpsertLlmProviderRequest": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "display_name": { "type": "string", "title": "Display Name" },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "default_credential_provider": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Provider"
-          },
-          "default_credential_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Id"
-          },
-          "default_credential_type": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Default Credential Type",
-            "default": "api_key"
-          },
-          "supports_tools": {
-            "type": "boolean",
-            "title": "Supports Tools",
-            "default": true
-          },
-          "supports_json_output": {
-            "type": "boolean",
-            "title": "Supports Json Output",
-            "default": true
-          },
-          "supports_reasoning": {
-            "type": "boolean",
-            "title": "Supports Reasoning",
-            "default": false
-          },
-          "supports_parallel_tool": {
-            "type": "boolean",
-            "title": "Supports Parallel Tool",
-            "default": false
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
-          }
-        },
-        "type": "object",
-        "required": ["name", "display_name"],
-        "title": "UpsertLlmProviderRequest"
       },
       "UserHistoryResponse": {
         "properties": {

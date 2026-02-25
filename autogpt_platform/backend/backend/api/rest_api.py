@@ -43,9 +43,9 @@ import backend.integrations.webhooks.utils
 import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
-from backend.api.features.chat.completion_consumer import (
-    start_completion_consumer,
-    stop_completion_consumer,
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
 )
 from backend.data import llm_registry
 from backend.data.block_cost_config import refresh_llm_costs
@@ -142,20 +142,8 @@ async def lifespan_context(app: fastapi.FastAPI):
         logger.warning("Skipping LLM model migration: no default model available")
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
-    # Start chat completion consumer for Redis Streams notifications
-    try:
-        await start_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Could not start chat completion consumer: {e}")
-
     with launch_darkly_context():
         yield
-
-    # Stop chat completion consumer
-    try:
-        await stop_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Error stopping chat completion consumer: {e}")
 
     try:
         await shutdown_cloud_storage_handler()
@@ -296,6 +284,10 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
+app.add_exception_handler(
+    FolderAlreadyExistsError, handle_internal_http_error(409, False)
+)
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)

@@ -1147,14 +1147,14 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_store_listed_graphs(*graph_ids: str) -> dict[str, GraphModel]:
+async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
     """Batch-fetch multiple store-listed graphs by their IDs.
 
     Only returns graphs that have approved store listings (publicly available).
     Does not require permission checks since store-listed graphs are public.
 
     Args:
-        *graph_ids: Variable number of graph IDs to fetch
+        graph_ids: List of graph IDs to fetch
 
     Returns:
         Dict mapping graph_id to GraphModel for graphs with approved store listings
