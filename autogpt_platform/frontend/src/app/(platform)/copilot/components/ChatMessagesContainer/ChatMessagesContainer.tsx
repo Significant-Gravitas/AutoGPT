@@ -140,17 +140,16 @@ export const ChatMessagesContainer = ({
     );
 
   // Detect when the LLM is thinking after a completed tool call
+  const lastPart =
+    lastMessage?.role === "assistant" && lastMessage.parts.length > 0
+      ? lastMessage.parts[lastMessage.parts.length - 1]
+      : undefined;
+
   const isThinkingAfterToolCall =
     status === "streaming" &&
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.length > 0 &&
-    (() => {
-      const lastPart = lastMessage.parts[lastMessage.parts.length - 1];
-      return (
-        lastPart.type.startsWith("tool-") &&
-        (lastPart as ToolUIPart).state === "result"
-      );
-    })();
+    lastPart !== undefined &&
+    lastPart.type.startsWith("tool-") &&
+    (lastPart as ToolUIPart).state === "output-available";
 
   const showThinking =
     status === "submitted" ||
