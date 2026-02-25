@@ -764,7 +764,7 @@ async def stream_chat_completion_sdk(
                                     "[SDK] [%s] Tool event: %s, tool=%s%s",
                                     session_id[:12],
                                     type(response).__name__,
-                                    response.toolName or "N/A",
+                                    getattr(response, "toolName", "N/A"),
                                     extra,
                                 )
 
@@ -878,7 +878,7 @@ async def stream_chat_completion_sdk(
                                 "[SDK] [%s] Safety flush: %s, tool=%s",
                                 session_id[:12],
                                 type(response).__name__,
-                                response.toolName or "N/A",
+                                getattr(response, "toolName", "N/A"),
                             )
                         yield response
 
