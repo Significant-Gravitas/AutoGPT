@@ -17,10 +17,25 @@ export interface ClarifyingQuestion {
 export function normalizeClarifyingQuestions(
   questions: Array<{ question: string; keyword: string; example?: unknown }>,
 ): ClarifyingQuestion[] {
-  return questions.map((q) => {
+  const seen = new Set<string>();
+
+  return questions.map((q, index) => {
+    let keyword = q.keyword?.trim().toLowerCase() || "";
+    if (!keyword) {
+      keyword = `question-${index}`;
+    }
+
+    let unique = keyword;
+    let suffix = 1;
+    while (seen.has(unique)) {
+      unique = `${keyword}-${suffix}`;
+      suffix++;
+    }
+    seen.add(unique);
+
     const item: ClarifyingQuestion = {
       question: q.question,
-      keyword: q.keyword,
+      keyword: unique,
     };
     const example =
       typeof q.example === "string" && q.example.trim()
