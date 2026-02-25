@@ -230,16 +230,47 @@ class TestSubmitAndPoll:
         mock_client.post.return_value = submit_resp
         mock_client.get.return_value = running_resp
 
+        # Simulate time passing: first call returns 0.0 (start), then jumps past limit
+        monotonic_values = iter([0.0, 0.0, 100.0])
+
         with (
             patch.object(service, "_get_client", return_value=mock_client),
-            patch.object(service, "MAX_POLL_TIME_SECONDS", 0.05),
+            patch.object(service, "MAX_POLL_TIME_SECONDS", 50.0),
             patch.object(service, "POLL_INTERVAL_SECONDS", 0.01),
             patch("asyncio.sleep", new_callable=AsyncMock),
+            patch("backend.copilot.tools.agent_generator.service.time") as mock_time,
         ):
+            mock_time.monotonic.side_effect = monotonic_values
             result = await service._submit_and_poll("/api/test", {})
 
         assert result["type"] == "error"
         assert result["error_type"] == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_poll_gives_up_after_consecutive_transient_errors(self):
+        """Test that polling gives up after MAX_CONSECUTIVE_POLL_ERRORS."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-flaky"}
+        submit_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.side_effect = httpx.RequestError("network down")
+
+        # Ensure monotonic always returns 0 so timeout doesn't kick in
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch.object(service, "MAX_POLL_TIME_SECONDS", 9999.0),
+            patch.object(service, "POLL_INTERVAL_SECONDS", 0.01),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch("backend.copilot.tools.agent_generator.service.time") as mock_time,
+        ):
+            mock_time.monotonic.return_value = 0.0
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "poll_error"
+        assert mock_client.get.call_count == service.MAX_CONSECUTIVE_POLL_ERRORS
 
 
 class TestDecomposeGoalExternal:
