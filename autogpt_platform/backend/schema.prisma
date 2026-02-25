@@ -51,6 +51,7 @@ model User {
   ChatSessions         ChatSession[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
+  LibraryFolders       LibraryFolder[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -395,6 +396,9 @@ model LibraryAgent {
   creatorId String?
   Creator   Profile? @relation(fields: [creatorId], references: [id])
 
+  folderId String?
+  Folder   LibraryFolder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
   useGraphIsActiveVersion Boolean @default(false)
 
   isFavorite      Boolean @default(false)
@@ -407,6 +411,30 @@ model LibraryAgent {
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
+  @@index([folderId])
+}
+
+model LibraryFolder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name  String
+  icon  String?
+  color String?
+
+  parentId String?
+  Parent   LibraryFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  Children LibraryFolder[] @relation("FolderHierarchy")
+
+  isDeleted Boolean @default(false)
+
+  LibraryAgents LibraryAgent[]
+
+  @@unique([userId, parentId, name]) // Name unique per parent per user
 }
 
 ////////////////////////////////////////////////////////////

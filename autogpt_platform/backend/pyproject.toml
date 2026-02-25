@@ -16,7 +16,7 @@ anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
-claude-agent-sdk = "^0.1.0"
+claude-agent-sdk = "^0.1.39"  # see copilot/sdk/sdk_compat_test.py for capability checks
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
@@ -117,6 +117,7 @@ ws = "backend.ws:main"
 scheduler = "backend.scheduler:main"
 notification = "backend.notification:main"
 executor = "backend.exec:main"
+copilot-executor = "backend.copilot.executor.__main__:main"
 cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"

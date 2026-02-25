@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -43,6 +43,7 @@ def test_get_or_create_user_route(
 ) -> None:
     """Test get or create user endpoint"""
     mock_user = Mock()
+    mock_user.created_at = datetime.now(timezone.utc)
     mock_user.model_dump.return_value = {
         "id": test_user_id,
         "email": "test@example.com",
