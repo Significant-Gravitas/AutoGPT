@@ -230,7 +230,13 @@ async def _submit_and_poll(
 
         if status == "completed":
             logger.info(f"Agent Generator job {job_id} completed")
-            return poll_data.get("result", {})
+            result = poll_data.get("result", {})
+            if not isinstance(result, dict):
+                return _create_error_response(
+                    "Agent Generator returned invalid result payload",
+                    "invalid_response",
+                )
+            return result
         elif status == "failed":
             error_msg = poll_data.get("error", "Job failed")
             logger.error(f"Agent Generator job {job_id} failed: {error_msg}")
