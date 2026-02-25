@@ -72,6 +72,18 @@ import type {
 
 const isClient = environment.isClientSide();
 
+/**
+ * Thrown when a request fails because the user is logging out.
+ * Callers can catch this specifically to silently ignore logout-related failures,
+ * rather than receiving null and crashing on property access.
+ */
+export class LogoutInterruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LogoutInterruptError";
+  }
+}
+
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -1041,7 +1053,9 @@ export default class BackendAPI {
           "Authentication request failed during logout, ignoring:",
           error.message,
         );
-        return null;
+        throw new LogoutInterruptError(
+          "Request cancelled: logout in progress",
+        );
       }
       throw error;
     }
