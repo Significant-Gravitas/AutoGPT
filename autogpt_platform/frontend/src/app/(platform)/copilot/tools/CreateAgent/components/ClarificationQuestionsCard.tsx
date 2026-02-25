@@ -14,6 +14,23 @@ export interface ClarifyingQuestion {
   example?: string;
 }
 
+export function normalizeClarifyingQuestions(
+  questions: Array<{ question: string; keyword: string; example?: unknown }>,
+): ClarifyingQuestion[] {
+  return questions.map((q) => {
+    const item: ClarifyingQuestion = {
+      question: q.question,
+      keyword: q.keyword,
+    };
+    const example =
+      typeof q.example === "string" && q.example.trim()
+        ? q.example.trim()
+        : null;
+    if (example) item.example = example;
+    return item;
+  });
+}
+
 interface Props {
   questions: ClarifyingQuestion[];
   message: string;

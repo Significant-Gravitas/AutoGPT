@@ -1,11 +1,10 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -18,7 +17,7 @@ import {
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ClarificationQuestionsCard,
-  ClarifyingQuestion,
+  normalizeClarifyingQuestions,
 } from "../CreateAgent/components/ClarificationQuestionsCard";
 import {
   AccordionIcon,
@@ -137,43 +136,18 @@ export function EditAgentTool({ part }: Props) {
       )}
 
       {isError && output && isErrorOutput(output) && (
-        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="flex items-start gap-2">
-            <WarningDiamondIcon
-              size={20}
-              weight="regular"
-              className="mt-0.5 shrink-0 text-red-500"
-            />
-            <div className="flex-1 space-y-2">
-              <Text variant="body-medium" className="text-red-900">
-                {output.message ||
-                  "Failed to edit the agent. Please try again."}
-              </Text>
-              {output.error && (
-                <details className="text-xs text-red-700">
-                  <summary className="cursor-pointer font-medium">
-                    Technical details
-                  </summary>
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
-                    {formatMaybeJson(output.error)}
-                  </pre>
-                </details>
-              )}
-              {output.details && (
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
-                  {formatMaybeJson(output.details)}
-                </pre>
-              )}
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="small"
-            onClick={() => onSend("Please try editing the agent again.")}
-          >
-            Try again
-          </Button>
-        </div>
+        <ToolErrorCard
+          message={output.message}
+          fallbackMessage="Failed to edit the agent. Please try again."
+          error={output.error ? formatMaybeJson(output.error) : undefined}
+          details={output.details ? formatMaybeJson(output.details) : undefined}
+          actions={[
+            {
+              label: "Try again",
+              onClick: () => onSend("Please try editing the agent again."),
+            },
+          ]}
+        />
       )}
 
       {hasExpandableContent &&
@@ -216,18 +190,7 @@ export function EditAgentTool({ part }: Props) {
 
       {output && isClarificationNeededOutput(output) && (
         <ClarificationQuestionsCard
-          questions={(output.questions ?? []).map((q) => {
-            const item: ClarifyingQuestion = {
-              question: q.question,
-              keyword: q.keyword,
-            };
-            const example =
-              typeof q.example === "string" && q.example.trim()
-                ? q.example.trim()
-                : null;
-            if (example) item.example = example;
-            return item;
-          })}
+          questions={normalizeClarifyingQuestions(output.questions ?? [])}
           message={output.message}
           onSubmitAnswers={handleClarificationAnswers}
         />

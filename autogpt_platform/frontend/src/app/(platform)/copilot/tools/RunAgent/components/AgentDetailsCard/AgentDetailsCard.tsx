@@ -3,7 +3,7 @@
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { buildInputSchema, extractDefaults, isFormValid } from "./helpers";
@@ -16,10 +16,7 @@ export function AgentDetailsCard({ output }: Props) {
   const { onSend } = useCopilotChatActions();
   const schema = buildInputSchema(output.agent.inputs);
 
-  const defaults = useMemo(
-    () => (schema ? extractDefaults(schema) : {}),
-    [schema],
-  );
+  const defaults = schema ? extractDefaults(schema) : {};
 
   const [inputValues, setInputValues] =
     useState<Record<string, unknown>>(defaults);
