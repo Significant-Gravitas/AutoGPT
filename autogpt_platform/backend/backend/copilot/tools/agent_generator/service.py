@@ -241,9 +241,28 @@ async def _submit_and_poll(
             error_msg = poll_data.get("error", "Job failed")
             logger.error(f"Agent Generator job {job_id} failed: {error_msg}")
             return _create_error_response(error_msg, "job_failed")
-        # else: still running — keep polling
+        elif status in {"running", "pending", "queued"}:
+            continue
+        else:
+            return _create_error_response(
+                f"Agent Generator returned unexpected job status: {status}",
+                "invalid_response",
+            )
 
     return _create_error_response("Agent generation timed out after polling", "timeout")
+
+
+def _extract_agent_json(result: dict[str, Any]) -> dict[str, Any]:
+    """Extract and validate agent_json from a job result.
+
+    Returns the agent_json dict, or an error response if missing/invalid.
+    """
+    agent_json = result.get("agent_json")
+    if not isinstance(agent_json, dict):
+        return _create_error_response(
+            "Agent Generator returned no agent_json in result", "invalid_response"
+        )
+    return agent_json
 
 
 # ---------------------------------------------------------------------------
@@ -341,13 +360,7 @@ async def generate_agent_external(
     if result.get("type") == "error":
         return result
 
-    # The job result contains {"agent_json": {...}, "success": True, ...}
-    agent_json = result.get("agent_json")
-    if not isinstance(agent_json, dict):
-        return _create_error_response(
-            "Agent Generator returned no agent_json in result", "invalid_response"
-        )
-    return agent_json
+    return _extract_agent_json(result)
 
 
 async def generate_agent_patch_external(
@@ -388,12 +401,7 @@ async def generate_agent_patch_external(
             "questions": result.get("questions", []),
         }
 
-    agent_json = result.get("agent_json")
-    if not isinstance(agent_json, dict):
-        return _create_error_response(
-            "Agent Generator returned no agent_json in result", "invalid_response"
-        )
-    return agent_json
+    return _extract_agent_json(result)
 
 
 async def customize_template_external(
@@ -438,12 +446,7 @@ async def customize_template_external(
             "questions": result.get("questions", []),
         }
 
-    agent_json = result.get("agent_json")
-    if not isinstance(agent_json, dict):
-        return _create_error_response(
-            "Agent Generator returned no agent_json in result", "invalid_response"
-        )
-    return agent_json
+    return _extract_agent_json(result)
 
 
 # ---------------------------------------------------------------------------
