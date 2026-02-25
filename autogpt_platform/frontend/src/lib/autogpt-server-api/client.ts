@@ -1057,9 +1057,7 @@ export default class BackendAPI {
           "Authentication request failed during logout, ignoring:",
           error.message,
         );
-        throw new LogoutInterruptError(
-          "Request cancelled: logout in progress",
-        );
+        throw new LogoutInterruptError("Request cancelled: logout in progress");
       }
       throw error;
     }
