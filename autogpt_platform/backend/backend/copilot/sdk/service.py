@@ -727,23 +727,21 @@ async def stream_chat_completion_sdk(
 
                         # Log ResultMessage details for debugging
                         if isinstance(sdk_msg, ResultMessage):
-                            subtype = getattr(sdk_msg, "subtype", "unknown")
-                            result = getattr(sdk_msg, "result", None)
                             logger.info(
                                 "[SDK] [%s] Received: ResultMessage %s "
                                 "(unresolved=%d, current=%d, resolved=%d)",
                                 session_id[:12],
-                                subtype,
+                                sdk_msg.subtype,
                                 len(adapter.current_tool_calls)
                                 - len(adapter.resolved_tool_calls),
                                 len(adapter.current_tool_calls),
                                 len(adapter.resolved_tool_calls),
                             )
-                            if subtype in ("error", "error_during_execution"):
+                            if sdk_msg.subtype in ("error", "error_during_execution"):
                                 logger.error(
                                     "[SDK] [%s] SDK execution failed with error: %s",
                                     session_id[:12],
-                                    result or "(no error message provided)",
+                                    sdk_msg.result or "(no error message provided)",
                                 )
 
                         for response in adapter.convert_message(sdk_msg):
@@ -762,11 +760,16 @@ async def stream_chat_completion_sdk(
                                 if isinstance(response, StreamToolOutputAvailable):
                                     out_len = len(str(response.output))
                                     extra = f", output_len={out_len}"
+                                tool_name = (
+                                    response.toolName
+                                    if isinstance(response, StreamToolInputAvailable)
+                                    else (response.toolName or "N/A")
+                                )
                                 logger.info(
                                     "[SDK] [%s] Tool event: %s, tool=%s%s",
                                     session_id[:12],
                                     type(response).__name__,
-                                    getattr(response, "toolName", "N/A"),
+                                    tool_name,
                                     extra,
                                 )
 
@@ -876,11 +879,16 @@ async def stream_chat_completion_sdk(
                             response,
                             (StreamToolInputAvailable, StreamToolOutputAvailable),
                         ):
+                            tool_name = (
+                                response.toolName
+                                if isinstance(response, StreamToolInputAvailable)
+                                else (response.toolName or "N/A")
+                            )
                             logger.info(
                                 "[SDK] [%s] Safety flush: %s, tool=%s",
                                 session_id[:12],
                                 type(response).__name__,
-                                getattr(response, "toolName", "N/A"),
+                                tool_name,
                             )
                         yield response
 
