@@ -454,7 +454,7 @@ export default class BackendAPI {
       return await this._get("/store/profile");
     } catch (error) {
       if (!(error instanceof LogoutInterruptError)) {
-        console.error("Error fetching store profile:", error);
+        Sentry.captureException(error);
       }
       return null;
     }
