@@ -2,6 +2,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -21,18 +22,42 @@ function ResetPasswordContent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [disabled, setDisabled] = useState(false);
+  const [showExpiredMessage, setShowExpiredMessage] = useState(false);
 
   useEffect(() => {
     const error = searchParams.get("error");
-    if (error) {
-      toast({
-        title: "Password Reset Failed",
-        description: error,
-        variant: "destructive",
-      });
+    const errorCode = searchParams.get("error_code");
+    const errorDescription = searchParams.get("error_description");
 
+    if (error || errorCode) {
+      // Check if this is an expired/used link error
+      // Avoid broad checks like "invalid" which can match unrelated errors (e.g., PKCE errors)
+      const descLower = errorDescription?.toLowerCase() || "";
+      const isExpiredOrUsed =
+        error === "link_expired" ||
+        errorCode === "otp_expired" ||
+        descLower.includes("expired") ||
+        descLower.includes("already") ||
+        descLower.includes("used");
+
+      if (isExpiredOrUsed) {
+        setShowExpiredMessage(true);
+      } else {
+        // Show toast for other errors
+        const errorMessage =
+          errorDescription || error || "Password reset failed";
+        toast({
+          title: "Password Reset Failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+
+      // Clear all error params from URL
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("error");
+      newUrl.searchParams.delete("error_code");
+      newUrl.searchParams.delete("error_description");
       router.replace(newUrl.pathname + newUrl.search);
     }
   }, [searchParams, toast, router]);
@@ -82,6 +107,10 @@ function ResetPasswordContent() {
     [sendEmailForm, toast],
   );
 
+  function handleShowEmailForm() {
+    setShowExpiredMessage(false);
+  }
+
   const onChangePassword = useCallback(
     async (data: z.infer<typeof changePasswordFormSchema>) => {
       setIsLoading(true);
@@ -118,6 +147,17 @@ function ResetPasswordContent() {
     return (
       <div>
         User accounts are disabled because Supabase client is unavailable
+      </div>
+    );
+  }
+
+  // Show expired link message if detected
+  if (showExpiredMessage && !user) {
+    return (
+      <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
+        <AuthCard title="Reset Password">
+          <ExpiredLinkMessage onRequestNewLink={handleShowEmailForm} />
+        </AuthCard>
       </div>
     );
   }
