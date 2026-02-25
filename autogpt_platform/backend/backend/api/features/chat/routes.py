@@ -617,6 +617,11 @@ async def resume_session_stream(
     active_session, last_message_id = await stream_registry.get_active_session(
         session_id, user_id
     )
+    logger.info(
+        f"[STREAM_DIAG] resume_session_stream: session={session_id}, "
+        f"has_active={active_session is not None}, "
+        f"status={active_session.status if active_session else 'N/A'}"
+    )
 
     if not active_session:
         return Response(status_code=204)

@@ -18,6 +18,7 @@ import { useChatSession } from "./useChatSession";
 const STREAM_START_TIMEOUT_MS = 12_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+const STALL_DETECTION_MS = 30_000;
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -96,6 +97,7 @@ export function useCopilotPage() {
     isSessionError,
     createSession,
     isCreatingSession,
+    refetchSession,
   } = useChatSession();
 
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -178,6 +180,13 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
     onFinish: ({ isDisconnect }) => {
+      console.info("[STREAM_DIAG] onFinish", {
+        sessionId,
+        isDisconnect,
+        status,
+        attempt: reconnectAttemptsRef.current.get(sessionId ?? "") ?? 0,
+        ts: Date.now(),
+      });
       if (!isDisconnect || !sessionId) return;
 
       const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
@@ -197,6 +206,12 @@ export function useCopilotPage() {
       });
 
       reconnectTimerRef.current = setTimeout(() => {
+        console.info("[STREAM_DIAG] resumeStream fired", {
+          sessionId,
+          attempt: attempts + 1,
+          delay,
+          ts: Date.now(),
+        });
         resumeStreamRef.current();
       }, delay);
     },
@@ -246,6 +261,11 @@ export function useCopilotPage() {
     if (status !== "submitted") return;
 
     const timer = setTimeout(() => {
+      console.warn("[STREAM_DIAG] stream start timeout", {
+        sessionId,
+        status,
+        ts: Date.now(),
+      });
       stopRef.current();
       toast({
         title: "Stream timed out",
@@ -287,6 +307,16 @@ export function useCopilotPage() {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
+    if (prev !== status) {
+      console.info("[STREAM_DIAG] status transition", {
+        prev,
+        next: status,
+        sessionId,
+        messageCount: rawMessages.length,
+        ts: Date.now(),
+      });
+    }
+
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
     if (wasActive && isIdle && sessionId) {
@@ -317,6 +347,66 @@ export function useCopilotPage() {
     hasResumedRef.current.set(sessionId, true);
     resumeStream();
   }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
+
+  // Stall detection: if streaming but no new messages for 30s, recheck
+  // backend state via REST and recover if the stream silently died.
+  const lastMessageCountRef = useRef(0);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (status !== "streaming") {
+      clearTimeout(stallTimerRef.current);
+      return;
+    }
+
+    const currentCount = rawMessages.length;
+    if (currentCount !== lastMessageCountRef.current) {
+      lastMessageCountRef.current = currentCount;
+      clearTimeout(stallTimerRef.current);
+    }
+
+    stallTimerRef.current = setTimeout(async () => {
+      console.warn("[STREAM_DIAG] STALL DETECTED", {
+        sessionId,
+        status,
+        messageCount: rawMessages.length,
+        ts: Date.now(),
+      });
+
+      const result = await refetchSession();
+      const data = result.data;
+      const backendActive = data?.status === 200 && !!data.data.active_stream;
+
+      console.info("[STREAM_DIAG] stall recheck result", {
+        sessionId,
+        backendActive,
+        ts: Date.now(),
+      });
+
+      if (!backendActive) {
+        // Backend finished but SDK missed it — force stop
+        toast({
+          title: "Stream ended",
+          description: "The response finished. Refreshing...",
+        });
+        sdkStop();
+        setMessages((prev) => resolveInProgressTools(prev, "completed"));
+      } else {
+        toast({
+          title: "Still processing",
+          description: "The agent is working on a long task...",
+        });
+      }
+    }, STALL_DETECTION_MS);
+
+    return () => clearTimeout(stallTimerRef.current);
+  }, [
+    status,
+    rawMessages.length,
+    sessionId,
+    refetchSession,
+    sdkStop,
+    setMessages,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear messages when session is null
   useEffect(() => {
