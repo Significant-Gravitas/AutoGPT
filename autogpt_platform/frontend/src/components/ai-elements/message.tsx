@@ -311,6 +311,17 @@ export const MessageResponse = memo(
         className,
       )}
       plugins={{ code, mermaid, math, cjk }}
+      linkSafety={{
+        enabled: true,
+        onLinkCheck: (url: string) => {
+          try {
+            const parsed = new URL(url, window.location.origin);
+            return parsed.origin === window.location.origin;
+          } catch {
+            return false;
+          }
+        },
+      }}
       {...props}
     />
   ),
