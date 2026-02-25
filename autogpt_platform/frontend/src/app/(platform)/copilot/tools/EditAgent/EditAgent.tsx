@@ -2,16 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  BookOpenIcon,
-  PencilSimpleIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
+import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import Image from "next/image";
-import NextLink from "next/link";
+import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import sparklesImg from "../../components/MiniGame/assets/sparkles.png";
 import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -182,96 +176,61 @@ export function EditAgentTool({ part }: Props) {
         </div>
       )}
 
-      {hasExpandableContent && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
+      {hasExpandableContent &&
+        !(output && isClarificationNeededOutput(output)) &&
+        !(output && isAgentSavedOutput(output)) && (
+          <ToolAccordion {...getAccordionMeta(output)}>
+            {isOperating && (
+              <ContentGrid>
+                <MiniGame />
+                <ContentHint>
+                  This could take a few minutes — play while you wait!
+                </ContentHint>
+              </ContentGrid>
+            )}
 
-          {output && isAgentSavedOutput(output) && (
-            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-              <div className="flex items-baseline gap-2">
-                <Image
-                  src={sparklesImg}
-                  alt="sparkles"
-                  width={24}
-                  height={24}
-                  className="relative top-1"
-                />
-                <Text
-                  variant="body-medium"
-                  className="mb-2 text-[16px] text-black"
-                >
-                  Agent{" "}
-                  <span className="text-violet-600">{output.agent_name}</span>{" "}
-                  has been updated!
-                </Text>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-4">
-                <Button variant="outline" size="small">
-                  <NextLink
-                    href={output.library_agent_link}
-                    className="inline-flex items-center gap-1.5"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <BookOpenIcon size={14} weight="regular" />
-                    Open in library
-                  </NextLink>
-                </Button>
-                <Button variant="outline" size="small">
-                  <NextLink
-                    href={output.agent_page_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <PencilSimpleIcon size={14} weight="regular" />
-                    Open in builder
-                  </NextLink>
-                </Button>
-              </div>
-            </div>
-          )}
+            {output && isAgentPreviewOutput(output) && (
+              <ContentGrid>
+                <ContentMessage>{output.message}</ContentMessage>
+                {output.description?.trim() && (
+                  <ContentCardDescription>
+                    {output.description}
+                  </ContentCardDescription>
+                )}
+                <ContentCodeBlock>
+                  {truncateText(formatMaybeJson(output.agent_json), 1600)}
+                </ContentCodeBlock>
+              </ContentGrid>
+            )}
+          </ToolAccordion>
+        )}
 
-          {output && isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
+      {output && isAgentSavedOutput(output) && (
+        <AgentSavedCard
+          agentName={output.agent_name}
+          message="has been updated!"
+          libraryAgentLink={output.library_agent_link}
+          agentPageLink={output.agent_page_link}
+        />
+      )}
 
-          {output && isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsCard
-              questions={(output.questions ?? []).map((q) => {
-                const item: ClarifyingQuestion = {
-                  question: q.question,
-                  keyword: q.keyword,
-                };
-                const example =
-                  typeof q.example === "string" && q.example.trim()
-                    ? q.example.trim()
-                    : null;
-                if (example) item.example = example;
-                return item;
-              })}
-              message={output.message}
-              onSubmitAnswers={handleClarificationAnswers}
-            />
-          )}
-        </ToolAccordion>
+      {output && isClarificationNeededOutput(output) && (
+        <ClarificationQuestionsCard
+          questions={(output.questions ?? []).map((q) => {
+            const item: ClarifyingQuestion = {
+              question: q.question,
+              keyword: q.keyword,
+            };
+            const example =
+              typeof q.example === "string" && q.example.trim()
+                ? q.example.trim()
+                : null;
+            if (example) item.example = example;
+            return item;
+          })}
+          message={output.message}
+          onSubmitAnswers={handleClarificationAnswers}
+        />
       )}
     </div>
   );
