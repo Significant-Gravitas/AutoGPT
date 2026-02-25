@@ -13,7 +13,6 @@ from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.model import Credentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from .models import (
@@ -27,25 +26,6 @@ logger = logging.getLogger(__name__)
 
 integrations_router = APIRouter()
 creds_manager = IntegrationCredentialsManager()
-
-
-# ============================================================================
-# Conversion Functions
-# ============================================================================
-
-
-def _convert_credential(cred: Credentials) -> Credential:
-    """Convert internal credential to v2 API model."""
-    scopes: list[str] = []
-    if isinstance(cred, OAuth2Credentials):
-        scopes = cred.scopes or []
-
-    return Credential(
-        id=cred.id,
-        provider=cred.provider,
-        title=cred.title,
-        scopes=scopes,
-    )
 
 
 # ============================================================================
@@ -72,7 +52,7 @@ async def list_credentials(
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
 
     return CredentialsListResponse(
-        credentials=[_convert_credential(c) for c in credentials]
+        credentials=[Credential.from_internal(c) for c in credentials]
     )
 
 
@@ -96,7 +76,7 @@ async def list_credentials_by_provider(
     filtered = [c for c in all_credentials if c.provider.lower() == provider.lower()]
 
     return CredentialsListResponse(
-        credentials=[_convert_credential(c) for c in filtered]
+        credentials=[Credential.from_internal(c) for c in filtered]
     )
 
 
@@ -146,7 +126,7 @@ async def list_graph_credential_requirements(
         for provider in providers:
             # Find matching credentials
             matching = [
-                _convert_credential(c)
+                Credential.from_internal(c)
                 for c in all_credentials
                 if c.provider.lower() == provider.lower()
             ]
@@ -219,7 +199,7 @@ async def list_library_agent_credential_requirements(
         for provider in providers:
             # Find matching credentials
             matching = [
-                _convert_credential(c)
+                Credential.from_internal(c)
                 for c in all_credentials
                 if c.provider.lower() == provider.lower()
             ]

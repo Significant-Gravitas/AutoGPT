@@ -5,7 +5,6 @@ Provides endpoints for managing execution schedules.
 """
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
@@ -14,7 +13,6 @@ from backend.api.external.middleware import require_permission
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.user import get_user_by_id
-from backend.executor import scheduler
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -24,23 +22,6 @@ from .models import CreateScheduleRequest, Schedule, SchedulesListResponse
 logger = logging.getLogger(__name__)
 
 schedules_router = APIRouter()
-
-
-def _convert_schedule(job: scheduler.GraphExecutionJobInfo) -> Schedule:
-    """Convert internal schedule job info to v2 API model."""
-    # Parse the ISO format string to datetime
-    next_run = datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
-
-    return Schedule(
-        id=job.id,
-        name=job.name or "",
-        graph_id=job.graph_id,
-        graph_version=job.graph_version,
-        cron=job.cron,
-        input_data=job.input_data,
-        next_run_time=next_run,
-        is_enabled=True,  # All returned schedules are enabled
-    )
 
 
 # ============================================================================
@@ -71,7 +52,7 @@ async def list_all_schedules(
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=auth.user_id
     )
-    converted = [_convert_schedule(s) for s in schedules]
+    converted = [Schedule.from_internal(s) for s in schedules]
 
     # Manual pagination (scheduler doesn't support pagination natively)
     total_count = len(converted)
@@ -141,7 +122,7 @@ async def list_graph_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
     )
-    return [_convert_schedule(s) for s in schedules]
+    return [Schedule.from_internal(s) for s in schedules]
 
 
 @graph_schedules_router.post(
@@ -191,4 +172,4 @@ async def create_graph_schedule(
         user_timezone=user_timezone,
     )
 
-    return _convert_schedule(result)
+    return Schedule.from_internal(result)

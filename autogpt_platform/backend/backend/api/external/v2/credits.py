@@ -80,17 +80,7 @@ async def get_transactions(
         transaction_type=transaction_type,
     )
 
-    transactions = [
-        CreditTransaction(
-            transaction_key=t.transaction_key,
-            amount=t.amount,
-            type=t.transaction_type.value,
-            transaction_time=t.transaction_time,
-            running_balance=t.running_balance,
-            description=t.description,
-        )
-        for t in history.transactions
-    ]
+    transactions = [CreditTransaction.from_internal(t) for t in history.transactions]
 
     # Note: The current credit module doesn't support true pagination,
     # so we're returning what we have
@@ -99,8 +89,8 @@ async def get_transactions(
 
     return CreditTransactionsResponse(
         transactions=transactions,
-        total_count=total_count,
         page=page,
         page_size=page_size,
+        total_count=total_count,
         total_pages=total_pages,
     )

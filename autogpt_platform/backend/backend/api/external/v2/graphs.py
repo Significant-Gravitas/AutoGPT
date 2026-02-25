@@ -19,12 +19,10 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
-    CreateGraphRequest,
+    CreatableGraph,
     DeleteGraphResponse,
-    GraphDetails,
-    GraphLink,
+    Graph,
     GraphMeta,
-    GraphNode,
     GraphSettings,
     GraphsListResponse,
     SetActiveVersionRequest,
@@ -33,53 +31,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 graphs_router = APIRouter()
-
-
-def _convert_graph_meta(graph: graph_db.GraphMeta) -> GraphMeta:
-    """Convert internal GraphMeta to v2 API model."""
-    return GraphMeta(
-        id=graph.id,
-        version=graph.version,
-        is_active=graph.is_active,
-        name=graph.name,
-        description=graph.description,
-        created_at=graph.created_at,
-    )
-
-
-def _convert_graph_details(graph: graph_db.GraphModel) -> GraphDetails:
-    """Convert internal GraphModel to v2 API GraphDetails model."""
-    return GraphDetails(
-        id=graph.id,
-        version=graph.version,
-        is_active=graph.is_active,
-        name=graph.name,
-        description=graph.description,
-        created_at=graph.created_at,
-        input_schema=graph.input_schema,
-        output_schema=graph.output_schema,
-        nodes=[
-            GraphNode(
-                id=node.id,
-                block_id=node.block_id,
-                input_default=node.input_default,
-                metadata=node.metadata,
-            )
-            for node in graph.nodes
-        ],
-        links=[
-            GraphLink(
-                id=link.id,
-                source_id=link.source_id,
-                sink_id=link.sink_id,
-                source_name=link.source_name,
-                sink_name=link.sink_name,
-                is_static=link.is_static,
-            )
-            for link in graph.links
-        ],
-        credentials_input_schema=graph.credentials_input_schema,
-    )
 
 
 @graphs_router.get(
@@ -111,7 +62,7 @@ async def list_graphs(
         filter_by="active",
     )
     return GraphsListResponse(
-        graphs=[_convert_graph_meta(g) for g in graphs],
+        graphs=[GraphMeta.from_internal(g) for g in graphs],
         total_count=pagination_info.total_items,
         page=pagination_info.current_page,
         page_size=pagination_info.page_size,
@@ -119,70 +70,10 @@ async def list_graphs(
     )
 
 
-@graphs_router.post(
-    path="",
-    summary="Create a new graph",
-    response_model=GraphDetails,
-)
-async def create_graph(
-    create_graph_request: CreateGraphRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
-) -> GraphDetails:
-    """
-    Create a new agent graph.
-
-    The graph will be validated and assigned a new ID. It will automatically
-    be added to the user's library.
-    """
-    # Import here to avoid circular imports
-    from backend.api.features.library import db as library_db
-
-    # Convert v2 API Graph model to internal Graph model
-    internal_graph = graph_db.Graph(
-        id=create_graph_request.graph.id or "",
-        version=create_graph_request.graph.version,
-        is_active=create_graph_request.graph.is_active,
-        name=create_graph_request.graph.name,
-        description=create_graph_request.graph.description,
-        nodes=[
-            graph_db.Node(
-                id=node.id,
-                block_id=node.block_id,
-                input_default=node.input_default,
-                metadata=node.metadata,
-            )
-            for node in create_graph_request.graph.nodes
-        ],
-        links=[
-            graph_db.Link(
-                id=link.id,
-                source_id=link.source_id,
-                sink_id=link.sink_id,
-                source_name=link.source_name,
-                sink_name=link.sink_name,
-                is_static=link.is_static,
-            )
-            for link in create_graph_request.graph.links
-        ],
-    )
-
-    graph = graph_db.make_graph_model(internal_graph, auth.user_id)
-    graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
-    graph.validate_graph(for_run=False)
-
-    await graph_db.create_graph(graph, user_id=auth.user_id)
-    await library_db.create_library_agent(graph, user_id=auth.user_id)
-    activated_graph = await on_graph_activate(graph, user_id=auth.user_id)
-
-    return _convert_graph_details(activated_graph)
-
-
 @graphs_router.get(
     path="/{graph_id}",
     summary="Get graph details",
-    response_model=GraphDetails,
+    response_model=Graph,
 )
 async def get_graph(
     graph_id: str,
@@ -193,7 +84,7 @@ async def get_graph(
         default=None,
         description="Specific version to retrieve (default: active version)",
     ),
-) -> GraphDetails:
+) -> Graph:
     """
     Get detailed information about a specific graph.
 
@@ -208,32 +99,62 @@ async def get_graph(
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-    return _convert_graph_details(graph)
+    return Graph.from_internal(graph)
+
+
+@graphs_router.post(
+    path="",
+    summary="Create a new graph",
+    response_model=Graph,
+)
+async def create_graph(
+    create_graph: CreatableGraph,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_GRAPH)
+    ),
+) -> Graph:
+    """
+    Create a new agent graph.
+
+    The graph will be validated and assigned a new ID. It will automatically
+    be added to the user's library.
+    """
+    from backend.api.features.library import db as library_db
+
+    internal_graph = create_graph.to_internal()
+
+    graph = graph_db.make_graph_model(internal_graph, auth.user_id)
+    graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
+
+    await graph_db.create_graph(graph, user_id=auth.user_id)
+    await library_db.create_library_agent(graph, user_id=auth.user_id)
+    activated_graph = await on_graph_activate(graph, user_id=auth.user_id)
+
+    return Graph.from_internal(activated_graph)
 
 
 @graphs_router.put(
     path="/{graph_id}",
     summary="Update graph (creates new version)",
-    response_model=GraphDetails,
+    response_model=Graph,
 )
 async def update_graph(
     graph_id: str,
-    graph_request: CreateGraphRequest,
+    update_graph: CreatableGraph,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
-) -> GraphDetails:
+) -> Graph:
     """
     Update a graph by creating a new version.
 
     This does not modify existing versions - it creates a new version with
     the provided content. The new version becomes the active version.
     """
-    # Import here to avoid circular imports
     from backend.api.features.library import db as library_db
 
-    graph_data = graph_request.graph
-    if graph_data.id and graph_data.id != graph_id:
+    if update_graph.id and update_graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
     existing_versions = await graph_db.get_graph_all_versions(
@@ -244,33 +165,8 @@ async def update_graph(
 
     latest_version_number = max(g.version for g in existing_versions)
 
-    # Convert v2 API Graph model to internal Graph model
-    internal_graph = graph_db.Graph(
-        id=graph_id,
-        version=latest_version_number + 1,
-        is_active=graph_data.is_active,
-        name=graph_data.name,
-        description=graph_data.description,
-        nodes=[
-            graph_db.Node(
-                id=node.id,
-                block_id=node.block_id,
-                input_default=node.input_default,
-                metadata=node.metadata,
-            )
-            for node in graph_data.nodes
-        ],
-        links=[
-            graph_db.Link(
-                id=link.id,
-                source_id=link.source_id,
-                sink_id=link.sink_id,
-                source_name=link.source_name,
-                sink_name=link.sink_name,
-                is_static=link.is_static,
-            )
-            for link in graph_data.links
-        ],
+    internal_graph = update_graph.to_internal(
+        id=graph_id, version=latest_version_number + 1
     )
 
     current_active_version = next((v for v in existing_versions if v.is_active), None)
@@ -300,7 +196,7 @@ async def update_graph(
         include_subgraphs=True,
     )
     assert new_graph_version_with_subgraphs
-    return _convert_graph_details(new_graph_version_with_subgraphs)
+    return Graph.from_internal(new_graph_version_with_subgraphs)
 
 
 @graphs_router.delete(
@@ -332,14 +228,14 @@ async def delete_graph(
 @graphs_router.get(
     path="/{graph_id}/versions",
     summary="List all graph versions",
-    response_model=list[GraphDetails],
+    response_model=list[Graph],
 )
 async def list_graph_versions(
     graph_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
-) -> list[GraphDetails]:
+) -> list[Graph]:
     """
     Get all versions of a specific graph.
 
@@ -348,7 +244,7 @@ async def list_graph_versions(
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=auth.user_id)
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-    return [_convert_graph_details(g) for g in graphs]
+    return [Graph.from_internal(g) for g in graphs]
 
 
 @graphs_router.put(
@@ -368,7 +264,6 @@ async def set_active_version(
     The active version is used when executing the graph without specifying
     a version number.
     """
-    # Import here to avoid circular imports
     from backend.api.features.library import db as library_db
 
     new_active_version = request_body.active_graph_version
@@ -416,9 +311,7 @@ async def update_graph_settings(
     Currently supports:
     - human_in_the_loop_safe_mode: Enable/disable safe mode for human-in-the-loop blocks
     """
-    # Import here to avoid circular imports
     from backend.api.features.library import db as library_db
-    from backend.data.graph import GraphSettings as InternalGraphSettings
 
     library_agent = await library_db.get_library_agent_by_graph_id(
         graph_id=graph_id, user_id=auth.user_id
@@ -426,17 +319,10 @@ async def update_graph_settings(
     if not library_agent:
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
 
-    # Convert to internal model
-    internal_settings = InternalGraphSettings()
-    if settings.human_in_the_loop_safe_mode is not None:
-        internal_settings.human_in_the_loop_safe_mode = (
-            settings.human_in_the_loop_safe_mode
-        )
-
     updated_agent = await library_db.update_library_agent(
         user_id=auth.user_id,
         library_agent_id=library_agent.id,
-        settings=internal_settings,
+        settings=settings.to_internal(),
     )
 
     return GraphSettings(

@@ -7,12 +7,32 @@ All models are self-contained and specific to the external API contract.
 Route files should import models from here rather than defining them locally.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
 
 from pydantic import BaseModel, Field, JsonValue
 
-from backend.blocks._base import BlockCostType
+import backend.blocks._base as block_types
+
+if TYPE_CHECKING:
+    from backend.api.features.executions.review.model import PendingHumanReviewModel
+    from backend.api.features.library.model import LibraryAgent as _LibraryAgent
+    from backend.api.features.store.model import (
+        Creator,
+        CreatorDetails,
+        StoreAgent,
+        StoreAgentDetails,
+        StoreSubmission,
+    )
+    from backend.data.execution import GraphExecutionMeta, GraphExecutionWithNodes
+    from backend.data.graph import Graph as _Graph
+    from backend.data.graph import GraphMeta as _GraphMeta
+    from backend.data.graph import GraphModel as _GraphModel
+    from backend.data.graph import GraphSettings as _GraphSettings
+    from backend.data.model import Credentials, UserTransaction
+    from backend.executor.scheduler import GraphExecutionJobInfo
 
 # ============================================================================
 # Common/Shared Models
@@ -22,9 +42,9 @@ from backend.blocks._base import BlockCostType
 class PaginatedResponse(BaseModel):
     """Base class for paginated responses."""
 
-    total_count: int = Field(description="Total number of items across all pages")
     page: int = Field(description="Current page number (1-indexed)")
     page_size: int = Field(description="Number of items per page")
+    total_count: int = Field(description="Total number of items across all pages")
     total_pages: int = Field(description="Total number of pages")
 
 
@@ -59,18 +79,54 @@ class GraphNode(BaseModel):
     )
 
 
-class Graph(BaseModel):
+class CreatableGraph(BaseModel):
     """Graph definition for creating or updating an agent."""
 
     id: Optional[str] = Field(default=None, description="Graph ID (assigned by server)")
     version: int = Field(default=1, description="Graph version")
-    is_active: bool = Field(default=True, description="Whether this version is active")
     name: str = Field(description="Graph name")
     description: str = Field(default="", description="Graph description")
-    nodes: list[GraphNode] = Field(default_factory=list, description="List of nodes")
-    links: list[GraphLink] = Field(
-        default_factory=list, description="Links between nodes"
-    )
+    nodes: list[GraphNode] = Field(description="List of nodes")
+    links: list[GraphLink] = Field(description="Links between nodes")
+    is_active: bool = Field(default=True, description="Whether this version is active")
+
+    def to_internal(
+        self,
+        *,
+        id: str | None = None,
+        version: int | None = None,
+    ) -> "_Graph":
+        from backend.data.graph import Graph as _Graph
+        from backend.data.graph import Link as _Link
+        from backend.data.graph import Node as _Node
+
+        return _Graph(
+            id=id if id is not None else (self.id or ""),
+            version=version if version is not None else self.version,
+            is_active=self.is_active,
+            name=self.name,
+            description=self.description,
+            nodes=[
+                _Node(
+                    id=node.id,
+                    block_id=node.block_id,
+                    input_default=node.input_default,
+                    metadata=node.metadata,
+                )
+                for node in self.nodes
+            ],
+            links=[
+                _Link(
+                    id=link.id,
+                    source_id=link.source_id,
+                    sink_id=link.sink_id,
+                    source_name=link.source_name,
+                    sink_name=link.sink_name,
+                    is_static=link.is_static,
+                )
+                for link in self.links
+            ],
+        )
 
 
 class GraphMeta(BaseModel):
@@ -83,8 +139,19 @@ class GraphMeta(BaseModel):
     description: str
     created_at: datetime
 
+    @classmethod
+    def from_internal(cls, graph: _GraphMeta) -> Self:
+        return cls(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.is_active,
+            name=graph.name,
+            description=graph.description,
+            created_at=graph.created_at,
+        )
 
-class GraphDetails(GraphMeta):
+
+class Graph(GraphMeta):
     """Full graph details including nodes and links."""
 
     nodes: list[GraphNode]
@@ -95,6 +162,42 @@ class GraphDetails(GraphMeta):
         description="Schema for required credentials"
     )
 
+    @classmethod
+    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, graph: _GraphModel
+    ) -> Self:
+        return cls(
+            id=graph.id,
+            version=graph.version,
+            is_active=graph.is_active,
+            name=graph.name,
+            description=graph.description,
+            created_at=graph.created_at,
+            input_schema=graph.input_schema,
+            output_schema=graph.output_schema,
+            nodes=[
+                GraphNode(
+                    id=node.id,
+                    block_id=node.block_id,
+                    input_default=node.input_default,
+                    metadata=node.metadata,
+                )
+                for node in graph.nodes
+            ],
+            links=[
+                GraphLink(
+                    id=link.id,
+                    source_id=link.source_id,
+                    sink_id=link.sink_id,
+                    source_name=link.source_name,
+                    sink_name=link.sink_name,
+                    is_static=link.is_static,
+                )
+                for link in graph.links
+            ],
+            credentials_input_schema=graph.credentials_input_schema,
+        )
+
 
 class GraphSettings(BaseModel):
     """Settings for a graph."""
@@ -103,11 +206,13 @@ class GraphSettings(BaseModel):
         default=None, description="Enable safe mode for human-in-the-loop blocks"
     )
 
+    def to_internal(self) -> "_GraphSettings":
+        from backend.data.graph import GraphSettings as _GraphSettings
 
-class CreateGraphRequest(BaseModel):
-    """Request to create a new graph."""
-
-    graph: Graph = Field(description="The graph definition")
+        settings = _GraphSettings()
+        if self.human_in_the_loop_safe_mode is not None:
+            settings.human_in_the_loop_safe_mode = self.human_in_the_loop_safe_mode
+        return settings
 
 
 class SetActiveVersionRequest(BaseModel):
@@ -133,11 +238,60 @@ class DeleteGraphResponse(BaseModel):
 # ============================================================================
 
 
-class BlockCost(BaseModel):
+class BlockInfo(BaseModel):
+    """A building block that can be used in graphs."""
+
+    id: str
+    name: str
+    description: str
+    categories: list["BlockCategoryInfo"] = Field(default_factory=list)
+    contributors: list["BlockContributorInfo"] = Field(default_factory=list)
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    static_output: bool
+    ui_type: block_types.BlockType
+    costs: list["BlockCostInfo"] = Field(default_factory=list)
+
+    @classmethod
+    def from_internal(cls, b: block_types.AnyBlockSchema) -> "BlockInfo":
+        from backend.data.credit import get_block_cost
+
+        return cls(
+            id=b.id,
+            name=b.name,
+            description=b.description,
+            categories=[
+                BlockCategoryInfo(category=c.name, description=c.value)
+                for c in b.categories
+            ],
+            contributors=[BlockContributorInfo(name=c.name) for c in b.contributors],
+            input_schema=b.input_schema.jsonschema(),
+            output_schema=b.output_schema.jsonschema(),
+            static_output=b.static_output,
+            ui_type=b.block_type,
+            costs=[
+                BlockCostInfo(
+                    cost_type=c.cost_type,
+                    cost_filter=c.cost_filter,
+                    cost_amount=c.cost_amount,
+                )
+                for c in get_block_cost(b)
+            ],
+        )
+
+
+class BlockCategoryInfo(BaseModel):
+    """A block's category."""
+
+    category: str = Field(description="Category identifier")
+    description: str = Field(description="Category description")
+
+
+class BlockCostInfo(BaseModel):
     """Cost information for a block."""
 
-    cost_type: BlockCostType = Field(
-        description="Type of cost (e.g., 'per_call', 'per_token')"
+    cost_type: block_types.BlockCostType = Field(
+        description="Type of cost (e.g., 'run', 'byte', 'second')"
     )
     cost_filter: dict[str, Any] = Field(
         default_factory=dict, description="Conditions for this cost"
@@ -145,24 +299,8 @@ class BlockCost(BaseModel):
     cost_amount: int = Field(description="Cost amount in credits")
 
 
-class Block(BaseModel):
-    """A building block that can be used in graphs."""
-
-    id: str
+class BlockContributorInfo(BaseModel):
     name: str
-    description: str
-    categories: list[str] = Field(default_factory=list)
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    costs: list[BlockCost] = Field(default_factory=list)
-    disabled: bool = Field(default=False)
-
-
-class BlocksListResponse(BaseModel):
-    """Response for listing blocks."""
-
-    blocks: list[Block]
-    total_count: int
 
 
 # ============================================================================
@@ -185,6 +323,22 @@ class Schedule(BaseModel):
         default=None, description="Next scheduled run time"
     )
     is_enabled: bool = Field(default=True, description="Whether schedule is enabled")
+
+    @classmethod
+    def from_internal(cls, job: GraphExecutionJobInfo) -> Self:
+        next_run = (
+            datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
+        )
+        return cls(
+            id=job.id,
+            name=job.name or "",
+            graph_id=job.graph_id,
+            graph_version=job.graph_version,
+            cron=job.cron,
+            input_data=job.input_data,
+            next_run_time=next_run,
+            is_enabled=True,
+        )
 
 
 class CreateScheduleRequest(BaseModel):
@@ -239,6 +393,25 @@ class LibraryAgent(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @classmethod
+    def from_internal(cls, agent: _LibraryAgent) -> Self:
+        return cls(
+            id=agent.id,
+            graph_id=agent.graph_id,
+            graph_version=agent.graph_version,
+            name=agent.name,
+            description=agent.description,
+            is_favorite=agent.is_favorite,
+            can_access_graph=agent.can_access_graph,
+            is_latest_version=agent.is_latest_version,
+            image_url=agent.image_url,
+            creator_name=agent.creator_name,
+            input_schema=agent.input_schema,
+            output_schema=agent.output_schema,
+            created_at=agent.created_at,
+            updated_at=agent.updated_at,
+        )
+
 
 class LibraryAgentsResponse(PaginatedResponse):
     """Response for listing library agents."""
@@ -262,30 +435,96 @@ class ExecuteAgentRequest(BaseModel):
 # ============================================================================
 
 
+RunStatus: TypeAlias = Literal[
+    "INCOMPLETE", "QUEUED", "RUNNING", "COMPLETED", "TERMINATED", "FAILED", "REVIEW"
+]
+
+
 class Run(BaseModel):
     """An execution run."""
 
     id: str
     graph_id: str
     graph_version: int
-    status: str = Field(
-        description="One of: INCOMPLETE, QUEUED, RUNNING, COMPLETED, TERMINATED, FAILED, REVIEW"
-    )
+    status: RunStatus
     started_at: datetime | None
-    ended_at: Optional[datetime] = None
+    ended_at: datetime | None = None
     inputs: Optional[dict[str, Any]] = None
-    cost: int = Field(default=0, description="Cost in credits")
+    cost: int = Field(default=0, description="Cost in cents ($)")
     duration: float = Field(default=0, description="Duration in seconds")
-    node_count: int = Field(default=0, description="Number of nodes executed")
+    node_exec_count: int = Field(default=0, description="Number of nodes executed")
+
+    @classmethod
+    def from_internal(cls, exec: GraphExecutionMeta) -> Self:
+        """Convert internal execution to v2 API Run model."""
+        return cls(
+            id=exec.id,
+            graph_id=exec.graph_id,
+            graph_version=exec.graph_version,
+            status=exec.status.value,
+            started_at=exec.started_at,
+            ended_at=exec.ended_at,
+            inputs=exec.inputs,
+            cost=exec.stats.cost if exec.stats else 0,
+            duration=exec.stats.duration if exec.stats else 0,
+            node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
+        )
+
+
+class NodeExecution(BaseModel):
+    """Result of a single node execution within a run."""
+
+    node_id: str
+    status: RunStatus
+    input_data: dict[str, Any] = Field(
+        default_factory=dict, description="Input values keyed by pin name"
+    )
+    output_data: dict[str, list[Any]] = Field(
+        default_factory=dict,
+        description="Output values keyed by pin name, each with a list of results",
+    )
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
 
 
 class RunDetails(Run):
     """Detailed information about a run including outputs and node executions."""
 
     outputs: Optional[dict[str, list[Any]]] = None
-    node_executions: list[dict[str, Any]] = Field(
-        default_factory=list, description="Individual node execution results"
+    node_executions: Optional[list[NodeExecution]] = Field(
+        description="Individual node execution results; "
+        "may be omitted in case of permission restrictions"
     )
+
+    @classmethod
+    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, exec: GraphExecutionWithNodes
+    ) -> Self:
+        """Convert internal execution with nodes to v2 API RunDetails model."""
+        return cls(
+            id=exec.id,
+            graph_id=exec.graph_id,
+            graph_version=exec.graph_version,
+            status=exec.status.value,
+            started_at=exec.started_at,
+            ended_at=exec.ended_at,
+            inputs=exec.inputs,
+            outputs=exec.outputs,
+            cost=exec.stats.cost if exec.stats else 0,
+            duration=exec.stats.duration if exec.stats else 0,
+            node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
+            node_executions=[
+                NodeExecution(
+                    node_id=node.node_id,
+                    status=node.status.value,
+                    input_data=node.input_data,
+                    output_data=node.output_data,
+                    started_at=node.start_time,
+                    ended_at=node.end_time,
+                )
+                for node in exec.node_executions
+            ],
+        )
 
 
 class RunsListResponse(PaginatedResponse):
@@ -302,6 +541,8 @@ class RunsListResponse(PaginatedResponse):
 class PendingReview(BaseModel):
     """A pending human-in-the-loop review."""
 
+    Status = Literal["WAITING", "APPROVED", "REJECTED"]
+
     id: str  # node_exec_id
     run_id: str
     graph_id: str
@@ -313,8 +554,22 @@ class PendingReview(BaseModel):
     editable: bool = Field(
         default=True, description="Whether the reviewer can edit the data"
     )
-    status: str = Field(description="One of: WAITING, APPROVED, REJECTED")
+    status: Status
     created_at: datetime
+
+    @classmethod
+    def from_internal(cls, review: PendingHumanReviewModel) -> Self:
+        return cls(
+            id=review.node_exec_id,
+            run_id=review.graph_exec_id,
+            graph_id=review.graph_id,
+            graph_version=review.graph_version,
+            payload=review.payload,
+            instructions=review.instructions,
+            editable=review.editable,
+            status=review.status.value,
+            created_at=review.created_at,
+        )
 
 
 class PendingReviewsResponse(PaginatedResponse):
@@ -366,14 +621,27 @@ class CreditBalance(BaseModel):
 class CreditTransaction(BaseModel):
     """A credit transaction."""
 
+    Type = Literal["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"]
+
     transaction_key: str
     amount: int = Field(description="Transaction amount (positive or negative)")
-    type: str = Field(description="One of: TOP_UP, USAGE, GRANT, REFUND")
+    type: Type
     transaction_time: datetime
     running_balance: Optional[int] = Field(
         default=None, description="Balance after this transaction"
     )
     description: Optional[str] = None
+
+    @classmethod
+    def from_internal(cls, t: UserTransaction) -> Self:
+        return cls(
+            transaction_key=t.transaction_key,
+            amount=t.amount,
+            type=t.transaction_type.value,
+            transaction_time=t.transaction_time,
+            running_balance=t.running_balance,
+            description=t.description,
+        )
 
 
 class CreditTransactionsResponse(PaginatedResponse):
@@ -396,6 +664,20 @@ class Credential(BaseModel):
         default=None, description="User-assigned title for this credential"
     )
     scopes: list[str] = Field(default_factory=list, description="Granted scopes")
+
+    @classmethod
+    def from_internal(cls, cred: Credentials) -> Self:
+        from backend.data.model import OAuth2Credentials
+
+        scopes: list[str] = []
+        if isinstance(cred, OAuth2Credentials):
+            scopes = cred.scopes or []
+        return cls(
+            id=cred.id,
+            provider=cred.provider,
+            title=cred.title,
+            scopes=scopes,
+        )
 
 
 class CredentialsListResponse(BaseModel):
@@ -456,6 +738,20 @@ class MarketplaceAgent(BaseModel):
     rating: float = Field(default=0.0, description="Average rating")
     image_url: str = Field(default="")
 
+    @classmethod
+    def from_internal(cls, agent: StoreAgent) -> Self:
+        return cls(
+            slug=agent.slug,
+            name=agent.agent_name,
+            description=agent.description,
+            sub_heading=agent.sub_heading,
+            creator=agent.creator,
+            creator_avatar=agent.creator_avatar,
+            runs=agent.runs,
+            rating=agent.rating,
+            image_url=agent.agent_image,
+        )
+
 
 class MarketplaceAgentDetails(BaseModel):
     """Detailed information about a marketplace agent."""
@@ -478,6 +774,28 @@ class MarketplaceAgentDetails(BaseModel):
     agent_graph_id: str
     last_updated: datetime
 
+    @classmethod
+    def from_internal(cls, agent: StoreAgentDetails) -> Self:
+        return cls(
+            store_listing_version_id=agent.store_listing_version_id,
+            slug=agent.slug,
+            name=agent.agent_name,
+            description=agent.description,
+            sub_heading=agent.sub_heading,
+            instructions=agent.instructions,
+            creator=agent.creator,
+            creator_avatar=agent.creator_avatar,
+            categories=agent.categories,
+            runs=agent.runs,
+            rating=agent.rating,
+            image_urls=agent.agent_image,
+            video_url=agent.agent_video,
+            versions=agent.versions,
+            agent_graph_versions=agent.agentGraphVersions,
+            agent_graph_id=agent.agentGraphId,
+            last_updated=agent.last_updated,
+        )
+
 
 class MarketplaceAgentsResponse(PaginatedResponse):
     """Response for listing marketplace agents."""
@@ -497,6 +815,19 @@ class MarketplaceCreator(BaseModel):
     agent_runs: int
     is_featured: bool = False
 
+    @classmethod
+    def from_internal(cls, creator: Creator) -> Self:
+        return cls(
+            name=creator.name,
+            username=creator.username,
+            description=creator.description,
+            avatar_url=creator.avatar_url,
+            num_agents=creator.num_agents,
+            agent_rating=creator.agent_rating,
+            agent_runs=creator.agent_runs,
+            is_featured=creator.is_featured,
+        )
+
 
 class MarketplaceCreatorDetails(BaseModel):
     """Detailed information about a marketplace creator."""
@@ -510,6 +841,19 @@ class MarketplaceCreatorDetails(BaseModel):
     top_categories: list[str] = Field(default_factory=list)
     links: list[str] = Field(default_factory=list)
 
+    @classmethod
+    def from_internal(cls, creator: CreatorDetails) -> Self:
+        return cls(
+            name=creator.name,
+            username=creator.username,
+            description=creator.description,
+            avatar_url=creator.avatar_url,
+            agent_rating=creator.agent_rating,
+            agent_runs=creator.agent_runs,
+            top_categories=creator.top_categories,
+            links=creator.links,
+        )
+
 
 class MarketplaceCreatorsResponse(PaginatedResponse):
     """Response for listing marketplace creators."""
@@ -520,6 +864,8 @@ class MarketplaceCreatorsResponse(PaginatedResponse):
 class MarketplaceSubmission(BaseModel):
     """A marketplace submission."""
 
+    Status = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"]
+
     graph_id: str
     graph_version: int
     name: str
@@ -529,7 +875,7 @@ class MarketplaceSubmission(BaseModel):
     instructions: Optional[str] = None
     image_urls: list[str] = Field(default_factory=list)
     date_submitted: datetime
-    status: str = Field(description="One of: DRAFT, PENDING, APPROVED, REJECTED")
+    status: Status
     runs: int = Field(default=0)
     rating: float = Field(default=0.0)
     store_listing_version_id: Optional[str] = None
@@ -538,6 +884,29 @@ class MarketplaceSubmission(BaseModel):
     reviewed_at: Optional[datetime] = None
     video_url: Optional[str] = None
     categories: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_internal(cls, sub: StoreSubmission) -> Self:
+        return cls(
+            graph_id=sub.agent_id,
+            graph_version=sub.agent_version,
+            name=sub.name,
+            sub_heading=sub.sub_heading,
+            slug=sub.slug,
+            description=sub.description,
+            instructions=sub.instructions,
+            image_urls=sub.image_urls,
+            date_submitted=sub.date_submitted,
+            status=sub.status.value,
+            runs=sub.runs,
+            rating=sub.rating,
+            store_listing_version_id=sub.store_listing_version_id,
+            version=sub.version,
+            review_comments=sub.review_comments,
+            reviewed_at=sub.reviewed_at,
+            video_url=sub.video_url,
+            categories=sub.categories,
+        )
 
 
 class CreateSubmissionRequest(BaseModel):

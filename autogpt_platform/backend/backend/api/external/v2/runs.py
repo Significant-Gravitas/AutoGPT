@@ -8,12 +8,9 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
+from pydantic import JsonValue
 
 from backend.api.external.middleware import require_permission
-from backend.api.features.executions.review.model import (
-    PendingHumanReviewModel,
-    SafeJsonData,
-)
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data.auth.base import APIAuthorizationInfo
@@ -33,72 +30,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 runs_router = APIRouter()
-
-
-# ============================================================================
-# Conversion Functions
-# ============================================================================
-
-
-def _convert_execution_to_run(exec: execution_db.GraphExecutionMeta) -> Run:
-    """Convert internal execution to v2 API Run model."""
-    return Run(
-        id=exec.id,
-        graph_id=exec.graph_id,
-        graph_version=exec.graph_version,
-        status=exec.status.value,
-        started_at=exec.started_at,
-        ended_at=exec.ended_at,
-        inputs=exec.inputs,
-        cost=exec.stats.cost if exec.stats else 0,
-        duration=exec.stats.duration if exec.stats else 0,
-        node_count=exec.stats.node_exec_count if exec.stats else 0,
-    )
-
-
-def _convert_execution_to_run_details(
-    exec: execution_db.GraphExecutionWithNodes,
-) -> RunDetails:
-    """Convert internal execution with nodes to v2 API RunDetails model."""
-    return RunDetails(
-        id=exec.id,
-        graph_id=exec.graph_id,
-        graph_version=exec.graph_version,
-        status=exec.status.value,
-        started_at=exec.started_at,
-        ended_at=exec.ended_at,
-        inputs=exec.inputs,
-        outputs=exec.outputs,
-        cost=exec.stats.cost if exec.stats else 0,
-        duration=exec.stats.duration if exec.stats else 0,
-        node_count=exec.stats.node_exec_count if exec.stats else 0,
-        node_executions=[
-            {
-                "node_id": node.node_id,
-                "status": node.status.value,
-                "input_data": node.input_data,
-                "output_data": node.output_data,
-                "started_at": node.start_time,
-                "ended_at": node.end_time,
-            }
-            for node in exec.node_executions
-        ],
-    )
-
-
-def _convert_pending_review(review: PendingHumanReviewModel) -> PendingReview:
-    """Convert internal PendingHumanReviewModel to v2 API PendingReview model."""
-    return PendingReview(
-        id=review.node_exec_id,
-        run_id=review.graph_exec_id,
-        graph_id=review.graph_id,
-        graph_version=review.graph_version,
-        payload=review.payload,
-        instructions=review.instructions,
-        editable=review.editable,
-        status=review.status.value,
-        created_at=review.created_at,
-    )
 
 
 # ============================================================================
@@ -135,7 +66,7 @@ async def list_runs(
     )
 
     return RunsListResponse(
-        runs=[_convert_execution_to_run(e) for e in result.executions],
+        runs=[Run.from_internal(e) for e in result.executions],
         total_count=result.pagination.total_items,
         page=result.pagination.current_page,
         page_size=result.pagination.page_size,
@@ -168,7 +99,7 @@ async def get_run(
     if not result:
         raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
 
-    return _convert_execution_to_run_details(result)
+    return RunDetails.from_internal(result)
 
 
 @runs_router.post(
@@ -209,7 +140,7 @@ async def stop_run(
     if not updated_exec:
         raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
 
-    return _convert_execution_to_run(updated_exec)
+    return Run.from_internal(updated_exec)
 
 
 @runs_router.delete(
@@ -274,7 +205,7 @@ async def list_pending_reviews(
     total_pages = max(1, (total_count + page_size - 1) // page_size)
 
     return PendingReviewsResponse(
-        reviews=[_convert_pending_review(r) for r in reviews],
+        reviews=[PendingReview.from_internal(r) for r in reviews],
         total_count=total_count,
         page=page,
         page_size=page_size,
@@ -301,7 +232,7 @@ async def list_run_reviews(
         user_id=auth.user_id,
     )
 
-    return [_convert_pending_review(r) for r in reviews]
+    return [PendingReview.from_internal(r) for r in reviews]
 
 
 @runs_router.post(
@@ -324,9 +255,7 @@ async def submit_reviews(
     execution at that point.
     """
     # Build review decisions dict for process_all_reviews_for_execution
-    review_decisions: dict[
-        str, tuple[ReviewStatus, SafeJsonData | None, str | None]
-    ] = {}
+    review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}
 
     for decision in request.reviews:
         status = ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED

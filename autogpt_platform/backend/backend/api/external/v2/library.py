@@ -11,7 +11,6 @@ from prisma.enums import APIKeyPermission
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
-from backend.api.features.library import model as library_model
 from backend.data import execution as execution_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
@@ -29,47 +28,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 library_router = APIRouter()
-
-
-# ============================================================================
-# Conversion Functions
-# ============================================================================
-
-
-def _convert_library_agent(agent: library_model.LibraryAgent) -> LibraryAgent:
-    """Convert internal LibraryAgent to v2 API model."""
-    return LibraryAgent(
-        id=agent.id,
-        graph_id=agent.graph_id,
-        graph_version=agent.graph_version,
-        name=agent.name,
-        description=agent.description,
-        is_favorite=agent.is_favorite,
-        can_access_graph=agent.can_access_graph,
-        is_latest_version=agent.is_latest_version,
-        image_url=agent.image_url,
-        creator_name=agent.creator_name,
-        input_schema=agent.input_schema,
-        output_schema=agent.output_schema,
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-    )
-
-
-def _convert_execution_to_run(exec: execution_db.GraphExecutionMeta) -> Run:
-    """Convert internal execution to v2 API Run model."""
-    return Run(
-        id=exec.id,
-        graph_id=exec.graph_id,
-        graph_version=exec.graph_version,
-        status=exec.status.value,
-        started_at=exec.started_at,
-        ended_at=exec.ended_at,
-        inputs=exec.inputs,
-        cost=exec.stats.cost if exec.stats else 0,
-        duration=exec.stats.duration if exec.stats else 0,
-        node_count=exec.stats.node_exec_count if exec.stats else 0,
-    )
 
 
 # ============================================================================
@@ -106,7 +64,7 @@ async def list_library_agents(
     )
 
     return LibraryAgentsResponse(
-        agents=[_convert_library_agent(a) for a in result.agents],
+        agents=[LibraryAgent.from_internal(a) for a in result.agents],
         total_count=result.pagination.total_items,
         page=result.pagination.current_page,
         page_size=result.pagination.page_size,
@@ -141,7 +99,7 @@ async def list_favorite_agents(
     )
 
     return LibraryAgentsResponse(
-        agents=[_convert_library_agent(a) for a in result.agents],
+        agents=[LibraryAgent.from_internal(a) for a in result.agents],
         total_count=result.pagination.total_items,
         page=result.pagination.current_page,
         page_size=result.pagination.page_size,
@@ -194,7 +152,7 @@ async def execute_agent(
             graph_credentials_inputs=request.credentials_inputs,
         )
 
-        return _convert_execution_to_run(result)
+        return Run.from_internal(result)
 
     except Exception as e:
         logger.error(f"Failed to execute agent: {e}")
@@ -239,7 +197,7 @@ async def list_agent_runs(
     )
 
     return RunsListResponse(
-        runs=[_convert_execution_to_run(e) for e in result.executions],
+        runs=[Run.from_internal(e) for e in result.executions],
         total_count=result.pagination.total_items,
         page=result.pagination.current_page,
         page_size=result.pagination.page_size,
