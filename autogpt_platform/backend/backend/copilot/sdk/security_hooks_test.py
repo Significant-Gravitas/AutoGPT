@@ -239,7 +239,7 @@ async def test_task_foreground_allowed(_hooks):
     pre, _, _ = _hooks
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "do stuff"}},
-        tool_use_id=None,
+        tool_use_id="tu-1",
         context={},
     )
     assert not _is_denied(result)
@@ -251,10 +251,10 @@ async def test_task_limit_enforced(_hooks):
     """Task spawns beyond max_subtasks should be denied."""
     pre, _, _ = _hooks
     # First two should pass
-    for _ in range(2):
+    for i in range(2):
         result = await pre(
             {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
-            tool_use_id=None,
+            tool_use_id=f"tu-limit-{i}",
             context={},
         )
         assert not _is_denied(result)
@@ -262,7 +262,7 @@ async def test_task_limit_enforced(_hooks):
     # Third should be denied (limit=2)
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "over limit"}},
-        tool_use_id=None,
+        tool_use_id="tu-limit-2",
         context={},
     )
     assert _is_denied(result)
@@ -275,10 +275,10 @@ async def test_task_slot_released_on_completion(_hooks):
     """Completing a Task should free a slot so new Tasks can be spawned."""
     pre, post, _ = _hooks
     # Fill both slots
-    for _ in range(2):
+    for i in range(2):
         result = await pre(
             {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
-            tool_use_id=None,
+            tool_use_id=f"tu-comp-{i}",
             context={},
         )
         assert not _is_denied(result)
@@ -286,22 +286,22 @@ async def test_task_slot_released_on_completion(_hooks):
     # Third should be denied — at capacity
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "over"}},
-        tool_use_id=None,
+        tool_use_id="tu-comp-2",
         context={},
     )
     assert _is_denied(result)
 
-    # Complete one task — frees a slot
+    # Complete first task — frees a slot
     await post(
         {"tool_name": "Task", "tool_input": {}},
-        tool_use_id=None,
+        tool_use_id="tu-comp-0",
         context={},
     )
 
     # Now a new Task should be allowed
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "after release"}},
-        tool_use_id=None,
+        tool_use_id="tu-comp-3",
         context={},
     )
     assert not _is_denied(result)
@@ -313,10 +313,10 @@ async def test_task_slot_released_on_failure(_hooks):
     """A failed Task should also free its concurrency slot."""
     pre, _, post_failure = _hooks
     # Fill both slots
-    for _ in range(2):
+    for i in range(2):
         result = await pre(
             {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
-            tool_use_id=None,
+            tool_use_id=f"tu-fail-{i}",
             context={},
         )
         assert not _is_denied(result)
@@ -324,22 +324,22 @@ async def test_task_slot_released_on_failure(_hooks):
     # At capacity
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "over"}},
-        tool_use_id=None,
+        tool_use_id="tu-fail-2",
         context={},
     )
     assert _is_denied(result)
 
-    # Fail one task — should free a slot
+    # Fail first task — should free a slot
     await post_failure(
         {"tool_name": "Task", "tool_input": {}, "error": "something broke"},
-        tool_use_id=None,
+        tool_use_id="tu-fail-0",
         context={},
     )
 
     # New Task should be allowed
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "after failure"}},
-        tool_use_id=None,
+        tool_use_id="tu-fail-3",
         context={},
     )
     assert not _is_denied(result)

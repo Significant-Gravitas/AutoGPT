@@ -172,8 +172,11 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
-        # Per-session counter for Task sub-agent spawns
+        # Per-session tracking for Task sub-agent concurrency.
+        # task_tool_use_ids records which tool_use_ids actually consumed a slot
+        # so post hooks only release slots for Tasks that were truly started.
         task_spawn_count = 0
+        task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -213,6 +216,8 @@ def create_security_hooks(
                         ),
                     )
                 task_spawn_count += 1
+                if tool_use_id:
+                    task_tool_use_ids.add(tool_use_id)
 
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
@@ -250,7 +255,8 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
 
             # Release a subtask slot when a Task completes (concurrency limit)
-            if tool_name == "Task" and task_spawn_count > 0:
+            if tool_name == "Task" and tool_use_id and tool_use_id in task_tool_use_ids:
+                task_tool_use_ids.discard(tool_use_id)
                 task_spawn_count -= 1
                 logger.info(
                     "[SDK] Task completed, active=%d/%d, user=%s",
@@ -303,7 +309,8 @@ def create_security_hooks(
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
 
-            if tool_name == "Task" and task_spawn_count > 0:
+            if tool_name == "Task" and tool_use_id and tool_use_id in task_tool_use_ids:
+                task_tool_use_ids.discard(tool_use_id)
                 task_spawn_count -= 1
                 logger.info(
                     "[SDK] Failed Task released slot, active=%d/%d, user=%s",
