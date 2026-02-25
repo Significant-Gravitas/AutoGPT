@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 
 import { Message, MessageContent, MessageResponse } from "./message";
 
@@ -13,21 +13,27 @@ const meta: Meta<typeof Message> = {
 export default meta;
 type Story = StoryObj<typeof Message>;
 
-const AssistantMessage = ({ children }: { children: string }) => (
-  <Message from="assistant">
-    <MessageContent>
-      <MessageResponse>{children}</MessageResponse>
-    </MessageContent>
-  </Message>
-);
+type MessageStoryProps = { children: string };
 
-const UserMessage = ({ children }: { children: string }) => (
-  <Message from="user">
-    <MessageContent>
-      <MessageResponse>{children}</MessageResponse>
-    </MessageContent>
-  </Message>
-);
+function AssistantMessage({ children }: MessageStoryProps) {
+  return (
+    <Message from="assistant">
+      <MessageContent>
+        <MessageResponse>{children}</MessageResponse>
+      </MessageContent>
+    </Message>
+  );
+}
+
+function UserMessage({ children }: MessageStoryProps) {
+  return (
+    <Message from="user">
+      <MessageContent>
+        <MessageResponse>{children}</MessageResponse>
+      </MessageContent>
+    </Message>
+  );
+}
 
 export const Default: Story = {
   render: () => (
@@ -69,7 +75,7 @@ export const WithLinks: Story = {
 };
 
 export const LinkSafetyModal: Story = {
-  name: "Link Safety Modal",
+  name: "LinkSafetyModal",
   render: () => (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">

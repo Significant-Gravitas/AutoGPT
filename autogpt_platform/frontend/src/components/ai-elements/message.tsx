@@ -303,6 +303,15 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+function isSameOriginLink(url: string): boolean {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return parsed.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -313,14 +322,7 @@ export const MessageResponse = memo(
       plugins={{ code, mermaid, math, cjk }}
       linkSafety={{
         enabled: true,
-        onLinkCheck: (url: string) => {
-          try {
-            const parsed = new URL(url, window.location.origin);
-            return parsed.origin === window.location.origin;
-          } catch {
-            return false;
-          }
-        },
+        onLinkCheck: isSameOriginLink,
       }}
       {...props}
     />
