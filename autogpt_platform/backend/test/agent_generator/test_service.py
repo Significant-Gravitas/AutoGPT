@@ -216,6 +216,68 @@ class TestSubmitAndPoll:
         assert result["error_type"] == "job_not_found"
 
     @pytest.mark.asyncio
+    async def test_poll_retries_on_transient_http_status(self):
+        """Test that transient HTTP status codes (429, 503, etc.) are retried."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-transient"}
+        submit_resp.raise_for_status = MagicMock()
+
+        mock_429_response = MagicMock()
+        mock_429_response.status_code = 429
+
+        ok_poll_resp = MagicMock()
+        ok_poll_resp.json.return_value = {
+            "job_id": "job-transient",
+            "status": "completed",
+            "result": {"data": "recovered"},
+        }
+        ok_poll_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.side_effect = [
+            httpx.HTTPStatusError(
+                "Too Many Requests", request=MagicMock(), response=mock_429_response
+            ),
+            ok_poll_resp,
+        ]
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result == {"data": "recovered"}
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_poll_does_not_retry_non_transient_http_status(self):
+        """Test that non-transient HTTP status codes (e.g. 500) fail immediately."""
+        submit_resp = MagicMock()
+        submit_resp.json.return_value = {"job_id": "job-500"}
+        submit_resp.raise_for_status = MagicMock()
+
+        mock_500_response = MagicMock()
+        mock_500_response.status_code = 500
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = submit_resp
+        mock_client.get.side_effect = httpx.HTTPStatusError(
+            "Internal Server Error", request=MagicMock(), response=mock_500_response
+        )
+
+        with (
+            patch.object(service, "_get_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await service._submit_and_poll("/api/test", {})
+
+        assert result["type"] == "error"
+        assert result["error_type"] == "http_error"
+        assert mock_client.get.call_count == 1
+
+    @pytest.mark.asyncio
     async def test_poll_timeout(self):
         """Test that polling times out after MAX_POLL_TIME_SECONDS."""
         submit_resp = MagicMock()
@@ -456,6 +518,22 @@ class TestGenerateAgentExternal:
         assert result is not None
         assert result.get("type") == "error"
         assert result.get("error_type") == "connection_error"
+
+    @pytest.mark.asyncio
+    async def test_generate_agent_missing_agent_json(self):
+        """Test that missing agent_json in result returns an error."""
+        with (
+            patch.object(service, "_is_dummy_mode", return_value=False),
+            patch.object(
+                service, "_submit_and_poll", new_callable=AsyncMock
+            ) as mock_poll,
+        ):
+            mock_poll.return_value = {"success": True}
+            result = await service.generate_agent_external({"steps": ["Step 1"]})
+
+        assert result is not None
+        assert result.get("type") == "error"
+        assert result.get("error_type") == "invalid_response"
 
 
 class TestGenerateAgentPatchExternal:

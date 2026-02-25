@@ -191,6 +191,21 @@ async def _submit_and_poll(
                 return _create_error_response(
                     "Agent Generator job not found or expired", "job_not_found"
                 )
+            status_code = e.response.status_code
+            if status_code in {429, 503, 504, 408}:
+                consecutive_errors += 1
+                logger.warning(
+                    f"Transient HTTP {status_code} polling job {job_id} "
+                    f"({consecutive_errors}/{MAX_CONSECUTIVE_POLL_ERRORS}): {e}"
+                )
+                if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
+                    error_type, error_msg = _classify_http_error(e)
+                    logger.error(
+                        f"Giving up on job {job_id} after "
+                        f"{MAX_CONSECUTIVE_POLL_ERRORS} consecutive poll errors: {error_msg}"
+                    )
+                    return _create_error_response(error_msg, error_type)
+                continue
             error_type, error_msg = _classify_http_error(e)
             logger.error(f"Poll error for job {job_id}: {error_msg}")
             return _create_error_response(error_msg, error_type)
@@ -321,7 +336,12 @@ async def generate_agent_external(
         return result
 
     # The job result contains {"agent_json": {...}, "success": True, ...}
-    return result.get("agent_json")
+    agent_json = result.get("agent_json")
+    if not isinstance(agent_json, dict):
+        return _create_error_response(
+            "Agent Generator returned no agent_json in result", "invalid_response"
+        )
+    return agent_json
 
 
 async def generate_agent_patch_external(
@@ -362,7 +382,12 @@ async def generate_agent_patch_external(
             "questions": result.get("questions", []),
         }
 
-    return result.get("agent_json")
+    agent_json = result.get("agent_json")
+    if not isinstance(agent_json, dict):
+        return _create_error_response(
+            "Agent Generator returned no agent_json in result", "invalid_response"
+        )
+    return agent_json
 
 
 async def customize_template_external(
@@ -407,7 +432,12 @@ async def customize_template_external(
             "questions": result.get("questions", []),
         }
 
-    return result.get("agent_json")
+    agent_json = result.get("agent_json")
+    if not isinstance(agent_json, dict):
+        return _create_error_response(
+            "Agent Generator returned no agent_json in result", "invalid_response"
+        )
+    return agent_json
 
 
 # ---------------------------------------------------------------------------
