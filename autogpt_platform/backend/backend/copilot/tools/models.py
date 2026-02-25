@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,8 +36,6 @@ class ResponseType(str, Enum):
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
     # Long-running operation types
-    OPERATION_STARTED = "operation_started"
-    OPERATION_PENDING = "operation_pending"
     OPERATION_IN_PROGRESS = "operation_in_progress"
     # Input validation
     INPUT_VALIDATION_ERROR = "input_validation_error"
@@ -45,11 +43,11 @@ class ResponseType(str, Enum):
     WEB_FETCH = "web_fetch"
     # Code execution
     BASH_EXEC = "bash_exec"
-    # Operation status check
-    OPERATION_STATUS = "operation_status"
     # Feature request types
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
+    # Goal refinement
+    SUGGESTED_GOAL = "suggested_goal"
 
 
 # Base response model
@@ -296,6 +294,22 @@ class ClarificationNeededResponse(ToolResponseBase):
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
 
 
+class SuggestedGoalResponse(ToolResponseBase):
+    """Response when the goal needs refinement with a suggested alternative."""
+
+    type: ResponseType = ResponseType.SUGGESTED_GOAL
+    suggested_goal: str = Field(description="The suggested alternative goal")
+    reason: str = Field(
+        default="", description="Why the original goal needs refinement"
+    )
+    original_goal: str = Field(
+        default="", description="The user's original goal for context"
+    )
+    goal_type: Literal["vague", "unachievable"] = Field(
+        default="vague", description="Type: 'vague' or 'unachievable'"
+    )
+
+
 # Documentation search models
 class DocSearchResult(BaseModel):
     """A single documentation search result."""
@@ -402,34 +416,6 @@ class BlockOutputResponse(ToolResponseBase):
 
 
 # Long-running operation models
-class OperationStartedResponse(ToolResponseBase):
-    """Response when a long-running operation has been started in the background.
-
-    This is returned immediately to the client while the operation continues
-    to execute. The user can close the tab and check back later.
-
-    The task_id can be used to reconnect to the SSE stream via
-    GET /chat/tasks/{task_id}/stream?last_idx=0
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    operation_id: str
-    tool_name: str
-    task_id: str | None = None  # For SSE reconnection
-
-
-class OperationPendingResponse(ToolResponseBase):
-    """Response stored in chat history while a long-running operation is executing.
-
-    This is persisted to the database so users see a pending state when they
-    refresh before the operation completes.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_PENDING
-    operation_id: str
-    tool_name: str
-
-
 class OperationInProgressResponse(ToolResponseBase):
     """Response when an operation is already in progress.
 
@@ -439,23 +425,6 @@ class OperationInProgressResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
     tool_call_id: str
-
-
-class AsyncProcessingResponse(ToolResponseBase):
-    """Response when an operation has been delegated to async processing.
-
-    This is returned by tools when the external service accepts the request
-    for async processing (HTTP 202 Accepted). The Redis Streams completion
-    consumer will handle the result when the external service completes.
-
-    The status field is specifically "accepted" to allow the long-running tool
-    handler to detect this response and skip LLM continuation.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    status: str = "accepted"  # Must be "accepted" for detection
-    operation_id: str | None = None
-    task_id: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

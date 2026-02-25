@@ -1,20 +1,27 @@
 "use client";
 
-import { WarningDiamondIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  BookOpenIcon,
+  PencilSimpleIcon,
+  WarningDiamondIcon,
+} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import Image from "next/image";
+import NextLink from "next/link";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import sparklesImg from "../../components/MiniGame/assets/sparkles.png";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
-  ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
 import {
   ClarificationQuestionsCard,
   ClarifyingQuestion,
@@ -28,9 +35,6 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -48,7 +52,7 @@ interface Props {
   part: EditAgentToolPart;
 }
 
-function getAccordionMeta(output: EditAgentToolOutput): {
+function getAccordionMeta(output: EditAgentToolOutput | null): {
   icon: React.ReactNode;
   title: string;
   titleClassName?: string;
@@ -57,8 +61,16 @@ function getAccordionMeta(output: EditAgentToolOutput): {
 } {
   const icon = <AccordionIcon />;
 
+  if (!output) {
+    return {
+      icon,
+      title: "Editing agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
+  }
+
   if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name };
+    return { icon, title: output.agent_name, expanded: true };
   }
   if (isAgentPreviewOutput(output)) {
     return {
@@ -73,17 +85,6 @@ function getAccordionMeta(output: EditAgentToolOutput): {
       icon,
       title: "Needs clarification",
       description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
-    };
-  }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
-    return {
-      icon: <OrbitLoader size={32} />,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
     };
   }
   return {
@@ -104,21 +105,12 @@ export function EditAgentTool({ part }: Props) {
   const output = getEditAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
-  const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isErrorOutput(output));
+
+  const isOperating = !output;
+
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =
@@ -140,15 +132,57 @@ export function EditAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
+      {isOperating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming={isStreaming} isError={isError} />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
 
-      {hasExpandableContent && output && (
+      {isError && output && isErrorOutput(output) && (
+        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <WarningDiamondIcon
+              size={20}
+              weight="regular"
+              className="mt-0.5 shrink-0 text-red-500"
+            />
+            <div className="flex-1 space-y-2">
+              <Text variant="body-medium" className="text-red-900">
+                {output.message ||
+                  "Failed to edit the agent. Please try again."}
+              </Text>
+              {output.error && (
+                <details className="text-xs text-red-700">
+                  <summary className="cursor-pointer font-medium">
+                    Technical details
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                    {formatMaybeJson(output.error)}
+                  </pre>
+                </details>
+              )}
+              {output.details && (
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
+                  {formatMaybeJson(output.details)}
+                </pre>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="small"
+            onClick={() => onSend("Please try editing the agent again.")}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {hasExpandableContent && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -159,27 +193,53 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentSavedOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <div className="flex flex-wrap gap-2">
-                <ContentLink href={output.library_agent_link}>
-                  Open in library
-                </ContentLink>
-                <ContentLink href={output.agent_page_link}>
-                  Open in builder
-                </ContentLink>
+          {output && isAgentSavedOutput(output) && (
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+              <div className="flex items-baseline gap-2">
+                <Image
+                  src={sparklesImg}
+                  alt="sparkles"
+                  width={24}
+                  height={24}
+                  className="relative top-1"
+                />
+                <Text
+                  variant="body-medium"
+                  className="mb-2 text-[16px] text-black"
+                >
+                  Agent{" "}
+                  <span className="text-violet-600">{output.agent_name}</span>{" "}
+                  has been updated!
+                </Text>
               </div>
-              <ContentCodeBlock>
-                {truncateText(
-                  formatMaybeJson({ agent_id: output.agent_id }),
-                  800,
-                )}
-              </ContentCodeBlock>
-            </ContentGrid>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <Button variant="outline" size="small">
+                  <NextLink
+                    href={output.library_agent_link}
+                    className="inline-flex items-center gap-1.5"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <BookOpenIcon size={14} weight="regular" />
+                    Open in library
+                  </NextLink>
+                </Button>
+                <Button variant="outline" size="small">
+                  <NextLink
+                    href={output.agent_page_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <PencilSimpleIcon size={14} weight="regular" />
+                    Open in builder
+                  </NextLink>
+                </Button>
+              </div>
+            </div>
           )}
 
-          {isAgentPreviewOutput(output) && (
+          {output && isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -193,7 +253,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isClarificationNeededOutput(output) && (
+          {output && isClarificationNeededOutput(output) && (
             <ClarificationQuestionsCard
               questions={(output.questions ?? []).map((q) => {
                 const item: ClarifyingQuestion = {
@@ -210,22 +270,6 @@ export function EditAgentTool({ part }: Props) {
               message={output.message}
               onSubmitAnswers={handleClarificationAnswers}
             />
-          )}
-
-          {isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
-                </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-            </ContentGrid>
           )}
         </ToolAccordion>
       )}
