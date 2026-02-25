@@ -119,5 +119,6 @@ export function useChatSession() {
     isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,
+    refetchSession: sessionQuery.refetch,
   };
 }

@@ -16,6 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
+const RECONNECT_MAX_ATTEMPTS = 3;
+const RECONNECT_BASE_DELAY_MS = 1_000;
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -94,6 +96,7 @@ export function useCopilotPage() {
     isSessionError,
     createSession,
     isCreatingSession,
+    refetchSession,
   } = useChatSession();
 
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -239,23 +242,42 @@ export function useCopilotPage() {
   // Format: Map<sessionId, hasResumed>
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // When the stream ends (or drops), invalidate the session cache so the
-  // next hydration fetches fresh messages from the backend.  Without this,
-  // staleTime: Infinity means the cache keeps the pre-stream data forever,
-  // and any messages added during streaming are lost on remount/navigation.
+  // Track reconnect attempts per session to cap retries
+  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
+
+  // When the stream ends (or drops), invalidate the session cache and
+  // attempt auto-reconnect on unexpected disconnects.
   const prevStatusRef = useRef(status);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
-    if (wasActive && isIdle && sessionId) {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sessionId),
-      });
+    if (!wasActive || !isIdle || !sessionId) return;
+
+    queryClient.invalidateQueries({
+      queryKey: getGetV2GetSessionQueryKey(sessionId),
+    });
+
+    if (status === "ready") {
+      reconnectAttemptsRef.current.delete(sessionId);
+      return;
     }
-  }, [status, sessionId, queryClient]);
+
+    // status === "error": unexpected disconnect — retry with backoff
+    const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
+    if (attempts >= RECONNECT_MAX_ATTEMPTS) return;
+
+    reconnectAttemptsRef.current.set(sessionId, attempts + 1);
+    hasResumedRef.current.delete(sessionId);
+
+    const delay = RECONNECT_BASE_DELAY_MS * 2 ** attempts;
+    reconnectTimerRef.current = setTimeout(() => refetchSession(), delay);
+
+    return () => clearTimeout(reconnectTimerRef.current);
+  }, [status, sessionId, queryClient, refetchSession]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
