@@ -1,6 +1,5 @@
 "use client";
 
-import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
@@ -14,10 +13,7 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import {
-  ClarificationQuestionsCard,
-  normalizeClarifyingQuestions,
-} from "./components/ClarificationQuestionsCard";
+import { ClarificationQuestionsCard } from "./components/ClarificationQuestionsCard";
 import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
@@ -32,6 +28,7 @@ import {
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
+  normalizeClarifyingQuestions,
   type CreateAgentToolOutput,
 } from "./helpers";
 
@@ -59,9 +56,6 @@ function getAccordionMeta(output: CreateAgentToolOutput | null) {
     };
   }
 
-  if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name, expanded: true };
-  }
   if (isAgentPreviewOutput(output)) {
     return {
       icon,
@@ -85,13 +79,7 @@ function getAccordionMeta(output: CreateAgentToolOutput | null) {
       expanded: true,
     };
   }
-  return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
-    title: "Error",
-    titleClassName: "text-red-500",
-  };
+  return { icon, title: "" };
 }
 
 export function CreateAgentTool({ part }: Props) {

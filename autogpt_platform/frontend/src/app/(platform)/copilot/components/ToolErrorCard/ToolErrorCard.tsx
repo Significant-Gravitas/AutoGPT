@@ -53,9 +53,9 @@ export function ToolErrorCard({
         </div>
       </div>
       <div className="flex gap-2 pt-3">
-        {actions.map((action) => (
+        {actions.map((action, i) => (
           <Button
-            key={action.label}
+            key={i}
             variant={action.variant ?? "outline"}
             size="small"
             onClick={action.onClick}
