@@ -27,13 +27,11 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
-from backend.data.db_accessors import chat_db, understanding_db
-from backend.data.redis_client import get_redis_async
+from backend.data.db_accessors import understanding_db
 from backend.data.understanding import format_understanding_for_prompt
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
-from . import stream_registry
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -42,7 +40,6 @@ from .model import (
     Usage,
     cache_chat_session,
     get_chat_session,
-    invalidate_session_cache,
     update_session_title,
     upsert_chat_session,
 )
@@ -62,16 +59,14 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, get_tool, tools
-from .tools.models import (
-    ErrorResponse,
-    OperationInProgressResponse,
-    OperationPendingResponse,
-    OperationStartedResponse,
-)
+from .tools import execute_tool, tools
+from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
+
+# Set to hold background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 config = ChatConfig()
 settings = Settings()
@@ -79,10 +74,6 @@ client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
 langfuse = get_client()
-
-# Redis key prefix for tracking running long-running operations
-# Used for idempotency across Kubernetes pods - prevents duplicate executions on browser refresh
-RUNNING_OPERATION_PREFIX = "chat:running_operation:"
 
 # Default system prompt used when Langfuse is not configured
 # This is a snapshot of the "CoPilot Prompt" from Langfuse (version 11)
@@ -118,6 +109,8 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
    - Find reusable components with `find_block`
    - Create custom solutions with `create_agent` if nothing suitable exists
    - Modify existing library agents with `edit_agent`
+   - **When `create_agent` returns `suggested_goal`**: Present the suggestion to the user and ask "Would you like me to proceed with this refined goal?" If they accept, call `create_agent` again with the suggested goal.
+   - **When `create_agent` returns `clarifying_questions`**: After the user answers, call `create_agent` again with the original description AND the answers in the `context` parameter.
 
 5. **Execute**: Run automations immediately, schedule them, or set up webhooks using `run_agent`. Test specific components with `run_block`.
 
@@ -164,42 +157,14 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - Use `add_understanding` to capture valuable business context
 - When tool calls fail, try alternative approaches
 
+**Handle Feedback Loops:**
+- When a tool returns a suggested alternative (like a refined goal), present it clearly and ask the user for confirmation before proceeding
+- When clarifying questions are answered, immediately re-call the tool with the accumulated context
+- Don't ask redundant questions if the user has already provided context in the conversation
+
 ## CRITICAL REMINDER
 
 You are NOT a chatbot. You are NOT documentation. You are a partner who helps busy business owners get value quickly by showing proof through working automations. Bias toward action over explanation."""
-
-# Module-level set to hold strong references to background tasks.
-# This prevents asyncio from garbage collecting tasks before they complete.
-# Tasks are automatically removed on completion via done_callback.
-_background_tasks: set[asyncio.Task] = set()
-
-
-async def _mark_operation_started(tool_call_id: str) -> bool:
-    """Mark a long-running operation as started (Redis-based).
-
-    Returns True if successfully marked (operation was not already running),
-    False if operation was already running (lost race condition).
-    Raises exception if Redis is unavailable (fail-closed).
-    """
-    redis = await get_redis_async()
-    key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
-    # SETNX with TTL - atomic "set if not exists"
-    result = await redis.set(key, "1", ex=config.long_running_operation_ttl, nx=True)
-    return result is not None
-
-
-async def _mark_operation_completed(tool_call_id: str) -> None:
-    """Mark a long-running operation as completed (remove Redis key).
-
-    This is best-effort - if Redis fails, the TTL will eventually clean up.
-    """
-    try:
-        redis = await get_redis_async()
-        key = f"{RUNNING_OPERATION_PREFIX}{tool_call_id}"
-        await redis.delete(key)
-    except Exception as e:
-        # Non-critical: TTL will clean up eventually
-        logger.warning(f"Failed to delete running operation key {tool_call_id}: {e}")
 
 
 def _is_langfuse_configured() -> bool:
@@ -345,7 +310,8 @@ async def assign_user_to_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
     session.user_id = user_id
-    return await upsert_chat_session(session)
+    session = await upsert_chat_session(session)
+    return session
 
 
 async def stream_chat_completion(
@@ -360,7 +326,6 @@ async def stream_chat_completion(
     _continuation_message_id: (
         str | None
     ) = None,  # Internal: reuse message ID for tool call continuations
-    _task_id: str | None = None,  # Internal: task ID for SSE reconnection support
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -436,24 +401,20 @@ async def stream_chat_completion(
         )
     ):
         session.messages.append(ChatMessage(role=new_message_role, content=message))
-        logger.info(
-            f"Appended message (role={'user' if is_user_message else 'assistant'}), "
-            f"new message_count={len(session.messages)}"
-        )
 
-        # Track user message in PostHog
-        if is_user_message:
-            posthog_start = time.monotonic()
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(message),
-            )
-            posthog_time = (time.monotonic() - posthog_start) * 1000
-            logger.info(
-                f"[TIMING] track_user_message took {posthog_time:.1f}ms",
-                extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
-            )
+    # Track user message in PostHog
+    if is_user_message and message:
+        posthog_start = time.monotonic()
+        track_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            message_length=len(message),
+        )
+        posthog_time = (time.monotonic() - posthog_start) * 1000
+        logger.info(
+            f"[TIMING] track_user_message took {posthog_time:.1f}ms",
+            extra={"json_fields": {**log_meta, "duration_ms": posthog_time}},
+        )
 
     upsert_start = time.monotonic()
     session = await upsert_chat_session(session)
@@ -471,8 +432,6 @@ async def stream_chat_completion(
     if is_user_message and first_user_msg and not session.title:
         if len(user_messages) == 1:
             # First user message - generate title in background
-            import asyncio
-
             # Capture only the values we need (not the session object) to avoid
             # stale data issues when the main flow modifies the session
             captured_session_id = session_id
@@ -497,7 +456,9 @@ async def stream_chat_completion(
                     logger.warning(f"Failed to update session title: {e}")
 
             # Fire and forget - don't block the chat response
-            asyncio.create_task(_update_title())
+            task = asyncio.create_task(_update_title())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
     # Build system prompt with business understanding
     prompt_start = time.monotonic()
@@ -522,7 +483,6 @@ async def stream_chat_completion(
     has_yielded_end = False
     has_yielded_error = False
     has_done_tool_call = False
-    has_long_running_tool_call = False  # Track if we had a long-running tool call
     has_received_text = False
     text_streaming_ended = False
     tool_response_messages: list[ChatMessage] = []
@@ -542,7 +502,7 @@ async def stream_chat_completion(
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
     if not is_continuation:
-        yield StreamStart(messageId=message_id, taskId=_task_id)
+        yield StreamStart(messageId=message_id, sessionId=session.session_id)
 
     # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)
     yield StreamStartStep()
@@ -615,34 +575,13 @@ async def stream_chat_completion(
                     if isinstance(chunk.output, str)
                     else orjson.dumps(chunk.output).decode("utf-8")
                 )
-                # Skip saving long-running operation responses - messages already saved in _yield_tool_call
-                # Use JSON parsing instead of substring matching to avoid false positives
-                is_long_running_response = False
-                try:
-                    parsed = orjson.loads(result_content)
-                    if isinstance(parsed, dict) and parsed.get("type") in (
-                        "operation_started",
-                        "operation_in_progress",
-                    ):
-                        is_long_running_response = True
-                except (orjson.JSONDecodeError, TypeError):
-                    pass  # Not JSON or not a dict - treat as regular response
-                if is_long_running_response:
-                    # Remove from accumulated_tool_calls since assistant message was already saved
-                    accumulated_tool_calls[:] = [
-                        tc
-                        for tc in accumulated_tool_calls
-                        if tc["id"] != chunk.toolCallId
-                    ]
-                    has_long_running_tool_call = True
-                else:
-                    tool_response_messages.append(
-                        ChatMessage(
-                            role="tool",
-                            content=result_content,
-                            tool_call_id=chunk.toolCallId,
-                        )
+                tool_response_messages.append(
+                    ChatMessage(
+                        role="tool",
+                        content=result_content,
+                        tool_call_id=chunk.toolCallId,
                     )
+                )
                 has_done_tool_call = True
                 # Track if any tool execution failed
                 if not chunk.success:
@@ -686,9 +625,9 @@ async def stream_chat_completion(
                             has_saved_assistant_message = True
 
                     has_yielded_end = True
-                    # Emit finish-step before finish (resets AI SDK text/reasoning state)
+                    # Emit finish-step (resets AI SDK text/reasoning state).
+                    # StreamFinish is published by mark_session_completed.
                     yield StreamFinishStep()
-                    yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
                 yield chunk
@@ -777,7 +716,6 @@ async def stream_chat_completion(
                 yield error_response
             if not has_yielded_end:
                 yield StreamFinishStep()
-                yield StreamFinish()
             return
 
     # Handle retry outside of exception handler to avoid nesting
@@ -792,7 +730,6 @@ async def stream_chat_completion(
             session=session,
             context=context,
             _continuation_message_id=message_id,  # Reuse message ID since start was already sent
-            _task_id=_task_id,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -838,14 +775,7 @@ async def stream_chat_completion(
             logger.info(
                 f"Extended session messages, new message_count={len(session.messages)}"
             )
-        # Save if there are regular (non-long-running) tool responses or streaming message.
-        # Long-running tools save their own state, but we still need to save regular tools
-        # that may be in the same response.
-        has_regular_tool_responses = len(tool_response_messages) > 0
-        if has_regular_tool_responses or (
-            not has_long_running_tool_call
-            and (messages_to_save or has_appended_streaming_message)
-        ):
+        if messages_to_save or has_appended_streaming_message:
             await upsert_chat_session(session)
     else:
         logger.info(
@@ -854,9 +784,7 @@ async def stream_chat_completion(
         )
 
     # If we did a tool call, stream the chat completion again to get the next response
-    # Skip only if ALL tools were long-running (they handle their own completion)
-    has_regular_tools = len(tool_response_messages) > 0
-    if has_done_tool_call and (has_regular_tools or not has_long_running_tool_call):
+    if has_done_tool_call:
         logger.info(
             "Tool call executed, streaming chat completion again to get assistant response"
         )
@@ -867,7 +795,6 @@ async def stream_chat_completion(
             context=context,
             tool_call_response=str(tool_response_messages),
             _continuation_message_id=message_id,  # Reuse message ID to avoid duplicates
-            _task_id=_task_id,
         ):
             yield chunk
 
@@ -1033,7 +960,6 @@ async def _stream_chat_chunks(
                     "Please start a new conversation."
                 )
             )
-            yield StreamFinish()
             return
 
     messages = context_result.messages
@@ -1225,23 +1151,10 @@ async def _stream_chat_chunks(
                     },
                 )
 
-                # Yield all accumulated tool calls after the stream is complete
-                # This ensures all tool call arguments have been fully received
-                for idx, tool_call in enumerate(tool_calls):
-                    try:
-                        async for tc in _yield_tool_call(tool_calls, idx, session):
-                            yield tc
-                    except (orjson.JSONDecodeError, KeyError, TypeError) as e:
-                        logger.error(
-                            f"Failed to parse tool call {idx}: {e}",
-                            exc_info=True,
-                            extra={"tool_call": tool_call},
-                        )
-                        yield StreamError(
-                            errorText=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
-                        )
-                        # Re-raise to trigger retry logic in the parent function
-                        raise
+                # Execute all accumulated tool calls in parallel
+                # Events are yielded as they arrive from each concurrent tool
+                async for event in _execute_tool_calls_parallel(tool_calls, session):
+                    yield event
 
                 total_time = (time_module.perf_counter() - stream_chunks_start) * 1000
                 logger.info(
@@ -1249,7 +1162,6 @@ async def _stream_chat_chunks(
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )
-                yield StreamFinish()
                 return
             except Exception as e:
                 last_error = e
@@ -1301,7 +1213,6 @@ async def _stream_chat_chunks(
                         code=error_code,
                     )
                     yield error_response
-                    yield StreamFinish()
                     return
 
         # If we exit the retry loop without returning, it means we exhausted retries
@@ -1315,8 +1226,73 @@ async def _stream_chat_chunks(
                 retry_count=MAX_RETRIES,
             )
             yield StreamError(errorText=f"Max retries exceeded: {last_error!s}")
-            yield StreamFinish()
             return
+
+
+async def _execute_tool_calls_parallel(
+    tool_calls: list[dict[str, Any]],
+    session: ChatSession,
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Execute all tool calls concurrently, yielding stream events as they arrive.
+
+    Each tool runs as an ``asyncio.Task``, pushing events into a shared queue.
+    """
+    queue: asyncio.Queue[StreamBaseResponse | None] = asyncio.Queue()
+    n_tools = len(tool_calls)
+    retryable_errors: list[Exception] = []
+
+    async def _run_tool(idx: int) -> None:
+        tool_name = tool_calls[idx].get("function", {}).get("name", "unknown")
+        tool_call_id = tool_calls[idx].get("id", f"unknown_{idx}")
+        try:
+            async for event in _yield_tool_call(tool_calls, idx, session):
+                await queue.put(event)
+        except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+            logger.error(
+                f"Failed to parse tool call {idx} ({tool_name}): {e}",
+                exc_info=True,
+            )
+            retryable_errors.append(e)
+        except Exception as e:
+            # Infrastructure / setup errors — emit an error output so the
+            # client always sees a terminal event and doesn't hang.
+            logger.error(f"Tool call {idx} ({tool_name}) failed: {e}", exc_info=True)
+            await queue.put(
+                StreamToolOutputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    output=ErrorResponse(
+                        message=f"Tool execution failed: {e!s}",
+                        error=type(e).__name__,
+                        session_id=session.session_id,
+                    ).model_dump_json(),
+                    success=False,
+                )
+            )
+        finally:
+            await queue.put(None)  # sentinel
+
+    tasks = [asyncio.create_task(_run_tool(idx)) for idx in range(n_tools)]
+    try:
+        finished = 0
+        while finished < n_tools:
+            event = await queue.get()
+            if event is None:
+                finished += 1
+            else:
+                yield event
+        if retryable_errors:
+            if len(retryable_errors) > 1:
+                logger.warning(
+                    f"{len(retryable_errors)} tool calls had retryable errors; "
+                    f"re-raising first to trigger retry"
+                )
+            raise retryable_errors[0]
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _yield_tool_call(
@@ -1327,17 +1303,14 @@ async def _yield_tool_call(
     """
     Yield a tool call and its execution result.
 
-    For tools marked with `is_long_running=True` (like agent generation), spawns a
-    background task so the operation survives SSE disconnections. For other tools,
-    yields heartbeat events every 15 seconds to keep the SSE connection alive.
+    Yields heartbeat events every 10 seconds to keep the SSE connection alive
+    while the tool executes.
 
     Raises:
         orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
-    import uuid as uuid_module
-
     tool_name = tool_calls[yield_idx]["function"]["name"]
     tool_call_id = tool_calls[yield_idx]["id"]
 
@@ -1354,168 +1327,7 @@ async def _yield_tool_call(
         input=arguments,
     )
 
-    # Check if this tool is long-running (survives SSE disconnection)
-    tool = get_tool(tool_name)
-    if tool and tool.is_long_running:
-        # Atomic check-and-set: returns False if operation already running (lost race)
-        if not await _mark_operation_started(tool_call_id):
-            logger.info(
-                f"Tool call {tool_call_id} already in progress, returning status"
-            )
-            # Build dynamic message based on tool name
-            if tool_name == "create_agent":
-                in_progress_msg = "Agent creation already in progress. Please wait..."
-            elif tool_name == "edit_agent":
-                in_progress_msg = "Agent edit already in progress. Please wait..."
-            else:
-                in_progress_msg = f"{tool_name} already in progress. Please wait..."
-
-            yield StreamToolOutputAvailable(
-                toolCallId=tool_call_id,
-                toolName=tool_name,
-                output=OperationInProgressResponse(
-                    message=in_progress_msg,
-                    tool_call_id=tool_call_id,
-                ).model_dump_json(),
-                success=True,
-            )
-            return
-
-        # Generate operation ID and task ID
-        operation_id = str(uuid_module.uuid4())
-        task_id = str(uuid_module.uuid4())
-
-        # Build a user-friendly message based on tool and arguments
-        if tool_name == "create_agent":
-            agent_desc = arguments.get("description", "")
-            # Truncate long descriptions for the message
-            desc_preview = (
-                (agent_desc[:100] + "...") if len(agent_desc) > 100 else agent_desc
-            )
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = arguments.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
-
-        # Track appended messages for rollback on failure
-        assistant_message: ChatMessage | None = None
-        pending_message: ChatMessage | None = None
-
-        # Wrap session save and task creation in try-except to release lock on failure
-        try:
-            # Create task in stream registry for SSE reconnection support
-            await stream_registry.create_task(
-                task_id=task_id,
-                session_id=session.session_id,
-                user_id=session.user_id,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                operation_id=operation_id,
-            )
-
-            # Attach the tool_call to the current turn's assistant message
-            # (or create one if this is a tool-only response with no text).
-            session.add_tool_call_to_current_turn(tool_calls[yield_idx])
-
-            # Then save pending tool result
-            pending_message = ChatMessage(
-                role="tool",
-                content=OperationPendingResponse(
-                    message=pending_msg,
-                    operation_id=operation_id,
-                    tool_name=tool_name,
-                ).model_dump_json(),
-                tool_call_id=tool_call_id,
-            )
-            session.messages.append(pending_message)
-            await upsert_chat_session(session)
-            logger.info(
-                f"Saved pending operation {operation_id} (task_id={task_id}) "
-                f"for tool {tool_name} in session {session.session_id}"
-            )
-
-            # Store task reference in module-level set to prevent GC before completion
-            bg_task = asyncio.create_task(
-                _execute_long_running_tool_with_streaming(
-                    tool_name=tool_name,
-                    parameters=arguments,
-                    tool_call_id=tool_call_id,
-                    operation_id=operation_id,
-                    task_id=task_id,
-                    session_id=session.session_id,
-                    user_id=session.user_id,
-                )
-            )
-            _background_tasks.add(bg_task)
-            bg_task.add_done_callback(_background_tasks.discard)
-
-            # Associate the asyncio task with the stream registry task
-            await stream_registry.set_task_asyncio_task(task_id, bg_task)
-        except Exception as e:
-            # Roll back appended messages to prevent data corruption on subsequent saves
-            if (
-                pending_message
-                and session.messages
-                and session.messages[-1] == pending_message
-            ):
-                session.messages.pop()
-            if (
-                assistant_message
-                and session.messages
-                and session.messages[-1] == assistant_message
-            ):
-                session.messages.pop()
-
-            # Release the Redis lock since the background task won't be spawned
-            await _mark_operation_completed(tool_call_id)
-            # Mark stream registry task as failed if it was created
-            try:
-                await stream_registry.mark_task_completed(task_id, status="failed")
-            except Exception:
-                pass
-            logger.error(
-                f"Failed to setup long-running tool {tool_name}: {e}", exc_info=True
-            )
-            raise
-
-        # Return immediately - don't wait for completion
-        yield StreamToolOutputAvailable(
-            toolCallId=tool_call_id,
-            toolName=tool_name,
-            output=OperationStartedResponse(
-                message=started_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-                task_id=task_id,  # Include task_id for SSE reconnection
-            ).model_dump_json(),
-            success=True,
-        )
-        return
-
-    # Normal flow: Run tool execution in background task with heartbeats
+    # Run tool execution in background task with heartbeats
     tool_task = asyncio.create_task(
         execute_tool(
             tool_name=tool_name,
@@ -1526,8 +1338,9 @@ async def _yield_tool_call(
         )
     )
 
-    # Yield heartbeats every 15 seconds while waiting for tool to complete
-    heartbeat_interval = 15.0  # seconds
+    # Yield heartbeats every 10 seconds while waiting for tool to complete
+    # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
+    heartbeat_interval = 10.0  # seconds
     while not tool_task.done():
         try:
             # Wait for either the task to complete or the heartbeat interval
@@ -1565,396 +1378,6 @@ async def _yield_tool_call(
         )
 
     yield tool_execution_response
-
-
-async def _execute_long_running_tool(
-    tool_name: str,
-    parameters: dict[str, Any],
-    tool_call_id: str,
-    operation_id: str,
-    session_id: str,
-    user_id: str | None,
-) -> None:
-    """Execute a long-running tool in background and update chat history with result.
-
-    This function runs independently of the SSE connection, so the operation
-    survives if the user closes their browser tab.
-
-    NOTE: This is the legacy function without stream registry support.
-    Use _execute_long_running_tool_with_streaming for new implementations.
-    """
-    try:
-        # Load fresh session (not stale reference)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for background tool")
-            return
-
-        # Execute the actual tool
-        result = await execute_tool(
-            tool_name=tool_name,
-            parameters=parameters,
-            tool_call_id=tool_call_id,
-            user_id=user_id,
-            session=session,
-        )
-
-        # Update the pending message with result
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=(
-                result.output
-                if isinstance(result.output, str)
-                else orjson.dumps(result.output).decode("utf-8")
-            ),
-        )
-
-        logger.info(f"Background tool {tool_name} completed for session {session_id}")
-
-        # Generate LLM continuation so user sees response when they poll/refresh
-        await _generate_llm_continuation(session_id=session_id, user_id=user_id)
-
-    except Exception as e:
-        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
-        error_response = ErrorResponse(
-            message=f"Tool {tool_name} failed: {str(e)}",
-        )
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=error_response.model_dump_json(),
-        )
-        # Generate LLM continuation so user sees explanation even for errors
-        try:
-            await _generate_llm_continuation(session_id=session_id, user_id=user_id)
-        except Exception as llm_err:
-            logger.warning(f"Failed to generate LLM continuation for error: {llm_err}")
-    finally:
-        await _mark_operation_completed(tool_call_id)
-
-
-async def _execute_long_running_tool_with_streaming(
-    tool_name: str,
-    parameters: dict[str, Any],
-    tool_call_id: str,
-    operation_id: str,
-    task_id: str,
-    session_id: str,
-    user_id: str | None,
-) -> None:
-    """Execute a long-running tool with stream registry support for SSE reconnection.
-
-    This function runs independently of the SSE connection, publishes progress
-    to the stream registry, and survives if the user closes their browser tab.
-    Clients can reconnect via GET /chat/tasks/{task_id}/stream to resume streaming.
-
-    If the external service returns a 202 Accepted (async), this function exits
-    early and lets the Redis Streams completion consumer handle the rest.
-    """
-    # Track whether we delegated to async processing - if so, the Redis Streams
-    # completion consumer (stream_registry / completion_consumer) will handle cleanup, not us
-    delegated_to_async = False
-
-    try:
-        # Load fresh session (not stale reference)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for background tool")
-            await stream_registry.mark_task_completed(task_id, status="failed")
-            return
-
-        # Pass operation_id and task_id to the tool for async processing
-        enriched_parameters = {
-            **parameters,
-            "_operation_id": operation_id,
-            "_task_id": task_id,
-        }
-
-        # Execute the actual tool
-        result = await execute_tool(
-            tool_name=tool_name,
-            parameters=enriched_parameters,
-            tool_call_id=tool_call_id,
-            user_id=user_id,
-            session=session,
-        )
-
-        # Check if the tool result indicates async processing
-        # (e.g., Agent Generator returned 202 Accepted)
-        try:
-            if isinstance(result.output, dict):
-                result_data = result.output
-            elif result.output:
-                result_data = orjson.loads(result.output)
-            else:
-                result_data = {}
-            if result_data.get("status") == "accepted":
-                logger.info(
-                    f"Tool {tool_name} delegated to async processing "
-                    f"(operation_id={operation_id}, task_id={task_id}). "
-                    f"Redis Streams completion consumer will handle the rest."
-                )
-                # Don't publish result, don't continue with LLM, and don't cleanup
-                # The Redis Streams consumer (completion_consumer) will handle
-                # everything when the external service completes via webhook
-                delegated_to_async = True
-                return
-        except (orjson.JSONDecodeError, TypeError):
-            pass  # Not JSON or not async - continue normally
-
-        # Publish tool result to stream registry
-        await stream_registry.publish_chunk(task_id, result)
-
-        # Update the pending message with result
-        result_str = (
-            result.output
-            if isinstance(result.output, str)
-            else orjson.dumps(result.output).decode("utf-8")
-        )
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=result_str,
-        )
-
-        logger.info(
-            f"Background tool {tool_name} completed for session {session_id} "
-            f"(task_id={task_id})"
-        )
-
-        # Generate LLM continuation and stream chunks to registry
-        await _generate_llm_continuation_with_streaming(
-            session_id=session_id,
-            user_id=user_id,
-            task_id=task_id,
-        )
-
-        # Mark task as completed in stream registry
-        await stream_registry.mark_task_completed(task_id, status="completed")
-
-    except Exception as e:
-        logger.error(f"Background tool {tool_name} failed: {e}", exc_info=True)
-        error_response = ErrorResponse(
-            message=f"Tool {tool_name} failed: {str(e)}",
-        )
-
-        # Publish error to stream registry followed by finish event
-        await stream_registry.publish_chunk(
-            task_id,
-            StreamError(errorText=str(e)),
-        )
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
-        await stream_registry.publish_chunk(task_id, StreamFinish())
-
-        await _update_pending_operation(
-            session_id=session_id,
-            tool_call_id=tool_call_id,
-            result=error_response.model_dump_json(),
-        )
-
-        # Mark task as failed in stream registry
-        await stream_registry.mark_task_completed(task_id, status="failed")
-    finally:
-        # Only cleanup if we didn't delegate to async processing
-        # For async path, the Redis Streams completion consumer handles cleanup
-        if not delegated_to_async:
-            await _mark_operation_completed(tool_call_id)
-
-
-async def _update_pending_operation(
-    session_id: str,
-    tool_call_id: str,
-    result: str,
-) -> None:
-    """Update the pending tool message with final result.
-
-    This is called by background tasks when long-running operations complete.
-    """
-    # Update the message in database
-    updated = await chat_db().update_tool_message_content(
-        session_id=session_id,
-        tool_call_id=tool_call_id,
-        new_content=result,
-    )
-
-    if updated:
-        # Invalidate Redis cache so next load gets fresh data
-        # Wrap in try/except to prevent cache failures from triggering error handling
-        # that would overwrite our successful DB update
-        try:
-            await invalidate_session_cache(session_id)
-        except Exception as e:
-            # Non-critical: cache will eventually be refreshed on next load
-            logger.warning(f"Failed to invalidate cache for session {session_id}: {e}")
-        logger.info(
-            f"Updated pending operation for tool_call_id {tool_call_id} "
-            f"in session {session_id}"
-        )
-    else:
-        logger.warning(
-            f"Failed to update pending operation for tool_call_id {tool_call_id} "
-            f"in session {session_id}"
-        )
-
-
-async def _generate_llm_continuation(
-    session_id: str,
-    user_id: str | None,
-) -> None:
-    """Generate an LLM response after a long-running tool completes.
-
-    This is called by background tasks to continue the conversation
-    after a tool result is saved. The response is saved to the database
-    so users see it when they refresh or poll.
-    """
-    try:
-        # Load fresh session from DB (bypass cache to get the updated tool result)
-        await invalidate_session_cache(session_id)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for LLM continuation")
-            return
-
-        # Build system prompt
-        system_prompt, _ = await _build_system_prompt(user_id)
-
-        messages = session.to_openai_messages()
-        if system_prompt:
-            system_message = ChatCompletionSystemMessageParam(
-                role="system",
-                content=system_prompt,
-            )
-            messages = [system_message] + messages
-
-        # Apply context window management to prevent oversized requests
-        context_result = await _manage_context_window(
-            messages=messages,
-            model=config.model,
-            api_key=config.api_key,
-            base_url=config.base_url,
-        )
-
-        if context_result.error and "System prompt dropped" not in context_result.error:
-            logger.error(
-                f"Context window management failed for session {session_id}: "
-                f"{context_result.error} (tokens={context_result.token_count})"
-            )
-            return
-
-        messages = context_result.messages
-        if context_result.was_compacted:
-            logger.info(
-                f"Context compacted for LLM continuation: "
-                f"{context_result.token_count} tokens"
-            )
-
-        # Build extra_body for tracing
-        extra_body: dict[str, Any] = {
-            "posthogProperties": {
-                "environment": settings.config.app_env.value,
-            },
-        }
-        if user_id:
-            extra_body["user"] = user_id[:128]
-            extra_body["posthogDistinctId"] = user_id
-        if session_id:
-            extra_body["session_id"] = session_id[:128]
-
-        # Enable adaptive thinking for Anthropic models via OpenRouter
-        if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["reasoning"] = {"enabled": True}
-
-        retry_count = 0
-        last_error: Exception | None = None
-        response = None
-
-        while retry_count <= MAX_RETRIES:
-            try:
-                logger.info(
-                    f"Generating LLM continuation for session {session_id}"
-                    f"{f' (retry {retry_count}/{MAX_RETRIES})' if retry_count > 0 else ''}"
-                )
-
-                response = await client.chat.completions.create(
-                    model=config.model,
-                    messages=cast(list[ChatCompletionMessageParam], messages),
-                    extra_body=extra_body,
-                )
-                last_error = None  # Clear any previous error on success
-                break  # Success, exit retry loop
-            except Exception as e:
-                last_error = e
-
-                if _is_retryable_error(e) and retry_count < MAX_RETRIES:
-                    retry_count += 1
-                    delay = min(
-                        BASE_DELAY_SECONDS * (2 ** (retry_count - 1)),
-                        MAX_DELAY_SECONDS,
-                    )
-                    logger.warning(
-                        f"Retryable error in LLM continuation: {e!s}. "
-                        f"Retrying in {delay:.1f}s (attempt {retry_count}/{MAX_RETRIES})"
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                else:
-                    # Non-retryable error - log details and exit gracefully
-                    _log_api_error(
-                        error=e,
-                        context="LLM continuation (not retrying)",
-                        session_id=session_id,
-                        message_count=len(messages) if messages else None,
-                        model=config.model,
-                        retry_count=retry_count,
-                    )
-                    return
-
-        if last_error:
-            _log_api_error(
-                error=last_error,
-                context=f"LLM continuation (max retries {MAX_RETRIES} exceeded)",
-                session_id=session_id,
-                message_count=len(messages) if messages else None,
-                model=config.model,
-                retry_count=MAX_RETRIES,
-            )
-            return
-
-        if response and response.choices and response.choices[0].message.content:
-            assistant_content = response.choices[0].message.content
-
-            # Reload session from DB to avoid race condition with user messages
-            # that may have been sent while we were generating the LLM response
-            fresh_session = await get_chat_session(session_id, user_id)
-            if not fresh_session:
-                logger.error(
-                    f"Session {session_id} disappeared during LLM continuation"
-                )
-                return
-
-            # Save assistant message to database
-            assistant_message = ChatMessage(
-                role="assistant",
-                content=assistant_content,
-            )
-            fresh_session.messages.append(assistant_message)
-
-            # Save to database (not cache) to persist the response
-            await upsert_chat_session(fresh_session)
-
-            # Invalidate cache so next poll/refresh gets fresh data
-            await invalidate_session_cache(session_id)
-
-            logger.info(
-                f"Generated LLM continuation for session {session_id}, "
-                f"response length: {len(assistant_content)}"
-            )
-        else:
-            logger.warning(f"LLM continuation returned empty response for {session_id}")
-
-    except Exception as e:
-        logger.error(f"Failed to generate LLM continuation: {e}", exc_info=True)
 
 
 def _log_api_error(
@@ -2040,135 +1463,3 @@ def _sanitize_error_body(
                 sanitized[field] = value
 
     return sanitized if sanitized else None
-
-
-async def _generate_llm_continuation_with_streaming(
-    session_id: str,
-    user_id: str | None,
-    task_id: str,
-) -> None:
-    """Generate an LLM response with streaming to the stream registry.
-
-    This is called by background tasks to continue the conversation
-    after a tool result is saved. Chunks are published to the stream registry
-    so reconnecting clients can receive them.
-    """
-    import uuid as uuid_module
-
-    try:
-        # Load fresh session from DB (bypass cache to get the updated tool result)
-        await invalidate_session_cache(session_id)
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            logger.error(f"Session {session_id} not found for LLM continuation")
-            return
-
-        # Build system prompt
-        system_prompt, _ = await _build_system_prompt(user_id)
-
-        # Build messages in OpenAI format
-        messages = session.to_openai_messages()
-        if system_prompt:
-            from openai.types.chat import ChatCompletionSystemMessageParam
-
-            system_message = ChatCompletionSystemMessageParam(
-                role="system",
-                content=system_prompt,
-            )
-            messages = [system_message] + messages
-
-        # Build extra_body for tracing
-        extra_body: dict[str, Any] = {
-            "posthogProperties": {
-                "environment": settings.config.app_env.value,
-            },
-        }
-        if user_id:
-            extra_body["user"] = user_id[:128]
-            extra_body["posthogDistinctId"] = user_id
-        if session_id:
-            extra_body["session_id"] = session_id[:128]
-
-        # Enable adaptive thinking for Anthropic models via OpenRouter
-        if config.thinking_enabled and "anthropic" in config.model.lower():
-            extra_body["reasoning"] = {"enabled": True}
-
-        # Make streaming LLM call (no tools - just text response)
-        from typing import cast
-
-        from openai.types.chat import ChatCompletionMessageParam
-
-        # Generate unique IDs for AI SDK protocol
-        message_id = str(uuid_module.uuid4())
-        text_block_id = str(uuid_module.uuid4())
-
-        # Publish start event
-        await stream_registry.publish_chunk(task_id, StreamStart(messageId=message_id))
-        await stream_registry.publish_chunk(task_id, StreamStartStep())
-        await stream_registry.publish_chunk(task_id, StreamTextStart(id=text_block_id))
-
-        # Stream the response
-        stream = await client.chat.completions.create(
-            model=config.model,
-            messages=cast(list[ChatCompletionMessageParam], messages),
-            extra_body=extra_body,
-            stream=True,
-        )
-
-        assistant_content = ""
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                delta = chunk.choices[0].delta.content
-                assistant_content += delta
-                # Publish delta to stream registry
-                await stream_registry.publish_chunk(
-                    task_id,
-                    StreamTextDelta(id=text_block_id, delta=delta),
-                )
-
-        # Publish end events
-        await stream_registry.publish_chunk(task_id, StreamTextEnd(id=text_block_id))
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
-
-        if assistant_content:
-            # Reload session from DB to avoid race condition with user messages
-            fresh_session = await get_chat_session(session_id, user_id)
-            if not fresh_session:
-                logger.error(
-                    f"Session {session_id} disappeared during LLM continuation"
-                )
-                return
-
-            # Save assistant message to database
-            assistant_message = ChatMessage(
-                role="assistant",
-                content=assistant_content,
-            )
-            fresh_session.messages.append(assistant_message)
-
-            # Save to database (not cache) to persist the response
-            await upsert_chat_session(fresh_session)
-
-            # Invalidate cache so next poll/refresh gets fresh data
-            await invalidate_session_cache(session_id)
-
-            logger.info(
-                f"Generated streaming LLM continuation for session {session_id} "
-                f"(task_id={task_id}), response length: {len(assistant_content)}"
-            )
-        else:
-            logger.warning(
-                f"Streaming LLM continuation returned empty response for {session_id}"
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Failed to generate streaming LLM continuation: {e}", exc_info=True
-        )
-        # Publish error to stream registry followed by finish event
-        await stream_registry.publish_chunk(
-            task_id,
-            StreamError(errorText=f"Failed to generate response: {e}"),
-        )
-        await stream_registry.publish_chunk(task_id, StreamFinishStep())
-        await stream_registry.publish_chunk(task_id, StreamFinish())

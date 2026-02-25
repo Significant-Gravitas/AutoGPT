@@ -2,19 +2,14 @@
 
 This module provides the adapter layer that converts existing BaseTool implementations
 into in-process MCP tools that can be used with the Claude Agent SDK.
-
-Long-running tools (``is_long_running=True``) are delegated to the non-SDK
-background infrastructure (stream_registry, Redis persistence, SSE reconnection)
-via a callback provided by the service layer.  This avoids wasteful SDK polling
-and makes results survive page refreshes.
 """
 
+import asyncio
 import itertools
 import json
 import logging
 import os
 import uuid
-from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -41,26 +36,23 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
-_pending_tool_outputs: ContextVar[dict[str, str]] = ContextVar(
-    "pending_tool_outputs", default=None  # type: ignore[arg-type]
+_pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
+    "pending_tool_outputs",
+    default=None,  # type: ignore[arg-type]
 )
-
-# Callback type for delegating long-running tools to the non-SDK infrastructure.
-# Args: (tool_name, arguments, session) → MCP-formatted response dict.
-LongRunningCallback = Callable[
-    [str, dict[str, Any], ChatSession], Awaitable[dict[str, Any]]
-]
-
-# ContextVar so the service layer can inject the callback per-request.
-_long_running_callback: ContextVar[LongRunningCallback | None] = ContextVar(
-    "long_running_callback", default=None
+# Event signaled whenever stash_pending_tool_output() adds a new entry.
+# Used by the streaming loop to wait for PostToolUse hooks to complete
+# instead of sleeping an arbitrary duration.  The SDK fires hooks via
+# start_soon (fire-and-forget) so the next message can arrive before
+# the hook stashes its output — this event bridges that gap.
+_stash_event: ContextVar[asyncio.Event | None] = ContextVar(
+    "_stash_event", default=None
 )
 
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
-    long_running_callback: LongRunningCallback | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -70,13 +62,11 @@ def set_execution_context(
     Args:
         user_id: Current user's ID.
         session: Current chat session.
-        long_running_callback: Optional callback to delegate long-running tools
-            to the non-SDK background infrastructure (stream_registry + Redis).
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _pending_tool_outputs.set({})
-    _long_running_callback.set(long_running_callback)
+    _stash_event.set(asyncio.Event())
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -88,19 +78,89 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
-    """Pop and return the stashed full output for *tool_name*.
+    """Pop and return the oldest stashed output for *tool_name*.
 
     The SDK CLI may truncate large tool results (writing them to disk and
     replacing the content with a file reference). This stash keeps the
     original MCP output so the response adapter can forward it to the
     frontend for proper widget rendering.
 
+    Uses a FIFO queue per tool name so duplicate calls to the same tool
+    in one turn each get their own output.
+
     Returns ``None`` if nothing was stashed for *tool_name*.
     """
     pending = _pending_tool_outputs.get(None)
     if pending is None:
         return None
-    return pending.pop(tool_name, None)
+    queue = pending.get(tool_name)
+    if not queue:
+        pending.pop(tool_name, None)
+        return None
+    value = queue.pop(0)
+    if not queue:
+        del pending[tool_name]
+    return value
+
+
+def stash_pending_tool_output(tool_name: str, output: Any) -> None:
+    """Stash tool output for later retrieval by the response adapter.
+
+    Used by the PostToolUse hook to capture SDK built-in tool outputs
+    (WebSearch, Read, etc.) that aren't available through the MCP stash
+    mechanism in ``_execute_tool_sync``.
+
+    Appends to a FIFO queue per tool name so multiple calls to the same
+    tool in one turn are all preserved.
+    """
+    pending = _pending_tool_outputs.get(None)
+    if pending is None:
+        return
+    if isinstance(output, str):
+        text = output
+    else:
+        try:
+            text = json.dumps(output)
+        except (TypeError, ValueError):
+            text = str(output)
+    pending.setdefault(tool_name, []).append(text)
+    # Signal any waiters that new output is available.
+    event = _stash_event.get(None)
+    if event is not None:
+        event.set()
+
+
+async def wait_for_stash(timeout: float = 0.5) -> bool:
+    """Wait for a PostToolUse hook to stash tool output.
+
+    The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
+    the next message (AssistantMessage/ResultMessage) can arrive before the
+    hook completes and stashes its output.  This function bridges that gap
+    by waiting on the ``_stash_event``, which is signaled by
+    :func:`stash_pending_tool_output`.
+
+    After the event fires, callers should ``await asyncio.sleep(0)`` to
+    give any remaining concurrent hooks a chance to complete.
+
+    Returns ``True`` if a stash signal was received, ``False`` on timeout.
+    The timeout is a safety net — normally the stash happens within
+    microseconds of yielding to the event loop.
+    """
+    event = _stash_event.get(None)
+    if event is None:
+        return False
+    # Fast path: hook already completed before we got here.
+    if event.is_set():
+        event.clear()
+        return True
+    # Slow path: wait for the hook to signal.
+    try:
+        async with asyncio.timeout(timeout):
+            await event.wait()
+        event.clear()
+        return True
+    except TimeoutError:
+        return False
 
 
 async def _execute_tool_sync(
@@ -125,12 +185,61 @@ async def _execute_tool_sync(
     # Stash the full output before the SDK potentially truncates it.
     pending = _pending_tool_outputs.get(None)
     if pending is not None:
-        pending[base_tool.name] = text
+        pending.setdefault(base_tool.name, []).append(text)
+
+    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
+
+    # If the tool result contains inline image data, add an MCP image block
+    # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
+    image_block = _extract_image_block(text)
+    if image_block:
+        content_blocks.append(image_block)
 
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": content_blocks,
         "isError": not result.success,
     }
+
+
+# MIME types that Claude can process as image content blocks.
+_SUPPORTED_IMAGE_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp"}
+)
+
+
+def _extract_image_block(text: str) -> dict[str, str] | None:
+    """Extract an MCP image content block from a tool result JSON string.
+
+    Detects workspace file responses with ``content_base64`` and an image
+    MIME type, returning an MCP-format image block that allows Claude to
+    "see" the image.  Returns ``None`` if the result is not an inline image.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    mime_type = data.get("mime_type", "")
+    base64_content = data.get("content_base64", "")
+
+    # Only inline small images — large ones would exceed Claude's limits.
+    # 32 KB raw ≈ ~43 KB base64.
+    _MAX_IMAGE_BASE64_BYTES = 43_000
+    if (
+        mime_type in _SUPPORTED_IMAGE_TYPES
+        and base64_content
+        and len(base64_content) <= _MAX_IMAGE_BASE64_BYTES
+    ):
+        return {
+            "type": "image",
+            "data": base64_content,
+            "mimeType": mime_type,
+        }
+
+    return None
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -147,11 +256,6 @@ def create_tool_handler(base_tool: BaseTool):
 
     This wraps the existing BaseTool._execute method to be compatible
     with the Claude Agent SDK MCP tool format.
-
-    Long-running tools (``is_long_running=True``) are delegated to the
-    non-SDK background infrastructure via a callback set in the execution
-    context.  The callback persists the operation in Redis (stream_registry)
-    so results survive page refreshes and pod restarts.
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -161,25 +265,6 @@ def create_tool_handler(base_tool: BaseTool):
         if session is None:
             return _mcp_error("No session context available")
 
-        # --- Long-running: delegate to non-SDK background infrastructure ---
-        if base_tool.is_long_running:
-            callback = _long_running_callback.get(None)
-            if callback:
-                try:
-                    return await callback(base_tool.name, args, session)
-                except Exception as e:
-                    logger.error(
-                        f"Long-running callback failed for {base_tool.name}: {e}",
-                        exc_info=True,
-                    )
-                    return _mcp_error(f"Failed to start {base_tool.name}: {e}")
-            # No callback — fall through to synchronous execution
-            logger.warning(
-                f"[SDK] No long-running callback for {base_tool.name}, "
-                f"executing synchronously (may block)"
-            )
-
-        # --- Normal (fast) tool: execute synchronously ---
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
@@ -311,14 +396,29 @@ def create_copilot_mcp_server():
 # which provides kernel-level network isolation via unshare --net.
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
-_SDK_BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Task", "WebSearch"]
+# TodoWrite manages the task checklist shown in the UI — no security concern.
+_SDK_BUILTIN_TOOLS = [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Task",
+    "WebSearch",
+    "TodoWrite",
+]
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
 #   network isolation (unshare --net) instead.
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
-SDK_DISALLOWED_TOOLS = ["Bash", "WebFetch"]
+# AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+SDK_DISALLOWED_TOOLS = [
+    "Bash",
+    "WebFetch",
+    "AskUserQuestion",
+]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
 # Includes SDK_DISALLOWED_TOOLS plus common aliases/synonyms.

@@ -102,10 +102,15 @@ async def generate_agent_dummy(
     instructions: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
-    task_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy agent JSON after a simulated delay."""
-    logger.info("Using dummy agent generator for generate_agent (30s delay)")
+    """Return dummy agent synchronously (blocks for 30s, returns agent JSON).
+
+    Note: operation_id and session_id parameters are ignored - we always use synchronous mode.
+    """
+    logger.info(
+        "Using dummy agent generator (sync mode): returning agent JSON after 30s"
+    )
     await asyncio.sleep(30)
     return _generate_dummy_agent_json()
 
@@ -115,10 +120,16 @@ async def generate_agent_patch_dummy(
     current_agent: dict[str, Any],
     library_agents: list[dict[str, Any]] | None = None,
     operation_id: str | None = None,
-    task_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return dummy patched agent (returns the current agent with updated description)."""
-    logger.info("Using dummy agent generator for generate_agent_patch")
+    """Return dummy patched agent synchronously (blocks for 30s, returns patched agent JSON).
+
+    Note: operation_id and session_id parameters are ignored - we always use synchronous mode.
+    """
+    logger.info(
+        "Using dummy agent generator patch (sync mode): returning patched agent after 30s"
+    )
+    await asyncio.sleep(30)
     patched = current_agent.copy()
     patched["description"] = (
         f"{current_agent.get('description', '')} (updated: {update_request})"

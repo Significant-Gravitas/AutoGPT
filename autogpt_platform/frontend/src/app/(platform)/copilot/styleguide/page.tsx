@@ -11,6 +11,11 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProviderData,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CreateAgentTool } from "../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../tools/EditAgent/EditAgent";
@@ -96,6 +101,65 @@ let _id = 0;
 function uid() {
   return `sg-${++_id}`;
 }
+
+// ---------------------------------------------------------------------------
+// Mock credential providers for setup-requirements demos
+// ---------------------------------------------------------------------------
+
+const noop = () => Promise.reject(new Error("Styleguide mock"));
+
+function makeMockProvider(
+  provider: string,
+  providerName: string,
+  savedCredentials: CredentialsProviderData["savedCredentials"] = [],
+): CredentialsProviderData {
+  return {
+    provider,
+    providerName,
+    savedCredentials,
+    isSystemProvider: false,
+    oAuthCallback: noop as CredentialsProviderData["oAuthCallback"],
+    mcpOAuthCallback: noop as CredentialsProviderData["mcpOAuthCallback"],
+    createAPIKeyCredentials:
+      noop as CredentialsProviderData["createAPIKeyCredentials"],
+    createUserPasswordCredentials:
+      noop as CredentialsProviderData["createUserPasswordCredentials"],
+    createHostScopedCredentials:
+      noop as CredentialsProviderData["createHostScopedCredentials"],
+    deleteCredentials: noop as CredentialsProviderData["deleteCredentials"],
+  };
+}
+
+/**
+ * Provider context where the user already has saved credentials
+ * so the credential picker shows a selection list.
+ */
+const MOCK_PROVIDERS_WITH_CREDENTIALS: CredentialsProvidersContextType = {
+  google: makeMockProvider("google", "Google", [
+    {
+      id: "cred-google-1",
+      provider: "google",
+      type: "oauth2",
+      title: "work@company.com",
+      scopes: ["email", "calendar"],
+    },
+    {
+      id: "cred-google-2",
+      provider: "google",
+      type: "oauth2",
+      title: "personal@gmail.com",
+      scopes: ["email", "calendar"],
+    },
+  ]),
+};
+
+/**
+ * Provider context where the user has NO saved credentials,
+ * so the credential picker shows an "add new" flow.
+ */
+const MOCK_PROVIDERS_WITHOUT_CREDENTIALS: CredentialsProvidersContextType = {
+  openweathermap: makeMockProvider("openweathermap", "OpenWeatherMap"),
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -554,45 +618,80 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (setup requirements)">
-                <RunBlockTool
-                  part={{
-                    type: "tool-run_block",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    input: { block_id: "weather-block-123" },
-                    output: {
-                      type: ResponseType.setup_requirements,
-                      message:
-                        "This block requires API credentials to run. Please configure them below.",
-                      setup_info: {
-                        agent_name: "Weather Agent",
-                        requirements: {
-                          inputs: [
-                            {
-                              name: "city",
-                              title: "City",
-                              type: "string",
-                              required: true,
-                              description: "The city to get weather for",
-                            },
-                          ],
-                        },
-                        user_readiness: {
-                          missing_credentials: {
-                            openweathermap: {
-                              provider: "openweathermap",
-                              credentials_type: "api_key",
-                              title: "OpenWeatherMap API Key",
-                              description:
-                                "Required to access weather data. Get your key at openweathermap.org",
+              <SubSection label="Setup requirements — no credentials (add new)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
+                >
+                  <RunBlockTool
+                    part={{
+                      type: "tool-run_block",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { block_id: "weather-block-123" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This block requires API credentials to run. Please configure them below.",
+                        setup_info: {
+                          agent_id: "agent-weather-1",
+                          agent_name: "Weather Agent",
+                          requirements: {
+                            inputs: [
+                              {
+                                name: "city",
+                                title: "City",
+                                type: "string",
+                                required: true,
+                                description: "The city to get weather for",
+                              },
+                            ],
+                          },
+                          user_readiness: {
+                            missing_credentials: {
+                              openweathermap_key: {
+                                provider: "openweathermap",
+                                types: ["api_key"],
+                              },
                             },
                           },
                         },
                       },
-                    },
-                  }}
-                />
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
+              </SubSection>
+
+              <SubSection label="Setup requirements — has credentials (pick from list)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITH_CREDENTIALS}
+                >
+                  <RunBlockTool
+                    part={{
+                      type: "tool-run_block",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { block_id: "calendar-block-456" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This block requires Google credentials. Pick an account below or connect a new one.",
+                        setup_info: {
+                          agent_id: "agent-calendar-1",
+                          agent_name: "Calendar Agent",
+                          user_readiness: {
+                            missing_credentials: {
+                              google_oauth: {
+                                provider: "google",
+                                types: ["oauth2"],
+                                scopes: ["email", "calendar"],
+                              },
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
               </SubSection>
 
               <SubSection label="Output available (error)">
@@ -849,34 +948,71 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (setup requirements)">
-                <RunAgentTool
-                  part={{
-                    type: "tool-run_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    input: { username_agent_slug: "creator/my-agent" },
-                    output: {
-                      type: ResponseType.setup_requirements,
-                      message: "This agent requires additional setup.",
-                      setup_info: {
-                        agent_name: "YouTube Summarizer",
-                        requirements: {},
-                        user_readiness: {
-                          missing_credentials: {
-                            youtube_api: {
-                              provider: "youtube",
-                              credentials_type: "api_key",
-                              title: "YouTube Data API Key",
-                              description:
-                                "Required to access YouTube video data.",
+              <SubSection label="Setup requirements — no credentials (add new)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
+                >
+                  <RunAgentTool
+                    part={{
+                      type: "tool-run_agent",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { username_agent_slug: "creator/weather-agent" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This agent requires an API key. Add your credentials below.",
+                        setup_info: {
+                          agent_id: "agent-weather-1",
+                          agent_name: "Weather Agent",
+                          requirements: {},
+                          user_readiness: {
+                            missing_credentials: {
+                              openweathermap_key: {
+                                provider: "openweathermap",
+                                types: ["api_key"],
+                              },
                             },
                           },
                         },
                       },
-                    },
-                  }}
-                />
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
+              </SubSection>
+
+              <SubSection label="Setup requirements — has credentials (pick from list)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITH_CREDENTIALS}
+                >
+                  <RunAgentTool
+                    part={{
+                      type: "tool-run_agent",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { username_agent_slug: "creator/calendar-agent" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This agent needs Google credentials. Pick an account or connect a new one.",
+                        setup_info: {
+                          agent_id: "agent-calendar-1",
+                          agent_name: "Google Calendar Agent",
+                          requirements: {},
+                          user_readiness: {
+                            missing_credentials: {
+                              google_oauth: {
+                                provider: "google",
+                                types: ["oauth2"],
+                                scopes: ["email", "calendar"],
+                              },
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
               </SubSection>
 
               <SubSection label="Output available (need login)">
@@ -980,56 +1116,6 @@ export default function StyleguidePage() {
                     type: "tool-create_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation has been started. This may take a moment.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation pending)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_pending,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation is queued and will begin shortly.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation in progress)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_in_progress,
-                      tool_call_id: "tc-456",
-                      message:
-                        "An agent creation operation is already in progress. Please wait for it to finish.",
-                    },
                   }}
                 />
               </SubSection>
@@ -1152,22 +1238,6 @@ export default function StyleguidePage() {
                     type: "tool-edit_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <EditAgentTool
-                  part={{
-                    type: "tool-edit_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-edit-456",
-                      tool_name: "edit_agent",
-                      message: "Agent editing has started.",
-                    },
                   }}
                 />
               </SubSection>
