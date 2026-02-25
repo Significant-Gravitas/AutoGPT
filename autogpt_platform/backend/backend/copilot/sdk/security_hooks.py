@@ -294,6 +294,7 @@ def create_security_hooks(
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Log failed tool executions for debugging."""
+            nonlocal task_spawn_count
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
             error = input_data.get("error", "Unknown error")
@@ -301,6 +302,16 @@ def create_security_hooks(
                 f"[SDK] Tool failed: {tool_name}, error={error}, "
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
+
+            if tool_name == "Task" and task_spawn_count > 0:
+                task_spawn_count -= 1
+                logger.info(
+                    "[SDK] Failed Task released slot, active=%d/%d, user=%s",
+                    task_spawn_count,
+                    max_subtasks,
+                    user_id,
+                )
+
             return cast(SyncHookJSONOutput, {})
 
         async def pre_compact_hook(

@@ -208,20 +208,21 @@ def test_bash_builtin_blocked_message_clarity():
 
 @pytest.fixture()
 def _hooks():
-    """Create security hooks and return (pre, post) handlers."""
+    """Create security hooks and return (pre, post, post_failure) handlers."""
     from .security_hooks import create_security_hooks
 
     hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
     pre = hooks["PreToolUse"][0].hooks[0]
     post = hooks["PostToolUse"][0].hooks[0]
-    return pre, post
+    post_failure = hooks["PostToolUseFailure"][0].hooks[0]
+    return pre, post, post_failure
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
 async def test_task_background_blocked(_hooks):
     """Task with run_in_background=true must be denied."""
-    pre, _ = _hooks
+    pre, _, _ = _hooks
     result = await pre(
         {"tool_name": "Task", "tool_input": {"run_in_background": True, "prompt": "x"}},
         tool_use_id=None,
@@ -235,7 +236,7 @@ async def test_task_background_blocked(_hooks):
 @pytest.mark.asyncio
 async def test_task_foreground_allowed(_hooks):
     """Task without run_in_background should be allowed."""
-    pre, _ = _hooks
+    pre, _, _ = _hooks
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "do stuff"}},
         tool_use_id=None,
@@ -248,7 +249,7 @@ async def test_task_foreground_allowed(_hooks):
 @pytest.mark.asyncio
 async def test_task_limit_enforced(_hooks):
     """Task spawns beyond max_subtasks should be denied."""
-    pre, _ = _hooks
+    pre, _, _ = _hooks
     # First two should pass
     for _ in range(2):
         result = await pre(
@@ -272,7 +273,7 @@ async def test_task_limit_enforced(_hooks):
 @pytest.mark.asyncio
 async def test_task_slot_released_on_completion(_hooks):
     """Completing a Task should free a slot so new Tasks can be spawned."""
-    pre, post = _hooks
+    pre, post, _ = _hooks
     # Fill both slots
     for _ in range(2):
         result = await pre(
@@ -300,6 +301,44 @@ async def test_task_slot_released_on_completion(_hooks):
     # Now a new Task should be allowed
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "after release"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_slot_released_on_failure(_hooks):
+    """A failed Task should also free its concurrency slot."""
+    pre, _, post_failure = _hooks
+    # Fill both slots
+    for _ in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=None,
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # At capacity
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "over"}},
+        tool_use_id=None,
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Fail one task — should free a slot
+    await post_failure(
+        {"tool_name": "Task", "tool_input": {}, "error": "something broke"},
+        tool_use_id=None,
+        context={},
+    )
+
+    # New Task should be allowed
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "after failure"}},
         tool_use_id=None,
         context={},
     )
