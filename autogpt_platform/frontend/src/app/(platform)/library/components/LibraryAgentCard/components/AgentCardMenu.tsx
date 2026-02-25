@@ -5,6 +5,10 @@ import {
   useDeleteV2DeleteLibraryAgent,
   usePostV2ForkLibraryAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  usePostV2BulkMoveAgents,
+  getGetV2ListLibraryFoldersQueryKey,
+} from "@/app/api/__generated__/endpoints/folders/folders";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -22,6 +26,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -32,11 +37,25 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [isDeletingAgent, setIsDeletingAgent] = useState(false);
   const [isDuplicatingAgent, setIsDuplicatingAgent] = useState(false);
+  const [isRemovingFromFolder, setIsRemovingFromFolder] = useState(false);
 
   const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
   const { mutateAsync: forkAgent } = usePostV2ForkLibraryAgent();
+  const { mutateAsync: bulkMoveAgents } = usePostV2BulkMoveAgents({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryAgentsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListLibraryFoldersQueryKey(),
+        });
+      },
+    },
+  });
 
   async function handleDuplicateAgent() {
     if (!agent.id) return;
@@ -67,6 +86,37 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       });
     } finally {
       setIsDuplicatingAgent(false);
+    }
+  }
+
+  async function handleRemoveFromFolder() {
+    if (!agent.id) return;
+
+    setIsRemovingFromFolder(true);
+
+    try {
+      await bulkMoveAgents({
+        data: {
+          agent_ids: [agent.id],
+          folder_id: null,
+        },
+      });
+
+      toast({
+        title: "Removed from folder",
+        description: "Agent has been moved back to your library.",
+      });
+    } catch (error: unknown) {
+      toast({
+        title: "Failed to remove from folder",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemovingFromFolder(false);
     }
   }
 
@@ -141,6 +191,31 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation();
+              setShowMoveDialog(true);
+            }}
+            className="flex items-center gap-2"
+          >
+            Move to folder
+          </DropdownMenuItem>
+          {agent.folder_id && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemoveFromFolder();
+                }}
+                disabled={isRemovingFromFolder}
+                className="flex items-center gap-2"
+              >
+                Remove from folder
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
               setShowDeleteDialog(true);
             }}
             className="flex items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-600"
@@ -183,6 +258,14 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           </div>
         </Dialog.Content>
       </Dialog>
+
+      <MoveToFolderDialog
+        agentId={agent.id}
+        agentName={agent.name}
+        currentFolderId={agent.folder_id}
+        isOpen={showMoveDialog}
+        setIsOpen={setShowMoveDialog}
+      />
     </>
   );
 }

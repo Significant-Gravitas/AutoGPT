@@ -134,7 +134,7 @@ export function SetupRequirementsCard({ output }: Props) {
         <Button
           variant="primary"
           size="small"
-          className="w-fit"
+          className="mt-4 w-fit"
           disabled={!canRun}
           onClick={handleRun}
         >
