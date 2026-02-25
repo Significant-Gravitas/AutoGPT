@@ -173,9 +173,7 @@ def create_security_hooks(
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
         # Per-session tracking for Task sub-agent concurrency.
-        # task_tool_use_ids records which tool_use_ids actually consumed a slot
-        # so post hooks only release slots for Tasks that were truly started.
-        task_spawn_count = 0
+        # Set of tool_use_ids that consumed a slot — len() is the active count.
         task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
@@ -184,13 +182,13 @@ def create_security_hooks(
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Combined pre-tool-use validation hook."""
-            nonlocal task_spawn_count
             _ = context  # unused but required by signature
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Rate-limit Task (sub-agent) spawns per session
-            if tool_name == "Task":
+            is_task = tool_name == "Task"
+            if is_task:
                 # Block background task execution first — denied calls
                 # should not consume a subtask slot.
                 if tool_input.get("run_in_background"):
@@ -203,7 +201,7 @@ def create_security_hooks(
                             "(remove the run_in_background parameter)."
                         ),
                     )
-                if task_spawn_count >= max_subtasks:
+                if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
                     )
@@ -215,9 +213,6 @@ def create_security_hooks(
                             "or continue in the main conversation."
                         ),
                     )
-                task_spawn_count += 1
-                if tool_use_id:
-                    task_tool_use_ids.add(tool_use_id)
 
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
@@ -235,6 +230,10 @@ def create_security_hooks(
             if result:
                 return cast(SyncHookJSONOutput, result)
 
+            # Reserve the Task slot only after all validations pass
+            if is_task and tool_use_id is not None:
+                task_tool_use_ids.add(tool_use_id)
+
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
 
@@ -250,17 +249,15 @@ def create_security_hooks(
             are executed by the CLI internally — this hook captures their
             output so the response adapter can forward it to the frontend.
             """
-            nonlocal task_spawn_count
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
 
             # Release a subtask slot when a Task completes (concurrency limit)
-            if tool_name == "Task" and tool_use_id and tool_use_id in task_tool_use_ids:
+            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
                 task_tool_use_ids.discard(tool_use_id)
-                task_spawn_count -= 1
                 logger.info(
                     "[SDK] Task completed, active=%d/%d, user=%s",
-                    task_spawn_count,
+                    len(task_tool_use_ids),
                     max_subtasks,
                     user_id,
                 )
@@ -300,7 +297,6 @@ def create_security_hooks(
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Log failed tool executions for debugging."""
-            nonlocal task_spawn_count
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
             error = input_data.get("error", "Unknown error")
@@ -309,12 +305,11 @@ def create_security_hooks(
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
 
-            if tool_name == "Task" and tool_use_id and tool_use_id in task_tool_use_ids:
+            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
                 task_tool_use_ids.discard(tool_use_id)
-                task_spawn_count -= 1
                 logger.info(
                     "[SDK] Failed Task released slot, active=%d/%d, user=%s",
-                    task_spawn_count,
+                    len(task_tool_use_ids),
                     max_subtasks,
                     user_id,
                 )

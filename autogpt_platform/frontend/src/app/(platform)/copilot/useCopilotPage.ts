@@ -16,8 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 const STREAM_START_TIMEOUT_MS = 12_000;
-const RECONNECT_MAX_ATTEMPTS = 3;
 const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -96,7 +96,6 @@ export function useCopilotPage() {
     isSessionError,
     createSession,
     isCreatingSession,
-    refetchSession,
   } = useChatSession();
 
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -156,6 +155,14 @@ export function useCopilotPage() {
     [sessionId],
   );
 
+  // Track reconnect attempts and timer for exponential backoff
+  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // resumeStreamRef: always points to the latest resumeStream function
+  // so the onFinish closure doesn't capture a stale reference.
+  const resumeStreamRef = useRef<() => void>(() => {});
+
   const {
     messages: rawMessages,
     sendMessage,
@@ -170,7 +177,31 @@ export function useCopilotPage() {
     // Don't use resume: true — it fires before hydration completes, causing
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
+    onFinish: ({ isDisconnect }) => {
+      if (!isDisconnect || !sessionId) return;
+
+      const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
+      reconnectAttemptsRef.current.set(sessionId, attempts + 1);
+
+      const delay = Math.min(
+        RECONNECT_BASE_DELAY_MS * 2 ** attempts,
+        RECONNECT_MAX_DELAY_MS,
+      );
+
+      toast({
+        title: "Connection lost",
+        description:
+          attempts === 0
+            ? "Reconnecting..."
+            : `Reconnecting (attempt ${attempts + 1})...`,
+      });
+
+      reconnectTimerRef.current = setTimeout(() => {
+        resumeStreamRef.current();
+      }, delay);
+    },
   });
+  resumeStreamRef.current = resumeStream;
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
@@ -242,56 +273,31 @@ export function useCopilotPage() {
   // Format: Map<sessionId, hasResumed>
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // Track reconnect attempts per session to cap retries
-  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
-
-  // Reset status ref when session changes to avoid stale transitions.
+  // Clean up reconnect and status state on session switch.
   const prevStatusRef = useRef(status);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
-    prevStatusRef.current = status;
     clearTimeout(reconnectTimerRef.current);
+    reconnectAttemptsRef.current.delete(sessionId ?? "");
+    prevStatusRef.current = status;
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When the stream ends (or drops), invalidate the session cache and
-  // attempt auto-reconnect on unexpected disconnects.
+  // When the stream ends (or drops), invalidate the session cache so the
+  // next hydration fetches fresh messages from the backend.
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
-    if (!wasActive || !isIdle || !sessionId) return;
-
-    queryClient.invalidateQueries({
-      queryKey: getGetV2GetSessionQueryKey(sessionId),
-    });
-
-    if (status === "ready") {
-      reconnectAttemptsRef.current.delete(sessionId);
-      return;
-    }
-
-    // status === "error": unexpected disconnect — retry with backoff
-    const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
-    if (attempts >= RECONNECT_MAX_ATTEMPTS) {
-      toast({
-        title: "Connection lost",
-        description:
-          "Could not reconnect to the stream. Please refresh the page.",
-        variant: "destructive",
+    if (wasActive && isIdle && sessionId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
-      return;
+      if (status === "ready") {
+        reconnectAttemptsRef.current.delete(sessionId);
+      }
     }
-
-    reconnectAttemptsRef.current.set(sessionId, attempts + 1);
-    hasResumedRef.current.delete(sessionId);
-
-    const delay = RECONNECT_BASE_DELAY_MS * 2 ** attempts;
-    reconnectTimerRef.current = setTimeout(() => refetchSession(), delay);
-
-    return () => clearTimeout(reconnectTimerRef.current);
-  }, [status, sessionId, queryClient, refetchSession]);
+  }, [status, sessionId, queryClient]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
