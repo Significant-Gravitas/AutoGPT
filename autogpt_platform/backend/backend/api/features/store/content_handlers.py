@@ -9,13 +9,23 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
+
+
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
 @dataclass
@@ -205,11 +215,12 @@ class BlockHandler(ContentHandler):
                     )
 
                 # Add input schema field descriptions
-                schema_dict = block_instance.input_schema.model_json_schema()
-                if "properties" in schema_dict:
-                    for prop_name, prop_info in schema_dict["properties"].items():
-                        if "description" in prop_info:
-                            parts.append(f"{prop_name}: {prop_info['description']}")
+                block_input_fields = block_instance.input_schema.model_fields
+                parts += [
+                    f"{field_name}: {field_info.description}"
+                    for field_name, field_info in block_input_fields.items()
+                    if field_info.description
+                ]
 
                 searchable_text = " ".join(parts)
 
@@ -220,21 +231,21 @@ class BlockHandler(ContentHandler):
                 )
 
                 # Extract provider names from credentials fields
-                provider_names: list[str] = []
                 credentials_info = (
                     block_instance.input_schema.get_credentials_fields_info()
                 )
                 is_integration = len(credentials_info) > 0
-                for info in credentials_info.values():
-                    for provider in info.provider:
-                        provider_names.append(provider.value.lower())
+                provider_names = [
+                    provider.value.lower()
+                    for info in credentials_info.values()
+                    for provider in info.provider
+                ]
 
                 # Check if block has LlmModel field in input schema
-                has_llm_model_field = False
-                for field in block_instance.input_schema.model_fields.values():
-                    if field.annotation == LlmModel:
-                        has_llm_model_field = True
-                        break
+                has_llm_model_field = any(
+                    _contains_type(field.annotation, LlmModel)
+                    for field in block_instance.input_schema.model_fields.values()
+                )
 
                 items.append(
                     ContentItem(

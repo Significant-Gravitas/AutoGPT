@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Sequence
+from typing import Any, Sequence, get_args, get_origin
 
 import prisma
 from prisma.enums import ContentType
@@ -643,9 +643,19 @@ async def _get_static_counts():
     }
 
 
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
+
+
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     for field in schema_cls.model_fields.values():
-        if field.annotation == LlmModel:
+        if _contains_type(field.annotation, LlmModel):
             # Check if query matches any value in llm_models
             if any(query in name for name in llm_models):
                 return True
@@ -760,8 +770,12 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
 
 @cached(ttl_seconds=3600, shared_cache=True)
 async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
-    # Query the materialized view for execution counts per block
-    # The view aggregates executions from the last 14 days and is refreshed hourly
+    """Return the most-executed blocks from the last 14 days.
+
+    Queries the mv_suggested_blocks materialized view (refreshed hourly via pg_cron)
+    and returns the top `count` blocks sorted by execution count, excluding
+    Input/Output/Agent block types and blocks in EXCLUDED_BLOCK_IDS.
+    """
     results = await query_raw_with_schema(
         """
         SELECT block_id, execution_count
@@ -772,7 +786,7 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     # Get the top blocks based on execution count
     # But ignore Input, Output, Agent, and excluded blocks
     blocks: list[tuple[BlockInfo, int]] = []
-    execution_counts = {row["block_id"]: row["execution_count"] for row in results}
+    execution_counts = {row["block_id"]: int(row["execution_count"]) for row in results}
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
