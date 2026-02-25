@@ -8,10 +8,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import {
-  CircleNotch as CircleNotchIcon,
-  Microphone as MicrophoneIcon,
-} from "@phosphor-icons/react";
+import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
 import { ChangeEvent } from "react";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
@@ -75,12 +72,12 @@ export function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       <InputGroup
         className={cn(
-          "overflow-hidden",
+          "overflow-hidden has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
-        <PromptInputBody className="relative block">
+        <PromptInputBody className="relative block w-full">
           <PromptInputTextarea
             id={inputId}
             aria-label="Chat message input"
@@ -112,18 +109,20 @@ export function ChatInput({
                 onClick={toggleRecording}
                 disabled={disabled || isTranscribing || isStreaming}
                 className={cn(
-                  isRecording
-                    ? "animate-pulse bg-red-500 text-white hover:bg-red-600"
-                    : isTranscribing
-                      ? "bg-zinc-100 text-zinc-400"
-                      : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700",
+                  "size-[2.625rem] rounded-[96px] border border-zinc-300 bg-transparent text-black hover:border-zinc-600 hover:bg-zinc-100",
+                  isRecording &&
+                    "animate-pulse border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600",
+                  isTranscribing && "bg-zinc-100 text-zinc-400",
                   isStreaming && "opacity-40",
                 )}
               >
                 {isTranscribing ? (
                   <CircleNotchIcon className="h-4 w-4 animate-spin" />
                 ) : (
-                  <MicrophoneIcon className="h-4 w-4" weight="bold" />
+                  <MicrophoneIcon
+                    className="h-4 w-4 text-zinc-500"
+                    weight="bold"
+                  />
                 )}
               </PromptInputButton>
             )}
@@ -132,10 +131,7 @@ export function ChatInput({
           {isStreaming ? (
             <PromptInputSubmit status="streaming" onStop={onStop} />
           ) : (
-            <PromptInputSubmit
-              disabled={!canSend}
-              className={cn(!canSend && "opacity-20")}
-            />
+            <PromptInputSubmit disabled={!canSend} />
           )}
         </PromptInputFooter>
       </InputGroup>

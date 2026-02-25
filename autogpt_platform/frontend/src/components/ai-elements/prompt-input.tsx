@@ -36,7 +36,7 @@ import {
   ArrowUp as ArrowUpIcon,
   Stop as StopIcon,
 } from "@phosphor-icons/react";
-import { Children, useCallback, useRef, useState } from "react";
+import { Children, useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -107,11 +107,32 @@ export type PromptInputTextareaProps = ComponentProps<
 
 export function PromptInputTextarea({
   onKeyDown,
+  onChange,
   className,
   placeholder = "Type your message...",
+  value,
   ...props
 }: PromptInputTextareaProps) {
   const [isComposing, setIsComposing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
+  // Resize when value changes externally (e.g. cleared after send)
+  useEffect(() => {
+    if (textareaRef.current) autoResize(textareaRef.current);
+  }, [value]);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      autoResize(e.currentTarget);
+      onChange?.(e);
+    },
+    [onChange],
+  );
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
     (e) => {
@@ -142,8 +163,12 @@ export function PromptInputTextarea({
 
   return (
     <InputGroupTextarea
-      className={cn("max-h-48 min-h-[56px] text-[1rem] leading-6", className)}
+      ref={textareaRef}
+      rows={1}
+      className={cn("max-h-48 min-h-0 text-base leading-6 md:text-base", className)}
       name="message"
+      value={value}
+      onChange={handleChange}
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
@@ -294,7 +319,7 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={isGenerating ? "Stop" : "Submit"}
       className={cn(
-        "border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900",
+        "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
         className,
       )}
       onClick={handleClick}
