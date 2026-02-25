@@ -41,7 +41,7 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 function resolveWorkspaceUrls(text: string): string {
   // Handle image links: ![alt](workspace://id#mime)
   let resolved = text.replace(
-    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
       const url = `/api/proxy${apiPath}`;
@@ -57,7 +57,7 @@ function resolveWorkspaceUrls(text: string): string {
   // "workspace://" is not in the allowed URL-scheme whitelist, which causes
   // "[blocked]" to appear next to the link text.
   resolved = resolved.replace(
-    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
       const url = `/api/proxy${apiPath}`;
