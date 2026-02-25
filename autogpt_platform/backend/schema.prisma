@@ -1106,6 +1106,7 @@ enum APIKeyPermission {
   WRITE_SCHEDULE // Can create and delete schedules
   WRITE_STORE // Can create, update, delete marketplace submissions
   READ_LIBRARY // Can list library agents and runs
+  WRITE_LIBRARY // Can create, update, delete library agents
   RUN_AGENT // Can run agents from library
   READ_RUN // Can list and get run details
   WRITE_RUN // Can stop and delete runs

@@ -19,6 +19,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
     CreateSubmissionRequest,
+    LibraryAgent,
     MarketplaceAgent,
     MarketplaceAgentDetails,
     MarketplaceAgentsResponse,
@@ -181,6 +182,40 @@ async def get_creator_details(
     creator = await store_cache._get_cached_creator_details(username=username)
 
     return MarketplaceCreatorDetails.from_internal(creator)
+
+
+@marketplace_router.post(
+    path="/agents/{username}/{agent_name}/add-to-library",
+    summary="Add a marketplace agent to your library",
+    status_code=201,
+)
+async def add_agent_to_library(
+    username: str = Path(description="Creator username"),
+    agent_name: str = Path(description="Agent slug/name"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_STORE, APIKeyPermission.WRITE_LIBRARY)
+    ),
+) -> LibraryAgent:
+    """
+    Add a marketplace agent to the authenticated user's library.
+
+    If the agent is already in the library, returns the existing entry.
+    """
+    from backend.api.features.library import db as library_db
+
+    username = urllib.parse.unquote(username).lower()
+    agent_name = urllib.parse.unquote(agent_name).lower()
+
+    agent_details = await store_cache._get_cached_agent_details(
+        username=username, agent_name=agent_name
+    )
+
+    agent = await library_db.add_store_agent_to_library(
+        store_listing_version_id=agent_details.store_listing_version_id,
+        user_id=auth.user_id,
+    )
+
+    return LibraryAgent.from_internal(agent)
 
 
 # ============================================================================

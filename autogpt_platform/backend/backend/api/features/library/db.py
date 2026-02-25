@@ -7,7 +7,6 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.api.features.store.exceptions as store_exceptions
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
@@ -825,7 +824,7 @@ async def add_store_agent_to_library(
         The newly created LibraryAgent if successfully added, the existing corresponding one if any.
 
     Raises:
-        AgentNotFoundError: If the store listing or associated agent is not found.
+        NotFoundError: If the store listing or associated agent is not found.
         DatabaseError: If there's an issue creating the LibraryAgent record.
     """
     logger.debug(
@@ -843,7 +842,7 @@ async def add_store_agent_to_library(
             logger.warning(
                 f"Store listing version not found: {store_listing_version_id}"
             )
-            raise store_exceptions.AgentNotFoundError(
+            raise NotFoundError(
                 f"Store listing version {store_listing_version_id} not found or invalid"
             )
 
@@ -857,7 +856,7 @@ async def add_store_agent_to_library(
             include_subgraphs=False,
         )
         if not graph_model:
-            raise store_exceptions.AgentNotFoundError(
+            raise NotFoundError(
                 f"Graph #{graph.id} v{graph.version} not found or accessible"
             )
 
@@ -910,8 +909,7 @@ async def add_store_agent_to_library(
             f"to library for user #{user_id}"
         )
         return library_model.LibraryAgent.from_db(added_agent)
-    except store_exceptions.AgentNotFoundError:
-        # Reraise for external handling.
+    except NotFoundError:
         raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
