@@ -760,16 +760,11 @@ async def stream_chat_completion_sdk(
                                 if isinstance(response, StreamToolOutputAvailable):
                                     out_len = len(str(response.output))
                                     extra = f", output_len={out_len}"
-                                tool_name = (
-                                    response.toolName
-                                    if isinstance(response, StreamToolInputAvailable)
-                                    else (response.toolName or "N/A")
-                                )
                                 logger.info(
                                     "[SDK] [%s] Tool event: %s, tool=%s%s",
                                     session_id[:12],
                                     type(response).__name__,
-                                    tool_name,
+                                    response.toolName or "N/A",
                                     extra,
                                 )
 
@@ -879,16 +874,11 @@ async def stream_chat_completion_sdk(
                             response,
                             (StreamToolInputAvailable, StreamToolOutputAvailable),
                         ):
-                            tool_name = (
-                                response.toolName
-                                if isinstance(response, StreamToolInputAvailable)
-                                else (response.toolName or "N/A")
-                            )
                             logger.info(
                                 "[SDK] [%s] Safety flush: %s, tool=%s",
                                 session_id[:12],
                                 type(response).__name__,
-                                tool_name,
+                                response.toolName or "N/A",
                             )
                         yield response
 

@@ -187,8 +187,7 @@ def create_security_hooks(
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Rate-limit Task (sub-agent) spawns per session
-            is_task = tool_name == "Task"
-            if is_task:
+            if tool_name == "Task":
                 # Block background task execution first — denied calls
                 # should not consume a subtask slot.
                 if tool_input.get("run_in_background"):
@@ -231,11 +230,22 @@ def create_security_hooks(
                 return cast(SyncHookJSONOutput, result)
 
             # Reserve the Task slot only after all validations pass
-            if is_task and tool_use_id is not None:
+            if tool_name == "Task" and tool_use_id is not None:
                 task_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
+
+        def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
+            """Release a Task concurrency slot if one was reserved."""
+            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
+                task_tool_use_ids.discard(tool_use_id)
+                logger.info(
+                    "[SDK] Task slot released, active=%d/%d, user=%s",
+                    len(task_tool_use_ids),
+                    max_subtasks,
+                    user_id,
+                )
 
         async def post_tool_use_hook(
             input_data: HookInput,
@@ -252,15 +262,7 @@ def create_security_hooks(
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
 
-            # Release a subtask slot when a Task completes (concurrency limit)
-            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
-                task_tool_use_ids.discard(tool_use_id)
-                logger.info(
-                    "[SDK] Task completed, active=%d/%d, user=%s",
-                    len(task_tool_use_ids),
-                    max_subtasks,
-                    user_id,
-                )
+            _release_task_slot(tool_name, tool_use_id)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
             logger.info(
                 "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
@@ -305,14 +307,7 @@ def create_security_hooks(
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
 
-            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
-                task_tool_use_ids.discard(tool_use_id)
-                logger.info(
-                    "[SDK] Failed Task released slot, active=%d/%d, user=%s",
-                    len(task_tool_use_ids),
-                    max_subtasks,
-                    user_id,
-                )
+            _release_task_slot(tool_name, tool_use_id)
 
             return cast(SyncHookJSONOutput, {})
 
