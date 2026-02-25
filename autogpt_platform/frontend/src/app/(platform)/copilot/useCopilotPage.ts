@@ -245,10 +245,16 @@ export function useCopilotPage() {
   // Track reconnect attempts per session to cap retries
   const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
 
-  // When the stream ends (or drops), invalidate the session cache and
-  // attempt auto-reconnect on unexpected disconnects.
+  // Reset status ref when session changes to avoid stale transitions.
   const prevStatusRef = useRef(status);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    prevStatusRef.current = status;
+    clearTimeout(reconnectTimerRef.current);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When the stream ends (or drops), invalidate the session cache and
+  // attempt auto-reconnect on unexpected disconnects.
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
@@ -268,7 +274,15 @@ export function useCopilotPage() {
 
     // status === "error": unexpected disconnect — retry with backoff
     const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
-    if (attempts >= RECONNECT_MAX_ATTEMPTS) return;
+    if (attempts >= RECONNECT_MAX_ATTEMPTS) {
+      toast({
+        title: "Connection lost",
+        description:
+          "Could not reconnect to the stream. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     reconnectAttemptsRef.current.set(sessionId, attempts + 1);
     hasResumedRef.current.delete(sessionId);
