@@ -38,6 +38,8 @@
       "can_access_graph": true,
       "is_latest_version": true,
       "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
       "recommended_schedule_cron": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
@@ -83,6 +85,8 @@
       "can_access_graph": false,
       "is_latest_version": true,
       "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
       "recommended_schedule_cron": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,

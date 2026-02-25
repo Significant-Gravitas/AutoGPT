@@ -41,6 +41,14 @@ async def list_library_agents(
         ge=1,
         description="Number of agents per page (must be >= 1)",
     ),
+    folder_id: Optional[str] = Query(
+        None,
+        description="Filter by folder ID",
+    ),
+    include_root_only: bool = Query(
+        False,
+        description="Only return agents without a folder (root-level agents)",
+    ),
 ) -> library_model.LibraryAgentResponse:
     """
     Get all agents in the user's library (both created and saved).
@@ -51,6 +59,8 @@ async def list_library_agents(
         sort_by=sort_by,
         page=page,
         page_size=page_size,
+        folder_id=folder_id,
+        include_root_only=include_root_only,
     )
 
 
@@ -168,6 +178,7 @@ async def update_library_agent(
         is_favorite=payload.is_favorite,
         is_archived=payload.is_archived,
         settings=payload.settings,
+        folder_id=payload.folder_id,
     )
 
 
