@@ -328,6 +328,8 @@ async def clear_business_understanding(user_id: str) -> bool:
 
 def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str:
     """Format business understanding as text for system prompt injection."""
+    if not understanding:
+        return ""
     sections = []
 
     # User info section

@@ -1,12 +1,12 @@
 "use client";
 
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
+import { RunAgentInputs } from "@/components/contextual/RunAgentInputs/RunAgentInputs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import { Play } from "lucide-react";

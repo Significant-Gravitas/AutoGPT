@@ -11,6 +11,7 @@ import {
 import { okData } from "@/app/api/helpers";
 import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -68,10 +69,19 @@ export function usePublishAgentModal({
 
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isLoggedIn } = useSupabase();
 
   // Fetch agent data for pre-populating form when agent is pre-selected
-  const { data: myAgents } = useGetV2GetMyAgents();
-  const { data: mySubmissions } = useGetV2ListMySubmissions();
+  const { data: myAgents } = useGetV2GetMyAgents(undefined, {
+    query: {
+      enabled: isLoggedIn,
+    },
+  });
+  const { data: mySubmissions } = useGetV2ListMySubmissions(undefined, {
+    query: {
+      enabled: isLoggedIn,
+    },
+  });
 
   // Sync currentState with targetState when it changes from outside
   useEffect(() => {

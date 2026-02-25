@@ -27,14 +27,21 @@
         "properties": {}
       },
       "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": true,
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
       "settings": {
-        "human_in_the_loop_safe_mode": null
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": false
       },
       "marketplace_listing": null
     },
@@ -65,14 +72,21 @@
         "properties": {}
       },
       "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
       "trigger_setup_info": null,
       "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
       "can_access_graph": false,
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
       "settings": {
-        "human_in_the_loop_safe_mode": null
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": false
       },
       "marketplace_listing": null
     }

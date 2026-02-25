@@ -541,7 +541,19 @@ export function ExecutionAnalyticsForm() {
       {/* Accuracy Trends Display */}
       {trendsData && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
+          <div className="flex items-start justify-between">
+            <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
+            <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              <p className="font-medium">
+                Chart Filters (matches monitoring system):
+              </p>
+              <ul className="mt-1 list-inside list-disc space-y-1">
+                <li>Only days with ≥1 execution with correctness score</li>
+                <li>Last 30 days</li>
+                <li>Averages calculated from scored executions only</li>
+              </ul>
+            </div>
+          </div>
 
           {/* Alert Section */}
           {trendsData.alert && (

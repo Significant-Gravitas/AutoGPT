@@ -298,17 +298,16 @@ async def test_schema_handling_error_cases():
             mock_client.execute_raw.side_effect = Exception("Database error")
             mock_get_client.return_value = mock_client
 
-            result = await embeddings.store_content_embedding(
-                content_type=ContentType.STORE_AGENT,
-                content_id="test-id",
-                embedding=[0.1] * EMBEDDING_DIM,
-                searchable_text="test",
-                metadata=None,
-                user_id=None,
-            )
-
-            # Should return False on error, not raise
-            assert result is False
+            # Should raise exception on error
+            with pytest.raises(Exception, match="Database error"):
+                await embeddings.store_content_embedding(
+                    content_type=ContentType.STORE_AGENT,
+                    content_id="test-id",
+                    embedding=[0.1] * EMBEDDING_DIM,
+                    searchable_text="test",
+                    metadata=None,
+                    user_id=None,
+                )
 
 
 if __name__ == "__main__":

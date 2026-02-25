@@ -11,24 +11,18 @@ test.beforeEach(async ({ page }) => {
   const buildPage = new BuildPage(page);
   const testUser = await getTestUser();
 
-  const { getId } = getSelectors(page);
-
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
 
   await page.goto("/build");
   await buildPage.closeTutorial();
-  await buildPage.openBlocksPanel();
 
   const [dictionaryBlock] = await buildPage.getFilteredBlocksFromAPI(
     (block) => block.name === "AddToDictionaryBlock",
   );
 
-  const blockCard = getId(`block-name-${dictionaryBlock.id}`);
-  await blockCard.click();
-  const blockInEditor = getId(dictionaryBlock.id).first();
-  expect(blockInEditor).toBeAttached();
+  await buildPage.addBlock(dictionaryBlock);
 
   await buildPage.saveAgent("Test Agent", "Test Description");
   await test
@@ -39,10 +33,9 @@ test.beforeEach(async ({ page }) => {
   await page.waitForTimeout(1000);
 
   await page.goto("/library");
-  await LibraryPage.clickFirstAgent(page);
+  // Navigate to the specific agent we just created, not just the first one
+  await LibraryPage.navigateToAgentByName(page, "Test Agent");
   await LibraryPage.waitForAgentPageLoad(page);
-  const { getRole } = getSelectors(page);
-  await isVisible(getRole("heading", "Test Agent"), 8000);
 });
 
 test("shows badge with count when agent is running", async ({ page }) => {

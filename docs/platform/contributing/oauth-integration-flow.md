@@ -25,7 +25,7 @@ This document focuses on the **API Integration OAuth flow** used for connecting 
 ### 2. Backend API Trust Boundary
 - **Location**: Server-side FastAPI application
 - **Components**:
-  - Integration router (`/backend/backend/server/integrations/router.py`)
+  - Integration router (`/backend/backend/api/features/integrations/router.py`)
   - OAuth handlers (`/backend/backend/integrations/oauth/`)
   - Credentials store (`/backend/backend/integrations/credentials_store.py`)
 - **Trust Level**: Trusted - server-controlled environment

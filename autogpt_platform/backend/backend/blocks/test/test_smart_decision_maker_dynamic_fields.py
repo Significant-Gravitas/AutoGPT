@@ -386,7 +386,7 @@ async def test_output_yielding_with_dynamic_fields():
             outputs = {}
             from backend.data.execution import ExecutionContext
 
-            mock_execution_context = ExecutionContext(safe_mode=False)
+            mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
             mock_execution_processor = MagicMock()
 
             async for output_name, output_value in block.run(
@@ -609,7 +609,9 @@ async def test_validation_errors_dont_pollute_conversation():
                 outputs = {}
                 from backend.data.execution import ExecutionContext
 
-                mock_execution_context = ExecutionContext(safe_mode=False)
+                mock_execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=False
+                )
 
                 # Create a proper mock execution processor for agent mode
                 from collections import defaultdict

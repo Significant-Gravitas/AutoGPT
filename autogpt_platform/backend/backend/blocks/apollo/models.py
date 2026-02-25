@@ -381,7 +381,7 @@ Each range you add needs to be a string, with the upper and lower numbers of the
     organization_locations: Optional[list[str]] = SchemaField(
         description="""The location of the company headquarters. You can search across cities, US states, and countries.
 
-If a company has several office locations, results are still based on the headquarters location. For example, if you search chicago but a company's HQ location is in boston, any Boston-based companies will not appearch in your search results, even if they match other parameters.
+If a company has several office locations, results are still based on the headquarters location. For example, if you search chicago but a company's HQ location is in boston, any Boston-based companies will not appear in your search results, even if they match other parameters.
 
 To exclude companies based on location, use the organization_not_locations parameter.
 """,

@@ -9,7 +9,6 @@ import logging
 
 from fastapi import APIRouter, File, HTTPException, Query, Security, UploadFile
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
@@ -17,25 +16,12 @@ from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
+from .models import UploadFileResponse
+
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 files_router = APIRouter()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class UploadFileResponse(BaseModel):
-    """Response after uploading a file."""
-
-    file_uri: str = Field(description="URI to reference the uploaded file in agents")
-    file_name: str
-    size: int = Field(description="File size in bytes")
-    content_type: str
-    expires_in_hours: int
 
 
 # ============================================================================

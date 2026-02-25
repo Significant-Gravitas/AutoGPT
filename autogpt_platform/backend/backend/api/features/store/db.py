@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import fastapi
 import prisma.enums
@@ -11,8 +11,8 @@ import prisma.types
 
 from backend.data.db import transaction
 from backend.data.graph import (
-    GraphMeta,
     GraphModel,
+    GraphModelWithoutNodes,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -112,6 +112,7 @@ async def get_store_agents(
                             description=agent["description"],
                             runs=agent["runs"],
                             rating=agent["rating"],
+                            agent_graph_id=agent.get("agentGraphId", ""),
                         )
                         store_agents.append(store_agent)
                     except Exception as e:
@@ -170,6 +171,7 @@ async def get_store_agents(
                         description=agent.description,
                         runs=agent.runs,
                         rating=agent.rating,
+                        agent_graph_id=agent.agentGraphId,
                     )
                     # Add to the list only if creation was successful
                     store_agents.append(store_agent)
@@ -332,7 +334,22 @@ async def get_store_agent_details(
         raise DatabaseError("Failed to fetch agent details") from e
 
 
-async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[False]
+) -> GraphModel: ...
+
+
+@overload
+async def get_available_graph(
+    store_listing_version_id: str, hide_nodes: Literal[True] = True
+) -> GraphModelWithoutNodes: ...
+
+
+async def get_available_graph(
+    store_listing_version_id: str,
+    hide_nodes: bool = True,
+) -> GraphModelWithoutNodes | GraphModel:
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -342,7 +359,7 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                     "isAvailable": True,
                     "isDeleted": False,
                 },
-                include={"AgentGraph": {"include": {"Nodes": True}}},
+                include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             )
         )
 
@@ -352,7 +369,9 @@ async def get_available_graph(store_listing_version_id: str) -> GraphMeta:
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        return GraphModel.from_db(store_listing_version.AgentGraph).meta()
+        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+            store_listing_version.AgentGraph
+        )
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
@@ -1552,7 +1571,7 @@ async def review_store_submission(
 
                 # Generate embedding for approved listing (blocking - admin operation)
                 # Inside transaction: if embedding fails, entire transaction rolls back
-                embedding_success = await ensure_embedding(
+                await ensure_embedding(
                     version_id=store_listing_version_id,
                     name=store_listing_version.name,
                     description=store_listing_version.description,
@@ -1560,12 +1579,6 @@ async def review_store_submission(
                     categories=store_listing_version.categories or [],
                     tx=tx,
                 )
-                if not embedding_success:
-                    raise ValueError(
-                        f"Failed to generate embedding for listing {store_listing_version_id}. "
-                        "This is likely due to OpenAI API being unavailable. "
-                        "Please try again later or contact support if the issue persists."
-                    )
 
                 await prisma.models.StoreListing.prisma(tx).update(
                     where={"id": store_listing_version.StoreListing.id},

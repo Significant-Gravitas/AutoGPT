@@ -23,6 +23,9 @@ import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
 import { useFlowRealtime } from "./useFlowRealtime";
 
+import "@xyflow/react/dist/style.css";
+import "./flow.css";
+
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
@@ -55,14 +58,16 @@ export const Flow = () => {
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   const onNodeDragStop = useCallback(() => {
+    const currentNodes = useNodeStore.getState().nodes;
     setNodes(
-      resolveCollisions(nodes, {
+      resolveCollisions(currentNodes, {
         maxIterations: Infinity,
         overlapThreshold: 0.5,
         margin: 15,
       }),
     );
-  }, [setNodes, nodes]);
+  }, [setNodes]);
+
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // for loading purpose

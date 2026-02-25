@@ -54,7 +54,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body>
+      <body className="min-h-screen">
         <ErrorBoundary context="application">
           <Providers
             attribute="class"

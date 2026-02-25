@@ -3,13 +3,17 @@ Unified Hybrid Search
 
 Combines semantic (embedding) search with lexical (tsvector) search
 for improved relevance across all content types (agents, blocks, docs).
+Includes BM25 reranking for improved lexical relevance.
 """
 
 import logging
+import re
+import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from prisma.enums import ContentType
+from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 from backend.api.features.store.embeddings import (
     EMBEDDING_DIM,
@@ -19,6 +23,84 @@ from backend.api.features.store.embeddings import (
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# BM25 Reranking
+# ============================================================================
+
+
+def tokenize(text: str) -> list[str]:
+    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
+    if not text:
+        return []
+    # Lowercase and split on non-alphanumeric characters
+    tokens = re.findall(r"\b\w+\b", text.lower())
+    return tokens
+
+
+def bm25_rerank(
+    query: str,
+    results: list[dict[str, Any]],
+    text_field: str = "searchable_text",
+    bm25_weight: float = 0.3,
+    original_score_field: str = "combined_score",
+) -> list[dict[str, Any]]:
+    """
+    Rerank search results using BM25.
+
+    Combines the original combined_score with BM25 score for improved
+    lexical relevance, especially for exact term matches.
+
+    Args:
+        query: The search query
+        results: List of result dicts with text_field and original_score_field
+        text_field: Field name containing the text to score
+        bm25_weight: Weight for BM25 score (0-1). Original score gets (1 - bm25_weight)
+        original_score_field: Field name containing the original score
+
+    Returns:
+        Results list sorted by combined score (BM25 + original)
+    """
+    if not results or not query:
+        return results
+
+    # Extract texts and tokenize
+    corpus = [tokenize(r.get(text_field, "") or "") for r in results]
+
+    # Handle edge case where all documents are empty
+    if all(len(doc) == 0 for doc in corpus):
+        return results
+
+    # Build BM25 index
+    bm25 = BM25Okapi(corpus)
+
+    # Score query against corpus
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        return results
+
+    bm25_scores = bm25.get_scores(query_tokens)
+
+    # Normalize BM25 scores to 0-1 range
+    max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
+    normalized_bm25 = [s / max_bm25 for s in bm25_scores]
+
+    # Combine scores
+    original_weight = 1.0 - bm25_weight
+    for i, result in enumerate(results):
+        original_score = result.get(original_score_field, 0) or 0
+        result["bm25_score"] = normalized_bm25[i]
+        final_score = (
+            original_weight * original_score + bm25_weight * normalized_bm25[i]
+        )
+        result["final_score"] = final_score
+        result["relevance"] = final_score
+
+    # Sort by relevance descending
+    results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+
+    return results
 
 
 @dataclass
@@ -105,13 +187,12 @@ async def unified_hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation if embedding unavailable
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search. "
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
         query_embedding = [0.0] * EMBEDDING_DIM
@@ -273,9 +354,7 @@ async def unified_hybrid_search(
             FROM normalized
         ),
         filtered AS (
-            SELECT
-                *,
-                COUNT(*) OVER () as total_count
+            SELECT *, COUNT(*) OVER () as total_count
             FROM scored
             WHERE combined_score >= {min_score_param}
         )
@@ -284,11 +363,22 @@ async def unified_hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    try:
+        results = await query_raw_with_schema(sql_query, *params)
+    except Exception as e:
+        await _log_vector_error_diagnostics(e)
+        raise
 
     total = results[0]["total_count"] if results else 0
+    # Apply BM25 reranking
+    if results:
+        results = bm25_rerank(
+            query=query,
+            results=results,
+            text_field="searchable_text",
+            bm25_weight=0.3,
+            original_score_field="combined_score",
+        )
 
     # Clean up results
     for result in results:
@@ -378,13 +468,12 @@ async def hybrid_search(
 
     offset = (page - 1) * page_size
 
-    # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    # Graceful degradation
-    if query_embedding is None or not query_embedding:
+    # Generate query embedding with graceful degradation
+    try:
+        query_embedding = await embed_query(query)
+    except Exception as e:
         logger.warning(
-            "Failed to generate query embedding - falling back to lexical-only search."
+            f"Failed to generate query embedding - falling back to lexical-only search: {e}"
         )
         query_embedding = [0.0] * EMBEDDING_DIM
         total_non_semantic = (
@@ -516,6 +605,9 @@ async def hybrid_search(
                 sa.featured,
                 sa.is_available,
                 sa.updated_at,
+                sa."agentGraphId",
+                -- Searchable text for BM25 reranking
+                COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
                 COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score (raw, will normalize)
@@ -573,6 +665,8 @@ async def hybrid_search(
                 featured,
                 is_available,
                 updated_at,
+                "agentGraphId",
+                searchable_text,
                 semantic_score,
                 lexical_score,
                 category_score,
@@ -597,14 +691,27 @@ async def hybrid_search(
         LIMIT {limit_param} OFFSET {offset_param}
     """
 
-    results = await query_raw_with_schema(
-        sql_query, *params, set_public_search_path=True
-    )
+    try:
+        results = await query_raw_with_schema(sql_query, *params)
+    except Exception as e:
+        await _log_vector_error_diagnostics(e)
+        raise
 
     total = results[0]["total_count"] if results else 0
 
+    # Apply BM25 reranking
+    if results:
+        results = bm25_rerank(
+            query=query,
+            results=results,
+            text_field="searchable_text",
+            bm25_weight=0.3,
+            original_score_field="combined_score",
+        )
+
     for result in results:
         result.pop("total_count", None)
+        result.pop("searchable_text", None)
 
     logger.info(f"Hybrid search (store agents): {len(results)} results, {total} total")
 
@@ -618,6 +725,87 @@ async def hybrid_search_simple(
 ) -> tuple[list[dict[str, Any]], int]:
     """Simplified hybrid search for store agents."""
     return await hybrid_search(query=query, page=page, page_size=page_size)
+
+
+# ============================================================================
+# Diagnostics
+# ============================================================================
+
+# Rate limit: only log vector error diagnostics once per this interval
+_VECTOR_DIAG_INTERVAL_SECONDS = 60
+_last_vector_diag_time: float = 0
+
+
+async def _log_vector_error_diagnostics(error: Exception) -> None:
+    """Log diagnostic info when 'type vector does not exist' error occurs.
+
+    Note: Diagnostic queries use query_raw_with_schema which may run on a different
+    pooled connection than the one that failed. Session-level search_path can differ,
+    so these diagnostics show cluster-wide state, not necessarily the failed session.
+
+    Includes rate limiting to avoid log spam - only logs once per minute.
+    Caller should re-raise the error after calling this function.
+    """
+    global _last_vector_diag_time
+
+    # Check if this is the vector type error
+    error_str = str(error).lower()
+    if not (
+        "type" in error_str and "vector" in error_str and "does not exist" in error_str
+    ):
+        return
+
+    # Rate limit: only log once per interval
+    now = time.time()
+    if now - _last_vector_diag_time < _VECTOR_DIAG_INTERVAL_SECONDS:
+        return
+    _last_vector_diag_time = now
+
+    try:
+        diagnostics: dict[str, object] = {}
+
+        try:
+            search_path_result = await query_raw_with_schema("SHOW search_path")
+            diagnostics["search_path"] = search_path_result
+        except Exception as e:
+            diagnostics["search_path"] = f"Error: {e}"
+
+        try:
+            schema_result = await query_raw_with_schema("SELECT current_schema()")
+            diagnostics["current_schema"] = schema_result
+        except Exception as e:
+            diagnostics["current_schema"] = f"Error: {e}"
+
+        try:
+            user_result = await query_raw_with_schema(
+                "SELECT current_user, session_user, current_database()"
+            )
+            diagnostics["user_info"] = user_result
+        except Exception as e:
+            diagnostics["user_info"] = f"Error: {e}"
+
+        try:
+            # Check pgvector extension installation (cluster-wide, stable info)
+            ext_result = await query_raw_with_schema(
+                "SELECT extname, extversion, nspname as schema "
+                "FROM pg_extension e "
+                "JOIN pg_namespace n ON e.extnamespace = n.oid "
+                "WHERE extname = 'vector'"
+            )
+            diagnostics["pgvector_extension"] = ext_result
+        except Exception as e:
+            diagnostics["pgvector_extension"] = f"Error: {e}"
+
+        logger.error(
+            f"Vector type error diagnostics:\n"
+            f"  Error: {error}\n"
+            f"  search_path: {diagnostics.get('search_path')}\n"
+            f"  current_schema: {diagnostics.get('current_schema')}\n"
+            f"  user_info: {diagnostics.get('user_info')}\n"
+            f"  pgvector_extension: {diagnostics.get('pgvector_extension')}"
+        )
+    except Exception as diag_error:
+        logger.error(f"Failed to collect vector error diagnostics: {diag_error}")
 
 
 # Backward compatibility alias - HybridSearchWeights maps to StoreAgentSearchWeights

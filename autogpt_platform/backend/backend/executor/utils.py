@@ -8,22 +8,18 @@ from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from backend.blocks import get_block
+from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
-from backend.data.block import (
-    Block,
-    BlockCostType,
-    BlockInput,
-    BlockOutputEntry,
-    BlockType,
-    get_block,
-)
-from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.db import prisma
 
 # Import dynamic field utilities from centralized location
+from backend.data.block import BlockInput, BlockOutputEntry
+from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
@@ -34,7 +30,7 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
+from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -264,7 +260,13 @@ async def _validate_node_input_credentials(
         # Track if any credential field is missing for this node
         has_missing_credentials = False
 
+        # A credential field is optional if the node metadata says so, or if
+        # the block schema declares a default for the field.
+        required_fields = block.input_schema.get_required_fields()
+        is_creds_optional = node.credentials_optional
+
         for field_name, credentials_meta_type in credentials_fields.items():
+            field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default
                 field_value = None
@@ -277,7 +279,7 @@ async def _validate_node_input_credentials(
                 elif field_name in node.input_default:
                     # For optional credentials, don't use input_default - treat as missing
                     # This prevents stale credential IDs from failing validation
-                    if node.credentials_optional:
+                    if field_is_optional:
                         field_value = None
                     else:
                         field_value = node.input_default[field_name]
@@ -287,8 +289,8 @@ async def _validate_node_input_credentials(
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
                     has_missing_credentials = True
-                    # If node has credentials_optional flag, mark for skipping instead of error
-                    if node.credentials_optional:
+                    # If credential field is optional, skip instead of error
+                    if field_is_optional:
                         continue  # Don't add error, will be marked for skip after loop
                     else:
                         credential_errors[node.id][
@@ -338,16 +340,16 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
-        # If node has optional credentials and any are missing, mark for skipping
-        # But only if there are no other errors for this node
+        # If node has optional credentials and any are missing, allow running without.
+        # The executor will pass credentials=None to the block's run().
         if (
             has_missing_credentials
-            and node.credentials_optional
+            and is_creds_optional
             and node.id not in credential_errors
         ):
-            nodes_to_skip.add(node.id)
             logger.info(
-                f"Node #{node.id} will be skipped: optional credentials not configured"
+                f"Node #{node.id}: optional credentials not configured, "
+                "running without"
             )
 
     return credential_errors, nodes_to_skip
@@ -372,7 +374,7 @@ def make_node_credentials_input_map(
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
 
-    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+    for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
         if graph_input_name not in graph_credentials_input:
             continue
@@ -425,7 +427,7 @@ async def validate_graph_with_credentials(
 async def _construct_starting_node_execution_input(
     graph: GraphModel,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
@@ -437,7 +439,7 @@ async def _construct_starting_node_execution_input(
     Args:
         graph (GraphModel): The graph model to execute.
         user_id (str): The ID of the user executing the graph.
-        data (BlockInput): The input data for the graph execution.
+        data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
 
     Returns:
@@ -495,7 +497,7 @@ async def _construct_starting_node_execution_input(
 async def validate_and_construct_node_execution_input(
     graph_id: str,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
@@ -749,9 +751,27 @@ async def stop_graph_execution(
         if graph_exec.status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
+            ExecutionStatus.REVIEW,
         ]:
-            # If the graph is still on the queue, we can prevent them from being executed
-            # by setting the status to TERMINATED.
+            # If the graph is queued/incomplete/paused for review, terminate immediately
+            # No need to wait for executor since it's not actively running
+
+            # If graph is in REVIEW status, clean up pending reviews before terminating
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                # Use human_review_db if Prisma connected, else database manager
+                review_db = (
+                    human_review_db
+                    if prisma.is_connected()
+                    else get_database_manager_async_client()
+                )
+                # Mark all pending reviews as rejected/cancelled
+                cancelled_count = await review_db.cancel_pending_reviews_for_execution(
+                    graph_exec_id, user_id
+                )
+                logger.info(
+                    f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
+                )
+
             graph_exec.status = ExecutionStatus.TERMINATED
 
             await asyncio.gather(
@@ -777,7 +797,7 @@ async def stop_graph_execution(
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: Optional[BlockInput] = None,
+    inputs: Optional[GraphInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
@@ -873,14 +893,19 @@ async def add_graph_execution(
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
 
         execution_context = ExecutionContext(
-            safe_mode=(
-                settings.human_in_the_loop_safe_mode
-                if settings.human_in_the_loop_safe_mode is not None
-                else True
-            ),
+            # Execution identity
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            graph_version=graph_exec.graph_version,
+            # Safety settings
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),
+            # Execution hierarchy
             root_execution_id=graph_exec.id,
         )
 
@@ -890,9 +915,28 @@ async def add_graph_execution(
             nodes_to_skip=nodes_to_skip,
             execution_context=execution_context,
         )
-        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
+        logger.info(f"Queueing execution {graph_exec.id}")
+
+        # Update execution status to QUEUED BEFORE publishing to prevent race condition
+        # where two concurrent requests could both publish the same execution
+        updated_exec = await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.QUEUED,
+        )
+
+        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+        # If another request already updated the status, this execution will not be QUEUED
+        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+            logger.warning(
+                f"Skipping queue publish for execution {graph_exec.id} - "
+                f"status update failed or execution already queued by another request"
+            )
+            return graph_exec
+
+        graph_exec.status = ExecutionStatus.QUEUED
 
         # Publish to execution queue for executor to pick up
+        # This happens AFTER status update to ensure only one request publishes
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
@@ -900,13 +944,6 @@ async def add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
-
-        # Update execution status to QUEUED
-        graph_exec.status = ExecutionStatus.QUEUED
-        await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=graph_exec.status,
-        )
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:

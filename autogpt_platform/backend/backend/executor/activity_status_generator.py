@@ -13,8 +13,8 @@ except ImportError:
 
 from pydantic import SecretStr
 
+from backend.blocks import get_block
 from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
-from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -22,7 +22,7 @@ from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient
+    from backend.data.db_manager import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
 

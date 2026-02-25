@@ -21,7 +21,6 @@ from backend.util.json import dumps
 
 logger = logging.getLogger(__name__)
 
-
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 # Embedding dimension for the model above
@@ -63,49 +62,42 @@ def build_searchable_text(
     return " ".join(parts)
 
 
-async def generate_embedding(text: str) -> list[float] | None:
+async def generate_embedding(text: str) -> list[float]:
     """
     Generate embedding for text using OpenAI API.
 
-    Returns None if embedding generation fails.
-    Fail-fast: no retries to maintain consistency with approval flow.
+    Raises exceptions on failure - caller should handle.
     """
-    try:
-        client = get_openai_client()
-        if not client:
-            logger.error("openai_internal_api_key not set, cannot generate embedding")
-            return None
+    client = get_openai_client()
+    if not client:
+        raise RuntimeError("openai_internal_api_key not set, cannot generate embedding")
 
-        # Truncate text to token limit using tiktoken
-        # Character-based truncation is insufficient because token ratios vary by content type
-        enc = encoding_for_model(EMBEDDING_MODEL)
-        tokens = enc.encode(text)
-        if len(tokens) > EMBEDDING_MAX_TOKENS:
-            tokens = tokens[:EMBEDDING_MAX_TOKENS]
-            truncated_text = enc.decode(tokens)
-            logger.info(
-                f"Truncated text from {len(enc.encode(text))} to {len(tokens)} tokens"
-            )
-        else:
-            truncated_text = text
-
-        start_time = time.time()
-        response = await client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=truncated_text,
-        )
-        latency_ms = (time.time() - start_time) * 1000
-
-        embedding = response.data[0].embedding
+    # Truncate text to token limit using tiktoken
+    # Character-based truncation is insufficient because token ratios vary by content type
+    enc = encoding_for_model(EMBEDDING_MODEL)
+    tokens = enc.encode(text)
+    if len(tokens) > EMBEDDING_MAX_TOKENS:
+        tokens = tokens[:EMBEDDING_MAX_TOKENS]
+        truncated_text = enc.decode(tokens)
         logger.info(
-            f"Generated embedding: {len(embedding)} dims, "
-            f"{len(tokens)} tokens, {latency_ms:.0f}ms"
+            f"Truncated text from {len(enc.encode(text))} to {len(tokens)} tokens"
         )
-        return embedding
+    else:
+        truncated_text = text
 
-    except Exception as e:
-        logger.error(f"Failed to generate embedding: {e}")
-        return None
+    start_time = time.time()
+    response = await client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=truncated_text,
+    )
+    latency_ms = (time.time() - start_time) * 1000
+
+    embedding = response.data[0].embedding
+    logger.info(
+        f"Generated embedding: {len(embedding)} dims, "
+        f"{len(tokens)} tokens, {latency_ms:.0f}ms"
+    )
+    return embedding
 
 
 async def store_embedding(
@@ -144,48 +136,45 @@ async def store_content_embedding(
 
     New function for unified content embedding storage.
     Uses raw SQL since Prisma doesn't natively support pgvector.
+
+    Raises exceptions on failure - caller should handle.
     """
-    try:
-        client = tx if tx else prisma.get_client()
+    client = tx if tx else prisma.get_client()
 
-        # Convert embedding to PostgreSQL vector format
-        embedding_str = embedding_to_vector_string(embedding)
-        metadata_json = dumps(metadata or {})
+    # Convert embedding to PostgreSQL vector format
+    embedding_str = embedding_to_vector_string(embedding)
+    metadata_json = dumps(metadata or {})
 
-        # Upsert the embedding
-        # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
-        await execute_raw_with_schema(
-            """
-            INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
-                "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
-            )
-            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
-            ON CONFLICT ("contentType", "contentId", "userId")
-            DO UPDATE SET
-                "embedding" = $4::vector,
-                "searchableText" = $5,
-                "metadata" = $6::jsonb,
-                "updatedAt" = NOW()
-            WHERE {schema_prefix}"UnifiedContentEmbedding"."contentType" = $1::{schema_prefix}"ContentType"
-                AND {schema_prefix}"UnifiedContentEmbedding"."contentId" = $2
-                AND ({schema_prefix}"UnifiedContentEmbedding"."userId" = $3 OR ($3 IS NULL AND {schema_prefix}"UnifiedContentEmbedding"."userId" IS NULL))
-            """,
-            content_type,
-            content_id,
-            user_id,
-            embedding_str,
-            searchable_text,
-            metadata_json,
-            client=client,
-            set_public_search_path=True,
+    # Upsert the embedding
+    # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
+    # Use unqualified ::vector - pgvector is in search_path on all environments
+    await execute_raw_with_schema(
+        """
+        INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
+            "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
         )
+        VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
+        ON CONFLICT ("contentType", "contentId", "userId")
+        DO UPDATE SET
+            "embedding" = $4::vector,
+            "searchableText" = $5,
+            "metadata" = $6::jsonb,
+            "updatedAt" = NOW()
+        WHERE {schema_prefix}"UnifiedContentEmbedding"."contentType" = $1::{schema_prefix}"ContentType"
+            AND {schema_prefix}"UnifiedContentEmbedding"."contentId" = $2
+            AND ({schema_prefix}"UnifiedContentEmbedding"."userId" = $3 OR ($3 IS NULL AND {schema_prefix}"UnifiedContentEmbedding"."userId" IS NULL))
+        """,
+        content_type,
+        content_id,
+        user_id,
+        embedding_str,
+        searchable_text,
+        metadata_json,
+        client=client,
+    )
 
-        logger.info(f"Stored embedding for {content_type}:{content_id}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to store embedding for {content_type}:{content_id}: {e}")
-        return False
+    logger.info(f"Stored embedding for {content_type}:{content_id}")
+    return True
 
 
 async def get_embedding(version_id: str) -> dict[str, Any] | None:
@@ -217,35 +206,31 @@ async def get_content_embedding(
 
     New function for unified content embedding retrieval.
     Returns dict with contentType, contentId, embedding, timestamps or None if not found.
+
+    Raises exceptions on failure - caller should handle.
     """
-    try:
-        result = await query_raw_with_schema(
-            """
-            SELECT
-                "contentType",
-                "contentId",
-                "userId",
-                "embedding"::text as "embedding",
-                "searchableText",
-                "metadata",
-                "createdAt",
-                "updatedAt"
-            FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" = $1::{schema_prefix}"ContentType" AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
-            """,
-            content_type,
-            content_id,
-            user_id,
-            set_public_search_path=True,
-        )
+    result = await query_raw_with_schema(
+        """
+        SELECT
+            "contentType",
+            "contentId",
+            "userId",
+            "embedding"::text as "embedding",
+            "searchableText",
+            "metadata",
+            "createdAt",
+            "updatedAt"
+        FROM {schema_prefix}"UnifiedContentEmbedding"
+        WHERE "contentType" = $1::{schema_prefix}"ContentType" AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
+        """,
+        content_type,
+        content_id,
+        user_id,
+    )
 
-        if result and len(result) > 0:
-            return result[0]
-        return None
-
-    except Exception as e:
-        logger.error(f"Failed to get embedding for {content_type}:{content_id}: {e}")
-        return None
+    if result and len(result) > 0:
+        return result[0]
+    return None
 
 
 async def ensure_embedding(
@@ -273,46 +258,38 @@ async def ensure_embedding(
         tx: Optional transaction client
 
     Returns:
-        True if embedding exists/was created, False on failure
+        True if embedding exists/was created
+
+    Raises exceptions on failure - caller should handle.
     """
-    try:
-        # Check if embedding already exists
-        if not force:
-            existing = await get_embedding(version_id)
-            if existing and existing.get("embedding"):
-                logger.debug(f"Embedding for version {version_id} already exists")
-                return True
+    # Check if embedding already exists
+    if not force:
+        existing = await get_embedding(version_id)
+        if existing and existing.get("embedding"):
+            logger.debug(f"Embedding for version {version_id} already exists")
+            return True
 
-        # Build searchable text for embedding
-        searchable_text = build_searchable_text(
-            name, description, sub_heading, categories
-        )
+    # Build searchable text for embedding
+    searchable_text = build_searchable_text(name, description, sub_heading, categories)
 
-        # Generate new embedding
-        embedding = await generate_embedding(searchable_text)
-        if embedding is None:
-            logger.warning(f"Could not generate embedding for version {version_id}")
-            return False
+    # Generate new embedding
+    embedding = await generate_embedding(searchable_text)
 
-        # Store the embedding with metadata using new function
-        metadata = {
-            "name": name,
-            "subHeading": sub_heading,
-            "categories": categories,
-        }
-        return await store_content_embedding(
-            content_type=ContentType.STORE_AGENT,
-            content_id=version_id,
-            embedding=embedding,
-            searchable_text=searchable_text,
-            metadata=metadata,
-            user_id=None,  # Store agents are public
-            tx=tx,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to ensure embedding for version {version_id}: {e}")
-        return False
+    # Store the embedding with metadata using new function
+    metadata = {
+        "name": name,
+        "subHeading": sub_heading,
+        "categories": categories,
+    }
+    return await store_content_embedding(
+        content_type=ContentType.STORE_AGENT,
+        content_id=version_id,
+        embedding=embedding,
+        searchable_text=searchable_text,
+        metadata=metadata,
+        user_id=None,  # Store agents are public
+        tx=tx,
+    )
 
 
 async def delete_embedding(version_id: str) -> bool:
@@ -477,6 +454,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     total_processed = 0
     total_success = 0
     total_failed = 0
+    all_errors: dict[str, int] = {}  # Aggregate errors across all content types
 
     # Process content types in explicit order
     processing_order = [
@@ -522,6 +500,13 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
             success = sum(1 for result in results if result is True)
             failed = len(results) - success
 
+            # Aggregate errors across all content types
+            if failed > 0:
+                for result in results:
+                    if isinstance(result, Exception):
+                        error_key = f"{type(result).__name__}: {str(result)}"
+                        all_errors[error_key] = all_errors.get(error_key, 0) + 1
+
             results_by_type[content_type.value] = {
                 "processed": len(missing_items),
                 "success": success,
@@ -547,6 +532,13 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
                 "error": str(e),
             }
 
+    # Log aggregated errors once at the end
+    if all_errors:
+        error_details = ", ".join(
+            f"{error} ({count}x)" for error, count in all_errors.items()
+        )
+        logger.error(f"Embedding backfill errors: {error_details}")
+
     return {
         "by_type": results_by_type,
         "totals": {
@@ -558,11 +550,12 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     }
 
 
-async def embed_query(query: str) -> list[float] | None:
+async def embed_query(query: str) -> list[float]:
     """
     Generate embedding for a search query.
 
     Same as generate_embedding but with clearer intent.
+    Raises exceptions on failure - caller should handle.
     """
     return await generate_embedding(query)
 
@@ -595,40 +588,30 @@ async def ensure_content_embedding(
         tx: Optional transaction client
 
     Returns:
-        True if embedding exists/was created, False on failure
+        True if embedding exists/was created
+
+    Raises exceptions on failure - caller should handle.
     """
-    try:
-        # Check if embedding already exists
-        if not force:
-            existing = await get_content_embedding(content_type, content_id, user_id)
-            if existing and existing.get("embedding"):
-                logger.debug(
-                    f"Embedding for {content_type}:{content_id} already exists"
-                )
-                return True
+    # Check if embedding already exists
+    if not force:
+        existing = await get_content_embedding(content_type, content_id, user_id)
+        if existing and existing.get("embedding"):
+            logger.debug(f"Embedding for {content_type}:{content_id} already exists")
+            return True
 
-        # Generate new embedding
-        embedding = await generate_embedding(searchable_text)
-        if embedding is None:
-            logger.warning(
-                f"Could not generate embedding for {content_type}:{content_id}"
-            )
-            return False
+    # Generate new embedding
+    embedding = await generate_embedding(searchable_text)
 
-        # Store the embedding
-        return await store_content_embedding(
-            content_type=content_type,
-            content_id=content_id,
-            embedding=embedding,
-            searchable_text=searchable_text,
-            metadata=metadata or {},
-            user_id=user_id,
-            tx=tx,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to ensure embedding for {content_type}:{content_id}: {e}")
-        return False
+    # Store the embedding
+    return await store_content_embedding(
+        content_type=content_type,
+        content_id=content_id,
+        embedding=embedding,
+        searchable_text=searchable_text,
+        metadata=metadata or {},
+        user_id=user_id,
+        tx=tx,
+    )
 
 
 async def cleanup_orphaned_embeddings() -> dict[str, Any]:
@@ -679,24 +662,24 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 )
                 current_ids = {row["id"] for row in valid_agents}
             elif content_type == ContentType.BLOCK:
-                from backend.data.block import get_blocks
+                from backend.blocks import get_blocks
 
                 current_ids = set(get_blocks().keys())
             elif content_type == ContentType.DOCUMENTATION:
-                from pathlib import Path
-
-                # embeddings.py is at: backend/backend/api/features/store/embeddings.py
-                # Need to go up to project root then into docs/
-                this_file = Path(__file__)
-                project_root = (
-                    this_file.parent.parent.parent.parent.parent.parent.parent
+                # Use DocumentationHandler to get section-based content IDs
+                from backend.api.features.store.content_handlers import (
+                    DocumentationHandler,
                 )
-                docs_root = project_root / "docs"
-                if docs_root.exists():
-                    all_docs = list(docs_root.rglob("*.md")) + list(
-                        docs_root.rglob("*.mdx")
-                    )
-                    current_ids = {str(doc.relative_to(docs_root)) for doc in all_docs}
+
+                doc_handler = CONTENT_HANDLERS.get(ContentType.DOCUMENTATION)
+                if isinstance(doc_handler, DocumentationHandler):
+                    docs_root = doc_handler._get_docs_root()
+                    if docs_root.exists():
+                        current_ids = doc_handler._get_all_section_content_ids(
+                            docs_root
+                        )
+                    else:
+                        current_ids = set()
                 else:
                     current_ids = set()
             else:
@@ -855,9 +838,8 @@ async def semantic_search(
         limit = 100
 
     # Generate query embedding
-    query_embedding = await embed_query(query)
-
-    if query_embedding is not None:
+    try:
+        query_embedding = await embed_query(query)
         # Semantic search with embeddings
         embedding_str = embedding_to_vector_string(query_embedding)
 
@@ -871,47 +853,58 @@ async def semantic_search(
         # Add content type parameters and build placeholders dynamically
         content_type_start_idx = len(params) + 1
         content_type_placeholders = ", ".join(
-            f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+            "$" + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
             for i in range(len(content_types))
         )
         params.extend([ct.value for ct in content_types])
 
-        sql = f"""
+        # Build min_similarity param index before appending
+        min_similarity_idx = len(params) + 1
+        params.append(min_similarity)
+
+        # Use unqualified ::vector and <=> operator - pgvector is in search_path on all environments
+        sql = (
+            """
             SELECT
                 "contentId" as content_id,
                 "contentType" as content_type,
                 "searchableText" as searchable_text,
                 metadata,
-                1 - (embedding <=> '{embedding_str}'::vector) as similarity
-            FROM {{{{schema_prefix}}}}"UnifiedContentEmbedding"
-            WHERE "contentType" IN ({content_type_placeholders})
-            {user_filter}
-            AND 1 - (embedding <=> '{embedding_str}'::vector) >= ${len(params) + 1}
+                1 - (embedding <=> '"""
+            + embedding_str
+            + """'::vector) as similarity
+            FROM {schema_prefix}"UnifiedContentEmbedding"
+            WHERE "contentType" IN ("""
+            + content_type_placeholders
+            + """)
+            """
+            + user_filter
+            + """
+            AND 1 - (embedding <=> '"""
+            + embedding_str
+            + """'::vector) >= $"""
+            + str(min_similarity_idx)
+            + """
             ORDER BY similarity DESC
             LIMIT $1
         """
-        params.append(min_similarity)
+        )
 
-        try:
-            results = await query_raw_with_schema(
-                sql, *params, set_public_search_path=True
-            )
-            return [
-                {
-                    "content_id": row["content_id"],
-                    "content_type": row["content_type"],
-                    "searchable_text": row["searchable_text"],
-                    "metadata": row["metadata"],
-                    "similarity": float(row["similarity"]),
-                }
-                for row in results
-            ]
-        except Exception as e:
-            logger.error(f"Semantic search failed: {e}")
-            # Fall through to lexical search below
+        results = await query_raw_with_schema(sql, *params)
+        return [
+            {
+                "content_id": row["content_id"],
+                "content_type": row["content_type"],
+                "searchable_text": row["searchable_text"],
+                "metadata": row["metadata"],
+                "similarity": float(row["similarity"]),
+            }
+            for row in results
+        ]
+    except Exception as e:
+        logger.warning(f"Semantic search failed, falling back to lexical search: {e}")
 
     # Fallback to lexical search if embeddings unavailable
-    logger.warning("Falling back to lexical search (embeddings unavailable)")
 
     params_lexical: list[Any] = [limit]
     user_filter = ""
@@ -922,31 +915,41 @@ async def semantic_search(
     # Add content type parameters and build placeholders dynamically
     content_type_start_idx = len(params_lexical) + 1
     content_type_placeholders_lexical = ", ".join(
-        f'${content_type_start_idx + i}::{{{{schema_prefix}}}}"ContentType"'
+        "$" + str(content_type_start_idx + i) + '::{schema_prefix}"ContentType"'
         for i in range(len(content_types))
     )
     params_lexical.extend([ct.value for ct in content_types])
 
-    sql_lexical = f"""
+    # Build query param index before appending
+    query_param_idx = len(params_lexical) + 1
+    params_lexical.append(f"%{query}%")
+
+    # Use regular string (not f-string) for template to preserve {schema_prefix} placeholders
+    sql_lexical = (
+        """
         SELECT
             "contentId" as content_id,
             "contentType" as content_type,
             "searchableText" as searchable_text,
             metadata,
             0.0 as similarity
-        FROM {{{{schema_prefix}}}}"UnifiedContentEmbedding"
-        WHERE "contentType" IN ({content_type_placeholders_lexical})
-        {user_filter}
-        AND "searchableText" ILIKE ${len(params_lexical) + 1}
+        FROM {schema_prefix}"UnifiedContentEmbedding"
+        WHERE "contentType" IN ("""
+        + content_type_placeholders_lexical
+        + """)
+        """
+        + user_filter
+        + """
+        AND "searchableText" ILIKE $"""
+        + str(query_param_idx)
+        + """
         ORDER BY "updatedAt" DESC
         LIMIT $1
     """
-    params_lexical.append(f"%{query}%")
+    )
 
     try:
-        results = await query_raw_with_schema(
-            sql_lexical, *params_lexical, set_public_search_path=True
-        )
+        results = await query_raw_with_schema(sql_lexical, *params_lexical)
         return [
             {
                 "content_id": row["content_id"],

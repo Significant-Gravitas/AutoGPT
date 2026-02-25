@@ -15,8 +15,22 @@ export function usePendingReviews() {
   };
 }
 
-export function usePendingReviewsForExecution(graphExecId: string) {
-  const query = useGetV2GetPendingReviewsForExecution(graphExecId);
+interface UsePendingReviewsForExecutionOptions {
+  enabled?: boolean;
+  refetchInterval?: number | false;
+}
+
+export function usePendingReviewsForExecution(
+  graphExecId: string,
+  options?: UsePendingReviewsForExecutionOptions,
+) {
+  const query = useGetV2GetPendingReviewsForExecution(graphExecId, {
+    query: {
+      enabled: options?.enabled ?? !!graphExecId,
+      refetchInterval: options?.refetchInterval,
+      refetchIntervalInBackground: !!options?.refetchInterval,
+    },
+  });
 
   return {
     pendingReviews: okData(query.data) || [],

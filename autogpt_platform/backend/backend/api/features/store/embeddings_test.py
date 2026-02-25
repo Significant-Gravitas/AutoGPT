@@ -80,9 +80,8 @@ async def test_generate_embedding_no_api_key():
     ) as mock_get_client:
         mock_get_client.return_value = None
 
-        result = await embeddings.generate_embedding("test text")
-
-        assert result is None
+        with pytest.raises(RuntimeError, match="openai_internal_api_key not set"):
+            await embeddings.generate_embedding("test text")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -97,9 +96,8 @@ async def test_generate_embedding_api_error():
     ) as mock_get_client:
         mock_get_client.return_value = mock_client
 
-        result = await embeddings.generate_embedding("test text")
-
-        assert result is None
+        with pytest.raises(Exception, match="API Error"):
+            await embeddings.generate_embedding("test text")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -155,18 +153,14 @@ async def test_store_embedding_success(mocker):
     )
 
     assert result is True
-    # execute_raw is called twice: once for SET search_path, once for INSERT
-    assert mock_client.execute_raw.call_count == 2
+    # execute_raw is called once for INSERT (no separate SET search_path needed)
+    assert mock_client.execute_raw.call_count == 1
 
-    # First call: SET search_path
-    first_call_args = mock_client.execute_raw.call_args_list[0][0]
-    assert "SET search_path" in first_call_args[0]
-
-    # Second call: INSERT query with the actual data
-    second_call_args = mock_client.execute_raw.call_args_list[1][0]
-    assert "test-version-id" in second_call_args
-    assert "[0.1,0.2,0.3]" in second_call_args
-    assert None in second_call_args  # userId should be None for store agents
+    # Verify the INSERT query with the actual data
+    call_args = mock_client.execute_raw.call_args_list[0][0]
+    assert "test-version-id" in call_args
+    assert "[0.1,0.2,0.3]" in call_args
+    assert None in call_args  # userId should be None for store agents
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -177,11 +171,10 @@ async def test_store_embedding_database_error(mocker):
 
     embedding = [0.1, 0.2, 0.3]
 
-    result = await embeddings.store_embedding(
-        version_id="test-version-id", embedding=embedding, tx=mock_client
-    )
-
-    assert result is False
+    with pytest.raises(Exception, match="Database error"):
+        await embeddings.store_embedding(
+            version_id="test-version-id", embedding=embedding, tx=mock_client
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -281,17 +274,16 @@ async def test_ensure_embedding_create_new(mock_get, mock_store, mock_generate):
 async def test_ensure_embedding_generation_fails(mock_get, mock_generate):
     """Test ensure_embedding when generation fails."""
     mock_get.return_value = None
-    mock_generate.return_value = None
+    mock_generate.side_effect = Exception("Generation failed")
 
-    result = await embeddings.ensure_embedding(
-        version_id="test-id",
-        name="Test",
-        description="Test description",
-        sub_heading="Test heading",
-        categories=["test"],
-    )
-
-    assert result is False
+    with pytest.raises(Exception, match="Generation failed"):
+        await embeddings.ensure_embedding(
+            version_id="test-id",
+            name="Test",
+            description="Test description",
+            sub_heading="Test heading",
+            categories=["test"],
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")

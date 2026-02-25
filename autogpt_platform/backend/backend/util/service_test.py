@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from prisma.errors import DataError, UniqueViolationError
 
 from backend.util.service import (
     AppService,
@@ -446,6 +447,39 @@ class TestHTTPErrorRetryBehavior:
             )
 
         assert "Invalid parameter value" in str(exc_info.value)
+
+    def test_prisma_data_error_reconstructed_correctly(self):
+        """Test that DataError subclasses (e.g. UniqueViolationError) are
+        reconstructed without crashing.
+
+        Prisma's DataError.__init__ expects a dict `data` arg with
+        a 'user_facing_error' key.  RPC serialization only preserves the
+        string message via exc.args, so the client must wrap it in the
+        expected dict structure.
+        """
+        for exc_type in [DataError, UniqueViolationError]:
+            mock_response = Mock()
+            mock_response.status_code = 400
+            mock_response.json.return_value = {
+                "type": exc_type.__name__,
+                "args": ["Unique constraint failed on the fields: (`path`)"],
+            }
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "400 Bad Request", request=Mock(), response=mock_response
+            )
+
+            client = get_service_client(ServiceTestClient)
+
+            with pytest.raises(exc_type) as exc_info:
+                client._handle_call_method_response(  # type: ignore[attr-defined]
+                    response=mock_response, method_name="test_method"
+                )
+
+            # The exception should have the message preserved
+            assert "Unique constraint" in str(exc_info.value)
+            # And should have the expected data structure (not crash)
+            assert hasattr(exc_info.value, "data")
+            assert isinstance(exc_info.value.data, dict)
 
     def test_client_error_status_codes_coverage(self):
         """Test that various 4xx status codes are all wrapped as HTTPClientError."""

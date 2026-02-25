@@ -2,6 +2,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   Form,
@@ -120,7 +121,7 @@ export default function LibraryUploadAgentDialog() {
           >
             {isUploading ? (
               <div className="flex items-center gap-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-t-2 border-white"></div>
+                <LoadingSpinner size="small" className="text-white" />
                 <span>Uploading...</span>
               </div>
             ) : (

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 export interface Agent {
   name: string;
@@ -36,6 +37,7 @@ export function useAgentSelectStep({
   const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
     number | null
   >(null);
+  const { isLoggedIn } = useSupabase();
 
   const {
     data: _myAgents,
@@ -43,6 +45,7 @@ export function useAgentSelectStep({
     error,
   } = useGetV2GetMyAgents(undefined, {
     query: {
+      enabled: isLoggedIn,
       select: (res) =>
         okData(res)
           ?.agents.map(

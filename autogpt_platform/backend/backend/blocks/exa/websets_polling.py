@@ -121,7 +121,7 @@ class ExaWaitForWebsetBlock(Block):
                 WebsetTargetStatus.IDLE,
                 WebsetTargetStatus.ANY_COMPLETE,
             ]:
-                final_webset = aexa.websets.wait_until_idle(
+                final_webset = await aexa.websets.wait_until_idle(
                     id=input_data.webset_id,
                     timeout=input_data.timeout,
                     poll_interval=input_data.check_interval,
@@ -164,7 +164,7 @@ class ExaWaitForWebsetBlock(Block):
                 interval = input_data.check_interval
                 while time.time() - start_time < input_data.timeout:
                     # Get current webset status
-                    webset = aexa.websets.get(id=input_data.webset_id)
+                    webset = await aexa.websets.get(id=input_data.webset_id)
                     current_status = (
                         webset.status.value
                         if hasattr(webset.status, "value")
@@ -209,7 +209,7 @@ class ExaWaitForWebsetBlock(Block):
 
                 # Timeout reached
                 elapsed = time.time() - start_time
-                webset = aexa.websets.get(id=input_data.webset_id)
+                webset = await aexa.websets.get(id=input_data.webset_id)
                 final_status = (
                     webset.status.value
                     if hasattr(webset.status, "value")
@@ -345,7 +345,7 @@ class ExaWaitForSearchBlock(Block):
         try:
             while time.time() - start_time < input_data.timeout:
                 # Get current search status using SDK
-                search = aexa.websets.searches.get(
+                search = await aexa.websets.searches.get(
                     webset_id=input_data.webset_id, id=input_data.search_id
                 )
 
@@ -401,7 +401,7 @@ class ExaWaitForSearchBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            search = aexa.websets.searches.get(
+            search = await aexa.websets.searches.get(
                 webset_id=input_data.webset_id, id=input_data.search_id
             )
             final_status = (
@@ -503,7 +503,7 @@ class ExaWaitForEnrichmentBlock(Block):
         try:
             while time.time() - start_time < input_data.timeout:
                 # Get current enrichment status using SDK
-                enrichment = aexa.websets.enrichments.get(
+                enrichment = await aexa.websets.enrichments.get(
                     webset_id=input_data.webset_id, id=input_data.enrichment_id
                 )
 
@@ -548,7 +548,7 @@ class ExaWaitForEnrichmentBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            enrichment = aexa.websets.enrichments.get(
+            enrichment = await aexa.websets.enrichments.get(
                 webset_id=input_data.webset_id, id=input_data.enrichment_id
             )
             final_status = (
@@ -575,7 +575,7 @@ class ExaWaitForEnrichmentBlock(Block):
     ) -> tuple[list[SampleEnrichmentModel], int]:
         """Get sample enriched data and count."""
         # Get a few items to see enrichment results using SDK
-        response = aexa.websets.items.list(webset_id=webset_id, limit=5)
+        response = await aexa.websets.items.list(webset_id=webset_id, limit=5)
 
         sample_data: list[SampleEnrichmentModel] = []
         enriched_count = 0

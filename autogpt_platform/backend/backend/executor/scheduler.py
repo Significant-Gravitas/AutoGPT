@@ -24,11 +24,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
-from backend.data.auth.oauth import cleanup_expired_oauth_tokens
-from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
-from backend.data.model import CredentialsMetaInput
-from backend.data.onboarding import increment_onboarding_runs
+from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -38,7 +35,11 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
 )
-from backend.util.clients import get_database_manager_client, get_scheduler_client
+from backend.util.clients import (
+    get_database_manager_async_client,
+    get_database_manager_client,
+    get_scheduler_client,
+)
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     GraphNotFoundError,
@@ -148,6 +149,7 @@ def execute_graph(**kwargs):
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
+    db = get_database_manager_async_client()
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
@@ -157,7 +159,7 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
         )
-        await increment_onboarding_runs(args.user_id)
+        await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -246,8 +248,13 @@ def cleanup_expired_files():
 
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
+
     # Wait for completion
-    run_async(cleanup_expired_oauth_tokens())
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_expired_oauth_tokens()
+
+    run_async(_cleanup())
 
 
 def execution_accuracy_alerts():
@@ -309,7 +316,7 @@ def ensure_embeddings_coverage():
 
         # Process in batches until no more missing embeddings
         while True:
-            result = db_client.backfill_missing_embeddings(batch_size=10)
+            result = db_client.backfill_missing_embeddings(batch_size=100)
 
             total_processed += result["processed"]
             total_success += result["success"]
@@ -379,7 +386,7 @@ class GraphExecutionJobArgs(BaseModel):
     graph_version: int
     agent_name: str | None = None
     cron: str
-    input_data: BlockInput
+    input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
@@ -602,6 +609,18 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
 
+        # Run embedding backfill immediately on startup
+        # This ensures blocks/docs are searchable right away, not after 6 hours
+        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
+        if self.register_system_tasks:
+            logger.info("Running embedding backfill on startup...")
+            try:
+                result = ensure_embeddings_coverage()
+                logger.info(f"Startup embedding backfill complete: {result}")
+            except Exception as e:
+                logger.error(f"Startup embedding backfill failed: {e}")
+                # Don't fail startup - the scheduled job will retry later
+
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
 
@@ -629,7 +648,7 @@ class Scheduler(AppService):
         graph_id: str,
         graph_version: int,
         cron: str,
-        input_data: BlockInput,
+        input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
         user_timezone: str | None = None,

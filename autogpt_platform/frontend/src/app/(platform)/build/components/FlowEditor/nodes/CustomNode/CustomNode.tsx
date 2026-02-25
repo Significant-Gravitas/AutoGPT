@@ -34,7 +34,7 @@ export type CustomNodeData = {
   uiType: BlockUIType;
   block_id: string;
   status?: AgentExecutionStatus;
-  nodeExecutionResult?: NodeExecutionResult;
+  nodeExecutionResults?: NodeExecutionResult[];
   staticOutput?: boolean;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
@@ -47,7 +47,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
+    const { inputSchema, outputSchema, isMCPWithTool } = useCustomNode({
+      data,
+      nodeId,
+    });
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
@@ -75,7 +78,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         (value) => value !== null && value !== undefined && value !== "",
       );
 
-    const outputData = data.nodeExecutionResult?.output_data;
+    const latestResult =
+      data.nodeExecutionResults && data.nodeExecutionResults.length > 0
+        ? data.nodeExecutionResults[data.nodeExecutionResults.length - 1]
+        : undefined;
+    const outputData = latestResult?.output_data;
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&
@@ -94,6 +101,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            isMCPWithTool={isMCPWithTool}
             className={cn(
               "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",

@@ -5,56 +5,21 @@ Provides access to credit balance and transaction history.
 """
 
 import logging
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Query, Security
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import CreditBalance, CreditTransaction, CreditTransactionsResponse
 
 logger = logging.getLogger(__name__)
 
 credits_router = APIRouter()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class CreditBalance(BaseModel):
-    """User's credit balance."""
-
-    balance: int = Field(description="Current credit balance")
-
-
-class CreditTransaction(BaseModel):
-    """A credit transaction."""
-
-    transaction_key: str
-    amount: int = Field(description="Transaction amount (positive or negative)")
-    type: str = Field(description="One of: TOP_UP, USAGE, GRANT, REFUND")
-    transaction_time: datetime
-    running_balance: Optional[int] = Field(
-        default=None, description="Balance after this transaction"
-    )
-    description: Optional[str] = None
-
-
-class CreditTransactionsResponse(BaseModel):
-    """Response for listing credit transactions."""
-
-    transactions: list[CreditTransaction]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
 
 
 # ============================================================================

@@ -175,9 +175,11 @@ export async function resolveResponse<
   return res.data;
 }
 
-export async function shouldShowOnboarding() {
-  const isEnabled = await resolveResponse(getV1IsOnboardingEnabled());
+export async function getOnboardingStatus() {
+  const status = await resolveResponse(getV1IsOnboardingEnabled());
   const onboarding = await resolveResponse(getV1OnboardingState());
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");
-  return isEnabled && !isCompleted;
+  return {
+    shouldShowOnboarding: status.is_onboarding_enabled && !isCompleted,
+  };
 }

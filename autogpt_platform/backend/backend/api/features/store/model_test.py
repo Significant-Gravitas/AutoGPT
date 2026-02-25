@@ -26,11 +26,13 @@ def test_store_agent():
         description="Test description",
         runs=50,
         rating=4.5,
+        agent_graph_id="test-graph-id",
     )
     assert agent.slug == "test-agent"
     assert agent.agent_name == "Test Agent"
     assert agent.runs == 50
     assert agent.rating == 4.5
+    assert agent.agent_graph_id == "test-graph-id"
 
 
 def test_store_agents_response():
@@ -46,6 +48,7 @@ def test_store_agents_response():
                 description="Test description",
                 runs=50,
                 rating=4.5,
+                agent_graph_id="test-graph-id",
             )
         ],
         pagination=store_model.Pagination(

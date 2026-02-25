@@ -5,57 +5,21 @@ Provides read-only access to available building blocks.
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Response, Security
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from backend.api.external.middleware import require_permission
+from backend.blocks import get_blocks
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.block import get_blocks
 from backend.util.cache import cached
 from backend.util.json import dumps
 
 logger = logging.getLogger(__name__)
 
 blocks_router = APIRouter()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class BlockCost(BaseModel):
-    """Cost information for a block."""
-
-    cost_type: str = Field(description="Type of cost (e.g., 'per_call', 'per_token')")
-    cost_filter: dict[str, Any] = Field(
-        default_factory=dict, description="Conditions for this cost"
-    )
-    cost_amount: int = Field(description="Cost amount in credits")
-
-
-class Block(BaseModel):
-    """A building block that can be used in graphs."""
-
-    id: str
-    name: str
-    description: str
-    categories: list[str] = Field(default_factory=list)
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    costs: list[BlockCost] = Field(default_factory=list)
-    disabled: bool = Field(default=False)
-
-
-class BlocksListResponse(BaseModel):
-    """Response for listing blocks."""
-
-    blocks: list[Block]
-    total_count: int
 
 
 # ============================================================================

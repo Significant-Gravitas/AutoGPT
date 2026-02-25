@@ -27,7 +27,7 @@ export type BlockCost = {
   cost_filter: Record<string, any>;
 };
 
-/* Mirror of backend/data/block.py:Block */
+/* Mirror of backend/blocks/_base.py:Block */
 export type Block = {
   id: string;
   name: string;
@@ -292,7 +292,7 @@ export type NodeCreatable = {
 export type Node = NodeCreatable & {
   input_links: Link[];
   output_links: Link[];
-  webhook?: Webhook;
+  webhook_id?: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Link */
@@ -327,8 +327,8 @@ export type GraphExecutionMeta = {
     | "FAILED"
     | "INCOMPLETE"
     | "REVIEW";
-  started_at: Date;
-  ended_at: Date;
+  started_at: Date | null;
+  ended_at: Date | null;
   stats: {
     error: string | null;
     cost: number;
@@ -362,25 +362,14 @@ export type GraphMeta = {
   user_id: UserID;
   version: number;
   is_active: boolean;
+  created_at: Date;
   name: string;
   description: string;
   instructions?: string | null;
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
-  input_schema: GraphInputSchema;
-  output_schema: GraphOutputSchema;
-  credentials_input_schema: CredentialsInputSchema;
-} & (
-  | {
-      has_external_trigger: true;
-      trigger_setup_info: GraphTriggerInfo;
-    }
-  | {
-      has_external_trigger: false;
-      trigger_setup_info: null;
-    }
-);
+};
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -447,11 +436,22 @@ export type GraphTriggerInfo = {
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
-  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
-};
+  input_schema: GraphInputSchema;
+  output_schema: GraphOutputSchema;
+  credentials_input_schema: CredentialsInputSchema;
+} & (
+    | {
+        has_external_trigger: true;
+        trigger_setup_info: GraphTriggerInfo;
+      }
+    | {
+        has_external_trigger: false;
+        trigger_setup_info: null;
+      }
+  );
 
 export type GraphUpdateable = Omit<
   Graph,
@@ -516,7 +516,7 @@ export type GraphValidationErrorResponse = {
 
 /* *** LIBRARY *** */
 
-/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+/* Mirror of backend/api/features/library/model.py:LibraryAgent */
 export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
@@ -616,7 +616,7 @@ export enum LibraryAgentSortEnum {
 
 /* *** CREDENTIALS *** */
 
-/* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
   provider: CredentialsProviderName;
@@ -628,13 +628,13 @@ export type CredentialsMetaResponse = {
   is_system?: boolean;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
 export type CredentialsDeleteResponse = {
   deleted: true;
   revoked: boolean | null;
 };
 
-/* Mirror of backend/server/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
+/* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionNeedsConfirmationResponse */
 export type CredentialsDeleteNeedConfirmationResponse = {
   deleted: false;
   need_confirmation: true;
@@ -749,10 +749,12 @@ export enum BlockUIType {
   AGENT = "Agent",
   AI = "AI",
   AYRSHARE = "Ayrshare",
+  MCP_TOOL = "MCP Tool",
 }
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  MCP_TOOL = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
   SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
@@ -888,7 +890,7 @@ export type Schedule = {
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
-/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
+/* Mirror of backend/api/features/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
   graph_id: GraphID;
   graph_version: number;
@@ -1003,6 +1005,7 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   // First Wins
+  | "VISIT_COPILOT"
   | "GET_RESULTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"

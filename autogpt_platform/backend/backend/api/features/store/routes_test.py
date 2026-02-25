@@ -82,6 +82,7 @@ def test_get_agents_featured(
                 description="Featured agent description",
                 runs=100,
                 rating=4.5,
+                agent_graph_id="test-graph-1",
             )
         ],
         pagination=store_model.Pagination(
@@ -127,6 +128,7 @@ def test_get_agents_by_creator(
                 description="Creator agent description",
                 runs=50,
                 rating=4.0,
+                agent_graph_id="test-graph-2",
             )
         ],
         pagination=store_model.Pagination(
@@ -172,6 +174,7 @@ def test_get_agents_sorted(
                 description="Top agent description",
                 runs=1000,
                 rating=5.0,
+                agent_graph_id="test-graph-3",
             )
         ],
         pagination=store_model.Pagination(
@@ -217,6 +220,7 @@ def test_get_agents_search(
                 description="Specific search term description",
                 runs=75,
                 rating=4.2,
+                agent_graph_id="test-graph-search",
             )
         ],
         pagination=store_model.Pagination(
@@ -262,6 +266,7 @@ def test_get_agents_category(
                 description="Category agent description",
                 runs=60,
                 rating=4.1,
+                agent_graph_id="test-graph-category",
             )
         ],
         pagination=store_model.Pagination(
@@ -306,6 +311,7 @@ def test_get_agents_pagination(
                 description=f"Agent {i} description",
                 runs=i * 10,
                 rating=4.0,
+                agent_graph_id="test-graph-2",
             )
             for i in range(5)
         ],

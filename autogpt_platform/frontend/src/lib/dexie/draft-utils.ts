@@ -5,7 +5,7 @@ import isEqual from "lodash/isEqual";
 export function cleanNode(node: CustomNode) {
   return {
     id: node.id,
-    position: node.position,
+    // Note: position is intentionally excluded to prevent draft saves when dragging nodes
     data: {
       hardcodedValues: node.data.hardcodedValues,
       title: node.data.title,

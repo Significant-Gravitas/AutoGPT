@@ -8,6 +8,7 @@ import {
   isMultiSelectSchema,
 } from "../utils/schema-utils";
 import { TableField } from "./TableField/TableField";
+import { LlmModelField } from "./LlmModelField/LlmModelField";
 
 export interface CustomFieldDefinition {
   id: string;
@@ -56,6 +57,15 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
       );
     },
     component: TableField,
+  },
+  {
+    id: "custom/llm_model_field",
+    matcher: (schema: any) => {
+      return (
+        typeof schema === "object" && schema !== null && "llm_model" in schema
+      );
+    },
+    component: LlmModelField,
   },
 ];
 

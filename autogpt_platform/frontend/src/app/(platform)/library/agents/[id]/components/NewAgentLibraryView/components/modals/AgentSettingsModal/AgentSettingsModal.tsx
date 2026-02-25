@@ -31,10 +31,18 @@ export function AgentSettingsModal({
     }
   }
 
-  const { currentSafeMode, isPending, hasHITLBlocks, handleToggle } =
-    useAgentSafeMode(agent);
+  const {
+    currentHITLSafeMode,
+    showHITLToggle,
+    handleHITLToggle,
+    currentSensitiveActionSafeMode,
+    showSensitiveActionToggle,
+    handleSensitiveActionToggle,
+    isPending,
+    shouldShowToggle,
+  } = useAgentSafeMode(agent);
 
-  if (!hasHITLBlocks) return null;
+  if (!shouldShowToggle) return null;
 
   return (
     <Dialog
@@ -57,23 +65,48 @@ export function AgentSettingsModal({
       )}
       <Dialog.Content>
         <div className="space-y-6">
-          <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
-            <div className="flex w-full items-start justify-between gap-4">
-              <div className="flex-1">
-                <Text variant="large-semibold">Require human approval</Text>
-                <Text variant="large" className="mt-1 text-zinc-900">
-                  The agent will pause and wait for your review before
-                  continuing
-                </Text>
+          {showHITLToggle && (
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+              <div className="flex w-full items-start justify-between gap-4">
+                <div className="flex-1">
+                  <Text variant="large-semibold">
+                    Human-in-the-loop approval
+                  </Text>
+                  <Text variant="large" className="mt-1 text-zinc-900">
+                    The agent will pause at human-in-the-loop blocks and wait
+                    for your review before continuing
+                  </Text>
+                </div>
+                <Switch
+                  checked={currentHITLSafeMode || false}
+                  onCheckedChange={handleHITLToggle}
+                  disabled={isPending}
+                  className="mt-1"
+                />
               </div>
-              <Switch
-                checked={currentSafeMode || false}
-                onCheckedChange={handleToggle}
-                disabled={isPending}
-                className="mt-1"
-              />
             </div>
-          </div>
+          )}
+          {showSensitiveActionToggle && (
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+              <div className="flex w-full items-start justify-between gap-4">
+                <div className="flex-1">
+                  <Text variant="large-semibold">
+                    Sensitive action approval
+                  </Text>
+                  <Text variant="large" className="mt-1 text-zinc-900">
+                    The agent will pause at sensitive action blocks and wait for
+                    your review before continuing
+                  </Text>
+                </div>
+                <Switch
+                  checked={currentSensitiveActionSafeMode}
+                  onCheckedChange={handleSensitiveActionToggle}
+                  disabled={isPending}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </Dialog.Content>
     </Dialog>

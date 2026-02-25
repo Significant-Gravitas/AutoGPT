@@ -1,9 +1,9 @@
 import { Input } from "@/components/atoms/Input/Input";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
-import { CredentialsGroupedView } from "../CredentialsGroupedView/CredentialsGroupedView";
 import { ModalSection } from "../ModalSection/ModalSection";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 
@@ -19,6 +19,8 @@ export function ModalRunSection() {
     setInputValue,
     agentInputFields,
     agentCredentialsInputFields,
+    inputCredentials,
+    setInputCredentialsValue,
   } = useRunAgentModalContext();
 
   const inputFields = Object.entries(agentInputFields || {});
@@ -102,6 +104,9 @@ export function ModalRunSection() {
           <CredentialsGroupedView
             credentialFields={credentialFields}
             requiredCredentials={requiredCredentials}
+            inputCredentials={inputCredentials}
+            inputValues={inputValues}
+            onCredentialChange={setInputCredentialsValue}
           />
         </ModalSection>
       ) : null}

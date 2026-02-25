@@ -5,11 +5,9 @@ Provides access to user's integration credentials.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Path, Security
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
@@ -18,51 +16,17 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import Credentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
+from .models import (
+    Credential,
+    CredentialRequirement,
+    CredentialRequirementsResponse,
+    CredentialsListResponse,
+)
+
 logger = logging.getLogger(__name__)
 
 integrations_router = APIRouter()
 creds_manager = IntegrationCredentialsManager()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class Credential(BaseModel):
-    """A user's credential for an integration."""
-
-    id: str
-    provider: str = Field(description="Integration provider name")
-    title: Optional[str] = Field(
-        default=None, description="User-assigned title for this credential"
-    )
-    scopes: list[str] = Field(default_factory=list, description="Granted scopes")
-
-
-class CredentialsListResponse(BaseModel):
-    """Response for listing credentials."""
-
-    credentials: list[Credential]
-
-
-class CredentialRequirement(BaseModel):
-    """A credential requirement for a graph or agent."""
-
-    provider: str = Field(description="Required provider name")
-    required_scopes: list[str] = Field(
-        default_factory=list, description="Required scopes"
-    )
-    matching_credentials: list[Credential] = Field(
-        default_factory=list,
-        description="User's credentials that match this requirement",
-    )
-
-
-class CredentialRequirementsResponse(BaseModel):
-    """Response for listing credential requirements."""
-
-    requirements: list[CredentialRequirement]
 
 
 # ============================================================================

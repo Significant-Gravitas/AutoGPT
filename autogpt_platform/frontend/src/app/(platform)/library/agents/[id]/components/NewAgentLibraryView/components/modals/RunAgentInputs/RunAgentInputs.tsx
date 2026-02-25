@@ -68,9 +68,15 @@ export function RunAgentInputs({
           type="number"
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
-          onChange={(e) =>
-            onChange(Number((e.target as HTMLInputElement).value))
-          }
+          onChange={(e) => {
+            const v = (e.target as HTMLInputElement).value;
+            if (!v || v.trim() === "") {
+              onChange(undefined);
+            } else {
+              const numValue = Number(v);
+              onChange(isNaN(numValue) ? undefined : numValue);
+            }
+          }}
           {...props}
         />
       );
@@ -125,14 +131,32 @@ export function RunAgentInputs({
       );
       break;
 
-    case DataType.DATE:
+    case DataType.DATE: {
+      function normalizeDateValue(val: any): Date | null {
+        if (!val) return null;
+        if (val instanceof Date) {
+          return isNaN(val.getTime()) ? null : val;
+        }
+        if (typeof val === "string") {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const [y, m, d] = val.split("-").map(Number);
+            const date = new Date(y, m - 1, d);
+            return isNaN(date.getTime()) ? null : date;
+          }
+          const date = new Date(val);
+          return isNaN(date.getTime()) ? null : date;
+        }
+        return null;
+      }
+
+      const dateValue = normalizeDateValue(value);
       innerInputElement = (
         <DSInput
           id={`${baseId}-date`}
           label={schema.title ?? placeholder ?? "Date"}
           hideLabel
           type="date"
-          value={value ? format(value as Date, "yyyy-MM-dd") : ""}
+          value={dateValue ? format(dateValue, "yyyy-MM-dd") : ""}
           onChange={(e) => {
             const v = (e.target as HTMLInputElement).value;
             if (!v) onChange(undefined);
@@ -146,6 +170,7 @@ export function RunAgentInputs({
         />
       );
       break;
+    }
 
     case DataType.TIME:
       innerInputElement = (

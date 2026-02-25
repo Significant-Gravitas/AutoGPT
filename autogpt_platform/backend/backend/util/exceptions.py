@@ -135,6 +135,12 @@ class GraphValidationError(ValueError):
         )
 
 
+class InvalidInputError(ValueError):
+    """Raised when user input validation fails (e.g., search term too long)"""
+
+    pass
+
+
 class DatabaseError(Exception):
     """Raised when there is an error interacting with the database"""
 

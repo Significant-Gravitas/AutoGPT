@@ -6,12 +6,10 @@ Provides access to the agent marketplace (store).
 
 import logging
 import urllib.parse
-from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.store import cache as store_cache
@@ -20,144 +18,21 @@ from backend.api.features.store import model as store_model
 from backend.data.auth.base import APIAuthorizationInfo
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import (
+    CreateSubmissionRequest,
+    MarketplaceAgent,
+    MarketplaceAgentDetails,
+    MarketplaceAgentsResponse,
+    MarketplaceCreator,
+    MarketplaceCreatorDetails,
+    MarketplaceCreatorsResponse,
+    MarketplaceSubmission,
+    SubmissionsListResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 marketplace_router = APIRouter()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class MarketplaceAgent(BaseModel):
-    """An agent available in the marketplace."""
-
-    slug: str
-    name: str
-    description: str
-    sub_heading: str
-    creator: str
-    creator_avatar: str
-    runs: int = Field(default=0, description="Number of times this agent has been run")
-    rating: float = Field(default=0.0, description="Average rating")
-    image_url: str = Field(default="")
-
-
-class MarketplaceAgentDetails(BaseModel):
-    """Detailed information about a marketplace agent."""
-
-    store_listing_version_id: str
-    slug: str
-    name: str
-    description: str
-    sub_heading: str
-    instructions: Optional[str] = None
-    creator: str
-    creator_avatar: str
-    categories: list[str] = Field(default_factory=list)
-    runs: int = Field(default=0)
-    rating: float = Field(default=0.0)
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: str = Field(default="")
-    versions: list[str] = Field(default_factory=list, description="Available versions")
-    agent_graph_versions: list[str] = Field(default_factory=list)
-    agent_graph_id: str
-    last_updated: datetime
-
-
-class MarketplaceAgentsResponse(BaseModel):
-    """Response for listing marketplace agents."""
-
-    agents: list[MarketplaceAgent]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class MarketplaceCreator(BaseModel):
-    """A creator on the marketplace."""
-
-    name: str
-    username: str
-    description: str
-    avatar_url: str
-    num_agents: int
-    agent_rating: float
-    agent_runs: int
-    is_featured: bool = False
-
-
-class MarketplaceCreatorDetails(BaseModel):
-    """Detailed information about a marketplace creator."""
-
-    name: str
-    username: str
-    description: str
-    avatar_url: str
-    agent_rating: float
-    agent_runs: int
-    top_categories: list[str] = Field(default_factory=list)
-    links: list[str] = Field(default_factory=list)
-
-
-class MarketplaceCreatorsResponse(BaseModel):
-    """Response for listing marketplace creators."""
-
-    creators: list[MarketplaceCreator]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class MarketplaceSubmission(BaseModel):
-    """A marketplace submission."""
-
-    graph_id: str
-    graph_version: int
-    name: str
-    sub_heading: str
-    slug: str
-    description: str
-    instructions: Optional[str] = None
-    image_urls: list[str] = Field(default_factory=list)
-    date_submitted: datetime
-    status: str = Field(description="One of: DRAFT, PENDING, APPROVED, REJECTED")
-    runs: int = Field(default=0)
-    rating: float = Field(default=0.0)
-    store_listing_version_id: Optional[str] = None
-    version: Optional[int] = None
-    review_comments: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    video_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
-
-
-class SubmissionsListResponse(BaseModel):
-    """Response for listing submissions."""
-
-    submissions: list[MarketplaceSubmission]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class CreateSubmissionRequest(BaseModel):
-    """Request to create a marketplace submission."""
-
-    graph_id: str = Field(description="ID of the graph to submit")
-    graph_version: int = Field(description="Version of the graph to submit")
-    name: str = Field(description="Display name for the agent")
-    slug: str = Field(description="URL-friendly identifier")
-    description: str = Field(description="Full description")
-    sub_heading: str = Field(description="Short tagline")
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
 
 
 # ============================================================================

@@ -44,8 +44,6 @@ def _convert_graph_meta(graph: graph_db.GraphMeta) -> GraphMeta:
         name=graph.name,
         description=graph.description,
         created_at=graph.created_at,
-        input_schema=graph.input_schema,
-        output_schema=graph.output_schema,
     )
 
 
@@ -404,7 +402,6 @@ async def set_active_version(
 @graphs_router.patch(
     path="/{graph_id}/settings",
     summary="Update graph settings",
-    response_model=GraphSettings,
 )
 async def update_graph_settings(
     graph_id: str,
@@ -430,13 +427,15 @@ async def update_graph_settings(
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
 
     # Convert to internal model
-    internal_settings = InternalGraphSettings(
-        human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode
-    )
+    internal_settings = InternalGraphSettings()
+    if settings.human_in_the_loop_safe_mode is not None:
+        internal_settings.human_in_the_loop_safe_mode = (
+            settings.human_in_the_loop_safe_mode
+        )
 
-    updated_agent = await library_db.update_library_agent_settings(
+    updated_agent = await library_db.update_library_agent(
         user_id=auth.user_id,
-        agent_id=library_agent.id,
+        library_agent_id=library_agent.id,
         settings=internal_settings,
     )
 

@@ -81,6 +81,7 @@ async def test_block_handler_get_missing_items(mocker):
     mock_block_instance.name = "Calculator Block"
     mock_block_instance.description = "Performs calculations"
     mock_block_instance.categories = [MagicMock(value="MATH")]
+    mock_block_instance.disabled = False
     mock_block_instance.input_schema.model_json_schema.return_value = {
         "properties": {"expression": {"description": "Math expression to evaluate"}}
     }
@@ -92,7 +93,7 @@ async def test_block_handler_get_missing_items(mocker):
     mock_existing = []
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -116,18 +117,25 @@ async def test_block_handler_get_stats(mocker):
     """Test BlockHandler returns correct stats."""
     handler = BlockHandler()
 
-    # Mock get_blocks
+    # Mock get_blocks - each block class returns an instance with disabled=False
+    def make_mock_block_class():
+        mock_class = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.disabled = False
+        mock_class.return_value = mock_instance
+        return mock_class
+
     mock_blocks = {
-        "block-1": MagicMock(),
-        "block-2": MagicMock(),
-        "block-3": MagicMock(),
+        "block-1": make_mock_block_class(),
+        "block-2": make_mock_block_class(),
+        "block-3": make_mock_block_class(),
     }
 
     # Mock embedded count query (2 blocks have embeddings)
     mock_embedded = [{"count": 2}]
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -164,20 +172,20 @@ async def test_documentation_handler_get_missing_items(tmp_path, mocker):
 
             assert len(items) == 2
 
-            # Check guide.md
+            # Check guide.md (content_id format: doc_path::section_index)
             guide_item = next(
-                (item for item in items if item.content_id == "guide.md"), None
+                (item for item in items if item.content_id == "guide.md::0"), None
             )
             assert guide_item is not None
             assert guide_item.content_type == ContentType.DOCUMENTATION
             assert "Getting Started" in guide_item.searchable_text
             assert "This is a guide" in guide_item.searchable_text
-            assert guide_item.metadata["title"] == "Getting Started"
+            assert guide_item.metadata["doc_title"] == "Getting Started"
             assert guide_item.user_id is None
 
-            # Check api.mdx
+            # Check api.mdx (content_id format: doc_path::section_index)
             api_item = next(
-                (item for item in items if item.content_id == "api.mdx"), None
+                (item for item in items if item.content_id == "api.mdx::0"), None
             )
             assert api_item is not None
             assert "API Reference" in api_item.searchable_text
@@ -218,17 +226,74 @@ async def test_documentation_handler_title_extraction(tmp_path):
     # Test with heading
     doc_with_heading = tmp_path / "with_heading.md"
     doc_with_heading.write_text("# My Title\n\nContent here")
-    title, content = handler._extract_title_and_content(doc_with_heading)
+    title = handler._extract_doc_title(doc_with_heading)
     assert title == "My Title"
-    assert "# My Title" not in content
-    assert "Content here" in content
 
     # Test without heading
     doc_without_heading = tmp_path / "no-heading.md"
     doc_without_heading.write_text("Just content, no heading")
-    title, content = handler._extract_title_and_content(doc_without_heading)
+    title = handler._extract_doc_title(doc_without_heading)
     assert title == "No Heading"  # Uses filename
-    assert "Just content" in content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_documentation_handler_markdown_chunking(tmp_path):
+    """Test DocumentationHandler chunks markdown by headings."""
+    handler = DocumentationHandler()
+
+    # Test document with multiple sections
+    doc_with_sections = tmp_path / "sections.md"
+    doc_with_sections.write_text(
+        "# Document Title\n\n"
+        "Intro paragraph.\n\n"
+        "## Section One\n\n"
+        "Content for section one.\n\n"
+        "## Section Two\n\n"
+        "Content for section two.\n"
+    )
+    sections = handler._chunk_markdown_by_headings(doc_with_sections)
+
+    # Should have 3 sections: intro (with doc title), section one, section two
+    assert len(sections) == 3
+    assert sections[0].title == "Document Title"
+    assert sections[0].index == 0
+    assert "Intro paragraph" in sections[0].content
+
+    assert sections[1].title == "Section One"
+    assert sections[1].index == 1
+    assert "Content for section one" in sections[1].content
+
+    assert sections[2].title == "Section Two"
+    assert sections[2].index == 2
+    assert "Content for section two" in sections[2].content
+
+    # Test document without headings
+    doc_no_sections = tmp_path / "no-sections.md"
+    doc_no_sections.write_text("Just plain content without any headings.")
+    sections = handler._chunk_markdown_by_headings(doc_no_sections)
+    assert len(sections) == 1
+    assert sections[0].index == 0
+    assert "Just plain content" in sections[0].content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_documentation_handler_section_content_ids():
+    """Test DocumentationHandler creates and parses section content IDs."""
+    handler = DocumentationHandler()
+
+    # Test making content ID
+    content_id = handler._make_section_content_id("docs/guide.md", 2)
+    assert content_id == "docs/guide.md::2"
+
+    # Test parsing content ID
+    doc_path, section_index = handler._parse_section_content_id("docs/guide.md::2")
+    assert doc_path == "docs/guide.md"
+    assert section_index == 2
+
+    # Test parsing legacy format (no section index)
+    doc_path, section_index = handler._parse_section_content_id("docs/old-format.md")
+    assert doc_path == "docs/old-format.md"
+    assert section_index == 0
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -252,6 +317,7 @@ async def test_block_handler_handles_missing_attributes():
     mock_block_class = MagicMock()
     mock_block_instance = MagicMock()
     mock_block_instance.name = "Minimal Block"
+    mock_block_instance.disabled = False
     # No description, categories, or schema
     del mock_block_instance.description
     del mock_block_instance.categories
@@ -261,7 +327,7 @@ async def test_block_handler_handles_missing_attributes():
     mock_blocks = {"block-minimal": mock_block_class}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -285,6 +351,7 @@ async def test_block_handler_skips_failed_blocks():
     good_instance.name = "Good Block"
     good_instance.description = "Works fine"
     good_instance.categories = []
+    good_instance.disabled = False
     good_block.return_value = good_instance
 
     bad_block = MagicMock()
@@ -293,7 +360,7 @@ async def test_block_handler_skips_failed_blocks():
     mock_blocks = {"good-block": good_block, "bad-block": bad_block}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(

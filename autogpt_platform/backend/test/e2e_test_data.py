@@ -43,18 +43,23 @@ faker = Faker()
 # Constants for data generation limits (reduced for E2E tests)
 NUM_USERS = 15
 NUM_AGENT_BLOCKS = 30
-MIN_GRAPHS_PER_USER = 15
-MAX_GRAPHS_PER_USER = 15
+MIN_GRAPHS_PER_USER = 25
+MAX_GRAPHS_PER_USER = 25
 MIN_NODES_PER_GRAPH = 3
 MAX_NODES_PER_GRAPH = 6
 MIN_PRESETS_PER_USER = 2
 MAX_PRESETS_PER_USER = 3
-MIN_AGENTS_PER_USER = 15
-MAX_AGENTS_PER_USER = 15
+MIN_AGENTS_PER_USER = 25
+MAX_AGENTS_PER_USER = 25
 MIN_EXECUTIONS_PER_GRAPH = 2
 MAX_EXECUTIONS_PER_GRAPH = 8
 MIN_REVIEWS_PER_VERSION = 2
 MAX_REVIEWS_PER_VERSION = 5
+
+# Guaranteed minimums for marketplace tests (deterministic)
+GUARANTEED_FEATURED_AGENTS = 8
+GUARANTEED_FEATURED_CREATORS = 5
+GUARANTEED_TOP_AGENTS = 10
 
 
 def get_image():
@@ -385,7 +390,7 @@ class TestDataCreator:
 
         library_agents = []
         for user in self.users:
-            num_agents = 10  # Create exactly 10 agents per user
+            num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
 
             # Get available graphs for this user
             user_graphs = [
@@ -507,13 +512,16 @@ class TestDataCreator:
             existing_profiles, min(num_creators, len(existing_profiles))
         )
 
-        # Mark about 50% of creators as featured (more for testing)
-        num_featured = max(2, int(num_creators * 0.5))
+        # Guarantee at least GUARANTEED_FEATURED_CREATORS featured creators
+        num_featured = max(GUARANTEED_FEATURED_CREATORS, int(num_creators * 0.5))
         num_featured = min(
             num_featured, len(selected_profiles)
         )  # Don't exceed available profiles
         featured_profile_ids = set(
             random.sample([p.id for p in selected_profiles], num_featured)
+        )
+        print(
+            f"🎯 Creating {num_featured} featured creators (min: {GUARANTEED_FEATURED_CREATORS})"
         )
 
         for profile in selected_profiles:
@@ -545,21 +553,25 @@ class TestDataCreator:
         return profiles
 
     async def create_test_store_submissions(self) -> List[Dict[str, Any]]:
-        """Create test store submissions using the API function."""
+        """Create test store submissions using the API function.
+
+        DETERMINISTIC: Guarantees minimum featured agents for E2E tests.
+        """
         print("Creating test store submissions...")
 
         submissions = []
         approved_submissions = []
+        featured_count = 0
+        submission_counter = 0
 
-        # Create a special test submission for test123@gmail.com
+        # Create a special test submission for test123@gmail.com (ALWAYS approved + featured)
         test_user = next(
             (user for user in self.users if user["email"] == "test123@gmail.com"), None
         )
-        if test_user:
-            # Special test data for consistent testing
+        if test_user and self.agent_graphs:
             test_submission_data = {
                 "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"],  # Use first available graph
+                "agent_id": self.agent_graphs[0]["id"],
                 "agent_version": 1,
                 "slug": "test-agent-submission",
                 "name": "Test Agent Submission",
@@ -580,37 +592,24 @@ class TestDataCreator:
                 submissions.append(test_submission.model_dump())
                 print("✅ Created special test store submission for test123@gmail.com")
 
-                # Randomly approve, reject, or leave pending the test submission
+                # ALWAYS approve and feature the test submission
                 if test_submission.store_listing_version_id:
-                    random_value = random.random()
-                    if random_value < 0.4:  # 40% chance to approve
-                        approved_submission = await review_store_submission(
-                            store_listing_version_id=test_submission.store_listing_version_id,
-                            is_approved=True,
-                            external_comments="Test submission approved",
-                            internal_comments="Auto-approved test submission",
-                            reviewer_id=test_user["id"],
-                        )
-                        approved_submissions.append(approved_submission.model_dump())
-                        print("✅ Approved test store submission")
+                    approved_submission = await review_store_submission(
+                        store_listing_version_id=test_submission.store_listing_version_id,
+                        is_approved=True,
+                        external_comments="Test submission approved",
+                        internal_comments="Auto-approved test submission",
+                        reviewer_id=test_user["id"],
+                    )
+                    approved_submissions.append(approved_submission.model_dump())
+                    print("✅ Approved test store submission")
 
-                        # Mark approved submission as featured
-                        await prisma.storelistingversion.update(
-                            where={"id": test_submission.store_listing_version_id},
-                            data={"isFeatured": True},
-                        )
-                        print("🌟 Marked test agent as FEATURED")
-                    elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
-                        await review_store_submission(
-                            store_listing_version_id=test_submission.store_listing_version_id,
-                            is_approved=False,
-                            external_comments="Test submission rejected - needs improvements",
-                            internal_comments="Auto-rejected test submission for E2E testing",
-                            reviewer_id=test_user["id"],
-                        )
-                        print("❌ Rejected test store submission")
-                    else:  # 30% chance to leave pending (70% to 100%)
-                        print("⏳ Left test submission pending for review")
+                    await prisma.storelistingversion.update(
+                        where={"id": test_submission.store_listing_version_id},
+                        data={"isFeatured": True},
+                    )
+                    featured_count += 1
+                    print("🌟 Marked test agent as FEATURED")
 
             except Exception as e:
                 print(f"Error creating test store submission: {e}")
@@ -620,7 +619,6 @@ class TestDataCreator:
 
         # Create regular submissions for all users
         for user in self.users:
-            # Get available graphs for this specific user
             user_graphs = [
                 g for g in self.agent_graphs if g.get("userId") == user["id"]
             ]
@@ -631,18 +629,17 @@ class TestDataCreator:
                 )
                 continue
 
-            # Create exactly 4 store submissions per user
             for submission_index in range(4):
                 graph = random.choice(user_graphs)
+                submission_counter += 1
 
                 try:
                     print(
-                        f"Creating store submission for user {user['id']} with graph {graph['id']} (owner: {graph.get('userId')})"
+                        f"Creating store submission for user {user['id']} with graph {graph['id']}"
                     )
 
-                    # Use the API function to create store submission with correct parameters
                     submission = await create_store_submission(
-                        user_id=user["id"],  # Must match graph's userId
+                        user_id=user["id"],
                         agent_id=graph["id"],
                         agent_version=graph.get("version", 1),
                         slug=faker.slug(),
@@ -651,22 +648,24 @@ class TestDataCreator:
                         video_url=get_video_url() if random.random() < 0.3 else None,
                         image_urls=[get_image() for _ in range(3)],
                         description=faker.text(),
-                        categories=[
-                            get_category()
-                        ],  # Single category from predefined list
+                        categories=[get_category()],
                         changes_summary="Initial E2E test submission",
                     )
                     submissions.append(submission.model_dump())
                     print(f"✅ Created store submission: {submission.name}")
 
-                    # Randomly approve, reject, or leave pending the submission
                     if submission.store_listing_version_id:
-                        random_value = random.random()
-                        if random_value < 0.4:  # 40% chance to approve
-                            try:
-                                # Pick a random user as the reviewer (admin)
-                                reviewer_id = random.choice(self.users)["id"]
+                        # DETERMINISTIC: First N submissions are always approved
+                        # First GUARANTEED_FEATURED_AGENTS of those are always featured
+                        should_approve = (
+                            submission_counter <= GUARANTEED_TOP_AGENTS
+                            or random.random() < 0.4
+                        )
+                        should_feature = featured_count < GUARANTEED_FEATURED_AGENTS
 
+                        if should_approve:
+                            try:
+                                reviewer_id = random.choice(self.users)["id"]
                                 approved_submission = await review_store_submission(
                                     store_listing_version_id=submission.store_listing_version_id,
                                     is_approved=True,
@@ -681,16 +680,7 @@ class TestDataCreator:
                                     f"✅ Approved store submission: {submission.name}"
                                 )
 
-                                # Mark some agents as featured during creation (30% chance)
-                                # More likely for creators and first submissions
-                                is_creator = user["id"] in [
-                                    p.get("userId") for p in self.profiles
-                                ]
-                                feature_chance = (
-                                    0.5 if is_creator else 0.2
-                                )  # 50% for creators, 20% for others
-
-                                if random.random() < feature_chance:
+                                if should_feature:
                                     try:
                                         await prisma.storelistingversion.update(
                                             where={
@@ -698,8 +688,25 @@ class TestDataCreator:
                                             },
                                             data={"isFeatured": True},
                                         )
+                                        featured_count += 1
                                         print(
-                                            f"🌟 Marked agent as FEATURED: {submission.name}"
+                                            f"🌟 Marked agent as FEATURED ({featured_count}/{GUARANTEED_FEATURED_AGENTS}): {submission.name}"
+                                        )
+                                    except Exception as e:
+                                        print(
+                                            f"Warning: Could not mark submission as featured: {e}"
+                                        )
+                                elif random.random() < 0.2:
+                                    try:
+                                        await prisma.storelistingversion.update(
+                                            where={
+                                                "id": submission.store_listing_version_id
+                                            },
+                                            data={"isFeatured": True},
+                                        )
+                                        featured_count += 1
+                                        print(
+                                            f"🌟 Marked agent as FEATURED (bonus): {submission.name}"
                                         )
                                     except Exception as e:
                                         print(
@@ -710,11 +717,9 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not approve submission {submission.name}: {e}"
                                 )
-                        elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
+                        elif random.random() < 0.5:
                             try:
-                                # Pick a random user as the reviewer (admin)
                                 reviewer_id = random.choice(self.users)["id"]
-
                                 await review_store_submission(
                                     store_listing_version_id=submission.store_listing_version_id,
                                     is_approved=False,
@@ -729,7 +734,7 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not reject submission {submission.name}: {e}"
                                 )
-                        else:  # 30% chance to leave pending (70% to 100%)
+                        else:
                             print(
                                 f"⏳ Left submission pending for review: {submission.name}"
                             )
@@ -743,9 +748,13 @@ class TestDataCreator:
                     traceback.print_exc()
                     continue
 
+        print("\n📊 Store Submissions Summary:")
+        print(f"   Created: {len(submissions)}")
+        print(f"   Approved: {len(approved_submissions)}")
         print(
-            f"Created {len(submissions)} store submissions, approved {len(approved_submissions)}"
+            f"   Featured: {featured_count} (guaranteed min: {GUARANTEED_FEATURED_AGENTS})"
         )
+
         self.store_submissions = submissions
         return submissions
 
@@ -825,12 +834,15 @@ class TestDataCreator:
         print(f"✅ Agent blocks available: {len(self.agent_blocks)}")
         print(f"✅ Agent graphs created: {len(self.agent_graphs)}")
         print(f"✅ Library agents created: {len(self.library_agents)}")
-        print(f"✅ Creator profiles updated: {len(self.profiles)} (some featured)")
-        print(
-            f"✅ Store submissions created: {len(self.store_submissions)} (some marked as featured during creation)"
-        )
+        print(f"✅ Creator profiles updated: {len(self.profiles)}")
+        print(f"✅ Store submissions created: {len(self.store_submissions)}")
         print(f"✅ API keys created: {len(self.api_keys)}")
         print(f"✅ Presets created: {len(self.presets)}")
+        print("\n🎯 Deterministic Guarantees:")
+        print(f"   • Featured agents: >= {GUARANTEED_FEATURED_AGENTS}")
+        print(f"   • Featured creators: >= {GUARANTEED_FEATURED_CREATORS}")
+        print(f"   • Top agents (approved): >= {GUARANTEED_TOP_AGENTS}")
+        print(f"   • Library agents per user: >= {MIN_AGENTS_PER_USER}")
         print("\n🚀 Your E2E test database is ready to use!")
 
 

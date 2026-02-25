@@ -1,5 +1,12 @@
 from urllib.parse import quote
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.jina._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -8,15 +15,9 @@ from backend.blocks.jina._auth import (
     JinaCredentialsInput,
 )
 from backend.blocks.search import GetRequest
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
+from backend.util.request import HTTPClientError, HTTPServerError, validate_url
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -110,7 +111,12 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         if input_data.raw_content:
-            url = input_data.url
+            try:
+                parsed_url, _, _ = await validate_url(input_data.url, [])
+                url = parsed_url.geturl()
+            except ValueError as e:
+                yield "error", f"Invalid URL: {e}"
+                return
             headers = {}
         else:
             url = f"https://r.jina.ai/{input_data.url}"
@@ -119,5 +125,20 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
             }
 
-        content = await self.get_request(url, json=False, headers=headers)
+        try:
+            content = await self.get_request(url, json=False, headers=headers)
+        except HTTPClientError as e:
+            yield "error", f"Client error ({e.status_code}) fetching {input_data.url}: {e}"
+            return
+        except HTTPServerError as e:
+            yield "error", f"Server error ({e.status_code}) fetching {input_data.url}: {e}"
+            return
+        except Exception as e:
+            yield "error", f"Failed to fetch {input_data.url}: {e}"
+            return
+
+        if not content:
+            yield "error", f"No content returned for {input_data.url}"
+            return
+
         yield "content", content

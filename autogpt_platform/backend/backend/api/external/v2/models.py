@@ -3,12 +3,16 @@ V2 External API - Request and Response Models
 
 This module defines all request and response models for the v2 external API.
 All models are self-contained and specific to the external API contract.
+
+Route files should import models from here rather than defining them locally.
 """
 
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
+
+from backend.blocks._base import BlockCostType
 
 # ============================================================================
 # Common/Shared Models
@@ -78,8 +82,6 @@ class GraphMeta(BaseModel):
     name: str
     description: str
     created_at: datetime
-    input_schema: dict[str, Any] = Field(description="Input schema for the graph")
-    output_schema: dict[str, Any] = Field(description="Output schema for the graph")
 
 
 class GraphDetails(GraphMeta):
@@ -87,6 +89,8 @@ class GraphDetails(GraphMeta):
 
     nodes: list[GraphNode]
     links: list[GraphLink]
+    input_schema: dict[str, Any] = Field(description="Input schema for the graph")
+    output_schema: dict[str, Any] = Field(description="Output schema for the graph")
     credentials_input_schema: dict[str, Any] = Field(
         description="Schema for required credentials"
     )
@@ -125,6 +129,43 @@ class DeleteGraphResponse(BaseModel):
 
 
 # ============================================================================
+# Block Models
+# ============================================================================
+
+
+class BlockCost(BaseModel):
+    """Cost information for a block."""
+
+    cost_type: BlockCostType = Field(
+        description="Type of cost (e.g., 'per_call', 'per_token')"
+    )
+    cost_filter: dict[str, Any] = Field(
+        default_factory=dict, description="Conditions for this cost"
+    )
+    cost_amount: int = Field(description="Cost amount in credits")
+
+
+class Block(BaseModel):
+    """A building block that can be used in graphs."""
+
+    id: str
+    name: str
+    description: str
+    categories: list[str] = Field(default_factory=list)
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    costs: list[BlockCost] = Field(default_factory=list)
+    disabled: bool = Field(default=False)
+
+
+class BlocksListResponse(BaseModel):
+    """Response for listing blocks."""
+
+    blocks: list[Block]
+    total_count: int
+
+
+# ============================================================================
 # Schedule Models
 # ============================================================================
 
@@ -140,10 +181,10 @@ class Schedule(BaseModel):
     input_data: dict[str, Any] = Field(
         default_factory=dict, description="Input data for scheduled executions"
     )
-    is_enabled: bool = Field(default=True, description="Whether schedule is enabled")
     next_run_time: Optional[datetime] = Field(
         default=None, description="Next scheduled run time"
     )
+    is_enabled: bool = Field(default=True, description="Whether schedule is enabled")
 
 
 class CreateScheduleRequest(BaseModel):
@@ -162,7 +203,10 @@ class CreateScheduleRequest(BaseModel):
     )
     timezone: Optional[str] = Field(
         default=None,
-        description="Timezone for schedule (e.g., 'America/New_York')",
+        description=(
+            "Timezone for schedule (e.g., 'America/New_York'). "
+            "Defaults to user's timezone."
+        ),
     )
 
 
@@ -170,166 +214,6 @@ class SchedulesListResponse(PaginatedResponse):
     """Response for listing schedules."""
 
     schedules: list[Schedule]
-
-
-# ============================================================================
-# Block Models
-# ============================================================================
-
-
-class BlockCost(BaseModel):
-    """Cost information for a block."""
-
-    cost_type: str = Field(description="Type of cost (e.g., 'per_call', 'per_token')")
-    cost_filter: dict[str, Any] = Field(
-        default_factory=dict, description="Conditions for this cost"
-    )
-    cost_amount: int = Field(description="Cost amount in credits")
-
-
-class Block(BaseModel):
-    """A building block that can be used in graphs."""
-
-    id: str
-    name: str
-    description: str
-    categories: list[str] = Field(default_factory=list)
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-    costs: list[BlockCost] = Field(default_factory=list)
-
-
-class BlocksListResponse(BaseModel):
-    """Response for listing blocks."""
-
-    blocks: list[Block]
-
-
-# ============================================================================
-# Marketplace Models
-# ============================================================================
-
-
-class MarketplaceAgent(BaseModel):
-    """An agent available in the marketplace."""
-
-    slug: str
-    agent_name: str
-    agent_image: str
-    creator: str
-    creator_avatar: str
-    sub_heading: str
-    description: str
-    runs: int = Field(default=0, description="Number of times this agent has been run")
-    rating: float = Field(default=0.0, description="Average rating")
-
-
-class MarketplaceAgentDetails(BaseModel):
-    """Detailed information about a marketplace agent."""
-
-    store_listing_version_id: str
-    slug: str
-    agent_name: str
-    agent_video: str
-    agent_output_demo: str
-    agent_image: list[str]
-    creator: str
-    creator_avatar: str
-    sub_heading: str
-    description: str
-    instructions: Optional[str] = None
-    categories: list[str]
-    runs: int
-    rating: float
-    versions: list[str]
-    agent_graph_versions: list[str]
-    agent_graph_id: str
-    last_updated: datetime
-    recommended_schedule_cron: Optional[str] = None
-
-
-class MarketplaceCreator(BaseModel):
-    """A creator on the marketplace."""
-
-    name: str
-    username: str
-    description: str
-    avatar_url: str
-    num_agents: int
-    agent_rating: float
-    agent_runs: int
-    is_featured: bool = False
-
-
-class MarketplaceAgentsResponse(PaginatedResponse):
-    """Response for listing marketplace agents."""
-
-    agents: list[MarketplaceAgent]
-
-
-class MarketplaceCreatorsResponse(PaginatedResponse):
-    """Response for listing marketplace creators."""
-
-    creators: list[MarketplaceCreator]
-
-
-# Submission models
-class MarketplaceSubmission(BaseModel):
-    """A marketplace submission."""
-
-    agent_id: str
-    agent_version: int
-    name: str
-    sub_heading: str
-    slug: str
-    description: str
-    instructions: Optional[str] = None
-    image_urls: list[str] = Field(default_factory=list)
-    date_submitted: datetime
-    status: str = Field(description="One of: DRAFT, PENDING, APPROVED, REJECTED")
-    runs: int
-    rating: float
-    store_listing_version_id: Optional[str] = None
-    version: Optional[int] = None
-
-    # Review fields
-    review_comments: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-
-    # Additional optional fields
-    video_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
-
-
-class CreateSubmissionRequest(BaseModel):
-    """Request to create a marketplace submission."""
-
-    agent_id: str = Field(description="ID of the graph to submit")
-    agent_version: int = Field(description="Version of the graph to submit")
-    name: str = Field(description="Display name for the agent")
-    slug: str = Field(description="URL-friendly identifier")
-    description: str = Field(description="Full description")
-    sub_heading: str = Field(description="Short tagline")
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
-
-
-class UpdateSubmissionRequest(BaseModel):
-    """Request to update a marketplace submission."""
-
-    name: Optional[str] = None
-    description: Optional[str] = None
-    sub_heading: Optional[str] = None
-    image_urls: Optional[list[str]] = None
-    video_url: Optional[str] = None
-    categories: Optional[list[str]] = None
-
-
-class SubmissionsListResponse(PaginatedResponse):
-    """Response for listing submissions."""
-
-    submissions: list[MarketplaceSubmission]
 
 
 # ============================================================================
@@ -387,7 +271,7 @@ class Run(BaseModel):
     status: str = Field(
         description="One of: INCOMPLETE, QUEUED, RUNNING, COMPLETED, TERMINATED, FAILED, REVIEW"
     )
-    started_at: datetime
+    started_at: datetime | None
     ended_at: Optional[datetime] = None
     inputs: Optional[dict[str, Any]] = None
     cost: int = Field(default=0, description="Cost in credits")
@@ -396,7 +280,7 @@ class Run(BaseModel):
 
 
 class RunDetails(Run):
-    """Detailed information about a run including node executions."""
+    """Detailed information about a run including outputs and node executions."""
 
     outputs: Optional[dict[str, list[Any]]] = None
     node_executions: list[dict[str, Any]] = Field(
@@ -422,7 +306,7 @@ class PendingReview(BaseModel):
     run_id: str
     graph_id: str
     graph_version: int
-    payload: Any = Field(description="Data to be reviewed")
+    payload: JsonValue = Field(description="Data to be reviewed")
     instructions: Optional[str] = Field(
         default=None, description="Instructions for the reviewer"
     )
@@ -444,7 +328,7 @@ class ReviewDecision(BaseModel):
 
     node_exec_id: str = Field(description="Node execution ID (review ID)")
     approved: bool = Field(description="Whether to approve the data")
-    edited_payload: Optional[Any] = Field(
+    edited_payload: Optional[JsonValue] = Field(
         default=None, description="Modified payload data (if editing)"
     )
     message: Optional[str] = Field(
@@ -483,10 +367,12 @@ class CreditTransaction(BaseModel):
     """A credit transaction."""
 
     transaction_key: str
-    amount: int
-    transaction_type: str = Field(description="Transaction type")
+    amount: int = Field(description="Transaction amount (positive or negative)")
+    type: str = Field(description="One of: TOP_UP, USAGE, GRANT, REFUND")
     transaction_time: datetime
-    running_balance: int
+    running_balance: Optional[int] = Field(
+        default=None, description="Balance after this transaction"
+    )
     description: Optional[str] = None
 
 
@@ -545,8 +431,130 @@ class CredentialRequirementsResponse(BaseModel):
 class UploadFileResponse(BaseModel):
     """Response after uploading a file."""
 
-    file_uri: str = Field(description="URI to reference the uploaded file")
+    file_uri: str = Field(description="URI to reference the uploaded file in agents")
     file_name: str
     size: int = Field(description="File size in bytes")
     content_type: str
     expires_in_hours: int
+
+
+# ============================================================================
+# Marketplace Models
+# ============================================================================
+
+
+class MarketplaceAgent(BaseModel):
+    """An agent available in the marketplace."""
+
+    slug: str
+    name: str
+    description: str
+    sub_heading: str
+    creator: str
+    creator_avatar: str
+    runs: int = Field(default=0, description="Number of times this agent has been run")
+    rating: float = Field(default=0.0, description="Average rating")
+    image_url: str = Field(default="")
+
+
+class MarketplaceAgentDetails(BaseModel):
+    """Detailed information about a marketplace agent."""
+
+    store_listing_version_id: str
+    slug: str
+    name: str
+    description: str
+    sub_heading: str
+    instructions: Optional[str] = None
+    creator: str
+    creator_avatar: str
+    categories: list[str] = Field(default_factory=list)
+    runs: int = Field(default=0)
+    rating: float = Field(default=0.0)
+    image_urls: list[str] = Field(default_factory=list)
+    video_url: str = Field(default="")
+    versions: list[str] = Field(default_factory=list, description="Available versions")
+    agent_graph_versions: list[str] = Field(default_factory=list)
+    agent_graph_id: str
+    last_updated: datetime
+
+
+class MarketplaceAgentsResponse(PaginatedResponse):
+    """Response for listing marketplace agents."""
+
+    agents: list[MarketplaceAgent]
+
+
+class MarketplaceCreator(BaseModel):
+    """A creator on the marketplace."""
+
+    name: str
+    username: str
+    description: str
+    avatar_url: str
+    num_agents: int
+    agent_rating: float
+    agent_runs: int
+    is_featured: bool = False
+
+
+class MarketplaceCreatorDetails(BaseModel):
+    """Detailed information about a marketplace creator."""
+
+    name: str
+    username: str
+    description: str
+    avatar_url: str
+    agent_rating: float
+    agent_runs: int
+    top_categories: list[str] = Field(default_factory=list)
+    links: list[str] = Field(default_factory=list)
+
+
+class MarketplaceCreatorsResponse(PaginatedResponse):
+    """Response for listing marketplace creators."""
+
+    creators: list[MarketplaceCreator]
+
+
+class MarketplaceSubmission(BaseModel):
+    """A marketplace submission."""
+
+    graph_id: str
+    graph_version: int
+    name: str
+    sub_heading: str
+    slug: str
+    description: str
+    instructions: Optional[str] = None
+    image_urls: list[str] = Field(default_factory=list)
+    date_submitted: datetime
+    status: str = Field(description="One of: DRAFT, PENDING, APPROVED, REJECTED")
+    runs: int = Field(default=0)
+    rating: float = Field(default=0.0)
+    store_listing_version_id: Optional[str] = None
+    version: Optional[int] = None
+    review_comments: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    video_url: Optional[str] = None
+    categories: list[str] = Field(default_factory=list)
+
+
+class CreateSubmissionRequest(BaseModel):
+    """Request to create a marketplace submission."""
+
+    graph_id: str = Field(description="ID of the graph to submit")
+    graph_version: int = Field(description="Version of the graph to submit")
+    name: str = Field(description="Display name for the agent")
+    slug: str = Field(description="URL-friendly identifier")
+    description: str = Field(description="Full description")
+    sub_heading: str = Field(description="Short tagline")
+    image_urls: list[str] = Field(default_factory=list)
+    video_url: Optional[str] = None
+    categories: list[str] = Field(default_factory=list)
+
+
+class SubmissionsListResponse(PaginatedResponse):
+    """Response for listing submissions."""
+
+    submissions: list[MarketplaceSubmission]

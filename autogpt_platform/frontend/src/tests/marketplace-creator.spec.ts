@@ -69,9 +69,11 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
       await marketplacePage.getFirstCreatorProfile(page);
     await firstCreatorProfile.click();
     await page.waitForURL("**/marketplace/creator/**");
+
     const firstAgent = page
       .locator('[data-testid="store-card"]:visible')
       .first();
+    await firstAgent.waitFor({ state: "visible", timeout: 15000 });
 
     await firstAgent.click();
     await page.waitForURL("**/marketplace/agent/**");

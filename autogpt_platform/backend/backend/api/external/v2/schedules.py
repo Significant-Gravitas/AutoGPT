@@ -6,11 +6,9 @@ Provides endpoints for managing execution schedules.
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.data import graph as graph_db
@@ -21,65 +19,11 @@ from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import CreateScheduleRequest, Schedule, SchedulesListResponse
 
 logger = logging.getLogger(__name__)
 
 schedules_router = APIRouter()
-
-
-# ============================================================================
-# Request/Response Models
-# ============================================================================
-
-
-class Schedule(BaseModel):
-    """An execution schedule for a graph."""
-
-    id: str
-    name: str
-    graph_id: str
-    graph_version: int
-    cron: str = Field(description="Cron expression for the schedule")
-    input_data: dict[str, Any] = Field(
-        default_factory=dict, description="Input data for scheduled executions"
-    )
-    next_run_time: Optional[datetime] = Field(
-        default=None, description="Next scheduled run time"
-    )
-    is_enabled: bool = Field(default=True, description="Whether schedule is enabled")
-
-
-class SchedulesListResponse(BaseModel):
-    """Response for listing schedules."""
-
-    schedules: list[Schedule]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class CreateScheduleRequest(BaseModel):
-    """Request to create a schedule."""
-
-    name: str = Field(description="Display name for the schedule")
-    cron: str = Field(description="Cron expression (e.g., '0 9 * * *' for 9am daily)")
-    input_data: dict[str, Any] = Field(
-        default_factory=dict, description="Input data for scheduled executions"
-    )
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credentials for the schedule"
-    )
-    graph_version: Optional[int] = Field(
-        default=None, description="Graph version (default: active version)"
-    )
-    timezone: Optional[str] = Field(
-        default=None,
-        description=(
-            "Timezone for schedule (e.g., 'America/New_York'). "
-            "Defaults to user's timezone."
-        ),
-    )
 
 
 def _convert_schedule(job: scheduler.GraphExecutionJobInfo) -> Schedule:

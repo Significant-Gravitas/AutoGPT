@@ -1,4 +1,4 @@
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { getQueryClient } from "@/lib/react-query/queryClient";

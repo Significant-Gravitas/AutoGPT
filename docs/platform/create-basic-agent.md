@@ -4,6 +4,28 @@
 
 This guide walks through creating a simple question-answer AI agent using AutoGPT's visual builder. This is a basic example that can be expanded into more complex agents.
 
+## **Prerequisites**
+
+### **Cloud-Hosted AutoGPT**
+If you're using the cloud-hosted version at [agpt.co](https://agpt.co), you're ready to go! AI blocks come with **built-in credits** — no API keys required to get started. If you'd prefer to use your own API keys, you can add them via **Profile → Integrations**.
+
+### **Self-Hosted (Docker)**
+If you're running AutoGPT locally with Docker, you'll need to add your own API keys to `autogpt_platform/backend/.env`:
+
+```bash
+# Create or edit backend/.env
+OPENAI_API_KEY=sk-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+# Add other provider keys as needed
+```
+
+After adding keys, restart the services:
+```bash
+docker compose down && docker compose up -d
+```
+
+**Note:** The Calculator example below doesn't require any API credentials — it's a good way to test your setup before adding AI blocks.
+
 ## **Example Agent: Q&A (with AI)**
 
 A step-by-step guide to creating a simple Q&A agent using input and output blocks.

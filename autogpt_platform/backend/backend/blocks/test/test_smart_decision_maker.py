@@ -242,7 +242,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -343,7 +343,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -409,7 +409,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -471,7 +471,7 @@ async def test_smart_decision_maker_parameter_validation():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -535,7 +535,7 @@ async def test_smart_decision_maker_parameter_validation():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -658,7 +658,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -730,7 +730,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -786,7 +786,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         outputs = {}
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 
@@ -905,7 +905,7 @@ async def test_smart_decision_maker_agent_mode():
         # Create a mock execution context
 
         mock_execution_context = ExecutionContext(
-            safe_mode=False,
+            human_in_the_loop_safe_mode=False,
         )
 
         # Create a mock execution processor for agent mode tests
@@ -1027,7 +1027,7 @@ async def test_smart_decision_maker_traditional_mode_default():
 
         # Create execution context
 
-        mock_execution_context = ExecutionContext(safe_mode=False)
+        mock_execution_context = ExecutionContext(human_in_the_loop_safe_mode=False)
 
         # Create a mock execution processor for tests
 

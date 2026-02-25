@@ -1,11 +1,6 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import {
-  globalRegistry,
-  OutputActions,
-  OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import {
@@ -23,6 +18,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import {
+  globalRegistry,
+  OutputActions,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
 import { BookOpenIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -38,8 +38,12 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
 
     return outputNodes
       .map((node) => {
-        const executionResult = node.data.nodeExecutionResult;
-        const outputData = executionResult?.output_data?.output;
+        const executionResults = node.data.nodeExecutionResults || [];
+        const latestResult =
+          executionResults.length > 0
+            ? executionResults[executionResults.length - 1]
+            : undefined;
+        const outputData = latestResult?.output_data?.output;
 
         const renderer = globalRegistry.getRenderer(outputData);
 

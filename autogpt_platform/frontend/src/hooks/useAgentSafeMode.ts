@@ -20,11 +20,15 @@ function hasHITLBlocks(graph: GraphModel | LibraryAgent | Graph): boolean {
   if ("has_human_in_the_loop" in graph) {
     return !!graph.has_human_in_the_loop;
   }
+  return false;
+}
 
-  if (isLibraryAgent(graph)) {
-    return graph.settings?.human_in_the_loop_safe_mode !== null;
+function hasSensitiveActionBlocks(
+  graph: GraphModel | LibraryAgent | Graph,
+): boolean {
+  if ("has_sensitive_action" in graph) {
+    return !!graph.has_sensitive_action;
   }
-
   return false;
 }
 
@@ -40,7 +44,9 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
 
   const graphId = getGraphId(graph);
   const isAgent = isLibraryAgent(graph);
-  const shouldShowToggle = hasHITLBlocks(graph);
+  const showHITLToggle = hasHITLBlocks(graph);
+  const showSensitiveActionToggle = hasSensitiveActionBlocks(graph);
+  const shouldShowToggle = showHITLToggle || showSensitiveActionToggle;
 
   const { mutateAsync: updateGraphSettings, isPending } =
     usePatchV1UpdateGraphSettings();
@@ -56,27 +62,37 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
     },
   );
 
-  const [localSafeMode, setLocalSafeMode] = useState<boolean | null>(null);
+  const [localHITLSafeMode, setLocalHITLSafeMode] = useState<boolean>(true);
+  const [localSensitiveActionSafeMode, setLocalSensitiveActionSafeMode] =
+    useState<boolean>(false);
+  const [isLocalStateLoaded, setIsLocalStateLoaded] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isAgent && libraryAgent) {
-      const backendValue = libraryAgent.settings?.human_in_the_loop_safe_mode;
-      if (backendValue !== undefined) {
-        setLocalSafeMode(backendValue);
-      }
+      setLocalHITLSafeMode(
+        libraryAgent.settings?.human_in_the_loop_safe_mode ?? true,
+      );
+      setLocalSensitiveActionSafeMode(
+        libraryAgent.settings?.sensitive_action_safe_mode ?? false,
+      );
+      setIsLocalStateLoaded(true);
     }
   }, [isAgent, libraryAgent]);
 
-  const currentSafeMode = isAgent
-    ? graph.settings?.human_in_the_loop_safe_mode
-    : localSafeMode;
+  const currentHITLSafeMode = isAgent
+    ? (graph.settings?.human_in_the_loop_safe_mode ?? true)
+    : localHITLSafeMode;
 
-  const isStateUndetermined = isAgent
-    ? graph.settings?.human_in_the_loop_safe_mode == null
-    : isLoading || localSafeMode === null;
+  const currentSensitiveActionSafeMode = isAgent
+    ? (graph.settings?.sensitive_action_safe_mode ?? false)
+    : localSensitiveActionSafeMode;
 
-  const handleToggle = useCallback(async () => {
-    const newSafeMode = !currentSafeMode;
+  const isHITLStateUndetermined = isAgent
+    ? false
+    : isLoading || !isLocalStateLoaded;
+
+  const handleHITLToggle = useCallback(async () => {
+    const newSafeMode = !currentHITLSafeMode;
 
     try {
       await updateGraphSettings({
@@ -85,7 +101,7 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
       });
 
       if (!isAgent) {
-        setLocalSafeMode(newSafeMode);
+        setLocalHITLSafeMode(newSafeMode);
       }
 
       if (isAgent) {
@@ -101,37 +117,62 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
       queryClient.invalidateQueries({ queryKey: ["v2", "executions"] });
 
       toast({
-        title: `Safe mode ${newSafeMode ? "enabled" : "disabled"}`,
+        title: `HITL safe mode ${newSafeMode ? "enabled" : "disabled"}`,
         description: newSafeMode
           ? "Human-in-the-loop blocks will require manual review"
           : "Human-in-the-loop blocks will proceed automatically",
         duration: 2000,
       });
     } catch (error) {
-      const isNotFoundError =
-        error instanceof Error &&
-        (error.message.includes("404") || error.message.includes("not found"));
-
-      if (!isAgent && isNotFoundError) {
-        toast({
-          title: "Safe mode not available",
-          description:
-            "To configure safe mode, please save this graph to your library first.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Failed to update safe mode",
-          description:
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred.",
-          variant: "destructive",
-        });
-      }
+      handleToggleError(error, isAgent, toast);
     }
   }, [
-    currentSafeMode,
+    currentHITLSafeMode,
+    graphId,
+    isAgent,
+    graph.id,
+    updateGraphSettings,
+    queryClient,
+    toast,
+  ]);
+
+  const handleSensitiveActionToggle = useCallback(async () => {
+    const newSafeMode = !currentSensitiveActionSafeMode;
+
+    try {
+      await updateGraphSettings({
+        graphId,
+        data: { sensitive_action_safe_mode: newSafeMode },
+      });
+
+      if (!isAgent) {
+        setLocalSensitiveActionSafeMode(newSafeMode);
+      }
+
+      if (isAgent) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetLibraryAgentQueryOptions(graph.id.toString())
+            .queryKey,
+        });
+      }
+
+      queryClient.invalidateQueries({
+        queryKey: ["v1", "graphs", graphId, "executions"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["v2", "executions"] });
+
+      toast({
+        title: `Sensitive action safe mode ${newSafeMode ? "enabled" : "disabled"}`,
+        description: newSafeMode
+          ? "Sensitive action blocks will require manual review"
+          : "Sensitive action blocks will proceed automatically",
+        duration: 2000,
+      });
+    } catch (error) {
+      handleToggleError(error, isAgent, toast);
+    }
+  }, [
+    currentSensitiveActionSafeMode,
     graphId,
     isAgent,
     graph.id,
@@ -141,11 +182,53 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
   ]);
 
   return {
-    currentSafeMode,
+    // HITL safe mode
+    currentHITLSafeMode,
+    showHITLToggle,
+    isHITLStateUndetermined,
+    handleHITLToggle,
+
+    // Sensitive action safe mode
+    currentSensitiveActionSafeMode,
+    showSensitiveActionToggle,
+    handleSensitiveActionToggle,
+
+    // General
     isPending,
     shouldShowToggle,
-    isStateUndetermined,
-    handleToggle,
-    hasHITLBlocks: shouldShowToggle,
+
+    // Backwards compatibility
+    currentSafeMode: currentHITLSafeMode,
+    isStateUndetermined: isHITLStateUndetermined,
+    handleToggle: handleHITLToggle,
+    hasHITLBlocks: showHITLToggle,
   };
+}
+
+function handleToggleError(
+  error: unknown,
+  isAgent: boolean,
+  toast: ReturnType<typeof useToast>["toast"],
+) {
+  const isNotFoundError =
+    error instanceof Error &&
+    (error.message.includes("404") || error.message.includes("not found"));
+
+  if (!isAgent && isNotFoundError) {
+    toast({
+      title: "Safe mode not available",
+      description:
+        "To configure safe mode, please save this graph to your library first.",
+      variant: "destructive",
+    });
+  } else {
+    toast({
+      title: "Failed to update safe mode",
+      description:
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred.",
+      variant: "destructive",
+    });
+  }
 }

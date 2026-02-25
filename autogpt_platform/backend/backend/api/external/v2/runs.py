@@ -5,12 +5,9 @@ Provides access to execution runs and human-in-the-loop reviews.
 """
 
 import logging
-from datetime import datetime
-from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
-from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.executions.review.model import (
@@ -23,108 +20,19 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.executor import utils as execution_utils
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import (
+    PendingReview,
+    PendingReviewsResponse,
+    Run,
+    RunDetails,
+    RunsListResponse,
+    SubmitReviewsRequest,
+    SubmitReviewsResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 runs_router = APIRouter()
-
-
-# ============================================================================
-# Models
-# ============================================================================
-
-
-class Run(BaseModel):
-    """An execution run."""
-
-    id: str
-    graph_id: str
-    graph_version: int
-    status: str = Field(
-        description="One of: INCOMPLETE, QUEUED, RUNNING, COMPLETED, TERMINATED, FAILED, REVIEW"
-    )
-    started_at: datetime
-    ended_at: Optional[datetime] = None
-    inputs: Optional[dict[str, Any]] = None
-    cost: int = Field(default=0, description="Cost in credits")
-    duration: float = Field(default=0, description="Duration in seconds")
-    node_count: int = Field(default=0, description="Number of nodes executed")
-
-
-class RunDetails(Run):
-    """Detailed information about a run including outputs and node executions."""
-
-    outputs: Optional[dict[str, list[Any]]] = None
-    node_executions: list[dict[str, Any]] = Field(
-        default_factory=list, description="Individual node execution results"
-    )
-
-
-class RunsListResponse(BaseModel):
-    """Response for listing runs."""
-
-    runs: list[Run]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class PendingReview(BaseModel):
-    """A pending human-in-the-loop review."""
-
-    id: str  # node_exec_id
-    run_id: str
-    graph_id: str
-    graph_version: int
-    payload: SafeJsonData = Field(description="Data to be reviewed")
-    instructions: Optional[str] = Field(
-        default=None, description="Instructions for the reviewer"
-    )
-    editable: bool = Field(
-        default=True, description="Whether the reviewer can edit the data"
-    )
-    status: str = Field(description="One of: WAITING, APPROVED, REJECTED")
-    created_at: datetime
-
-
-class PendingReviewsResponse(BaseModel):
-    """Response for listing pending reviews."""
-
-    reviews: list[PendingReview]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
-
-
-class ReviewDecision(BaseModel):
-    """Decision for a single review item."""
-
-    node_exec_id: str = Field(description="Node execution ID (review ID)")
-    approved: bool = Field(description="Whether to approve the data")
-    edited_payload: Optional[SafeJsonData] = Field(
-        default=None, description="Modified payload data (if editing)"
-    )
-    message: Optional[str] = Field(
-        default=None, description="Optional message from reviewer", max_length=2000
-    )
-
-
-class SubmitReviewsRequest(BaseModel):
-    """Request to submit review responses for all pending reviews of an execution."""
-
-    reviews: list[ReviewDecision] = Field(
-        description="All review decisions for the execution"
-    )
-
-
-class SubmitReviewsResponse(BaseModel):
-    """Response after submitting reviews."""
-
-    run_id: str
-    approved_count: int = Field(description="Number of reviews approved")
-    rejected_count: int = Field(description="Number of reviews rejected")
 
 
 # ============================================================================

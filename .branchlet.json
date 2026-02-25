@@ -29,8 +29,7 @@
   "postCreateCmd": [
     "cd autogpt_platform/autogpt_libs && poetry install",
     "cd autogpt_platform/backend && poetry install && poetry run prisma generate",
-    "cd autogpt_platform/frontend && pnpm install",
-    "cd docs && pip install -r requirements.txt"
+    "cd autogpt_platform/frontend && pnpm install"
   ],
   "terminalCommand": "code .",
   "deleteBranchWithWorktree": false
