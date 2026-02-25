@@ -19,6 +19,8 @@ const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
   IDENTITY: "View your user ID, e-mail, and timezone",
   EXECUTE_GRAPH: "Run your agents",
   READ_GRAPH: "View your agents and their configurations",
+  WRITE_GRAPH: "Create agent graphs",
+  WRITE_LIBRARY: "Add agents to your library",
   EXECUTE_BLOCK: "Execute individual blocks",
   READ_BLOCK: "View available blocks",
   READ_STORE: "Access the Marketplace",
