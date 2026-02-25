@@ -80,10 +80,8 @@ class GraphNode(BaseModel):
 
 
 class CreatableGraph(BaseModel):
-    """Graph definition for creating or updating an agent."""
+    """Graph model for creating or updating an agent graph."""
 
-    id: Optional[str] = Field(default=None, description="Graph ID (assigned by server)")
-    version: int = Field(default=1, description="Graph version")
     name: str = Field(description="Graph name")
     description: str = Field(default="", description="Graph description")
     nodes: list[GraphNode] = Field(description="List of nodes")
@@ -93,16 +91,16 @@ class CreatableGraph(BaseModel):
     def to_internal(
         self,
         *,
-        id: str | None = None,
-        version: int | None = None,
+        id: str,
+        version: int,
     ) -> "_Graph":
         from backend.data.graph import Graph as _Graph
         from backend.data.graph import Link as _Link
         from backend.data.graph import Node as _Node
 
         return _Graph(
-            id=id if id is not None else (self.id or ""),
-            version=version if version is not None else self.version,
+            id=id,  # "" triggers UUID generation
+            version=version,
             is_active=self.is_active,
             name=self.name,
             description=self.description,

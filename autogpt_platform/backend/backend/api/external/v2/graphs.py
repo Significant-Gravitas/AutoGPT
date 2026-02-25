@@ -5,6 +5,7 @@ Provides endpoints for managing agent graphs (CRUD operations).
 """
 
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
@@ -121,7 +122,7 @@ async def create_graph(
     """
     from backend.api.features.library import db as library_db
 
-    internal_graph = create_graph.to_internal()
+    internal_graph = create_graph.to_internal(id=str(uuid4()), version=1)
 
     graph = graph_db.make_graph_model(internal_graph, auth.user_id)
     graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
@@ -153,9 +154,6 @@ async def update_graph(
     the provided content. The new version becomes the active version.
     """
     from backend.api.features.library import db as library_db
-
-    if update_graph.id and update_graph.id != graph_id:
-        raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
     existing_versions = await graph_db.get_graph_all_versions(
         graph_id, user_id=auth.user_id
