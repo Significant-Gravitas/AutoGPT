@@ -3,6 +3,7 @@
 import logging
 import re
 import uuid
+from collections.abc import Sequence
 from typing import Any, NotRequired, TypedDict
 
 from backend.data.db_accessors import graph_db, library_db, store_db
@@ -78,7 +79,7 @@ AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary | dict[str, Any]
 
 
 def _to_dict_list(
-    agents: list[AgentSummary] | list[dict[str, Any]] | None,
+    agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
     """Convert typed agent summaries to plain dicts for external service calls."""
     if agents is None:
@@ -190,6 +191,36 @@ async def get_library_agent_by_id(
 get_library_agent_by_graph_id = get_library_agent_by_id
 
 
+async def get_library_agents_by_ids(
+    user_id: str,
+    agent_ids: list[str],
+) -> list[LibraryAgentSummary]:
+    """Fetch multiple library agents by their IDs.
+
+    Args:
+        user_id: The user ID
+        agent_ids: List of agent IDs (can be graph_ids or library agent IDs)
+
+    Returns:
+        List of LibraryAgentSummary for found agents (silently skips not found)
+    """
+    agents: list[LibraryAgentSummary] = []
+    for agent_id in agent_ids:
+        try:
+            agent = await get_library_agent_by_id(user_id, agent_id)
+            if agent:
+                agents.append(agent)
+                logger.debug(f"Fetched library agent by ID: {agent['name']}")
+            else:
+                logger.warning(f"Library agent not found for ID: {agent_id}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch library agent {agent_id}: {e}")
+            continue
+
+    logger.info(f"Fetched {len(agents)}/{len(agent_ids)} library agents by ID")
+    return agents
+
+
 async def get_library_agents_for_generation(
     user_id: str,
     search_query: str | None = None,
@@ -214,10 +245,17 @@ async def get_library_agents_for_generation(
     Returns:
         List of LibraryAgentSummary with schemas and recent executions for sub-agent composition
     """
+    search_term = search_query.strip() if search_query else None
+    if search_term and len(search_term) > 100:
+        raise ValueError(
+            f"Search query is too long ({len(search_term)} chars, max 100). "
+            f"Please use a shorter, more specific search term."
+        )
+
     try:
         response = await library_db().list_library_agents(
             user_id=user_id,
-            search_term=search_query,
+            search_term=search_term,
             page=1,
             page_size=max_results,
             include_executions=True,
@@ -271,9 +309,16 @@ async def search_marketplace_agents_for_generation(
     Returns:
         List of LibraryAgentSummary with full input/output schemas
     """
+    search_term = search_query.strip()
+    if len(search_term) > 100:
+        raise ValueError(
+            f"Search query is too long ({len(search_term)} chars, max 100). "
+            f"Please use a shorter, more specific search term."
+        )
+
     try:
         response = await store_db().get_store_agents(
-            search_query=search_query,
+            search_query=search_term,
             page=1,
             page_size=max_results,
         )
@@ -424,7 +469,7 @@ def extract_search_terms_from_steps(
 async def enrich_library_agents_from_steps(
     user_id: str,
     decomposition_result: DecompositionResult | dict[str, Any],
-    existing_agents: list[AgentSummary] | list[dict[str, Any]],
+    existing_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]],
     exclude_graph_id: str | None = None,
     include_marketplace: bool = True,
     max_additional_results: int = 10,
@@ -448,7 +493,7 @@ async def enrich_library_agents_from_steps(
     search_terms = extract_search_terms_from_steps(decomposition_result)
 
     if not search_terms:
-        return existing_agents
+        return list(existing_agents)
 
     existing_ids: set[str] = set()
     existing_names: set[str] = set()
@@ -511,7 +556,7 @@ async def enrich_library_agents_from_steps(
 async def decompose_goal(
     description: str,
     context: str = "",
-    library_agents: list[AgentSummary] | None = None,
+    library_agents: Sequence[AgentSummary] | None = None,
 ) -> DecompositionResult | None:
     """Break down a goal into steps or return clarifying questions.
 
@@ -539,22 +584,16 @@ async def decompose_goal(
 
 async def generate_agent(
     instructions: DecompositionResult | dict[str, Any],
-    library_agents: list[AgentSummary] | list[dict[str, Any]] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
+    library_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
 
     Args:
         instructions: Structured instructions from decompose_goal
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams
-            completion notification)
-        task_id: Task ID for async processing (enables Redis Streams persistence
-            and SSE delivery)
 
     Returns:
-        Agent JSON dict, {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
+        Agent JSON dict, error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -562,12 +601,8 @@ async def generate_agent(
     _check_service_configured()
     logger.info("Calling external Agent Generator service for generate_agent")
     result = await generate_agent_external(
-        dict(instructions), _to_dict_list(library_agents), operation_id, task_id
+        dict(instructions), _to_dict_list(library_agents)
     )
-
-    # Don't modify async response
-    if result and result.get("status") == "accepted":
-        return result
 
     if result:
         if isinstance(result, dict) and result.get("type") == "error":
@@ -758,9 +793,7 @@ async def get_agent_as_json(
 async def generate_agent_patch(
     update_request: str,
     current_agent: dict[str, Any],
-    library_agents: list[AgentSummary] | None = None,
-    operation_id: str | None = None,
-    task_id: str | None = None,
+    library_agents: Sequence[AgentSummary] | None = None,
 ) -> dict[str, Any] | None:
     """Update an existing agent using natural language.
 
@@ -773,12 +806,10 @@ async def generate_agent_patch(
         update_request: Natural language description of changes
         current_agent: Current agent JSON
         library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams callback)
-        task_id: Task ID for async processing (enables Redis Streams callback)
 
     Returns:
         Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
-        {"status": "accepted"} for async, error dict {"type": "error", ...}, or None on error
+        error dict {"type": "error", ...}, or None on error
 
     Raises:
         AgentGeneratorNotConfiguredError: If the external service is not configured.
@@ -789,8 +820,6 @@ async def generate_agent_patch(
         update_request,
         current_agent,
         _to_dict_list(library_agents),
-        operation_id,
-        task_id,
     )
 
 

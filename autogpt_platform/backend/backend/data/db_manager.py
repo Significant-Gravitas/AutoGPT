@@ -303,7 +303,7 @@ class DatabaseManager(AppService):
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
-    get_chat_session_message_count = _(chat_db.get_chat_session_message_count)
+    get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
 
 
@@ -473,5 +473,5 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
-    get_chat_session_message_count = d.get_chat_session_message_count
+    get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
