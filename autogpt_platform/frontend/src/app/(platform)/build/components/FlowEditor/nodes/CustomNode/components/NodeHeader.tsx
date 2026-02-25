@@ -27,9 +27,7 @@ export function NodeHeader({ data, nodeId }: Props) {
       return data.metadata.customized_name as string;
     }
 
-    const agentName = data.hardcodedValues?.agent_name as
-      | string
-      | undefined;
+    const agentName = data.hardcodedValues?.agent_name as string | undefined;
     const agentVersion = data.hardcodedValues?.graph_version as
       | number
       | undefined;
@@ -64,12 +62,15 @@ export function NodeHeader({ data, nodeId }: Props) {
   }
 
   // Memoize title to prevent unnecessary recalculations
-  const title = useMemo(() => getBeautifiedTitle(), [
-    data.metadata?.customized_name,
-    data.hardcodedValues?.agent_name,
-    data.hardcodedValues?.graph_version,
-    data.title,
-  ]);
+  const title = useMemo(
+    () => getBeautifiedTitle(),
+    [
+      data.metadata?.customized_name,
+      data.hardcodedValues?.agent_name,
+      data.hardcodedValues?.graph_version,
+      data.title,
+    ],
+  );
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
