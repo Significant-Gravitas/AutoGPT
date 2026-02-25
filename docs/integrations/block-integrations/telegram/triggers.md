@@ -40,11 +40,11 @@ This block uses the Telegram Bot API webhook system, subscribing to `message_rea
 ## Telegram Message Trigger
 
 ### What it is
-Triggers when a message is received by your Telegram bot. Supports text, photos, voice messages, and audio files.
+Triggers when a message is received or edited in your Telegram bot. Supports text, photos, voice messages, audio files, documents, and videos.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block registers a webhook with the Telegram Bot API that subscribes to `message` updates. Incoming messages are routed by content type — text, photo, voice, audio, document, or video — based on the event filter you configure. When a matching message arrives, the block extracts common fields (chat ID, sender info, message ID) along with type-specific data such as the text content, file IDs for media, or captions. File IDs can be passed to the Get Telegram File block to download the actual media.
+This block registers a webhook with the Telegram Bot API that subscribes to `message` and `edited_message` updates. Incoming messages are routed by content type — text, photo, voice, audio, document, or video — based on the event filter you configure. When a matching message arrives, the block extracts common fields (chat ID, sender info, message ID) along with type-specific data such as the text content, file IDs for media, or captions. File IDs can be passed to the Get Telegram File block to download the actual media. If the "edited_message" event is enabled, the block also fires when a user edits a previously sent message, with the `is_edited` output set to `true`.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -72,6 +72,7 @@ This block registers a webhook with the Telegram Bot API that subscribes to `mes
 | file_id | File ID for document/video messages. Use GetTelegramFileBlock to download. | str |
 | file_name | Original filename (for document/audio messages) | str |
 | caption | Caption for media messages | str |
+| is_edited | Whether this is an edit of a previously sent message | bool |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
