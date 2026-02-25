@@ -128,11 +128,12 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get("/credits");
+      const response = await this._get("/credits");
+      return response ?? { credits: 0 };
     } catch {
-      return Promise.resolve({ credits: 0 });
+      return { credits: 0 };
     }
   }
 
