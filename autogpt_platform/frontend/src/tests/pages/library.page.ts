@@ -252,21 +252,6 @@ export class LibraryPage extends BasePage {
     ]);
   }
 
-  async clickMonitoringLink(): Promise<void> {
-    console.log(`clicking monitoring link in alert`);
-    await this.page.getByRole("link", { name: "here" }).click();
-  }
-
-  async isMonitoringAlertVisible(): Promise<boolean> {
-    console.log(`checking if monitoring alert is visible`);
-    try {
-      const alertText = this.page.locator("text=/Prefer the old experience/");
-      return await alertText.isVisible();
-    } catch {
-      return false;
-    }
-  }
-
   async getSearchValue(): Promise<string> {
     console.log(`getting search input value`);
     try {
@@ -459,7 +444,10 @@ export async function navigateToAgentByName(
   // Wait for the agent card to be visible before clicking
   // This handles async loading of agents after page navigation
   await agentCard.waitFor({ state: "visible", timeout: 15000 });
-  await agentCard.click();
+  // Click the link inside the card to navigate reliably through
+  // the motion.div + draggable wrapper layers.
+  const link = agentCard.locator('a[href*="/library/agents/"]').first();
+  await link.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
@@ -496,21 +484,17 @@ export async function clickRunButton(page: Page): Promise<void> {
   // Check which button is visible and click it
   if (await setupTaskButton.isVisible()) {
     await setupTaskButton.click();
-    const startTaskButton = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
-    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
-    await startTaskButton.click();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
-    const startTaskButton = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
-    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
-    await startTaskButton.click();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 

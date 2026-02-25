@@ -1,5 +1,8 @@
 """Unit tests for the SDK response adapter."""
 
+import asyncio
+
+import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
@@ -27,12 +30,14 @@ from backend.copilot.response_model import (
 
 from .response_adapter import SDKResponseAdapter
 from .tool_adapter import MCP_TOOL_PREFIX
+from .tool_adapter import _pending_tool_outputs as _pto
+from .tool_adapter import _stash_event
+from .tool_adapter import stash_pending_tool_output as _stash
+from .tool_adapter import wait_for_stash
 
 
 def _adapter() -> SDKResponseAdapter:
-    a = SDKResponseAdapter(message_id="msg-1")
-    a.set_task_id("task-1")
-    return a
+    return SDKResponseAdapter(message_id="msg-1", session_id="session-1")
 
 
 # -- SystemMessage -----------------------------------------------------------
@@ -44,7 +49,7 @@ def test_system_init_emits_start_and_step():
     assert len(results) == 2
     assert isinstance(results[0], StreamStart)
     assert results[0].messageId == "msg-1"
-    assert results[0].taskId == "task-1"
+    assert results[0].sessionId == "session-1"
     assert isinstance(results[1], StreamStartStep)
 
 
@@ -364,3 +369,310 @@ def test_full_conversation_flow():
         "StreamFinishStep",  # step 2 closed
         "StreamFinish",
     ]
+
+
+# -- Flush unresolved tool calls --------------------------------------------
+
+
+def test_flush_unresolved_at_result_message():
+    """Built-in tools (WebSearch) without UserMessage results get flushed at ResultMessage."""
+    adapter = _adapter()
+    all_responses: list[StreamBaseResponse] = []
+
+    # 1. Init
+    all_responses.extend(
+        adapter.convert_message(SystemMessage(subtype="init", data={}))
+    )
+    # 2. Tool use (built-in tool — no MCP prefix)
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # 3. No UserMessage for this tool — go straight to ResultMessage
+    all_responses.extend(
+        adapter.convert_message(
+            ResultMessage(
+                subtype="success",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+            )
+        )
+    )
+
+    types = [type(r).__name__ for r in all_responses]
+    assert types == [
+        "StreamStart",
+        "StreamStartStep",
+        "StreamToolInputStart",
+        "StreamToolInputAvailable",
+        "StreamToolOutputAvailable",  # flushed with empty output
+        "StreamFinishStep",  # step closed by flush
+        "StreamFinish",
+    ]
+    # The flushed output should be empty (no stash available)
+    output_event = [
+        r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
+    ][0]
+    assert output_event.toolCallId == "ws-1"
+    assert output_event.toolName == "WebSearch"
+    assert output_event.output == ""
+
+
+def test_flush_unresolved_at_next_assistant_message():
+    """Built-in tools get flushed when the next AssistantMessage arrives."""
+    adapter = _adapter()
+    all_responses: list[StreamBaseResponse] = []
+
+    # 1. Init
+    all_responses.extend(
+        adapter.convert_message(SystemMessage(subtype="init", data={}))
+    )
+    # 2. Tool use (built-in — no UserMessage will come)
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # 3. Next AssistantMessage triggers flush before processing its blocks
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[TextBlock(text="Here are the results")], model="test"
+            )
+        )
+    )
+
+    types = [type(r).__name__ for r in all_responses]
+    assert types == [
+        "StreamStart",
+        "StreamStartStep",
+        "StreamToolInputStart",
+        "StreamToolInputAvailable",
+        # Flush at next AssistantMessage:
+        "StreamToolOutputAvailable",
+        "StreamFinishStep",  # step closed by flush
+        # New step for continuation text:
+        "StreamStartStep",
+        "StreamTextStart",
+        "StreamTextDelta",
+    ]
+
+
+def test_flush_with_stashed_output():
+    """Stashed output from PostToolUse hook is used when flushing."""
+    adapter = _adapter()
+
+    # Simulate PostToolUse hook stashing output
+    _pto.set({})
+    _stash("WebSearch", "Search result: 5 items found")
+
+    all_responses: list[StreamBaseResponse] = []
+
+    # Tool use
+    all_responses.extend(
+        adapter.convert_message(
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(id="ws-1", name="WebSearch", input={"query": "test"})
+                ],
+                model="test",
+            )
+        )
+    )
+    # ResultMessage triggers flush
+    all_responses.extend(
+        adapter.convert_message(
+            ResultMessage(
+                subtype="success",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+            )
+        )
+    )
+
+    output_events = [
+        r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
+    ]
+    assert len(output_events) == 1
+    assert output_events[0].output == "Search result: 5 items found"
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+
+
+# -- wait_for_stash synchronisation tests --
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_signaled():
+    """wait_for_stash returns True when stash_pending_tool_output signals."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    # Simulate a PostToolUse hook that stashes output after a short delay
+    async def delayed_stash():
+        await asyncio.sleep(0.01)
+        _stash("WebSearch", "result data")
+
+    asyncio.create_task(delayed_stash())
+    result = await wait_for_stash(timeout=1.0)
+
+    assert result is True
+    assert _pto.get({}).get("WebSearch") == ["result data"]
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_timeout():
+    """wait_for_stash returns False on timeout when no stash occurs."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    result = await wait_for_stash(timeout=0.05)
+    assert result is False
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_stash_already_stashed():
+    """wait_for_stash picks up a stash that happened just before the wait."""
+    _pto.set({})
+    event = asyncio.Event()
+    _stash_event.set(event)
+
+    # Stash before waiting — simulates hook completing before message arrives
+    _stash("Read", "file contents")
+    # Event is now set; wait_for_stash detects the fast path and returns
+    # immediately without timing out.
+    result = await wait_for_stash(timeout=0.05)
+    assert result is True
+
+    # But the stash itself is populated
+    assert _pto.get({}).get("Read") == ["file contents"]
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+    _stash_event.set(None)
+
+
+# -- Parallel tool call tests --
+
+
+def test_parallel_tool_calls_not_flushed_prematurely():
+    """Parallel tool calls should NOT be flushed when the next AssistantMessage
+    only contains ToolUseBlocks (parallel continuation)."""
+    adapter = SDKResponseAdapter()
+
+    # Init
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # First AssistantMessage: tool call #1
+    msg1 = AssistantMessage(
+        content=[ToolUseBlock(id="t1", name="WebSearch", input={"q": "foo"})],
+        model="test",
+    )
+    r1 = adapter.convert_message(msg1)
+    assert any(isinstance(r, StreamToolInputAvailable) for r in r1)
+    assert adapter.has_unresolved_tool_calls
+
+    # Second AssistantMessage: tool call #2 (parallel continuation)
+    msg2 = AssistantMessage(
+        content=[ToolUseBlock(id="t2", name="WebSearch", input={"q": "bar"})],
+        model="test",
+    )
+    r2 = adapter.convert_message(msg2)
+
+    # No flush should have happened — t1 should NOT have StreamToolOutputAvailable
+    output_events = [r for r in r2 if isinstance(r, StreamToolOutputAvailable)]
+    assert len(output_events) == 0, (
+        f"Tool-only AssistantMessage should not flush prior tools, "
+        f"but got {len(output_events)} output events"
+    )
+
+    # Both t1 and t2 should still be unresolved
+    assert "t1" not in adapter.resolved_tool_calls
+    assert "t2" not in adapter.resolved_tool_calls
+
+
+def test_text_assistant_message_flushes_prior_tools():
+    """An AssistantMessage with text (new turn) should flush unresolved tools."""
+    adapter = SDKResponseAdapter()
+
+    # Init
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Tool call
+    msg1 = AssistantMessage(
+        content=[ToolUseBlock(id="t1", name="WebSearch", input={"q": "foo"})],
+        model="test",
+    )
+    adapter.convert_message(msg1)
+    assert adapter.has_unresolved_tool_calls
+
+    # Text AssistantMessage (new turn after tools completed)
+    msg2 = AssistantMessage(
+        content=[TextBlock(text="Here are the results")],
+        model="test",
+    )
+    r2 = adapter.convert_message(msg2)
+
+    # Flush SHOULD have happened — t1 gets empty output
+    output_events = [r for r in r2 if isinstance(r, StreamToolOutputAvailable)]
+    assert len(output_events) == 1
+    assert output_events[0].toolCallId == "t1"
+    assert "t1" in adapter.resolved_tool_calls
+
+
+def test_already_resolved_tool_skipped_in_user_message():
+    """A tool result in UserMessage should be skipped if already resolved by flush."""
+    adapter = SDKResponseAdapter()
+
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Tool call + flush via text message
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="t1", name="WebSearch", input={})],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[TextBlock(text="Done")],
+            model="test",
+        )
+    )
+    assert "t1" in adapter.resolved_tool_calls
+
+    # Now UserMessage arrives with the real result — should be skipped
+    user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
+    r = adapter.convert_message(user_msg)
+    output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
+    assert (
+        len(output_events) == 0
+    ), "Already-resolved tool should not emit duplicate output"

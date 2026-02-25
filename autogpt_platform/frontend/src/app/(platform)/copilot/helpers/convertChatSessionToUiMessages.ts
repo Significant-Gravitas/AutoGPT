@@ -58,6 +58,7 @@ function toToolInput(rawArguments: unknown): unknown {
 export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
+  options?: { isComplete?: boolean },
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -104,13 +105,21 @@ export function convertChatSessionMessagesToUiMessages(
             input,
             output: typeof output === "string" ? safeJsonParse(output) : output,
           });
-        } else {
+        } else if (options?.isComplete) {
+          // Session is complete (no active stream) but this tool call has
+          // no output in the DB — mark as completed to stop stale spinners.
           parts.push({
             type: `tool-${toolName}`,
             toolCallId,
-            state: "input-available",
+            state: "output-available",
             input,
+            output: "",
           });
+        } else {
+          // Active stream exists: Skip incomplete tool calls during hydration.
+          // The resume stream will deliver them fresh with proper SDK state.
+          // This prevents "No tool invocation found" errors on page refresh.
+          continue;
         }
       }
     }

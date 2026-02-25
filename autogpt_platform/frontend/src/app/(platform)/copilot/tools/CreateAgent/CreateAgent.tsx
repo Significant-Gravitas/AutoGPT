@@ -1,16 +1,9 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
-import {
-  BookOpenIcon,
-  PencilSimpleIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import Image from "next/image";
-import NextLink from "next/link";
+import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
   ContentCardDescription,
@@ -20,12 +13,8 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import {
-  ClarificationQuestionsCard,
-  ClarifyingQuestion,
-} from "./components/ClarificationQuestionsCard";
-import sparklesImg from "./components/MiniGame/assets/sparkles.png";
-import { MiniGame } from "./components/MiniGame/MiniGame";
+import { ClarificationQuestionsCard } from "./components/ClarificationQuestionsCard";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
@@ -36,12 +25,10 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
+  normalizeClarifyingQuestions,
   type CreateAgentToolOutput,
 } from "./helpers";
 
@@ -57,12 +44,18 @@ interface Props {
   part: CreateAgentToolPart;
 }
 
-function getAccordionMeta(output: CreateAgentToolOutput) {
+function getAccordionMeta(output: CreateAgentToolOutput | null) {
   const icon = <AccordionIcon />;
 
-  if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name, expanded: true };
+  if (!output) {
+    return {
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
   }
+
   if (isAgentPreviewOutput(output)) {
     return {
       icon,
@@ -86,25 +79,7 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       expanded: true,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
-    return {
-      icon,
-      title:
-        "Creating agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
-  return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
-    title: "Error",
-    titleClassName: "text-red-500",
-  };
+  return { icon, title: "" };
 }
 
 export function CreateAgentTool({ part }: Props) {
@@ -119,23 +94,11 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
+  const isOperating = !output;
 
-  const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isSuggestedGoalOutput(output) ||
-      isErrorOutput(output));
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   function handleUseSuggestedGoal(goal: string) {
     onSend(`Please create an agent with this goal: ${goal}`);
@@ -161,146 +124,90 @@ export function CreateAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
+      {isOperating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming={isStreaming} isError={isError} />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
+
+      {isError && output && isErrorOutput(output) && (
+        <ToolErrorCard
+          message={output.message}
+          fallbackMessage="Failed to generate the agent. Please try again."
+          error={output.error ? formatMaybeJson(output.error) : undefined}
+          details={output.details ? formatMaybeJson(output.details) : undefined}
+          actions={[
+            {
+              label: "Try again",
+              onClick: () => onSend("Please try creating the agent again."),
+            },
+            {
+              label: "Simplify goal",
+              variant: "ghost",
+              onClick: () => onSend("Can you help me simplify this goal?"),
+            },
+          ]}
         />
-      </div>
+      )}
 
-      {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
+      {hasExpandableContent &&
+        !(output && isClarificationNeededOutput(output)) &&
+        !(output && isAgentSavedOutput(output)) && (
+          <ToolAccordion {...getAccordionMeta(output)}>
+            {isOperating && (
+              <ContentGrid>
+                <MiniGame />
+                <ContentHint>
+                  This could take a few minutes — play while you wait!
+                </ContentHint>
+              </ContentGrid>
+            )}
 
-          {isAgentSavedOutput(output) && (
-            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-              <div className="flex items-baseline gap-2">
-                <Image
-                  src={sparklesImg}
-                  alt="sparkles"
-                  width={24}
-                  height={24}
-                  className="relative top-1"
-                />
-                <Text
-                  variant="body-medium"
-                  className="mb-2 text-[16px] text-black"
-                >
-                  Agent{" "}
-                  <span className="text-violet-600">{output.agent_name}</span>{" "}
-                  has been saved to your library!
-                </Text>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-4">
-                <Button variant="outline" size="small">
-                  <NextLink
-                    href={output.library_agent_link}
-                    className="inline-flex items-center gap-1.5"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <BookOpenIcon size={14} weight="regular" />
-                    Open in library
-                  </NextLink>
-                </Button>
-                <Button variant="outline" size="small">
-                  <NextLink
-                    href={output.agent_page_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <PencilSimpleIcon size={14} weight="regular" />
-                    Open in builder
-                  </NextLink>
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
-
-          {isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsCard
-              questions={(output.questions ?? []).map((q) => {
-                const item: ClarifyingQuestion = {
-                  question: q.question,
-                  keyword: q.keyword,
-                };
-                const example =
-                  typeof q.example === "string" && q.example.trim()
-                    ? q.example.trim()
-                    : null;
-                if (example) item.example = example;
-                return item;
-              })}
-              message={output.message}
-              onSubmitAnswers={handleClarificationAnswers}
-            />
-          )}
-
-          {isSuggestedGoalOutput(output) && (
-            <SuggestedGoalCard
-              message={output.message}
-              suggestedGoal={output.suggested_goal}
-              reason={output.reason}
-              goalType={output.goal_type ?? "vague"}
-              onUseSuggestedGoal={handleUseSuggestedGoal}
-            />
-          )}
-
-          {isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
+            {output && isAgentPreviewOutput(output) && (
+              <ContentGrid>
+                <ContentMessage>{output.message}</ContentMessage>
+                {output.description?.trim() && (
+                  <ContentCardDescription>
+                    {output.description}
+                  </ContentCardDescription>
+                )}
                 <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
+                  {truncateText(formatMaybeJson(output.agent_json), 1600)}
                 </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Please try creating the agent again.")}
-                >
-                  Try again
-                </Button>
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => onSend("Can you help me simplify this goal?")}
-                >
-                  Simplify goal
-                </Button>
-              </div>
-            </ContentGrid>
-          )}
-        </ToolAccordion>
+              </ContentGrid>
+            )}
+
+            {output && isSuggestedGoalOutput(output) && (
+              <SuggestedGoalCard
+                message={output.message}
+                suggestedGoal={output.suggested_goal}
+                reason={output.reason}
+                goalType={output.goal_type ?? "vague"}
+                onUseSuggestedGoal={handleUseSuggestedGoal}
+              />
+            )}
+          </ToolAccordion>
+        )}
+
+      {output && isAgentSavedOutput(output) && (
+        <AgentSavedCard
+          agentName={output.agent_name}
+          message="has been saved to your library!"
+          libraryAgentLink={output.library_agent_link}
+          agentPageLink={output.agent_page_link}
+        />
+      )}
+
+      {output && isClarificationNeededOutput(output) && (
+        <ClarificationQuestionsCard
+          questions={normalizeClarifyingQuestions(output.questions ?? [])}
+          message={output.message}
+          onSubmitAnswers={handleClarificationAnswers}
+        />
       )}
     </div>
   );

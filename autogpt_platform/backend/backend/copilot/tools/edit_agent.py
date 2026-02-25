@@ -9,7 +9,6 @@ from .agent_generator import (
     AgentGeneratorNotConfiguredError,
     generate_agent_patch,
     get_agent_as_json,
-    get_all_relevant_agents_for_generation,
     get_user_message_for_error,
     save_agent_to_library,
 )
@@ -17,7 +16,6 @@ from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
-    AsyncProcessingResponse,
     ClarificationNeededResponse,
     ClarifyingQuestion,
     ErrorResponse,
@@ -38,15 +36,14 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent from the user's library using natural language. "
-            "Generates updates to the agent while preserving unchanged parts."
+            "Generates updates to the agent while preserving unchanged parts. "
+            "\n\nIMPORTANT: Before calling this tool, if the changes involve adding new "
+            "functionality, search for relevant existing agents using find_library_agent "
+            "that could be used as building blocks. Pass their IDs in library_agent_ids."
         )
 
     @property
     def requires_auth(self) -> bool:
-        return True
-
-    @property
-    def is_long_running(self) -> bool:
         return True
 
     @property
@@ -72,6 +69,15 @@ class EditAgentTool(BaseTool):
                     "type": "string",
                     "description": (
                         "Additional context or answers to previous clarifying questions."
+                    ),
+                },
+                "library_agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of library agent IDs to use as building blocks for the changes. "
+                        "If adding new functionality, search for relevant agents using "
+                        "find_library_agent first, then pass their IDs here."
                     ),
                 },
                 "save": {
@@ -102,12 +108,9 @@ class EditAgentTool(BaseTool):
         agent_id = kwargs.get("agent_id", "").strip()
         changes = kwargs.get("changes", "").strip()
         context = kwargs.get("context", "")
+        library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
         session_id = session.session_id if session else None
-
-        # Extract async processing params (passed by long-running tool handler)
-        operation_id = kwargs.get("_operation_id")
-        task_id = kwargs.get("_task_id")
 
         if not agent_id:
             return ErrorResponse(
@@ -132,21 +135,25 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Fetch library agents by IDs if provided
         library_agents = None
-        if user_id:
+        if user_id and library_agent_ids:
             try:
+                from .agent_generator import get_library_agents_by_ids
+
                 graph_id = current_agent.get("id")
-                library_agents = await get_all_relevant_agents_for_generation(
+                # Filter out the current agent being edited
+                filtered_ids = [id for id in library_agent_ids if id != graph_id]
+
+                library_agents = await get_library_agents_by_ids(
                     user_id=user_id,
-                    search_query=changes,
-                    exclude_graph_id=graph_id,
-                    include_marketplace=True,
+                    agent_ids=filtered_ids,
                 )
                 logger.debug(
-                    f"Found {len(library_agents)} relevant agents for sub-agent composition"
+                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
                 )
             except Exception as e:
-                logger.warning(f"Failed to fetch library agents: {e}")
+                logger.warning(f"Failed to fetch library agents by IDs: {e}")
 
         update_request = changes
         if context:
@@ -157,8 +164,6 @@ class EditAgentTool(BaseTool):
                 update_request,
                 current_agent,
                 library_agents,
-                operation_id=operation_id,
-                task_id=task_id,
             )
         except AgentGeneratorNotConfiguredError:
             return ErrorResponse(
@@ -175,19 +180,6 @@ class EditAgentTool(BaseTool):
                 message="Failed to generate changes. The agent generation service may be unavailable or timed out. Please try again.",
                 error="update_generation_failed",
                 details={"agent_id": agent_id, "changes": changes[:100]},
-                session_id=session_id,
-            )
-
-        # Check if Agent Generator accepted for async processing
-        if result.get("status") == "accepted":
-            logger.info(
-                f"Agent edit delegated to async processing "
-                f"(operation_id={operation_id}, task_id={task_id})"
-            )
-            return AsyncProcessingResponse(
-                message="Agent edit started. You'll be notified when it's complete.",
-                operation_id=operation_id,
-                task_id=task_id,
                 session_id=session_id,
             )
 

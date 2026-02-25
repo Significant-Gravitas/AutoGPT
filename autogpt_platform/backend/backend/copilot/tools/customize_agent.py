@@ -47,10 +47,6 @@ class CustomizeAgentTool(BaseTool):
         return True
 
     @property
-    def is_long_running(self) -> bool:
-        return True
-
-    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
