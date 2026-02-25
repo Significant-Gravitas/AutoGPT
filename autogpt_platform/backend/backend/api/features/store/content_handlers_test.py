@@ -82,11 +82,10 @@ async def test_block_handler_get_missing_items(mocker):
     mock_block_instance.description = "Performs calculations"
     mock_block_instance.categories = [MagicMock(value="MATH")]
     mock_block_instance.disabled = False
-    mock_block_instance.input_schema.model_json_schema.return_value = {
-        "properties": {"expression": {"description": "Math expression to evaluate"}}
-    }
+    mock_field = MagicMock()
+    mock_field.description = "Math expression to evaluate"
+    mock_block_instance.input_schema.model_fields = {"expression": mock_field}
     mock_block_instance.input_schema.get_credentials_fields_info.return_value = {}
-    mock_block_instance.input_schema.model_fields = {}
     mock_block_class.return_value = mock_block_instance
 
     mock_blocks = {"block-uuid-1": mock_block_class}
@@ -322,9 +321,8 @@ async def test_block_handler_handles_empty_attributes():
     mock_block_instance.disabled = False
     mock_block_instance.description = ""
     mock_block_instance.categories = set()
-    mock_block_instance.input_schema.model_json_schema.return_value = {}
-    mock_block_instance.input_schema.get_credentials_fields_info.return_value = {}
     mock_block_instance.input_schema.model_fields = {}
+    mock_block_instance.input_schema.get_credentials_fields_info.return_value = {}
     mock_block_class.return_value = mock_block_instance
 
     mock_blocks = {"block-minimal": mock_block_class}
@@ -355,9 +353,8 @@ async def test_block_handler_skips_failed_blocks():
     good_instance.description = "Works fine"
     good_instance.categories = []
     good_instance.disabled = False
-    good_instance.input_schema.model_json_schema.return_value = {}
-    good_instance.input_schema.get_credentials_fields_info.return_value = {}
     good_instance.input_schema.model_fields = {}
+    good_instance.input_schema.get_credentials_fields_info.return_value = {}
     good_block.return_value = good_instance
 
     bad_block = MagicMock()
