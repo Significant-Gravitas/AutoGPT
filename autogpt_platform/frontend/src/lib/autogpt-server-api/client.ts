@@ -144,7 +144,10 @@ export default class BackendAPI {
     try {
       const response = await this._get("/credits");
       return response ?? { credits: 0 };
-    } catch {
+    } catch (error) {
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
       return { credits: 0 };
     }
   }
@@ -446,13 +449,14 @@ export default class BackendAPI {
   ///////////// V2 STORE API /////////////
   ////////////////////////////////////////
 
-  getStoreProfile(): Promise<ProfileDetails | null> {
+  async getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      const result = this._get("/store/profile");
-      return result;
+      return await this._get("/store/profile");
     } catch (error) {
-      console.error("Error fetching store profile:", error);
-      return Promise.resolve(null);
+      if (!(error instanceof LogoutInterruptError)) {
+        console.error("Error fetching store profile:", error);
+      }
+      return null;
     }
   }
 
