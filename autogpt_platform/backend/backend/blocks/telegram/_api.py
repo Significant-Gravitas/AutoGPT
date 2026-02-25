@@ -8,12 +8,32 @@ import logging
 from io import BytesIO
 from typing import Any, Optional
 
+from pydantic import BaseModel
+
 from backend.data.model import APIKeyCredentials
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_BASE = "https://api.telegram.org"
+
+
+class TelegramMessageResult(BaseModel, extra="allow"):
+    """Result from Telegram send/edit message API calls."""
+
+    message_id: int = 0
+    chat: dict[str, Any] = {}
+    date: int = 0
+    text: str = ""
+
+
+class TelegramFileResult(BaseModel, extra="allow"):
+    """Result from Telegram getFile API call."""
+
+    file_id: str = ""
+    file_unique_id: str = ""
+    file_size: int = 0
+    file_path: str = ""
 
 
 class TelegramAPIException(ValueError):
@@ -38,7 +58,7 @@ async def call_telegram_api(
     credentials: APIKeyCredentials,
     method: str,
     data: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
+) -> TelegramMessageResult:
     """
     Make a request to the Telegram Bot API.
 
@@ -64,7 +84,7 @@ async def call_telegram_api(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return result.get("result", {})
+    return TelegramMessageResult(**result.get("result", {}))
 
 
 async def call_telegram_api_with_file(
@@ -75,7 +95,7 @@ async def call_telegram_api_with_file(
     filename: str,
     content_type: str,
     data: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
+) -> TelegramMessageResult:
     """
     Make a multipart/form-data request to the Telegram Bot API with a file upload.
 
@@ -107,10 +127,12 @@ async def call_telegram_api_with_file(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return result.get("result", {})
+    return TelegramMessageResult(**result.get("result", {}))
 
 
-async def get_file_info(credentials: APIKeyCredentials, file_id: str) -> dict[str, Any]:
+async def get_file_info(
+    credentials: APIKeyCredentials, file_id: str
+) -> TelegramFileResult:
     """
     Get file information from Telegram.
 
@@ -121,7 +143,8 @@ async def get_file_info(credentials: APIKeyCredentials, file_id: str) -> dict[st
     Returns:
         File info dict containing file_id, file_unique_id, file_size, file_path
     """
-    return await call_telegram_api(credentials, "getFile", {"file_id": file_id})
+    result = await call_telegram_api(credentials, "getFile", {"file_id": file_id})
+    return TelegramFileResult(**result.model_dump())
 
 
 async def get_file_download_url(credentials: APIKeyCredentials, file_id: str) -> str:
@@ -137,7 +160,7 @@ async def get_file_download_url(credentials: APIKeyCredentials, file_id: str) ->
     """
     token = credentials.api_key.get_secret_value()
     result = await get_file_info(credentials, file_id)
-    file_path = result.get("file_path")
+    file_path = result.file_path
     if not file_path:
         raise TelegramAPIException("No file_path returned from getFile")
     return get_file_url(token, file_path)

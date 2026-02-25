@@ -198,6 +198,24 @@ async def find_webhook_by_credentials_and_props(
     return Webhook.from_db(webhook) if webhook else None
 
 
+async def find_webhook_by_credentials(
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+) -> Webhook | None:
+    """Find a webhook by credentials, type, and resource, ignoring events."""
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "userId": user_id,
+            "credentialsId": credentials_id,
+            "webhookType": webhook_type,
+            "resource": resource,
+        },
+    )
+    return Webhook.from_db(webhook) if webhook else None
+
+
 async def find_webhook_by_graph_and_props(
     user_id: str,
     provider: str,

@@ -13,9 +13,12 @@ from strenum import StrEnum
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import MissingConfigError
 from backend.util.request import Requests
+from backend.util.settings import Config
 
 from ._base import BaseWebhooksManager
+from .utils import webhook_ingress_url
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,66 @@ class TelegramWebhooksManager(BaseWebhooksManager):
     WebhookType = TelegramWebhookType
 
     TELEGRAM_API_BASE = "https://api.telegram.org"
+
+    async def get_suitable_auto_webhook(
+        self,
+        user_id: str,
+        credentials: Credentials,
+        webhook_type: TelegramWebhookType,
+        resource: str,
+        events: list[str],
+    ) -> integrations.Webhook:
+        """
+        Telegram only supports one webhook per bot. Instead of creating a new
+        webhook object when events change (which causes the old one to be pruned
+        and deregistered — removing the ONLY webhook for the bot), we find the
+        existing webhook and update its events in place.
+        """
+        app_config = Config()
+        if not app_config.platform_base_url:
+            raise MissingConfigError(
+                "PLATFORM_BASE_URL must be set to use Webhook functionality"
+            )
+
+        # Exact match — no re-registration needed
+        if webhook := await integrations.find_webhook_by_credentials_and_props(
+            user_id=user_id,
+            credentials_id=credentials.id,
+            webhook_type=webhook_type,
+            resource=resource,
+            events=events,
+        ):
+            return webhook
+
+        # Find any existing webhook for the same bot, regardless of events
+        if existing := await integrations.find_webhook_by_credentials(
+            user_id=user_id,
+            credentials_id=credentials.id,
+            webhook_type=webhook_type,
+            resource=resource,
+        ):
+            # Re-register with Telegram using the same URL but new allowed_updates
+            ingress_url = webhook_ingress_url(self.PROVIDER_NAME, existing.id)
+            _, config = await self._register_webhook(
+                credentials,
+                webhook_type,
+                resource,
+                events,
+                ingress_url,
+                existing.secret,
+            )
+            return await integrations.update_webhook(
+                existing.id, events=events, config=config
+            )
+
+        # No existing webhook at all — create a new one
+        return await self._create_webhook(
+            user_id=user_id,
+            webhook_type=webhook_type,
+            events=events,
+            resource=resource,
+            credentials=credentials,
+        )
 
     @classmethod
     async def validate_payload(
@@ -64,8 +127,6 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         payload = await request.json()
 
         # Determine event type based on update content
-        # Telegram updates can contain: message, edited_message,
-        # channel_post, callback_query, etc.
         if "message" in payload:
             message = payload["message"]
             if "text" in message:
@@ -83,11 +144,9 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             else:
                 event_type = "message.other"
         elif "edited_message" in payload:
-            event_type = "edited_message"
+            event_type = "message.edited_message"
         elif "message_reaction" in payload:
             event_type = "message_reaction"
-        elif "callback_query" in payload:
-            event_type = "callback_query"
         else:
             event_type = "unknown"
 
@@ -122,11 +181,22 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         token = credentials.api_key.get_secret_value()
         url = f"{self.TELEGRAM_API_BASE}/bot{token}/setWebhook"
 
-        # Telegram setWebhook parameters
+        # Map event filter to Telegram allowed_updates
+        if events:
+            telegram_updates: set[str] = set()
+            for event in events:
+                telegram_updates.add(event.split(".")[0])
+                # "message.edited_message" requires the "edited_message" update type
+                if "edited_message" in event:
+                    telegram_updates.add("edited_message")
+            sorted_updates = sorted(telegram_updates)
+        else:
+            sorted_updates = ["message", "message_reaction"]
+
         webhook_data = {
             "url": ingress_url,
             "secret_token": secret,
-            "allowed_updates": ["message", "edited_message", "message_reaction"],
+            "allowed_updates": sorted_updates,
         }
 
         response = await Requests().post(url, json=webhook_data)

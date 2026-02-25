@@ -80,6 +80,7 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
             audio: bool = False
             document: bool = False
             video: bool = False
+            edited_message: bool = False
 
         events: EventsFilter = SchemaField(
             title="Message Types", description="Types of messages to receive"
@@ -123,6 +124,9 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
             description="Original filename (for document/audio messages)"
         )
         caption: str = SchemaField(description="Caption for media messages")
+        is_edited: bool = SchemaField(
+            description="Whether this is an edit of a previously sent message"
+        )
 
     def __init__(self):
         super().__init__(
@@ -152,6 +156,7 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
                 ("user_id", 12345678),
                 ("username", "johndoe"),
                 ("first_name", "John"),
+                ("is_edited", False),
                 ("event", "text"),
                 ("text", "Hello, bot!"),
                 ("photo_file_id", ""),
@@ -165,7 +170,8 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         payload = input_data.payload
-        message = payload.get("message", {})
+        is_edited = "edited_message" in payload
+        message = payload.get("message") or payload.get("edited_message", {})
 
         # Extract common fields
         chat = message.get("chat", {})
@@ -177,9 +183,28 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
         yield "user_id", sender.get("id", 0)
         yield "username", sender.get("username", "")
         yield "first_name", sender.get("first_name", "")
+        yield "is_edited", is_edited
 
+        # For edited messages, yield event as "edited_message" and extract
+        # all content fields from the edited message body
+        if is_edited:
+            yield "event", "edited_message"
+            yield "text", message.get("text", "")
+            photos = message.get("photo", [])
+            yield "photo_file_id", photos[-1].get("file_id", "") if photos else ""
+            voice = message.get("voice", {})
+            yield "voice_file_id", voice.get("file_id", "")
+            audio = message.get("audio", {})
+            yield "audio_file_id", audio.get("file_id", "")
+            document = message.get("document", {})
+            video = message.get("video", {})
+            yield "file_id", (document.get("file_id", "") or video.get("file_id", ""))
+            yield "file_name", (
+                document.get("file_name", "") or audio.get("file_name", "")
+            )
+            yield "caption", message.get("caption", "")
         # Determine message type and extract content
-        if "text" in message:
+        elif "text" in message:
             yield "event", "text"
             yield "text", message.get("text", "")
             yield "photo_file_id", ""

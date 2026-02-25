@@ -1,6 +1,6 @@
 # Telegram Triggers
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+These trigger blocks let your agent receive incoming messages and reactions from Telegram in real time via webhooks. When a user sends a message or reacts to one, the trigger fires and outputs structured data (chat ID, user info, message content, file IDs) that downstream blocks can process.
 <!-- END MANUAL -->
 
 ## Telegram Message Reaction Trigger
@@ -10,7 +10,7 @@ Triggers when a reaction to a message is changed. Works in private chats automat
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Telegram Bot API webhook system, subscribing to `message_reaction` updates. When a user adds, changes, or removes a reaction on a message in a chat with your bot, Telegram sends an update to the registered webhook URL. The block extracts the chat ID, message ID, reacting user's info, and both the old and new reaction lists. In private chats this works automatically; in group chats the bot must be an administrator to receive reaction updates.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -28,7 +28,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sentiment tracking** — Monitor reactions on bot-posted announcements to gauge audience sentiment in real time.
+
+**Approval workflows** — Use a thumbs-up reaction as a lightweight approval signal to trigger downstream actions like deployments or task assignments.
+
+**Engagement analytics** — Aggregate reaction data across messages to identify which content resonates most with your audience.
 <!-- END MANUAL -->
 
 ---
@@ -40,7 +44,7 @@ Triggers when a message is received by your Telegram bot. Supports text, photos,
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block registers a webhook with the Telegram Bot API that subscribes to `message` updates. Incoming messages are routed by content type — text, photo, voice, audio, document, or video — based on the event filter you configure. When a matching message arrives, the block extracts common fields (chat ID, sender info, message ID) along with type-specific data such as the text content, file IDs for media, or captions. File IDs can be passed to the Get Telegram File block to download the actual media.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -71,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conversational AI bot** — Receive text messages from users and feed them into an AI agent that generates and sends replies.
+
+**Photo processing pipeline** — Trigger on incoming photos, download them with Get Telegram File, run image analysis or OCR, and reply with the results.
+
+**Voice message transcription** — Capture voice messages, download the audio file, pass it to a speech-to-text service, and send the transcript back to the user.
 <!-- END MANUAL -->
 
 ---
