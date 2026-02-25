@@ -64,9 +64,9 @@ class TelegramTriggerBase:
 
 class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
     """
-    Triggers when a message is received by your Telegram bot.
+    Triggers when a message is received or edited in your Telegram bot.
 
-    Supports text, photos, voice messages, and audio files.
+    Supports text, photos, voice messages, audio files, documents, and videos.
     Connect the outputs to other blocks to process messages and send responses.
     """
 
@@ -131,8 +131,8 @@ class TelegramMessageTriggerBlock(TelegramTriggerBase, Block):
     def __init__(self):
         super().__init__(
             id="4435e4e0-df6e-4301-8f35-ad70b12fc9ec",
-            description="Triggers when a message is received by your Telegram bot. "
-            "Supports text, photos, voice messages, and audio files.",
+            description="Triggers when a message is received or edited in your Telegram bot. "
+            "Supports text, photos, voice messages, audio files, documents, and videos.",
             categories={BlockCategory.SOCIAL},
             input_schema=TelegramMessageTriggerBlock.Input,
             output_schema=TelegramMessageTriggerBlock.Output,

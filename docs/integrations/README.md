@@ -360,7 +360,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Telegram Video](block-integrations/telegram/blocks.md#send-telegram-video) | Send a video to a Telegram chat |
 | [Send Telegram Voice](block-integrations/telegram/blocks.md#send-telegram-voice) | Send a voice message to a Telegram chat |
 | [Telegram Message Reaction Trigger](block-integrations/telegram/triggers.md#telegram-message-reaction-trigger) | Triggers when a reaction to a message is changed |
-| [Telegram Message Trigger](block-integrations/telegram/triggers.md#telegram-message-trigger) | Triggers when a message is received by your Telegram bot |
+| [Telegram Message Trigger](block-integrations/telegram/triggers.md#telegram-message-trigger) | Triggers when a message is received or edited in your Telegram bot |
 | [Transcribe Youtube Video](block-integrations/misc.md#transcribe-youtube-video) | Transcribes a YouTube video using a proxy |
 | [Twitter Add List Member](block-integrations/twitter/list_members.md#twitter-add-list-member) | This block adds a specified user to a Twitter List owned by the authenticated user |
 | [Twitter Bookmark Tweet](block-integrations/twitter/bookmark.md#twitter-bookmark-tweet) | This block bookmarks a tweet on Twitter |
