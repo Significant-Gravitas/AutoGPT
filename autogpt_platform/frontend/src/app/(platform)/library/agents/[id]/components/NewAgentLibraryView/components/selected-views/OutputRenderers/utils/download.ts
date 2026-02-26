@@ -7,17 +7,26 @@ export interface DownloadItem {
   renderer: OutputRenderer;
 }
 
-async function fetchFileAsBlob(url: string): Promise<Blob | null> {
+interface FetchResult {
+  blob: Blob | null;
+  failedUrl?: string;
+  failedFilename?: string;
+}
+
+async function fetchFileAsBlob(
+  url: string,
+  filename: string,
+): Promise<FetchResult> {
   try {
     const response = await fetch(url);
     if (!response.ok) {
       console.error(`Failed to fetch ${url}: ${response.status}`);
-      return null;
+      return { blob: null, failedUrl: url, failedFilename: filename };
     }
-    return await response.blob();
+    return { blob: await response.blob() };
   } catch (error) {
     console.error(`Error fetching ${url}:`, error);
-    return null;
+    return { blob: null, failedUrl: url, failedFilename: filename };
   }
 }
 
@@ -47,6 +56,7 @@ export async function downloadOutputs(items: DownloadItem[]) {
   let hasFiles = false;
 
   const concatenableTexts: string[] = [];
+  const failedDownloads: Array<{ url: string; filename: string }> = [];
 
   for (const item of items) {
     if (item.renderer.isConcatenable(item.value, item.metadata)) {
@@ -76,7 +86,17 @@ export async function downloadOutputs(items: DownloadItem[]) {
 
         if (typeof downloadContent.data === "string") {
           if (downloadContent.data.startsWith("http")) {
-            blob = await fetchFileAsBlob(downloadContent.data);
+            const result = await fetchFileAsBlob(
+              downloadContent.data,
+              filename,
+            );
+            blob = result.blob;
+            if (!blob && result.failedUrl && result.failedFilename) {
+              failedDownloads.push({
+                url: result.failedUrl,
+                filename: result.failedFilename,
+              });
+            }
           }
         } else {
           blob = downloadContent.data as Blob;
@@ -102,6 +122,10 @@ export async function downloadOutputs(items: DownloadItem[]) {
     const zipBlob = await zip.generateAsync({ type: "blob" });
     downloadBlob(zipBlob, "outputs.zip");
   }
+
+  for (const failed of failedDownloads) {
+    downloadViaAnchor(failed.url, failed.filename);
+  }
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -113,4 +137,15 @@ function downloadBlob(blob: Blob, filename: string) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function downloadViaAnchor(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
