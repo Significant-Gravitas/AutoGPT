@@ -37,30 +37,12 @@ function resolveInProgressTools(
   }));
 }
 
-/** Deduplicate by ID + content fingerprint for cross-source messages */
+/** Simple ID-based deduplication - trust backend for correctness */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenContent = new Set<string>();
-
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
-
-    // For assistant messages, also check content to catch hydration/stream duplicates
-    if (msg.role === "assistant") {
-      const content = msg.parts
-        .map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            "",
-        )
-        .join("|");
-
-      if (content && seenContent.has(content)) return false;
-      if (content) seenContent.add(content);
-    }
-
     return true;
   });
 }
