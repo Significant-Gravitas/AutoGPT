@@ -251,16 +251,23 @@ class CoPilotProcessor:
                         exc_info=True,
                     )
 
-            # Stream loop completed - manager will mark session as completed
+            # Stream loop completed
             if cancel.is_set():
                 log.info("Stream cancelled by user")
 
         except BaseException as e:
             # Handle all exceptions (including CancelledError) with appropriate logging
-            # Manager's on_run_done will mark session as completed
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
             raise
+        finally:
+            error_msg = "Operation cancelled" if cancel.is_set() else None
+            try:
+                await stream_registry.mark_session_completed(
+                    entry.session_id, error_message=error_msg
+                )
+            except Exception as mark_err:
+                log.error(f"Failed to mark session completed: {mark_err}")

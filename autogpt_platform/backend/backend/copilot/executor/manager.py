@@ -17,7 +17,6 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
-from backend.copilot import stream_registry
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -425,23 +424,6 @@ class CoPilotExecutor(AppProcess):
                 error_msg = str(e) or type(e).__name__
                 logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
-                # Mark session as completed (with error if one occurred)
-                # Create temporary loop since manager doesn't have persistent async operations
-                try:
-                    loop = asyncio.new_event_loop()
-                    try:
-                        loop.run_until_complete(
-                            stream_registry.mark_session_completed(
-                                session_id, error_message=error_msg
-                            )
-                        )
-                    finally:
-                        loop.close()
-                except Exception as mark_err:
-                    logger.error(
-                        f"Failed to mark session completed for {session_id}: {mark_err}"
-                    )
-
                 # Release the cluster lock
                 if session_id in self._task_locks:
                     logger.info(f"Releasing cluster lock for {session_id}")
