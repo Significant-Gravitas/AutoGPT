@@ -196,13 +196,9 @@ export function useCopilotPage() {
         delay,
         ts: Date.now(),
       });
-      // Drop assistant messages before replay — the backend replays all
-      // chunks from "0-0" including `start` with the server messageId.
-      // If the old assistant message stays, the replayed `start` overwrites
-      // its ID → write() sees a mismatch → pushMessage → duplicate.
-      setMessagesRef.current((prev) =>
-        prev.filter((m) => m.role !== "assistant"),
-      );
+      // Don't pre-clear assistant messages — rely on fingerprint-based
+      // deduplication to handle replayed chunks. This prevents the chat
+      // from appearing empty during reconnect.
       resumeStreamRef.current();
     }, delay);
   }
