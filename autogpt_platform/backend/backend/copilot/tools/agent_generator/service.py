@@ -1,11 +1,13 @@
 """External Agent Generator service client.
 
 This module provides a client for communicating with the external Agent Generator
-microservice. When AGENTGENERATOR_HOST is configured, the agent generation functions
-will delegate to the external service instead of using the built-in LLM-based implementation.
+microservice. All generation endpoints use async polling: submit a job (202),
+then poll GET /api/jobs/{job_id} every few seconds until the result is ready.
 """
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -25,22 +27,21 @@ logger = logging.getLogger(__name__)
 
 _dummy_mode_warned = False
 
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+POLL_INTERVAL_SECONDS = 10.0
+MAX_POLL_TIME_SECONDS = 1800.0  # 30 minutes
+MAX_CONSECUTIVE_POLL_ERRORS = 5
+
 
 def _create_error_response(
     error_message: str,
     error_type: str = "unknown",
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create a standardized error response dict.
-
-    Args:
-        error_message: Human-readable error message
-        error_type: Machine-readable error type
-        details: Optional additional error details
-
-    Returns:
-        Error dict with type="error" and error details
-    """
+    """Create a standardized error response dict."""
     response: dict[str, Any] = {
         "type": "error",
         "error": error_message,
@@ -52,14 +53,7 @@ def _create_error_response(
 
 
 def _classify_http_error(e: httpx.HTTPStatusError) -> tuple[str, str]:
-    """Classify an HTTP error into error_type and message.
-
-    Args:
-        e: The HTTP status error
-
-    Returns:
-        Tuple of (error_type, error_message)
-    """
+    """Classify an HTTP error into error_type and message."""
     status = e.response.status_code
     if status == 429:
         return "rate_limit", f"Agent Generator rate limited: {e}"
@@ -72,14 +66,7 @@ def _classify_http_error(e: httpx.HTTPStatusError) -> tuple[str, str]:
 
 
 def _classify_request_error(e: httpx.RequestError) -> tuple[str, str]:
-    """Classify a request error into error_type and message.
-
-    Args:
-        e: The request error
-
-    Returns:
-        Tuple of (error_type, error_message)
-    """
+    """Classify a request error into error_type and message."""
     error_str = str(e).lower()
     if "timeout" in error_str or "timed out" in error_str:
         return "timeout", f"Agent Generator request timed out: {e}"
@@ -88,6 +75,10 @@ def _classify_request_error(e: httpx.RequestError) -> tuple[str, str]:
     else:
         return "request_error", f"Request error calling Agent Generator: {e}"
 
+
+# ---------------------------------------------------------------------------
+# Client / settings singletons
+# ---------------------------------------------------------------------------
 
 _client: httpx.AsyncClient | None = None
 _settings: Settings | None = None
@@ -136,11 +127,147 @@ def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None:
         settings = _get_settings()
+        timeout = httpx.Timeout(float(settings.config.agentgenerator_timeout))
         _client = httpx.AsyncClient(
             base_url=_get_base_url(),
-            timeout=httpx.Timeout(settings.config.agentgenerator_timeout),
+            timeout=timeout,
         )
     return _client
+
+
+# ---------------------------------------------------------------------------
+# Core polling helper
+# ---------------------------------------------------------------------------
+
+
+async def _submit_and_poll(
+    endpoint: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Submit a job to the agent-generator and poll until the result is ready.
+
+    The endpoint is expected to return 202 with ``{"job_id": "..."}`` on success.
+    We then poll ``GET /api/jobs/{job_id}`` every ``POLL_INTERVAL_SECONDS``
+    until the job completes or fails.
+
+    Returns:
+        The *result* dict from a completed job, or an error dict.
+    """
+    client = _get_client()
+
+    # 1. Submit ----------------------------------------------------------------
+    try:
+        response = await client.post(endpoint, json=payload)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        error_type, error_msg = _classify_http_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+    except httpx.RequestError as e:
+        error_type, error_msg = _classify_request_error(e)
+        logger.error(error_msg)
+        return _create_error_response(error_msg, error_type)
+
+    data = response.json()
+    job_id = data.get("job_id")
+    if not job_id:
+        return _create_error_response(
+            "Agent Generator did not return a job_id", "invalid_response"
+        )
+
+    logger.info(f"Agent Generator job submitted: {job_id} via {endpoint}")
+
+    # 2. Poll ------------------------------------------------------------------
+    start = time.monotonic()
+    consecutive_errors = 0
+    while (time.monotonic() - start) < MAX_POLL_TIME_SECONDS:
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+        try:
+            poll_resp = await client.get(f"/api/jobs/{job_id}")
+            poll_resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return _create_error_response(
+                    "Agent Generator job not found or expired", "job_not_found"
+                )
+            status_code = e.response.status_code
+            if status_code in {429, 503, 504, 408}:
+                consecutive_errors += 1
+                logger.warning(
+                    f"Transient HTTP {status_code} polling job {job_id} "
+                    f"({consecutive_errors}/{MAX_CONSECUTIVE_POLL_ERRORS}): {e}"
+                )
+                if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
+                    error_type, error_msg = _classify_http_error(e)
+                    logger.error(
+                        f"Giving up on job {job_id} after "
+                        f"{MAX_CONSECUTIVE_POLL_ERRORS} consecutive poll errors: {error_msg}"
+                    )
+                    return _create_error_response(error_msg, error_type)
+                continue
+            error_type, error_msg = _classify_http_error(e)
+            logger.error(f"Poll error for job {job_id}: {error_msg}")
+            return _create_error_response(error_msg, error_type)
+        except httpx.RequestError as e:
+            consecutive_errors += 1
+            logger.warning(
+                f"Transient poll error for job {job_id} "
+                f"({consecutive_errors}/{MAX_CONSECUTIVE_POLL_ERRORS}): {e}"
+            )
+            if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
+                error_msg = (
+                    f"Giving up on job {job_id} after "
+                    f"{MAX_CONSECUTIVE_POLL_ERRORS} consecutive poll errors: {e}"
+                )
+                logger.error(error_msg)
+                return _create_error_response(error_msg, "poll_error")
+            continue
+
+        consecutive_errors = 0
+        poll_data = poll_resp.json()
+        status = poll_data.get("status")
+
+        if status == "completed":
+            logger.info(f"Agent Generator job {job_id} completed")
+            result = poll_data.get("result", {})
+            if not isinstance(result, dict):
+                return _create_error_response(
+                    "Agent Generator returned invalid result payload",
+                    "invalid_response",
+                )
+            return result
+        elif status == "failed":
+            error_msg = poll_data.get("error", "Job failed")
+            logger.error(f"Agent Generator job {job_id} failed: {error_msg}")
+            return _create_error_response(error_msg, "job_failed")
+        elif status in {"running", "pending", "queued"}:
+            continue
+        else:
+            return _create_error_response(
+                f"Agent Generator returned unexpected job status: {status}",
+                "invalid_response",
+            )
+
+    return _create_error_response("Agent generation timed out after polling", "timeout")
+
+
+def _extract_agent_json(result: dict[str, Any]) -> dict[str, Any]:
+    """Extract and validate agent_json from a job result.
+
+    Returns the agent_json dict, or an error response if missing/invalid.
+    """
+    agent_json = result.get("agent_json")
+    if not isinstance(agent_json, dict):
+        return _create_error_response(
+            "Agent Generator returned no agent_json in result", "invalid_response"
+        )
+    return agent_json
+
+
+# ---------------------------------------------------------------------------
+# Public functions — same signatures as before, now using polling
+# ---------------------------------------------------------------------------
 
 
 async def decompose_goal_external(
@@ -150,24 +277,16 @@ async def decompose_goal_external(
 ) -> dict[str, Any] | None:
     """Call the external service to decompose a goal.
 
-    Args:
-        description: Natural language goal description
-        context: Additional context (e.g., answers to previous questions)
-        library_agents: User's library agents available for sub-agent composition
+    Returns one of the following dicts (keyed by ``"type"``):
 
-    Returns:
-        Dict with either:
-        - {"type": "clarifying_questions", "questions": [...]}
-        - {"type": "instructions", "steps": [...]}
-        - {"type": "unachievable_goal", ...}
-        - {"type": "vague_goal", ...}
-        - {"type": "error", "error": "...", "error_type": "..."} on error
-        Or None on unexpected error
+    * ``{"type": "instructions", "steps": [...]}``
+    * ``{"type": "clarifying_questions", "questions": [...]}``
+    * ``{"type": "unachievable_goal", "reason": ..., "suggested_goal": ...}``
+    * ``{"type": "vague_goal", "suggested_goal": ...}``
+    * ``{"type": "error", "error": ..., "error_type": ...}``
     """
     if _is_dummy_mode():
         return await decompose_goal_dummy(description, context, library_agents)
-
-    client = _get_client()
 
     if context:
         description = f"{description}\n\nAdditional context from user:\n{context}"
@@ -177,66 +296,42 @@ async def decompose_goal_external(
         payload["library_agents"] = library_agents
 
     try:
-        response = await client.post("/api/decompose-description", json=payload)
-        response.raise_for_status()
-        data = response.json()
-
-        if not data.get("success"):
-            error_msg = data.get("error", "Unknown error from Agent Generator")
-            error_type = data.get("error_type", "unknown")
-            logger.error(
-                f"Agent Generator decomposition failed: {error_msg} "
-                f"(type: {error_type})"
-            )
-            return _create_error_response(error_msg, error_type)
-
-        # Map the response to the expected format
-        response_type = data.get("type")
-        if response_type == "instructions":
-            return {"type": "instructions", "steps": data.get("steps", [])}
-        elif response_type == "clarifying_questions":
-            return {
-                "type": "clarifying_questions",
-                "questions": data.get("questions", []),
-            }
-        elif response_type == "unachievable_goal":
-            return {
-                "type": "unachievable_goal",
-                "reason": data.get("reason"),
-                "suggested_goal": data.get("suggested_goal"),
-            }
-        elif response_type == "vague_goal":
-            return {
-                "type": "vague_goal",
-                "suggested_goal": data.get("suggested_goal"),
-            }
-        elif response_type == "error":
-            # Pass through error from the service
-            return _create_error_response(
-                data.get("error", "Unknown error"),
-                data.get("error_type", "unknown"),
-            )
-        else:
-            logger.error(
-                f"Unknown response type from external service: {response_type}"
-            )
-            return _create_error_response(
-                f"Unknown response type from Agent Generator: {response_type}",
-                "invalid_response",
-            )
-
-    except httpx.HTTPStatusError as e:
-        error_type, error_msg = _classify_http_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
-    except httpx.RequestError as e:
-        error_type, error_msg = _classify_request_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
+        result = await _submit_and_poll("/api/decompose-description", payload)
     except Exception as e:
         error_msg = f"Unexpected error calling Agent Generator: {e}"
         logger.error(error_msg)
         return _create_error_response(error_msg, "unexpected_error")
+
+    # The result dict from the job is already in the expected format
+    # (type, steps, questions, etc.) — just return it as-is.
+    if result.get("type") == "error":
+        return result
+
+    response_type = result.get("type")
+    if response_type == "instructions":
+        return {"type": "instructions", "steps": result.get("steps", [])}
+    elif response_type == "clarifying_questions":
+        return {
+            "type": "clarifying_questions",
+            "questions": result.get("questions", []),
+        }
+    elif response_type == "unachievable_goal":
+        return {
+            "type": "unachievable_goal",
+            "reason": result.get("reason"),
+            "suggested_goal": result.get("suggested_goal"),
+        }
+    elif response_type == "vague_goal":
+        return {
+            "type": "vague_goal",
+            "suggested_goal": result.get("suggested_goal"),
+        }
+    else:
+        logger.error(f"Unknown response type from Agent Generator job: {response_type}")
+        return _create_error_response(
+            f"Unknown response type: {response_type}",
+            "invalid_response",
+        )
 
 
 async def generate_agent_external(
@@ -245,50 +340,27 @@ async def generate_agent_external(
 ) -> dict[str, Any] | None:
     """Call the external service to generate an agent from instructions.
 
-    Args:
-        instructions: Structured instructions from decompose_goal
-        library_agents: User's library agents available for sub-agent composition
-
     Returns:
-        Agent JSON dict or error dict {"type": "error", ...} on error
+        Agent JSON dict or error dict {"type": "error", ...} on error.
     """
     if _is_dummy_mode():
         return await generate_agent_dummy(instructions, library_agents)
 
-    client = _get_client()
-
-    # Build request payload
     payload: dict[str, Any] = {"instructions": instructions}
     if library_agents:
         payload["library_agents"] = library_agents
 
     try:
-        response = await client.post("/api/generate-agent", json=payload)
-        response.raise_for_status()
-        data = response.json()
-
-        if not data.get("success"):
-            error_msg = data.get("error", "Unknown error from Agent Generator")
-            error_type = data.get("error_type", "unknown")
-            logger.error(
-                f"Agent Generator generation failed: {error_msg} (type: {error_type})"
-            )
-            return _create_error_response(error_msg, error_type)
-
-        return data.get("agent_json")
-
-    except httpx.HTTPStatusError as e:
-        error_type, error_msg = _classify_http_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
-    except httpx.RequestError as e:
-        error_type, error_msg = _classify_request_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
+        result = await _submit_and_poll("/api/generate-agent", payload)
     except Exception as e:
         error_msg = f"Unexpected error calling Agent Generator: {e}"
         logger.error(error_msg)
         return _create_error_response(error_msg, "unexpected_error")
+
+    if result.get("type") == "error":
+        return result
+
+    return _extract_agent_json(result)
 
 
 async def generate_agent_patch_external(
@@ -298,24 +370,14 @@ async def generate_agent_patch_external(
 ) -> dict[str, Any] | None:
     """Call the external service to generate a patch for an existing agent.
 
-    Args:
-        update_request: Natural language description of changes
-        current_agent: Current agent JSON
-        library_agents: User's library agents available for sub-agent composition
-        operation_id: Operation ID for async processing (enables Redis Streams callback)
-        session_id: Session ID for async processing (enables Redis Streams callback)
-
     Returns:
-        Updated agent JSON, clarifying questions dict, {"status": "accepted"} for async, or error dict on error
+        Updated agent JSON, clarifying questions dict, or error dict.
     """
     if _is_dummy_mode():
         return await generate_agent_patch_dummy(
             update_request, current_agent, library_agents
         )
 
-    client = _get_client()
-
-    # Build request payload
     payload: dict[str, Any] = {
         "update_request": update_request,
         "current_agent_json": current_agent,
@@ -324,48 +386,22 @@ async def generate_agent_patch_external(
         payload["library_agents"] = library_agents
 
     try:
-        response = await client.post("/api/update-agent", json=payload)
-        response.raise_for_status()
-        data = response.json()
-
-        if not data.get("success"):
-            error_msg = data.get("error", "Unknown error from Agent Generator")
-            error_type = data.get("error_type", "unknown")
-            logger.error(
-                f"Agent Generator patch generation failed: {error_msg} "
-                f"(type: {error_type})"
-            )
-            return _create_error_response(error_msg, error_type)
-
-        # Check if it's clarifying questions
-        if data.get("type") == "clarifying_questions":
-            return {
-                "type": "clarifying_questions",
-                "questions": data.get("questions", []),
-            }
-
-        # Check if it's an error passed through
-        if data.get("type") == "error":
-            return _create_error_response(
-                data.get("error", "Unknown error"),
-                data.get("error_type", "unknown"),
-            )
-
-        # Otherwise return the updated agent JSON
-        return data.get("agent_json")
-
-    except httpx.HTTPStatusError as e:
-        error_type, error_msg = _classify_http_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
-    except httpx.RequestError as e:
-        error_type, error_msg = _classify_request_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
+        result = await _submit_and_poll("/api/update-agent", payload)
     except Exception as e:
         error_msg = f"Unexpected error calling Agent Generator: {e}"
         logger.error(error_msg)
         return _create_error_response(error_msg, "unexpected_error")
+
+    if result.get("type") == "error":
+        return result
+
+    if result.get("type") == "clarifying_questions":
+        return {
+            "type": "clarifying_questions",
+            "questions": result.get("questions", []),
+        }
+
+    return _extract_agent_json(result)
 
 
 async def customize_template_external(
@@ -375,83 +411,51 @@ async def customize_template_external(
 ) -> dict[str, Any] | None:
     """Call the external service to customize a template/marketplace agent.
 
-    Args:
-        template_agent: The template agent JSON to customize
-        modification_request: Natural language description of customizations
-        context: Additional context (e.g., answers to previous questions)
-        operation_id: Operation ID for async processing (enables Redis Streams callback)
-        session_id: Session ID for async processing (enables Redis Streams callback)
-
     Returns:
-        Customized agent JSON, clarifying questions dict, or error dict on error
+        Customized agent JSON, clarifying questions dict, or error dict.
     """
     if _is_dummy_mode():
         return await customize_template_dummy(
             template_agent, modification_request, context
         )
 
-    client = _get_client()
-
-    request = modification_request
+    request_text = modification_request
     if context:
-        request = f"{modification_request}\n\nAdditional context from user:\n{context}"
+        request_text = (
+            f"{modification_request}\n\nAdditional context from user:\n{context}"
+        )
 
     payload: dict[str, Any] = {
         "template_agent_json": template_agent,
-        "modification_request": request,
+        "modification_request": request_text,
     }
 
     try:
-        response = await client.post("/api/template-modification", json=payload)
-        response.raise_for_status()
-        data = response.json()
-
-        if not data.get("success"):
-            error_msg = data.get("error", "Unknown error from Agent Generator")
-            error_type = data.get("error_type", "unknown")
-            logger.error(
-                f"Agent Generator template customization failed: {error_msg} "
-                f"(type: {error_type})"
-            )
-            return _create_error_response(error_msg, error_type)
-
-        # Check if it's clarifying questions
-        if data.get("type") == "clarifying_questions":
-            return {
-                "type": "clarifying_questions",
-                "questions": data.get("questions", []),
-            }
-
-        # Check if it's an error passed through
-        if data.get("type") == "error":
-            return _create_error_response(
-                data.get("error", "Unknown error"),
-                data.get("error_type", "unknown"),
-            )
-
-        # Otherwise return the customized agent JSON
-        return data.get("agent_json")
-
-    except httpx.HTTPStatusError as e:
-        error_type, error_msg = _classify_http_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
-    except httpx.RequestError as e:
-        error_type, error_msg = _classify_request_error(e)
-        logger.error(error_msg)
-        return _create_error_response(error_msg, error_type)
+        result = await _submit_and_poll("/api/template-modification", payload)
     except Exception as e:
         error_msg = f"Unexpected error calling Agent Generator: {e}"
         logger.error(error_msg)
         return _create_error_response(error_msg, "unexpected_error")
 
+    if result.get("type") == "error":
+        return result
+
+    if result.get("type") == "clarifying_questions":
+        return {
+            "type": "clarifying_questions",
+            "questions": result.get("questions", []),
+        }
+
+    return _extract_agent_json(result)
+
+
+# ---------------------------------------------------------------------------
+# Non-generation endpoints (still synchronous — quick responses)
+# ---------------------------------------------------------------------------
+
 
 async def get_blocks_external() -> list[dict[str, Any]] | None:
-    """Get available blocks from the external service.
-
-    Returns:
-        List of block info dicts or None on error
-    """
+    """Get available blocks from the external service."""
     if _is_dummy_mode():
         return await get_blocks_dummy()
 
@@ -480,11 +484,7 @@ async def get_blocks_external() -> list[dict[str, Any]] | None:
 
 
 async def health_check() -> bool:
-    """Check if the external service is healthy.
-
-    Returns:
-        True if healthy, False otherwise
-    """
+    """Check if the external service is healthy."""
     if not is_external_service_configured():
         return False
 

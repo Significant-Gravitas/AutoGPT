@@ -243,6 +243,13 @@ export function useCopilotPage() {
   // next hydration fetches fresh messages from the backend.  Without this,
   // staleTime: Infinity means the cache keeps the pre-stream data forever,
   // and any messages added during streaming are lost on remount/navigation.
+  // Track status transitions for cache invalidation and auto-reconnect.
+  // Auto-reconnect: GCP's L7 load balancer kills SSE connections at ~5 min.
+  // When that happens the AI SDK goes "streaming" → "error".  If the backend
+  // executor is still running (hasActiveStream), we call resumeStream() to
+  // reconnect via GET and replay from Redis.
+  const MAX_RECONNECT_ATTEMPTS = 3;
+  const reconnectAttemptsRef = useRef(0);
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
@@ -250,12 +257,44 @@ export function useCopilotPage() {
 
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
+
+    // Invalidate session cache when stream ends so hydration fetches fresh data
     if (wasActive && isIdle && sessionId) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
     }
-  }, [status, sessionId, queryClient]);
+
+    // Auto-reconnect on mid-stream SSE drop
+    if (
+      prev === "streaming" &&
+      status === "error" &&
+      sessionId &&
+      hasActiveStream
+    ) {
+      if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttemptsRef.current += 1;
+        const attempt = reconnectAttemptsRef.current;
+        console.info(
+          `[copilot] SSE dropped mid-stream, reconnecting (attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS})...`,
+        );
+        const timer = setTimeout(() => resumeStream(), 1_000);
+        return () => clearTimeout(timer);
+      } else {
+        toast({
+          title: "Connection lost",
+          description:
+            "Could not reconnect to the stream. Please refresh the page.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    // Reset reconnect counter when stream completes normally or resumes
+    if (status === "ready" || status === "streaming") {
+      reconnectAttemptsRef.current = 0;
+    }
+  }, [status, sessionId, hasActiveStream, queryClient, resumeStream]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
