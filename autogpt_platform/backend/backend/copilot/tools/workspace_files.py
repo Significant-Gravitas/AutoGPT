@@ -684,16 +684,19 @@ class WriteWorkspaceFileTool(BaseTool):
                 except Exception:
                     pass
 
+            # Strip MIME parameters (e.g. "text/html; charset=utf-8" → "text/html")
+            # and normalise to lowercase so the fragment is URL-safe.
+            normalized_mime = (rec.mime_type or "").split(";", 1)[0].strip().lower()
             download_url = (
-                f"workspace://{rec.id}#{rec.mime_type}"
-                if rec.mime_type
+                f"workspace://{rec.id}#{normalized_mime}"
+                if normalized_mime
                 else f"workspace://{rec.id}"
             )
             return WorkspaceWriteResponse(
                 file_id=rec.id,
                 name=rec.name,
                 path=rec.path,
-                mime_type=rec.mime_type or "",
+                mime_type=normalized_mime,
                 size_bytes=rec.size_bytes,
                 download_url=download_url,
                 source=source,
