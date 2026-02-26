@@ -7,7 +7,9 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { getWebSocketToken } from "@/lib/supabase/actions";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
@@ -17,7 +19,24 @@ import { useChatSession } from "./useChatSession";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
-const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_MAX_ATTEMPTS = 3;
+
+/** Resolve the backend SSE base URL (no /api suffix). */
+function getBackendBaseUrl(): string {
+  // getAGPTServerApiUrl() returns e.g. "http://localhost:8006/api"
+  // We need "http://localhost:8006" for constructing the full SSE path
+  return environment.getAGPTServerApiUrl().replace(/\/api\/?$/, "");
+}
+
+/** Fetch a fresh JWT for direct backend requests (same pattern as WebSocket). */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { token, error } = await getWebSocketToken();
+  if (error || !token) {
+    console.warn("[Copilot] Failed to get auth token:", error);
+    throw new Error("Authentication failed — please sign in again.");
+  }
+  return { Authorization: `Bearer ${token}` };
+}
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -37,12 +56,42 @@ function resolveInProgressTools(
   }));
 }
 
-/** Simple ID-based deduplication - trust backend for correctness */
+/**
+ * Deduplicate messages by ID and by consecutive content fingerprint.
+ *
+ * ID dedup catches exact duplicates within the same source.
+ * Content dedup only compares each assistant message to its **immediate
+ * predecessor** — this catches hydration/stream boundary duplicates (where
+ * the same content appears under different IDs) without accidentally
+ * removing legitimately repeated assistant responses that are far apart.
+ */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
+  let lastAssistantFingerprint = "";
+
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
+
+    if (msg.role === "assistant") {
+      const fingerprint = msg.parts
+        .map(
+          (p) =>
+            ("text" in p && p.text) ||
+            ("toolCallId" in p && p.toolCallId) ||
+            "",
+        )
+        .join("|");
+
+      // Only dedup if this assistant message is identical to the previous one
+      if (fingerprint && fingerprint === lastAssistantFingerprint) return false;
+      if (fingerprint) lastAssistantFingerprint = fingerprint;
+    } else {
+      // Reset on non-assistant messages so that identical assistant responses
+      // separated by a user message (e.g. "Done!" → user → "Done!") are kept.
+      lastAssistantFingerprint = "";
+    }
+
     return true;
   });
 }
@@ -97,12 +146,16 @@ export function useCopilotPage() {
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
+  // Connect directly to the Python backend for SSE, bypassing the Next.js
+  // serverless proxy. This eliminates the Vercel 800s function timeout that
+  // was the primary cause of stream disconnections on long-running tasks.
+  // Auth uses the same server-action token pattern as the WebSocket connection.
   const transport = useMemo(
     () =>
       sessionId
         ? new DefaultChatTransport({
-            api: `/api/chat/sessions/${sessionId}/stream`,
-            prepareSendMessagesRequest: ({ messages }) => {
+            api: `${getBackendBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+            prepareSendMessagesRequest: async ({ messages }) => {
               const last = messages[messages.length - 1];
               return {
                 body: {
@@ -113,21 +166,22 @@ export function useCopilotPage() {
                   is_user_message: last.role === "user",
                   context: null,
                 },
+                headers: await getAuthHeaders(),
               };
             },
-            // Resume: GET goes to the same URL as POST (backend uses
-            // method to distinguish).  Override the default formula which
-            // would append /{chatId}/stream to the existing path.
-            prepareReconnectToStreamRequest: () => ({
-              api: `/api/chat/sessions/${sessionId}/stream`,
+            prepareReconnectToStreamRequest: async () => ({
+              api: `${getBackendBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+              headers: await getAuthHeaders(),
             }),
           })
         : null,
     [sessionId],
   );
 
-  // Reconnect state
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  // Reconnect state — use a ref for the attempt counter so the closure
+  // inside handleReconnect always reads the latest value (avoids stale
+  // closure when multiple reconnect cycles fire in quick succession).
+  const reconnectAttemptsRef = useRef(0);
   const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hasShownDisconnectToast = useRef(false);
@@ -136,7 +190,7 @@ export function useCopilotPage() {
   function handleReconnect(sid: string) {
     if (isReconnectScheduled || !sid) return;
 
-    const nextAttempt = reconnectAttempts + 1;
+    const nextAttempt = reconnectAttemptsRef.current + 1;
     if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
       toast({
         title: "Connection lost",
@@ -147,7 +201,7 @@ export function useCopilotPage() {
     }
 
     setIsReconnectScheduled(true);
-    setReconnectAttempts(nextAttempt);
+    reconnectAttemptsRef.current = nextAttempt;
 
     if (!hasShownDisconnectToast.current) {
       hasShownDisconnectToast.current = true;
@@ -158,7 +212,7 @@ export function useCopilotPage() {
     }
 
     const delay = Math.min(
-      RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempts,
+      RECONNECT_BASE_DELAY_MS * 2 ** (nextAttempt - 1),
       RECONNECT_MAX_DELAY_MS,
     );
 
@@ -261,7 +315,7 @@ export function useCopilotPage() {
   useEffect(() => {
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
-    setReconnectAttempts(0);
+    reconnectAttemptsRef.current = 0;
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
     prevStatusRef.current = status; // Reset to avoid cross-session state bleeding
@@ -281,7 +335,7 @@ export function useCopilotPage() {
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
       if (status === "ready") {
-        setReconnectAttempts(0);
+        reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
       }
     }

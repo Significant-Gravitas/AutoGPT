@@ -31,9 +31,11 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 // Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
 
-// Special message prefixes for text-based markers (set by backend)
-const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
-const COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]";
+// Special message prefixes for text-based markers (set by backend).
+// The hex suffix makes it virtually impossible for an LLM to accidentally
+// produce these strings in normal conversation.
+const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
+const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
 
 type MarkerType = "error" | "system" | null;
 
@@ -41,8 +43,8 @@ type MarkerType = "error" | "system" | null;
  * Parse special markers from message content (error, system).
  *
  * Detects markers added by the backend for special rendering:
- * - `[COPILOT_ERROR] message` → ErrorCard
- * - `[COPILOT_SYSTEM] message` → System info message
+ * - `[__COPILOT_ERROR_f7a1__] message` → ErrorCard
+ * - `[__COPILOT_SYSTEM_e3b0__] message` → System info message
  *
  * Returns marker type, marker text, and cleaned text.
  */
