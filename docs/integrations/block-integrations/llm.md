@@ -169,9 +169,9 @@ Edit images using Flux Kontext or Google Nano Banana models. Provide a prompt an
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses BlackForest Labs' Flux Kontext models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
+This block uses BlackForest Labs' Flux Kontext or Google's Nano Banana models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
 
-Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs.
+Choose between Flux Kontext Pro, Max, or Nano Banana models for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs (Flux Kontext only).
 <!-- END MANUAL -->
 
 ### Inputs

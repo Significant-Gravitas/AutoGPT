@@ -156,7 +156,7 @@ class AIImageEditorBlock(Block):
     ) -> BlockOutput:
         result = await self.run_model(
             api_key=credentials.api_key,
-            model_name=input_data.model.api_name,
+            model=input_data.model,
             prompt=input_data.prompt,
             input_image_b64=(
                 await store_media_file(
@@ -183,7 +183,7 @@ class AIImageEditorBlock(Block):
     async def run_model(
         self,
         api_key: SecretStr,
-        model_name: str,
+        model: ImageEditorModel,
         prompt: str,
         input_image_b64: Optional[str],
         aspect_ratio: str,
@@ -192,8 +192,13 @@ class AIImageEditorBlock(Block):
         graph_exec_id: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
+        model_name = model.api_name
 
-        if "nano-banana" in model_name:
+        is_nano_banana = model in (
+            ImageEditorModel.NANO_BANANA_PRO,
+            ImageEditorModel.NANO_BANANA_2,
+        )
+        if is_nano_banana:
             input_params: dict = {
                 "prompt": prompt,
                 "aspect_ratio": aspect_ratio,
