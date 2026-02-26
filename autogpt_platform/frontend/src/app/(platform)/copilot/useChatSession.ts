@@ -46,14 +46,7 @@ export function useChatSession() {
   // resume which fires before hydration).
   const hasActiveStream = useMemo(() => {
     if (sessionQuery.data?.status !== 200) return false;
-    const active = !!sessionQuery.data.data.active_stream;
-    console.info("[STREAM_DIAG] session data", {
-      sessionId,
-      hasActiveStream: active,
-      messageCount: sessionQuery.data.data.messages?.length ?? 0,
-      ts: Date.now(),
-    });
-    return active;
+    return !!sessionQuery.data.data.active_stream;
   }, [sessionQuery.data, sessionId]);
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new

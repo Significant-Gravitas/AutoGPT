@@ -191,12 +191,6 @@ export function useCopilotPage() {
     reconnectTimerRef.current = setTimeout(() => {
       reconnectTimerRef.current = undefined;
       reconnectingRef.current = false;
-      console.info("[STREAM_DIAG] resumeStream fired", {
-        sessionId: sid,
-        attempt: attempts + 1,
-        delay,
-        ts: Date.now(),
-      });
       // Mark that we should clear assistant messages once new ones arrive
       shouldClearOnNextMessageRef.current = true;
       resumeStreamRef.current();
@@ -218,14 +212,6 @@ export function useCopilotPage() {
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
     onFinish: async ({ isDisconnect, isAbort }) => {
-      console.info("[STREAM_DIAG] onFinish", {
-        sessionId,
-        isDisconnect,
-        isAbort,
-        status,
-        attempt: reconnectAttemptsRef.current.get(sessionId ?? "") ?? 0,
-        ts: Date.now(),
-      });
       if (isAbort || !sessionId) return;
 
       if (isDisconnect) {
@@ -241,24 +227,11 @@ export function useCopilotPage() {
       const backendActive =
         result.data?.status === 200 && !!result.data.data.active_stream;
 
-      console.info("[STREAM_DIAG] onFinish backend check", {
-        sessionId,
-        backendActive,
-        ts: Date.now(),
-      });
-
       if (backendActive) {
         scheduleReconnect(sessionId);
       }
     },
     onError: (error) => {
-      console.warn("[STREAM_DIAG] onError", {
-        sessionId,
-        name: error.name,
-        error: error.message,
-        status,
-        ts: Date.now(),
-      });
       if (!sessionId) return;
       // Only reconnect on network-level disconnects (proxy/LB killing TCP).
       // TypeError = fetch body stream interrupted; AbortError = signal aborted.
@@ -360,16 +333,6 @@ export function useCopilotPage() {
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
-
-    if (prev !== status) {
-      console.info("[STREAM_DIAG] status transition", {
-        prev,
-        next: status,
-        sessionId,
-        messageCount: rawMessages.length,
-        ts: Date.now(),
-      });
-    }
 
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";

@@ -251,12 +251,6 @@ class CoPilotProcessor:
                         exc_info=True,
                     )
 
-            logger.info(
-                f"[STREAM_DIAG] stream_fn loop ended, calling mark_session_completed, "
-                f"session_id={entry.session_id}, cancel={cancel.is_set()}, "
-                f"turn_id={entry.turn_id}"
-            )
-
             error_message = "Operation cancelled" if cancel.is_set() else None
             await stream_registry.mark_session_completed(
                 entry.session_id, error_message=error_message
