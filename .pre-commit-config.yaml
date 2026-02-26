@@ -158,9 +158,9 @@ repos:
         pass_filenames: false
         stages: [pre-commit, post-checkout]
 
-      - id: sync-api-types
-        name: Sync API types - AutoGPT Platform - Backend -> Frontend
-        alias: sync-api-types-platform
+      - id: export-api-schema
+        name: Export API schema - AutoGPT Platform - Backend -> Frontend
+        alias: export-api-schema-platform
         entry: >
           bash -c '
           if [ -n "$PRE_COMMIT_FROM_REF" ]; then
@@ -172,7 +172,26 @@ repos:
           && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
           && cd ../frontend
           && pnpm prettier --write ./src/app/api/openapi.json
-          && pnpm generate:api
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: generate-api-client
+        name: Generate API client - AutoGPT Platform - Frontend
+        alias: generate-api-client-platform-frontend
+        entry: >
+          bash -c '
+          SCHEMA=autogpt_platform/frontend/src/app/api/openapi.json;
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --quiet "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF" -- "$SCHEMA" \
+            && git diff --quiet HEAD -- "$SCHEMA" \
+            && exit 0
+          else
+            git diff --quiet HEAD -- "$SCHEMA" && exit 0
+          fi;
+          cd autogpt_platform/frontend && pnpm generate:api
           '
         always_run: true
         language: system

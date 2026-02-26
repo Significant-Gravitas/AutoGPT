@@ -39,7 +39,7 @@ def main(output: Path, pretty: bool):
     )
 
     if output:
-        output.write_text(json_output)
+        output.write_text(json_output, encoding="utf-8")
         click.echo(f"✅ OpenAPI specification written to {output}\n\nPreview:")
         click.echo(f"\n{json_output[:500]} ...")
     else:
