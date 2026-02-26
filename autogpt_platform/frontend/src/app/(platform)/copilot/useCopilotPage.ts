@@ -37,69 +37,14 @@ function resolveInProgressTools(
   }));
 }
 
-/** Build a fingerprint from a message's role + text/tool content for cross-boundary dedup. */
-function messageFingerprint(msg: UIMessage): string {
-  const fragments = msg.parts.map((p) => {
-    if ("text" in p && typeof p.text === "string") return p.text;
-    if ("toolCallId" in p && typeof p.toolCallId === "string")
-      return `tool:${p.toolCallId}`;
-    return "";
-  });
-  return `${msg.role}::${fragments.join("\n")}`;
-}
-
-/**
- * Deduplicate messages by ID and conversational context.
- * - ID-based dedup catches duplicates within the same source
- * - Context-based dedup for assistant messages: only keep the most complete
- *   assistant message following the same user message (handles reconnect duplicates)
- */
+/** Simple ID-based deduplication */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const assistantByContext = new Map<string, UIMessage>();
-  let lastUserMessageId = "";
-
-  const deduplicated: UIMessage[] = [];
-
-  for (const msg of messages) {
-    // ID-based deduplication
-    if (seenIds.has(msg.id)) continue;
+  return messages.filter((msg) => {
+    if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
-
-    if (msg.role === "user") {
-      lastUserMessageId = msg.id;
-      deduplicated.push(msg);
-    } else if (msg.role === "assistant") {
-      // Context: which user message this assistant message responds to
-      const contextKey = lastUserMessageId;
-      const existing = assistantByContext.get(contextKey);
-
-      if (existing) {
-        // We have a duplicate assistant message in the same context
-        // Keep the one with more content
-        const existingContent = messageFingerprint(existing);
-        const currentContent = messageFingerprint(msg);
-
-        if (currentContent.length > existingContent.length) {
-          // Replace existing with current (has more content)
-          const existingIndex = deduplicated.indexOf(existing);
-          if (existingIndex !== -1) {
-            deduplicated[existingIndex] = msg;
-          }
-          assistantByContext.set(contextKey, msg);
-        }
-        // Skip adding current if existing has more content
-      } else {
-        assistantByContext.set(contextKey, msg);
-        deduplicated.push(msg);
-      }
-    } else {
-      // Tool messages, etc.
-      deduplicated.push(msg);
-    }
-  }
-
-  return deduplicated;
+    return true;
+  });
 }
 
 export function useCopilotPage() {
@@ -219,13 +164,6 @@ export function useCopilotPage() {
 
     reconnectTimerRef.current = setTimeout(() => {
       setIsReconnectScheduled(false);
-      // Invalidate cache before resuming so hydration gets fresh data
-      if (sid) {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetSessionQueryKey(sid),
-        });
-      }
-      // Resume stream - deduplication will handle any duplicates
       resumeStream();
     }, delay);
   }
