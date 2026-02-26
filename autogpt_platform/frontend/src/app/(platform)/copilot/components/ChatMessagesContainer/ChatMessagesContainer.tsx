@@ -31,34 +31,51 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 // Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
 
-// Error marker prefix for text-based error persistence (set by backend)
+// Special message prefixes for text-based markers (set by backend)
 const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
+const COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]";
+
+type MarkerType = "error" | "system" | null;
 
 /**
- * Parse error markers from message content.
+ * Parse special markers from message content (error, system).
  *
- * Detects `[COPILOT_ERROR] error message` markers added by the backend
- * when execution errors occur. Returns error status and cleaned text.
+ * Detects markers added by the backend for special rendering:
+ * - `[COPILOT_ERROR] message` → ErrorCard
+ * - `[COPILOT_SYSTEM] message` → System info message
+ *
+ * Returns marker type, marker text, and cleaned text.
  */
-function parseErrorMarker(text: string): {
-  isError: boolean;
-  errorText: string;
+function parseSpecialMarkers(text: string): {
+  markerType: MarkerType;
+  markerText: string;
   cleanText: string;
 } {
-  // Match [COPILOT_ERROR] followed by error message at end of text
+  // Check for error marker
   const errorMatch = text.match(
     new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
   );
-
   if (errorMatch) {
     return {
-      isError: true,
-      errorText: errorMatch[1].trim(),
+      markerType: "error",
+      markerText: errorMatch[1].trim(),
       cleanText: text.replace(errorMatch[0], "").trim(),
     };
   }
 
-  return { isError: false, errorText: "", cleanText: text };
+  // Check for system marker
+  const systemMatch = text.match(
+    new RegExp(`\\${COPILOT_SYSTEM_PREFIX}\\s*(.+?)$`, "s"),
+  );
+  if (systemMatch) {
+    return {
+      markerType: "system",
+      markerText: systemMatch[1].trim(),
+      cleanText: text.replace(systemMatch[0], "").trim(),
+    };
+  }
+
+  return { markerType: null, markerText: "", cleanText: text };
 }
 
 /**
@@ -244,17 +261,28 @@ export const ChatMessagesContainer = ({
                 {message.parts.map((part, i) => {
                   switch (part.type) {
                     case "text": {
-                      // Check for error markers first
-                      const { isError, errorText, cleanText } =
-                        parseErrorMarker(part.text);
+                      // Check for special markers (error, system)
+                      const { markerType, markerText, cleanText } =
+                        parseSpecialMarkers(part.text);
 
-                      if (isError) {
+                      if (markerType === "error") {
                         return (
                           <ErrorCard
                             key={`${message.id}-${i}`}
-                            responseError={{ message: errorText }}
+                            responseError={{ message: markerText }}
                             context="execution"
                           />
+                        );
+                      }
+
+                      if (markerType === "system") {
+                        return (
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+                          >
+                            {markerText}
+                          </div>
                         );
                       }
 

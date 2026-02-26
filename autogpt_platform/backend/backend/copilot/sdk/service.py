@@ -75,8 +75,9 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
-# Error marker prefix for text-based error persistence (parsed by frontend)
-COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"
+# Special message prefixes for text-based markers (parsed by frontend)
+COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"  # Renders as ErrorCard
+COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
@@ -415,6 +416,20 @@ async def stream_chat_completion_sdk(
 
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
+
+    # Clean up stale error markers from previous turn before starting new turn
+    # If the last message contains an error marker, remove it (user is retrying)
+    if (
+        len(session.messages) > 0
+        and session.messages[-1].role == "assistant"
+        and session.messages[-1].content
+        and COPILOT_ERROR_PREFIX in session.messages[-1].content
+    ):
+        logger.info(
+            "[SDK] [%s] Removing stale error marker from previous turn",
+            session_id[:12],
+        )
+        session.messages.pop()
 
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
@@ -901,10 +916,11 @@ async def stream_chat_completion_sdk(
                         yield r
 
                     # Add "Stopped by user" message so it persists after refresh
+                    # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
                     session.messages.append(
                         ChatMessage(
                             role="assistant",
-                            content="*Execution stopped by user*",
+                            content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
                         )
                     )
 

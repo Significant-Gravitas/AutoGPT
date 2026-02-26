@@ -17,6 +17,7 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+from backend.copilot import stream_registry
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -414,6 +415,23 @@ class CoPilotExecutor(AppProcess):
                 if exec_error := f.exception():
                     error_msg = str(exec_error) or type(exec_error).__name__
                     logger.error(f"Execution for {session_id} failed: {error_msg}")
+
+                    # Fallback: Ensure session is marked completed even if processor failed to do so
+                    # This prevents sessions from being stuck in "running" state
+                    try:
+                        asyncio.run(
+                            stream_registry.mark_session_completed(
+                                session_id, error_message=error_msg
+                            )
+                        )
+                        logger.debug(
+                            f"Fallback mark_session_completed succeeded for {session_id}"
+                        )
+                    except Exception as fallback_err:
+                        logger.warning(
+                            f"Fallback mark_session_completed failed for {session_id}: {fallback_err}"
+                        )
+
                     ack_message(reject=True, requeue=False)
                 else:
                     ack_message(reject=False, requeue=False)
