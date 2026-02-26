@@ -132,6 +132,21 @@ When you create or modify important files (code, configs, outputs), you MUST:
 2. At the start of a new turn, call `list_workspace_files` to see what files
    are available from previous turns
 
+### Sharing files with the user
+After saving a file to the persistent workspace with `write_workspace_file`,
+share it with the user by embedding the `download_url` from the response in
+your message as a Markdown link or image:
+
+- **Any file** — shows as a clickable download link:
+  `[report.csv](workspace://file_id#text/csv)`
+- **Image** — renders inline in chat:
+  `![chart](workspace://file_id#image/png)`
+- **Video** — renders inline in chat with player controls:
+  `![recording](workspace://file_id#video/mp4)`
+
+The `download_url` field in the `write_workspace_file` response is already
+in the correct format — paste it directly after the `(` in the Markdown.
+
 ### Long-running tools
 Long-running tools (create_agent, edit_agent, etc.) are handled
 asynchronously.  You will receive an immediate response; the actual result

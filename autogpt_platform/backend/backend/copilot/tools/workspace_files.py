@@ -214,7 +214,11 @@ class WorkspaceWriteResponse(ToolResponseBase):
     file_id: str
     name: str
     path: str
+    mime_type: str
     size_bytes: int
+    # workspace:// URL the agent can embed directly in chat to give the user a link.
+    # Format: workspace://<file_id>#<mime_type>  (frontend resolves to download URL)
+    download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
 
@@ -680,11 +684,18 @@ class WriteWorkspaceFileTool(BaseTool):
                 except Exception:
                     pass
 
+            download_url = (
+                f"workspace://{rec.id}#{rec.mime_type}"
+                if rec.mime_type
+                else f"workspace://{rec.id}"
+            )
             return WorkspaceWriteResponse(
                 file_id=rec.id,
                 name=rec.name,
                 path=rec.path,
+                mime_type=rec.mime_type or "",
                 size_bytes=rec.size_bytes,
+                download_url=download_url,
                 source=source,
                 content_preview=preview,
                 message=msg,
