@@ -71,11 +71,12 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             return webhook
 
         # Find any existing webhook for the same bot, regardless of events
-        if existing := await integrations.find_webhook_by_credentials(
+        if existing := await integrations.find_webhook_by_credentials_and_props(
             user_id=user_id,
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
+            events=None,  # Ignore events for this lookup
         ):
             # Re-register with Telegram using the same URL but new allowed_updates
             ingress_url = webhook_ingress_url(self.PROVIDER_NAME, existing.id)
