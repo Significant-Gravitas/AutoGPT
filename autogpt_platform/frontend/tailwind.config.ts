@@ -5,7 +5,7 @@ import { colors } from "./src/components/styles/colors";
 
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
     container: {
