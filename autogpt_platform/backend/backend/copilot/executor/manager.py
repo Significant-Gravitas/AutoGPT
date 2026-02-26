@@ -426,7 +426,7 @@ class CoPilotExecutor(AppProcess):
                 logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
                 # Mark session as completed (with error if one occurred)
-                # Use new event loop to avoid conflicts with worker thread loops
+                # Create temporary loop since manager doesn't have persistent async operations
                 try:
                     loop = asyncio.new_event_loop()
                     try:
