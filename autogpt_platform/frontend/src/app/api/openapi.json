@@ -11167,6 +11167,7 @@
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
+          "browse_web",
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
