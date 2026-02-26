@@ -1034,7 +1034,7 @@ async def stream_chat_completion_sdk(
         if session is not None:
             try:
                 await asyncio.shield(upsert_chat_session(session))
-                logger.debug(
+                logger.info(
                     "[SDK] [%s] Session persisted in finally with %d messages",
                     session_id[:12],
                     len(session.messages),
