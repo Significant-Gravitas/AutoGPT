@@ -143,6 +143,10 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             elif "video" in message:
                 event_type = "message.video"
             else:
+                logger.warning(
+                    "Unknown Telegram webhook payload type; "
+                    f"message.keys() = {message.keys()}"
+                )
                 event_type = "message.other"
         elif "edited_message" in payload:
             event_type = "message.edited_message"
