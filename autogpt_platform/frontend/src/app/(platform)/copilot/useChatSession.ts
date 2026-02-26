@@ -18,8 +18,8 @@ export function useChatSession() {
   const sessionQuery = useGetV2GetSession(sessionId ?? "", {
     query: {
       enabled: !!sessionId,
-      staleTime: Infinity,
-      refetchOnWindowFocus: true, // Refetch when tab becomes visible
+      staleTime: 0, // Always treat as stale so switching chats refetches
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
     },
