@@ -19,13 +19,8 @@ import os
 import sys
 import tempfile
 
-E2B_API_KEY = os.environ.get("E2B_API_KEY", "")
-if not E2B_API_KEY:
-    print("SKIP: E2B_API_KEY not set", file=sys.stderr)
-    sys.exit(0)
 
-
-async def main() -> None:
+async def main(e2b_api_key: str) -> None:
     from backend.copilot.tools.e2b_sandbox import (
         get_or_create_sandbox,
         sync_from_sandbox,
@@ -41,7 +36,7 @@ async def main() -> None:
     # ------------------------------------------------------------------
     print("\n[Turn 1] Creating sandbox...")
     sbx = await get_or_create_sandbox(
-        session_id, api_key=E2B_API_KEY, template="base", timeout=300
+        session_id, api_key=e2b_api_key, template="base", timeout=300
     )
     print(f"  sandbox_id={sbx.sandbox_id}")
 
@@ -78,7 +73,7 @@ async def main() -> None:
     print("\n[Turn 2] Reconnecting to sandbox via Redis...")
     local_dir2 = tempfile.mkdtemp(prefix="e2b-test-turn2-")
     sbx2 = await get_or_create_sandbox(
-        session_id, api_key=E2B_API_KEY, template="base", timeout=300
+        session_id, api_key=e2b_api_key, template="base", timeout=300
     )
     assert (
         sbx2.sandbox_id == sbx.sandbox_id
@@ -118,4 +113,9 @@ async def main() -> None:
     print("\n=== ALL TESTS PASSED ===")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    _api_key = os.environ.get("E2B_API_KEY", "")
+    if not _api_key:
+        print("SKIP: E2B_API_KEY not set", file=sys.stderr)
+        sys.exit(0)
+    asyncio.run(main(_api_key))

@@ -154,9 +154,10 @@ class BashExecTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as exc:
-            # Distinguish timeout (E2B raises on timeout) from other errors
-            exc_str = str(exc).lower()
-            if "timeout" in exc_str or "timed out" in exc_str:
+            # Distinguish timeout from other errors using E2B's typed exception
+            from e2b.exceptions import TimeoutException
+
+            if isinstance(exc, TimeoutException):
                 return BashExecResponse(
                     message="Execution timed out",
                     stdout="",
