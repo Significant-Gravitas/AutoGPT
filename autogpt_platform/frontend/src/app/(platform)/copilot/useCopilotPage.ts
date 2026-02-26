@@ -192,8 +192,13 @@ export function useCopilotPage() {
 
     reconnectTimerRef.current = setTimeout(() => {
       setIsReconnectScheduled(false);
-      // Clear old assistant messages before resuming
+      // Clear old assistant messages and invalidate cache to prevent hydration re-adding them
       setMessages((prev) => prev.filter((m) => m.role !== "assistant"));
+      if (sid) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetSessionQueryKey(sid),
+        });
+      }
       resumeStream();
     }, delay);
   }
