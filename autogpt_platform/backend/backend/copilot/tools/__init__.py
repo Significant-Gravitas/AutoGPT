@@ -10,6 +10,7 @@ from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .browse_web import BrowseWebTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
@@ -50,6 +51,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_doc_page": GetDocPageTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
+    # Browser-based browsing for JS-rendered pages (Stagehand + Browserbase)
+    "browse_web": BrowseWebTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)

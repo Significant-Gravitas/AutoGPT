@@ -41,6 +41,8 @@ class ResponseType(str, Enum):
     INPUT_VALIDATION_ERROR = "input_validation_error"
     # Web fetch
     WEB_FETCH = "web_fetch"
+    # Browser-based web browsing (JS-rendered pages)
+    BROWSE_WEB = "browse_web"
     # Code execution
     BASH_EXEC = "bash_exec"
     # Feature request types
@@ -434,6 +436,15 @@ class WebFetchResponse(ToolResponseBase):
     url: str
     status_code: int
     content_type: str
+    content: str
+    truncated: bool = False
+
+
+class BrowseWebResponse(ToolResponseBase):
+    """Response for browse_web tool."""
+
+    type: ResponseType = ResponseType.BROWSE_WEB
+    url: str
     content: str
     truncated: bool = False
 
