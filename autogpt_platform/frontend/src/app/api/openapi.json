@@ -820,21 +820,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "enum": [
-                      "blocks",
-                      "integrations",
-                      "marketplace_agents",
-                      "my_agents"
-                    ],
-                    "type": "string"
-                  }
-                },
-                { "type": "null" }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Filter"
             }
           },
@@ -11539,11 +11525,6 @@
       },
       "SuggestionsResponse": {
         "properties": {
-          "otto_suggestions": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Otto Suggestions"
-          },
           "recent_searches": {
             "items": { "$ref": "#/components/schemas/SearchEntry" },
             "type": "array",
@@ -11564,12 +11545,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "otto_suggestions",
-          "recent_searches",
-          "providers",
-          "top_blocks"
-        ],
+        "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
       "TimezoneResponse": {

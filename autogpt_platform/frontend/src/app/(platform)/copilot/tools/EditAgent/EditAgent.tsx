@@ -15,7 +15,7 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { ClarificationQuestionsCard } from "../CreateAgent/components/ClarificationQuestionsCard";
-import { normalizeClarifyingQuestions } from "../clarifying-questions";
+import { normalizeClarifyingQuestions } from "../CreateAgent/helpers";
 import {
   AccordionIcon,
   formatMaybeJson,
