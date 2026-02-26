@@ -886,19 +886,27 @@ async def stream_chat_completion_sdk(
                         yield response
 
                 # If the stream ended without a ResultMessage, the SDK
-                # CLI exited unexpectedly.  Close any open text/step so
-                # the chunks are well-formed.  StreamFinish is published
-                # by mark_session_completed in the processor.
+                # CLI exited unexpectedly or the user stopped execution.
+                # Close any open text/step so chunks are well-formed, and
+                # append a cancellation message so users see feedback.
+                # StreamFinish is published by mark_session_completed in the processor.
                 if not stream_completed:
-                    logger.warning(
-                        "[SDK] [%s] Stream ended without ResultMessage "
-                        "(StopAsyncIteration)",
+                    logger.info(
+                        "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
                         session_id[:12],
                     )
                     closing_responses: list[StreamBaseResponse] = []
                     adapter._end_text_if_open(closing_responses)
                     for r in closing_responses:
                         yield r
+
+                    # Add "Stopped by user" message so it persists after refresh
+                    session.messages.append(
+                        ChatMessage(
+                            role="assistant",
+                            content="*Execution stopped by user*",
+                        )
+                    )
 
                 if (
                     assistant_response.content or assistant_response.tool_calls
@@ -953,9 +961,8 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        session = cast(ChatSession, await asyncio.shield(upsert_chat_session(session)))
         logger.info(
-            "[SDK] [%s] Session saved with %d messages",
+            "[SDK] [%s] Stream completed successfully with %d messages",
             session_id[:12],
             len(session.messages),
         )
@@ -979,21 +986,17 @@ async def stream_chat_completion_sdk(
                 )
 
         # Append error marker to session (non-invasive text parsing approach)
+        # The finally block will persist the session with this error marker
         if session:
             session.messages.append(
                 ChatMessage(
                     role="assistant", content=f"{COPILOT_ERROR_PREFIX} {error_msg}"
                 )
             )
-            try:
-                await asyncio.shield(upsert_chat_session(session))
-                logger.debug("[SDK] [%s] Persisted error marker", session_id[:12])
-            except Exception as save_err:
-                logger.warning(
-                    "[SDK] [%s] Failed to persist error marker: %s",
-                    session_id[:12],
-                    save_err,
-                )
+            logger.debug(
+                "[SDK] [%s] Appended error marker, will be persisted in finally",
+                session_id[:12],
+            )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
         # Skip for CancelledError and RuntimeError cleanup issues (both are cancellations)
@@ -1008,6 +1011,27 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
+        # --- Persist session messages ---
+        # This MUST run in finally to persist messages even when the generator
+        # is stopped early (e.g., user clicks stop, processor breaks stream loop).
+        # Without this, messages disappear after refresh because they were never
+        # saved to the database.
+        if session is not None:
+            try:
+                await asyncio.shield(upsert_chat_session(session))
+                logger.debug(
+                    "[SDK] [%s] Session persisted in finally with %d messages",
+                    session_id[:12],
+                    len(session.messages),
+                )
+            except Exception as persist_err:
+                logger.error(
+                    "[SDK] [%s] Failed to persist session in finally: %s",
+                    session_id[:12],
+                    persist_err,
+                    exc_info=True,
+                )
+
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
         # the streaming loop raises an exception.  The CLI uses
