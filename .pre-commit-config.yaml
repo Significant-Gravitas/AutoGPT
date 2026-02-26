@@ -51,6 +51,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit, post-checkout]
 
+      - id: pnpm-install
+        name: Check & Install dependencies - AutoGPT Platform - Frontend
+        alias: pnpm-install-platform-frontend
+        entry: pnpm --prefix autogpt_platform/frontend install
+        files: ^autogpt_platform/frontend/pnpm-lock\.yaml$
+        types: [file]
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
       - id: poetry-install
         name: Check & Install dependencies - Classic - AutoGPT
         alias: poetry-install-classic-autogpt
@@ -96,6 +106,23 @@ repos:
           '
         # include everything that triggers poetry install + the prisma schema
         files: ^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema.prisma)$
+        types: [file]
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: sync-api-types
+        name: Sync API types - AutoGPT Platform - Backend -> Frontend
+        alias: sync-api-types-platform
+        entry: >
+          bash -c '
+          cd autogpt_platform/backend
+          && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
+          && cd ../frontend
+          && pnpm prettier --write ./src/app/api/openapi.json
+          && pnpm generate:api
+          '
+        files: ^autogpt_platform/backend/
         types: [file]
         language: system
         pass_filenames: false
