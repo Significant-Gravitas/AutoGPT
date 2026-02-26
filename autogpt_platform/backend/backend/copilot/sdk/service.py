@@ -459,7 +459,6 @@ async def stream_chat_completion_sdk(
     # Catch ValueError early so the failure yields a clean StreamError rather
     # than propagating outside the stream error-handling path.
     has_history = len(session.messages) > 1
-    sdk_cwd = ""
     try:
         sdk_cwd = _make_sdk_cwd(session_id)
         os.makedirs(sdk_cwd, exist_ok=True)
@@ -501,12 +500,43 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     stream_completed = False
+    # Initialise variables before the try so the finally block can
+    # always attempt transcript upload and E2B cleanup regardless of errors.
+    e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
 
     try:
-        set_execution_context(user_id, session)
+        # Set up E2B sandbox for persistent cloud execution when configured.
+        # bash_exec routes commands to sandbox.commands.run() on E2B.
+        # SDK file tools (Read/Write/Edit) operate on local sdk_cwd, which
+        # is synced with the sandbox's /home/user via E2B's HTTP files API:
+        #   turn start → sync_from_sandbox (download sandbox → local)
+        #   turn end   → sync_to_sandbox   (upload local → sandbox)
+        if config.use_e2b_sandbox and config.e2b_api_key:
+            from ..tools.e2b_sandbox import get_or_create_sandbox, sync_from_sandbox
+
+            try:
+                e2b_sandbox = await get_or_create_sandbox(
+                    session_id,
+                    api_key=config.e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                )
+                # Populate local workspace with files from the sandbox so the
+                # SDK file tools see the latest state from previous turns.
+                await sync_from_sandbox(e2b_sandbox, sdk_cwd)
+            except Exception as e2b_err:
+                logger.error(
+                    "[E2B] [%s] Setup failed: %s",
+                    session_id[:12],
+                    e2b_err,
+                    exc_info=True,
+                )
+                e2b_sandbox = None
+
+        set_execution_context(user_id, session, sandbox=e2b_sandbox)
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -1006,6 +1036,21 @@ async def stream_chat_completion_sdk(
             except Exception as upload_err:
                 logger.error(
                     f"[SDK] Transcript upload failed in finally: {upload_err}",
+                    exc_info=True,
+                )
+
+        # Upload any files written by SDK tools to the sandbox so they
+        # persist across turns and are visible to bash_exec next turn.
+        if e2b_sandbox is not None and sdk_cwd:
+            from ..tools.e2b_sandbox import sync_to_sandbox
+
+            try:
+                await sync_to_sandbox(e2b_sandbox, sdk_cwd)
+            except Exception as sync_err:
+                logger.error(
+                    "[E2B] [%s] sync_to_sandbox failed: %s",
+                    session_id[:12],
+                    sync_err,
                     exc_info=True,
                 )
 

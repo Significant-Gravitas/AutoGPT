@@ -93,11 +93,48 @@ class ChatConfig(BaseSettings):
         "history compression. Falls back to compression when unavailable.",
     )
 
+    # E2B Sandbox Configuration
+    use_e2b_sandbox: bool = Field(
+        default=False,
+        description="Use E2B cloud sandboxes for persistent bash/python execution. "
+        "When enabled, bash_exec routes commands to E2B and the session workspace "
+        "is mounted via sshfs so SDK file tools share the same filesystem.",
+    )
+    e2b_api_key: str | None = Field(
+        default=None,
+        description="E2B API key. Falls back to E2B_API_KEY environment variable.",
+    )
+    e2b_sandbox_template: str = Field(
+        default="base",
+        description="E2B sandbox template to use for copilot sessions.",
+    )
+    e2b_sandbox_timeout: int = Field(
+        default=43200,  # 12 hours — same as session_ttl
+        description="E2B sandbox keepalive timeout in seconds.",
+    )
+
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(
         default=True,
         description="Enable adaptive thinking for Claude models via OpenRouter",
     )
+
+    @field_validator("use_e2b_sandbox", mode="before")
+    @classmethod
+    def get_use_e2b_sandbox(cls, v):
+        """Get use_e2b_sandbox from environment if not provided."""
+        env_val = os.getenv("CHAT_USE_E2B_SANDBOX", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return False if v is None else v
+
+    @field_validator("e2b_api_key", mode="before")
+    @classmethod
+    def get_e2b_api_key(cls, v):
+        """Get E2B API key from environment if not provided."""
+        if v is None:
+            v = os.getenv("E2B_API_KEY")
+        return v
 
     @field_validator("api_key", mode="before")
     @classmethod

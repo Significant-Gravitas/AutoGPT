@@ -11,11 +11,14 @@ import logging
 import os
 import uuid
 from contextvars import ContextVar
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
+
+if TYPE_CHECKING:
+    from e2b import AsyncSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,12 @@ _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
+# E2B cloud sandbox for the current turn (None when E2B is not configured).
+# Passed to bash_exec so commands run on E2B instead of the local bwrap sandbox.
+_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
+    "_current_sandbox", default=None
+)
+
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
@@ -53,20 +62,28 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
+    sandbox: "AsyncSandbox | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
     This must be called before streaming begins to ensure tools have access
-    to user_id and session information.
+    to user_id, session, and (optionally) an E2B sandbox for bash execution.
 
     Args:
         user_id: Current user's ID.
         session: Current chat session.
+        sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
+    _current_sandbox.set(sandbox)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+
+
+def get_current_sandbox() -> "AsyncSandbox | None":
+    """Return the E2B sandbox for the current turn, or None."""
+    return _current_sandbox.get()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:

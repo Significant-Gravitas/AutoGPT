@@ -59,6 +59,12 @@ services:
       file: ./docker-compose.platform.yml
       service: copilot_executor
 
+  e2b_integration_test:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: e2b_integration_test
+
   websocket_server:
     <<: *agpt-services
     extends:
