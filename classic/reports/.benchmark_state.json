@@ -1,0 +1,24 @@
+{
+  "session_id": "2026-01-20T00:43:46.908145",
+  "started_at": "2026-01-20T00:43:46.908149",
+  "completed_runs": {
+    "rewoo/claude:ReadFile:1": {
+      "config_name": "rewoo/claude",
+      "challenge_name": "ReadFile",
+      "attempt": 1,
+      "success": false,
+      "cost": 0.0,
+      "n_steps": 8,
+      "run_time_seconds": 60.015603,
+      "error_message": "Challenge timed out",
+      "completed_at": "2026-01-20T00:44:46.936504"
+    }
+  },
+  "strategies": [
+    "rewoo"
+  ],
+  "models": [
+    "claude"
+  ],
+  "attempts": 1
+}

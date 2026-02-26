@@ -2,7 +2,17 @@ import enum
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Optional, ParamSpec, TypeVar, cast
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 import tenacity
 import tiktoken
@@ -48,6 +58,7 @@ class OpenAIModelName(str, enum.Enum):
     EMBEDDING_v3_S = "text-embedding-3-small"
     EMBEDDING_v3_L = "text-embedding-3-large"
 
+    # Legacy GPT-3.5 models
     GPT3_v1 = "gpt-3.5-turbo-0301"
     GPT3_v2 = "gpt-3.5-turbo-0613"
     GPT3_v2_16k = "gpt-3.5-turbo-16k-0613"
@@ -58,6 +69,7 @@ class OpenAIModelName(str, enum.Enum):
     GPT3 = GPT3_ROLLING
     GPT3_16k = GPT3_ROLLING_16k
 
+    # Legacy GPT-4 models
     GPT4_v1 = "gpt-4-0314"
     GPT4_v1_32k = "gpt-4-32k-0314"
     GPT4_v2 = "gpt-4-0613"
@@ -71,11 +83,65 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_TURBO = "gpt-4-turbo"
     GPT4_TURBO_PREVIEW = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
-    GPT4_O_v1 = "gpt-4o-2024-05-13"
-    GPT4_O_ROLLING = "gpt-4o"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
+
+    # GPT-4o models (128K context)
+    GPT4_O_v1 = "gpt-4o-2024-05-13"
+    GPT4_O_v2 = "gpt-4o-2024-08-06"
+    GPT4_O_ROLLING = "gpt-4o"
     GPT4_O = GPT4_O_ROLLING
+    GPT4_O_MINI_v1 = "gpt-4o-mini-2024-07-18"
+    GPT4_O_MINI_ROLLING = "gpt-4o-mini"
+    GPT4_O_MINI = GPT4_O_MINI_ROLLING
+
+    # GPT-4.1 models (1M context)
+    GPT4_1_v1 = "gpt-4.1-2025-04-14"
+    GPT4_1_ROLLING = "gpt-4.1"
+    GPT4_1 = GPT4_1_ROLLING
+    GPT4_1_MINI_v1 = "gpt-4.1-mini-2025-04-14"
+    GPT4_1_MINI_ROLLING = "gpt-4.1-mini"
+    GPT4_1_MINI = GPT4_1_MINI_ROLLING
+    GPT4_1_NANO_v1 = "gpt-4.1-nano-2025-04-14"
+    GPT4_1_NANO_ROLLING = "gpt-4.1-nano"
+    GPT4_1_NANO = GPT4_1_NANO_ROLLING
+
+    # O-series reasoning models (200K context)
+    O1_v1 = "o1-2024-12-17"
+    O1_ROLLING = "o1"
+    O1 = O1_ROLLING
+    O1_MINI_v1 = "o1-mini-2024-09-12"
+    O1_MINI_ROLLING = "o1-mini"
+    O1_MINI = O1_MINI_ROLLING
+    O1_PRO_ROLLING = "o1-pro"
+    O1_PRO = O1_PRO_ROLLING
+    O3_v1 = "o3-2025-04-16"
+    O3_ROLLING = "o3"
+    O3 = O3_ROLLING
+    O3_MINI_v1 = "o3-mini-2025-01-31"
+    O3_MINI_ROLLING = "o3-mini"
+    O3_MINI = O3_MINI_ROLLING
+    O3_PRO_ROLLING = "o3-pro"
+    O3_PRO = O3_PRO_ROLLING
+    O4_MINI_v1 = "o4-mini-2025-04-16"
+    O4_MINI_ROLLING = "o4-mini"
+    O4_MINI = O4_MINI_ROLLING
+
+    # GPT-5 models (~200K context)
+    GPT5_ROLLING = "gpt-5"
+    GPT5 = GPT5_ROLLING
+    GPT5_1_ROLLING = "gpt-5.1"
+    GPT5_1 = GPT5_1_ROLLING
+    GPT5_2_ROLLING = "gpt-5.2"
+    GPT5_2 = GPT5_2_ROLLING
+    GPT5_MINI_ROLLING = "gpt-5-mini"
+    GPT5_MINI = GPT5_MINI_ROLLING
+    GPT5_NANO_ROLLING = "gpt-5-nano"
+    GPT5_NANO = GPT5_NANO_ROLLING
+    GPT5_PRO_ROLLING = "gpt-5-pro"
+    GPT5_PRO = GPT5_PRO_ROLLING
+    GPT5_2_PRO_ROLLING = "gpt-5.2-pro"
+    GPT5_2_PRO = GPT5_2_PRO_ROLLING
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -109,6 +175,7 @@ OPEN_AI_EMBEDDING_MODELS = {
 OPEN_AI_CHAT_MODELS = {
     info.name: info
     for info in [
+        # Legacy GPT-3.5 models
         ChatModelInfo(
             name=OpenAIModelName.GPT3_v1,
             provider_name=ModelProviderName.OPENAI,
@@ -141,6 +208,7 @@ OPEN_AI_CHAT_MODELS = {
             max_tokens=16384,
             has_function_call_api=True,
         ),
+        # Legacy GPT-4 models
         ChatModelInfo(
             name=OpenAIModelName.GPT4_v1,
             provider_name=ModelProviderName.OPENAI,
@@ -165,21 +233,193 @@ OPEN_AI_CHAT_MODELS = {
             max_tokens=128000,
             has_function_call_api=True,
         ),
+        # GPT-4o models (128K context)
         ChatModelInfo(
             name=OpenAIModelName.GPT4_O,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=5 / 1_000_000,
-            completion_token_cost=15 / 1_000_000,
+            prompt_token_cost=2.50 / 1_000_000,
+            completion_token_cost=10.00 / 1_000_000,
             max_tokens=128_000,
             has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O_v1,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=5.00 / 1_000_000,
+            completion_token_cost=15.00 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.15 / 1_000_000,
+            completion_token_cost=0.60 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        # GPT-4.1 models (1M context)
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_1,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=2.00 / 1_000_000,
+            completion_token_cost=8.00 / 1_000_000,
+            max_tokens=1_047_576,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_1_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.40 / 1_000_000,
+            completion_token_cost=1.60 / 1_000_000,
+            max_tokens=1_047_576,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_1_NANO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.10 / 1_000_000,
+            completion_token_cost=0.40 / 1_000_000,
+            max_tokens=1_047_576,
+            has_function_call_api=True,
+        ),
+        # O-series reasoning models (200K context)
+        ChatModelInfo(
+            name=OpenAIModelName.O1,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=15.00 / 1_000_000,
+            completion_token_cost=60.00 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O1_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.10 / 1_000_000,
+            completion_token_cost=4.40 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O1_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=150.00 / 1_000_000,
+            completion_token_cost=600.00 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O3,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=2.00 / 1_000_000,
+            completion_token_cost=8.00 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O3_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.10 / 1_000_000,
+            completion_token_cost=4.40 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O3_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=20.00 / 1_000_000,
+            completion_token_cost=80.00 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O4_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.10 / 1_000_000,
+            completion_token_cost=4.40 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        # GPT-5 models (~400K context)
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.25 / 1_000_000,
+            completion_token_cost=10.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_1,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.25 / 1_000_000,
+            completion_token_cost=10.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_2,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.75 / 1_000_000,
+            completion_token_cost=14.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.25 / 1_000_000,
+            completion_token_cost=2.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_NANO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.05 / 1_000_000,
+            completion_token_cost=0.40 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=15.00 / 1_000_000,
+            completion_token_cost=120.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_2_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=21.00 / 1_000_000,
+            completion_token_cost=168.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
         ),
     ]
 }
 # Copy entries for models with equivalent specs
 chat_model_mapping = {
+    # Legacy GPT-3.5 mappings
     OpenAIModelName.GPT3_v1: [OpenAIModelName.GPT3_v2],
     OpenAIModelName.GPT3_v2_16k: [OpenAIModelName.GPT3_16k],
     OpenAIModelName.GPT3_v4: [OpenAIModelName.GPT3_ROLLING],
+    # Legacy GPT-4 mappings
     OpenAIModelName.GPT4_v1: [OpenAIModelName.GPT4_v2, OpenAIModelName.GPT4_ROLLING],
     OpenAIModelName.GPT4_v1_32k: [
         OpenAIModelName.GPT4_v2_32k,
@@ -193,7 +433,59 @@ chat_model_mapping = {
         OpenAIModelName.GPT4_TURBO_PREVIEW,
         OpenAIModelName.GPT4_v5,
     ],
-    OpenAIModelName.GPT4_O: [OpenAIModelName.GPT4_O_v1],
+    # GPT-4o mappings
+    OpenAIModelName.GPT4_O: [
+        OpenAIModelName.GPT4_O_ROLLING,
+        OpenAIModelName.GPT4_O_v2,
+    ],
+    OpenAIModelName.GPT4_O_MINI: [
+        OpenAIModelName.GPT4_O_MINI_ROLLING,
+        OpenAIModelName.GPT4_O_MINI_v1,
+    ],
+    # GPT-4.1 mappings
+    OpenAIModelName.GPT4_1: [
+        OpenAIModelName.GPT4_1_ROLLING,
+        OpenAIModelName.GPT4_1_v1,
+    ],
+    OpenAIModelName.GPT4_1_MINI: [
+        OpenAIModelName.GPT4_1_MINI_ROLLING,
+        OpenAIModelName.GPT4_1_MINI_v1,
+    ],
+    OpenAIModelName.GPT4_1_NANO: [
+        OpenAIModelName.GPT4_1_NANO_ROLLING,
+        OpenAIModelName.GPT4_1_NANO_v1,
+    ],
+    # O-series mappings
+    OpenAIModelName.O1: [
+        OpenAIModelName.O1_ROLLING,
+        OpenAIModelName.O1_v1,
+    ],
+    OpenAIModelName.O1_MINI: [
+        OpenAIModelName.O1_MINI_ROLLING,
+        OpenAIModelName.O1_MINI_v1,
+    ],
+    OpenAIModelName.O1_PRO: [OpenAIModelName.O1_PRO_ROLLING],
+    OpenAIModelName.O3: [
+        OpenAIModelName.O3_ROLLING,
+        OpenAIModelName.O3_v1,
+    ],
+    OpenAIModelName.O3_MINI: [
+        OpenAIModelName.O3_MINI_ROLLING,
+        OpenAIModelName.O3_MINI_v1,
+    ],
+    OpenAIModelName.O3_PRO: [OpenAIModelName.O3_PRO_ROLLING],
+    OpenAIModelName.O4_MINI: [
+        OpenAIModelName.O4_MINI_ROLLING,
+        OpenAIModelName.O4_MINI_v1,
+    ],
+    # GPT-5 mappings
+    OpenAIModelName.GPT5: [OpenAIModelName.GPT5_ROLLING],
+    OpenAIModelName.GPT5_1: [OpenAIModelName.GPT5_1_ROLLING],
+    OpenAIModelName.GPT5_2: [OpenAIModelName.GPT5_2_ROLLING],
+    OpenAIModelName.GPT5_MINI: [OpenAIModelName.GPT5_MINI_ROLLING],
+    OpenAIModelName.GPT5_NANO: [OpenAIModelName.GPT5_NANO_ROLLING],
+    OpenAIModelName.GPT5_PRO: [OpenAIModelName.GPT5_PRO_ROLLING],
+    OpenAIModelName.GPT5_2_PRO: [OpenAIModelName.GPT5_2_PRO_ROLLING],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
@@ -341,7 +633,26 @@ class OpenAIProvider(
             )
 
     def get_tokenizer(self, model_name: OpenAIModelName) -> ModelTokenizer[int]:
-        return tiktoken.encoding_for_model(model_name)
+        try:
+            return tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            # Fallback for new models not yet in tiktoken's mapping.
+            # GPT-4o, GPT-4.1, GPT-5, O-series use cl100k_base or o200k_base
+            if (
+                model_name.startswith("gpt-4o")
+                or model_name.startswith("gpt-4.1")
+                or model_name.startswith("gpt-5")
+                or model_name.startswith("o1")
+                or model_name.startswith("o3")
+                or model_name.startswith("o4")
+            ):
+                # o200k_base is used by GPT-4o and newer models
+                return tiktoken.get_encoding("o200k_base")
+            elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3.5"):
+                return tiktoken.get_encoding("cl100k_base")
+            else:
+                # Default fallback
+                return tiktoken.get_encoding("cl100k_base")
 
     def count_message_tokens(
         self,
@@ -356,8 +667,14 @@ class OpenAIProvider(
                 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             )
             tokens_per_name = -1  # if there's a name, the role is omitted
-        # TODO: check if this is still valid for gpt-4o
-        elif model_name.startswith("gpt-4"):
+        elif (
+            model_name.startswith("gpt-4")
+            or model_name.startswith("gpt-5")
+            or model_name.startswith("o1")
+            or model_name.startswith("o3")
+            or model_name.startswith("o4")
+        ):
+            # GPT-4, GPT-4o, GPT-4.1, GPT-5, and O-series models all use similar format
             tokens_per_message = 3
             tokens_per_name = 1
         else:
@@ -384,6 +701,7 @@ class OpenAIProvider(
         model: OpenAIModelName,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        reasoning_effort: Optional[Literal["low", "medium", "high"]] = None,
         **kwargs,
     ) -> tuple[
         list[ChatCompletionMessageParam], CompletionCreateParams, dict[str, Any]
@@ -414,6 +732,7 @@ class OpenAIProvider(
             model=model,
             functions=functions,
             max_output_tokens=max_output_tokens,
+            reasoning_effort=reasoning_effort,
             **kwargs,
         )
         kwargs.update(self._credentials.get_model_access_kwargs(model))  # type: ignore

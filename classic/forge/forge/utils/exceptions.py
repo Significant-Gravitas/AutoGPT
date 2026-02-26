@@ -64,6 +64,12 @@ class AgentTerminated(AgentException):
 class AgentFinished(AgentTerminated):
     """The agent self-terminated"""
 
+    suggested_next_task: Optional[str] = None
+
+    def __init__(self, message: str, suggested_next_task: Optional[str] = None, *args):
+        super().__init__(message, *args)
+        self.suggested_next_task = suggested_next_task
+
 
 class ConfigurationError(AgentException):
     """Error caused by invalid, incompatible or otherwise incorrect configuration"""
@@ -93,3 +99,28 @@ class OperationNotAllowedError(CommandExecutionError):
 
 class TooMuchOutputError(CommandExecutionError):
     """The operation generated more output than what the Agent can process"""
+
+
+class CodeTimeoutError(CommandExecutionError):
+    """The code execution timed out"""
+
+    hint = (
+        "Consider breaking the operation into smaller steps or increasing the timeout."
+    )
+
+
+class HTTPError(CommandExecutionError):
+    """An error occurred during an HTTP request"""
+
+    def __init__(
+        self, message: str, status_code: Optional[int] = None, url: Optional[str] = None
+    ):
+        self.status_code = status_code
+        self.url = url
+        super().__init__(message)
+
+
+class DataProcessingError(CommandExecutionError):
+    """An error occurred while processing data (JSON, CSV, etc.)"""
+
+    hint = "Check that the input data is in the correct format."

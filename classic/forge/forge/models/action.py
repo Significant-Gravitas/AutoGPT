@@ -17,11 +17,22 @@ from .utils import ModelWithSummary
 class ActionProposal(BaseModel):
     thoughts: str | ModelWithSummary
     use_tool: AssistantFunctionCall
+    use_tools: Optional[list[AssistantFunctionCall]] = None
+    """
+    List of tools to execute in parallel. If None, only use_tool is executed.
+    When set, use_tool should be the first item for backwards compatibility.
+    """
 
     raw_message: AssistantChatMessage = None  # type: ignore
     """
     The message from which the action proposal was parsed. To be set by the parser.
     """
+
+    def get_tools(self) -> list[AssistantFunctionCall]:
+        """Get all tools to execute. Returns use_tools if set, otherwise [use_tool]."""
+        if self.use_tools:
+            return self.use_tools
+        return [self.use_tool]
 
     @classmethod
     def model_json_schema(
@@ -42,8 +53,11 @@ class ActionProposal(BaseModel):
             mode=mode,
             **kwargs,
         )
-        if "raw_message" in schema["properties"]:  # must check because schema is cached
+        # Exclude internal fields from schema (must check because schema is cached)
+        if "raw_message" in schema["properties"]:
             del schema["properties"]["raw_message"]
+        if "use_tools" in schema["properties"]:
+            del schema["properties"]["use_tools"]
         return schema
 
 

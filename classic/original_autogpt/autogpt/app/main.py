@@ -13,23 +13,6 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
-from colorama import Fore, Style
-from forge.agent_protocol.database import AgentDB
-from forge.components.code_executor.code_executor import (
-    is_docker_available,
-    we_are_running_in_a_docker_container,
-)
-from forge.config.ai_directives import AIDirectives
-from forge.config.ai_profile import AIProfile
-from forge.file_storage import FileStorageBackendName, get_storage
-from forge.llm.providers import MultiProvider
-from forge.logging.config import configure_logging
-from forge.logging.utils import print_attribute, speak
-from forge.models.action import ActionInterruptedByHuman, ActionProposal
-from forge.models.utils import ModelWithSummary
-from forge.utils.const import FINISH_COMMAND
-from forge.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-
 from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agents.agent_manager import AgentManager
 from autogpt.agents.prompt_strategies.one_shot import AssistantThoughts
@@ -38,14 +21,39 @@ from autogpt.app.config import (
     ConfigBuilder,
     assert_config_has_required_llm_api_keys,
 )
+from colorama import Fore, Style
+
+from forge.agent_protocol.database import AgentDB
+from forge.components.code_executor.code_executor import (
+    is_docker_available,
+    we_are_running_in_a_docker_container,
+)
+from forge.config.ai_directives import AIDirectives
+from forge.config.ai_profile import AIProfile
+from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
+from forge.file_storage import FileStorageBackendName, get_storage
+from forge.llm.providers import MultiProvider
+from forge.logging.config import configure_logging
+from forge.logging.utils import print_attribute
+from forge.models.action import ActionInterruptedByHuman, ActionProposal
+from forge.models.utils import ModelWithSummary
+from forge.permissions import ApprovalScope, CommandPermissionManager
+from forge.utils.const import FINISH_COMMAND
+from forge.utils.exceptions import (
+    AgentFinished,
+    AgentTerminated,
+    InvalidAgentResponseError,
+)
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
+    from autogpt.app.ui.protocol import UIProvider
 
 from .configurator import apply_overrides_to_config
 from .input import clean_input
 from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
+from .ui import create_ui_provider
 from .utils import (
     coroutine,
     get_legal_warning,
@@ -75,18 +83,110 @@ async def run_auto_gpt(
     best_practices: Optional[list[str]] = None,
     override_directives: bool = False,
     component_config_file: Optional[Path] = None,
+    workspace: Optional[Path] = None,
 ):
+    # Determine workspace directory - default to current working directory
+    if workspace is None:
+        workspace = Path.cwd()
+
     # Set up configuration
-    config = ConfigBuilder.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env(workspace=workspace)
+
+    # Agent data is stored in .autogpt/ subdirectory of the workspace
+    data_dir = workspace / ".autogpt"
+
+    # Load workspace settings (creates autogpt.yaml if missing)
+    workspace_settings = WorkspaceSettings.load_or_create(workspace)
+
     # Storage
+    # For CLI mode, root file storage at the workspace root (cwd) so agents can access
+    # project files directly. Agent state is still stored in .autogpt/agents/{id}/.
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
         config.file_storage_backend,
-        root_path=Path("data"),
+        root_path=workspace,
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
+
+    # Create prompt callback for permission requests
+    def prompt_permission(
+        cmd: str, args_str: str, args: dict
+    ) -> tuple[ApprovalScope, str | None]:
+        """Prompt user for command permission.
+
+        Uses an interactive selector with arrow keys and a feedback option.
+
+        Args:
+            cmd: Command name.
+            args_str: Formatted arguments string.
+            args: Full arguments dictionary.
+
+        Returns:
+            Tuple of (ApprovalScope, feedback). Feedback is None if not provided.
+        """
+        from autogpt.app.ui.rich_select import RichSelect
+
+        choices = [
+            "Once",
+            "Always (this agent)",
+            "Always (all agents)",
+            "Deny",
+        ]
+
+        scope_map = {
+            0: ApprovalScope.ONCE,
+            1: ApprovalScope.AGENT,
+            2: ApprovalScope.WORKSPACE,
+            3: ApprovalScope.DENY,
+        }
+
+        selector = RichSelect(
+            choices=choices,
+            title="Approve command execution?",
+            subtitle=f"{cmd}({args_str})",
+        )
+        result = selector.run()
+
+        scope = scope_map.get(result.index, ApprovalScope.DENY)
+        feedback = result.feedback if result.has_feedback else None
+        return (scope, feedback)
+
+    def display_auto_approved(
+        cmd: str, args_str: str, args: dict, scope: ApprovalScope
+    ) -> None:
+        """Display auto-approved command execution using Rich.
+
+        Called when a command is auto-approved from the allow lists,
+        so the user can see what's executing without needing to approve.
+
+        Args:
+            cmd: Command name.
+            args_str: Formatted arguments string.
+            args: Full arguments dictionary.
+            scope: The scope that granted the auto-approval.
+        """
+        from rich.console import Console
+        from rich.text import Text
+
+        console = Console()
+
+        # Build the display text
+        scope_label = "agent" if scope == ApprovalScope.AGENT else "workspace"
+        text = Text()
+        text.append("  ✓ ", style="bold green")
+        text.append("Auto-approved ", style="dim")
+        text.append(f"({scope_label})", style="dim cyan")
+        text.append(": ", style="dim")
+        text.append(cmd, style="bold cyan")
+        text.append("(", style="dim")
+        # Truncate args if too long
+        display_args = args_str[:60] + "..." if len(args_str) > 60 else args_str
+        text.append(display_args, style="dim")
+        text.append(")", style="dim")
+
+        console.print(text)
 
     # Set up logging module
     if speak:
@@ -147,7 +247,10 @@ async def run_auto_gpt(
             )
 
     # Let user choose an existing agent to run
-    agent_manager = AgentManager(file_storage)
+    # For CLI mode, AgentManager needs to look in .autogpt/agents/, not agents/
+    # Since file_storage is rooted at workspace, we need to clone with .autogpt subroot
+    agent_storage = file_storage.clone_with_subroot(".autogpt")
+    agent_manager = AgentManager(agent_storage)
     existing_agents = agent_manager.list_agents()
     load_existing_agent = ""
     if existing_agents:
@@ -190,11 +293,26 @@ async def run_auto_gpt(
                 break
 
     if agent_state:
+        # Create permission manager for this agent
+        agent_dir = data_dir / "agents" / agent_state.agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        perm_manager = CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+            on_auto_approve=(
+                display_auto_approved if not config.noninteractive_mode else None
+            ),
+        )
+
         agent = configure_agent_with_state(
             state=agent_state,
             app_config=config,
             file_storage=file_storage,
             llm_provider=llm_provider,
+            permission_manager=perm_manager,
         )
         apply_overrides_to_ai_settings(
             ai_profile=agent.state.ai_profile,
@@ -287,14 +405,30 @@ async def run_auto_gpt(
         else:
             logger.info("AI config overrides specified through CLI; skipping revision")
 
+        # Generate agent ID and create permission manager
+        new_agent_id = agent_manager.generate_id(ai_profile.ai_name)
+        agent_dir = data_dir / "agents" / new_agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        perm_manager = CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=prompt_permission if not config.noninteractive_mode else None,
+            on_auto_approve=(
+                display_auto_approved if not config.noninteractive_mode else None
+            ),
+        )
+
         agent = create_agent(
-            agent_id=agent_manager.generate_id(ai_profile.ai_name),
+            agent_id=new_agent_id,
             task=task,
             ai_profile=ai_profile,
             directives=additional_ai_directives,
             app_config=config,
             file_storage=file_storage,
             llm_provider=llm_provider,
+            permission_manager=perm_manager,
         )
 
         file_manager = agent.file_manager
@@ -334,9 +468,13 @@ async def run_auto_gpt(
     #################
     # Run the Agent #
     #################
-    try:
-        await run_interaction_loop(agent)
-    except AgentTerminated:
+    # Create UI provider for terminal output
+    ui_provider = create_ui_provider(
+        plain_output=config.logging.plain_console_output,
+    )
+
+    async def handle_agent_termination():
+        """Handle agent termination by saving state."""
         agent_id = agent.state.agent_id
         logger.info(f"Saving state of {agent_id}...")
 
@@ -350,6 +488,11 @@ async def run_auto_gpt(
             save_as_id.strip() if not save_as_id.isspace() else None
         )
 
+    try:
+        await run_interaction_loop(agent, ui_provider)
+    except AgentTerminated:
+        await handle_agent_termination()
+
 
 @coroutine
 async def run_auto_gpt_server(
@@ -358,16 +501,25 @@ async def run_auto_gpt_server(
     log_format: Optional[str] = None,
     log_file_format: Optional[str] = None,
     install_plugin_deps: bool = False,
+    workspace: Optional[Path] = None,
 ):
     from .agent_protocol_server import AgentProtocolServer
 
-    config = ConfigBuilder.build_config_from_env()
+    # Determine workspace directory - default to current working directory
+    if workspace is None:
+        workspace = Path.cwd()
+
+    config = ConfigBuilder.build_config_from_env(workspace=workspace)
+
+    # Agent data is stored in .autogpt/ subdirectory of the workspace
+    data_dir = workspace / ".autogpt"
+
     # Storage
     local = config.file_storage_backend == FileStorageBackendName.LOCAL
     restrict_to_root = not local or config.restrict_to_workspace
     file_storage = get_storage(
         config.file_storage_backend,
-        root_path=Path("data"),
+        root_path=data_dir,
         restrict_to_root=restrict_to_root,
     )
     file_storage.initialize()
@@ -382,6 +534,22 @@ async def run_auto_gpt_server(
         tts_config=config.tts_config,
     )
 
+    # Log configuration for debugging/verification
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 60)
+    logger.info("AGENT CONFIGURATION")
+    logger.info("=" * 60)
+    logger.info(f"  Smart LLM:          {config.smart_llm}")
+    logger.info(f"  Fast LLM:           {config.fast_llm}")
+    logger.info(f"  Prompt Strategy:    {config.prompt_strategy}")
+    logger.info(f"  Temperature:        {config.temperature}")
+    logger.info(f"  Noninteractive:     {config.noninteractive_mode}")
+    if config.thinking_budget_tokens:
+        logger.info(f"  Thinking Budget:    {config.thinking_budget_tokens} tokens")
+    if config.reasoning_effort:
+        logger.info(f"  Reasoning Effort:   {config.reasoning_effort}")
+    logger.info("=" * 60)
+
     await assert_config_has_required_llm_api_keys(config)
 
     await apply_overrides_to_config(
@@ -391,8 +559,9 @@ async def run_auto_gpt_server(
     llm_provider = _configure_llm_provider(config)
 
     # Set up & start server
+    db_path = data_dir / "ap_server.db"
     database = AgentDB(
-        database_string=os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"),
+        database_string=os.getenv("AP_SERVER_DB_URL", f"sqlite:///{db_path}"),
         debug_enabled=debug,
     )
     port: int = int(os.getenv("AP_SERVER_PORT", default=8000))
@@ -419,15 +588,12 @@ def _configure_llm_provider(config: AppConfig) -> MultiProvider:
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
-    # Translate from the continuous_mode/continuous_limit config
-    # to a cycle_budget (maximum number of cycles to run without checking in with the
-    # user) and a count of cycles_remaining before we check in..
-    if continuous_mode:
-        cycle_budget = continuous_limit if continuous_limit else math.inf
-    else:
-        cycle_budget = 1
-
-    return cycle_budget
+    # Always run continuously - the permission manager handles per-command approval.
+    # The cycle budget is now only used for Ctrl+C handling graceful shutdown.
+    # If a limit is set, use it; otherwise run indefinitely.
+    if continuous_limit:
+        return continuous_limit
+    return math.inf
 
 
 class UserFeedback(str, enum.Enum):
@@ -440,11 +606,14 @@ class UserFeedback(str, enum.Enum):
 
 async def run_interaction_loop(
     agent: "Agent",
+    ui_provider: Optional["UIProvider"] = None,
 ) -> None:
     """Run the main interaction loop for the agent.
 
     Args:
         agent: The agent to run the interaction loop for.
+        ui_provider: Optional UI provider for displaying output.
+                    If not provided, a terminal provider will be created.
 
     Returns:
         None
@@ -454,16 +623,24 @@ async def run_interaction_loop(
     ai_profile = agent.state.ai_profile
     logger = logging.getLogger(__name__)
 
+    # Create default UI provider if not provided
+    if ui_provider is None:
+        ui_provider = create_ui_provider(
+            plain_output=app_config.logging.plain_console_output,
+        )
+    assert ui_provider is not None  # Satisfy type checker
+
     cycle_budget = cycles_remaining = _get_cycle_budget(
         app_config.continuous_mode, app_config.continuous_limit
     )
+    # Keep spinner for signal handler compatibility (but use UI provider in loop)
     spinner = Spinner(
         "Thinking...", plain_output=app_config.logging.plain_console_output
     )
     stop_reason = None
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
-        nonlocal cycle_budget, cycles_remaining, spinner, stop_reason
+        nonlocal cycles_remaining, stop_reason
         if stop_reason:
             logger.error("Quitting immediately...")
             sys.exit()
@@ -508,7 +685,7 @@ async def run_interaction_loop(
         handle_stop_signal()
         # Have the agent determine the next action to take.
         if not (_ep := agent.event_history.current_episode) or _ep.result:
-            with spinner:
+            async with ui_provider.show_spinner("Thinking..."):
                 try:
                     action_proposal = await agent.propose_action()
                 except InvalidAgentResponseError as e:
@@ -532,88 +709,81 @@ async def run_interaction_loop(
         ###############
         # Update User #
         ###############
-        # Print the assistant's thoughts and the next command to the user.
-        update_user(
-            ai_profile,
-            action_proposal,
+        # Display the assistant's thoughts and the next command via UI provider
+        await ui_provider.display_thoughts(
+            ai_name=ai_profile.ai_name,
+            thoughts=action_proposal.thoughts,
             speak_mode=app_config.tts_config.speak_mode,
         )
 
-        ##################
-        # Get user input #
-        ##################
-        handle_stop_signal()
-        if cycles_remaining == 1:  # Last cycle
-            feedback_type, feedback, new_cycles_remaining = await get_user_feedback(
-                app_config,
-                ai_profile,
-            )
+        # Note: Command details are shown in the approval prompt, so we don't
+        # display them separately here to avoid redundancy
 
-            if feedback_type == UserFeedback.AUTHORIZE:
-                if new_cycles_remaining is not None:
-                    # Case 1: User is altering the cycle budget.
-                    if cycle_budget > 1:
-                        cycle_budget = new_cycles_remaining + 1
-                    # Case 2: User is running iteratively and
-                    #   has initiated a one-time continuous cycle
-                    cycles_remaining = new_cycles_remaining + 1
-                else:
-                    # Case 1: Continuous iteration was interrupted -> resume
-                    if cycle_budget > 1:
-                        logger.info(
-                            f"The cycle budget is {cycle_budget}.",
-                            extra={
-                                "title": "RESUMING CONTINUOUS EXECUTION",
-                                "title_color": Fore.MAGENTA,
-                            },
-                        )
-                    # Case 2: The agent used up its cycle budget -> reset
-                    cycles_remaining = cycle_budget + 1
-                logger.info(
-                    "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                    extra={"color": Fore.MAGENTA},
-                )
-            elif feedback_type == UserFeedback.EXIT:
-                logger.warning("Exiting...")
-                exit()
-            else:  # user_feedback == UserFeedback.TEXT
-                pass
-        else:
-            feedback = ""
-            # First log new-line so user can differentiate sections better in console
-            print()
-            if cycles_remaining != math.inf:
-                # Print authorized commands left value
-                print_attribute(
-                    "AUTHORIZED_COMMANDS_LEFT", cycles_remaining, title_color=Fore.CYAN
-                )
+        # Permission manager handles per-command approval during execute()
+        handle_stop_signal()
 
         ###################
         # Execute Command #
         ###################
-        # Decrement the cycle counter first to reduce the likelihood of a SIGINT
-        # happening during command execution, setting the cycles remaining to 1,
-        # and then having the decrement set it to 0, exiting the application.
-        if not feedback:
-            cycles_remaining -= 1
-
         if not action_proposal.use_tool:
             continue
 
         handle_stop_signal()
 
-        if not feedback:
+        # Execute the command. Permission manager will prompt user if needed.
+        # If user denies with feedback, the agent will receive it via
+        # ActionInterruptedByHuman. If user approves with feedback, command
+        # executes and feedback is appended to history.
+        try:
             result = await agent.execute(action_proposal)
-        else:
-            result = await agent.do_not_execute(action_proposal, feedback)
+        except AgentFinished as e:
+            # Handle finish command
+            if app_config.noninteractive_mode:
+                # Non-interactive: exit (preserve benchmark behavior)
+                logger.info(f"Agent finished: {e.message}")
+                return
+
+            # Interactive mode: show panel and prompt for continuation
+            next_task = await ui_provider.prompt_finish_continuation(
+                summary=e.message,
+                suggested_next_task=e.suggested_next_task,
+            )
+
+            if not next_task.strip():
+                # Empty input = exit
+                logger.info("User chose to exit after task completion.")
+                return
+
+            # Start new task in same workspace
+            agent.state.task = next_task
+            agent.event_history.episodes.clear()  # Clear history for fresh context
+
+            # Reset cycle budget for new task
+            cycles_remaining = _get_cycle_budget(
+                app_config.continuous_mode, app_config.continuous_limit
+            )
+
+            logger.info(f"Starting new task: {next_task}")
+            continue
+
+        if result.status != "interrupted_by_human":
+            cycles_remaining -= 1
+
+        # Display user feedback if provided
+        if result.status == "interrupted_by_human" and result.feedback:
+            await ui_provider.display_message(
+                f"Feedback provided: {result.feedback}",
+                title="USER:",
+            )
 
         if result.status == "success":
-            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
+            await ui_provider.display_result(str(result), is_error=False)
         elif result.status == "error":
-            logger.warning(
+            error_msg = (
                 f"Command {action_proposal.use_tool.name} returned an error: "
                 f"{result.error or result.reason}"
             )
+            await ui_provider.display_result(error_msg, is_error=True)
 
 
 def update_user(
@@ -637,9 +807,6 @@ def update_user(
         thoughts=action_proposal.thoughts,
         speak_mode=speak_mode,
     )
-
-    if speak_mode:
-        speak(f"I want to execute {action_proposal.use_tool.name}")
 
     # First log new-line so user can differentiate sections better in console
     print()
@@ -721,20 +888,15 @@ def print_assistant_thoughts(
     logger = logging.getLogger(__name__)
 
     thoughts_text = remove_ansi_escape(
-        thoughts.text
+        thoughts.reasoning
         if isinstance(thoughts, AssistantThoughts)
-        else thoughts.summary()
-        if isinstance(thoughts, ModelWithSummary)
-        else thoughts
+        else thoughts.summary() if isinstance(thoughts, ModelWithSummary) else thoughts
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW
     )
 
     if isinstance(thoughts, AssistantThoughts):
-        print_attribute(
-            "REASONING", remove_ansi_escape(thoughts.reasoning), title_color=Fore.YELLOW
-        )
         if assistant_thoughts_plan := remove_ansi_escape(
             "\n".join(f"- {p}" for p in thoughts.plan)
         ):
@@ -757,17 +919,6 @@ def print_assistant_thoughts(
             remove_ansi_escape(thoughts.self_criticism),
             title_color=Fore.YELLOW,
         )
-
-        # Speak the assistant's thoughts
-        if assistant_thoughts_speak := remove_ansi_escape(thoughts.speak):
-            if speak_mode:
-                speak(assistant_thoughts_speak)
-            else:
-                print_attribute(
-                    "SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW
-                )
-    else:
-        speak(thoughts_text)
 
 
 def remove_ansi_escape(s: str) -> str:

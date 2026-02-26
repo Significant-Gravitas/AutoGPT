@@ -1,4 +1,5 @@
 """A simple spinner module"""
+
 import itertools
 import sys
 import threading

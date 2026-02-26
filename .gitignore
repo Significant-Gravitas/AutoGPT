@@ -3,6 +3,7 @@
 classic/original_autogpt/keys.py
 classic/original_autogpt/*.json
 auto_gpt_workspace/*
+.autogpt/
 *.mpeg
 .env
 # Root .env files
@@ -159,6 +160,10 @@ CURRENT_BULLETIN.md
 
 # AgBenchmark
 classic/benchmark/agbenchmark/reports/
+classic/reports/
+classic/direct_benchmark/reports/
+classic/.benchmark_workspaces/
+classic/direct_benchmark/.benchmark_workspaces/
 
 # Nodejs
 package-lock.json
@@ -177,7 +182,11 @@ autogpt_platform/backend/settings.py
 
 *.ign.*
 .test-contents
+**/.claude/settings.local.json
 .claude/settings.local.json
 CLAUDE.local.md
 /autogpt_platform/backend/logs
+
+# Test database
+test.db
 .next
