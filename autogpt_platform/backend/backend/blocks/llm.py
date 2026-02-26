@@ -726,7 +726,22 @@ async def llm_call(
                 store=False,
             )
 
-            tool_calls = extract_responses_tool_calls(response)
+            raw_tool_calls = extract_responses_tool_calls(response)
+            tool_calls = (
+                [
+                    ToolContentBlock(
+                        id=tc["id"],
+                        type=tc["type"],
+                        function=ToolCall(
+                            name=tc["function"]["name"],
+                            arguments=tc["function"]["arguments"],
+                        ),
+                    )
+                    for tc in raw_tool_calls
+                ]
+                if raw_tool_calls
+                else None
+            )
             reasoning = extract_responses_reasoning(response)
             content = extract_responses_content(response)
             prompt_tokens, completion_tokens = extract_responses_usage(response)
@@ -735,7 +750,7 @@ async def llm_call(
                 raw_response=response,
                 prompt=prompt,
                 response=content,
-                tool_calls=tool_calls,  # type: ignore
+                tool_calls=tool_calls,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 reasoning=reasoning,
