@@ -716,13 +716,13 @@ async def llm_call(
 
             response = await oai_client.responses.create(
                 model=llm_model.value,
-                input=prompt,  # type: ignore
-                tools=tools_param,  # type: ignore
+                input=prompt,  # type: ignore[arg-type]
+                tools=tools_param,  # type: ignore[arg-type]
                 max_output_tokens=max_tokens,
                 parallel_tool_calls=get_parallel_tool_calls_param(
                     llm_model, parallel_tool_calls
                 ),
-                text=text_config,  # type: ignore
+                text=text_config,  # type: ignore[arg-type]
                 store=False,
             )
 
@@ -735,7 +735,7 @@ async def llm_call(
                 raw_response=response,
                 prompt=prompt,
                 response=content,
-                tool_calls=tool_calls,
+                tool_calls=tool_calls, # type: ignore
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 reasoning=reasoning,

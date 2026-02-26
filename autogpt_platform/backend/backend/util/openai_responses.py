@@ -54,15 +54,16 @@ def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
     for tool in tools:
         if tool.get("type") == "function":
             func = tool.get("function", {})
-            converted.append(
-                {
-                    "type": "function",
-                    "name": func.get("name"),
-                    "description": func.get("description"),
-                    "parameters": func.get("parameters"),
-                    # Note: strict=True is default in Responses API
-                }
-            )
+            entry: dict[str, Any] = {
+                "type": "function",
+                "name": func.get("name"),
+                # Note: strict=True is default in Responses API
+            }
+            if func.get("description") is not None:
+                entry["description"] = func["description"]
+            if func.get("parameters") is not None:
+                entry["parameters"] = func["parameters"]
+            converted.append(entry)
         else:
             # Pass through non-function tools as-is
             converted.append(tool)
