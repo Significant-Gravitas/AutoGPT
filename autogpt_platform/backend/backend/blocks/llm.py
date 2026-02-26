@@ -735,7 +735,7 @@ async def llm_call(
                 raw_response=response,
                 prompt=prompt,
                 response=content,
-                tool_calls=tool_calls, # type: ignore
+                tool_calls=tool_calls,  # type: ignore
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 reasoning=reasoning,
