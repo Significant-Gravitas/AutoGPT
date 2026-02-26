@@ -479,7 +479,8 @@ async def stream_chat_completion_sdk(
     has_history = len(session.messages) > 1
     try:
         _precomputed_cwd = _make_sdk_cwd(session_id)
-    except ValueError as e:
+        os.makedirs(_precomputed_cwd, exist_ok=True)
+    except (ValueError, OSError) as e:
         logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
         yield StreamError(
             errorText="Unable to initialize working directory.",
@@ -517,20 +518,12 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     stream_completed = False
-    # Initialise variables before the try so the finally block can
-    # always attempt transcript upload regardless of errors.
-    sdk_cwd = ""
+    sdk_cwd = _precomputed_cwd  # set before try so finally can always clean up
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
 
     try:
-        # Use a session-specific temp dir to avoid cleanup race conditions
-        # between concurrent sessions.  Reuse the value computed above so
-        # the prompt and execution directory cannot drift.
-        sdk_cwd = _precomputed_cwd
-        os.makedirs(sdk_cwd, exist_ok=True)
-
         set_execution_context(user_id, session)
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
