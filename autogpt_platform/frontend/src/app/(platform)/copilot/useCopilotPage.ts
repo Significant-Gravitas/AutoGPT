@@ -337,11 +337,21 @@ export function useCopilotPage() {
 
   // Clean up reconnect and status state on session switch.
   const prevStatusRef = useRef(status);
+  const prevSessionIdForCleanup = useRef(sessionId);
   useEffect(() => {
+    const prev = prevSessionIdForCleanup.current;
+    prevSessionIdForCleanup.current = sessionId;
+
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
     reconnectingRef.current = false;
     reconnectAttemptsRef.current.delete(sessionId ?? "");
+
+    // Clear hasResumed flag when navigating away so we can resume again when returning
+    if (prev && prev !== sessionId) {
+      hasResumedRef.current.delete(prev);
+    }
+
     prevStatusRef.current = status;
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
