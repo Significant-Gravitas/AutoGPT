@@ -42,14 +42,11 @@ function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
   const seenContent = new Set<string>();
 
-  return messages.filter((msg, idx) => {
-    if (seenIds.has(msg.id)) {
-      console.log(`[DEDUP] Filtered duplicate ID: ${msg.id}`);
-      return false;
-    }
+  return messages.filter((msg) => {
+    if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
-    // For assistant messages, deduplicate by content (catches hydration/stream duplicates)
+    // For assistant messages, also check content to catch hydration/stream duplicates
     if (msg.role === "assistant") {
       const content = msg.parts
         .map(
@@ -60,20 +57,8 @@ function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
         )
         .join("|");
 
-      console.log(
-        `[DEDUP] Assistant msg ${idx}: id=${msg.id.slice(0, 12)}, content="${content.slice(0, 50)}..."`,
-      );
-
-      // Only deduplicate non-empty content
-      if (content) {
-        if (seenContent.has(content)) {
-          console.log(
-            `[DEDUP] Filtered duplicate content: "${content.slice(0, 50)}..."`,
-          );
-          return false;
-        }
-        seenContent.add(content);
-      }
+      if (content && seenContent.has(content)) return false;
+      if (content) seenContent.add(content);
     }
 
     return true;
