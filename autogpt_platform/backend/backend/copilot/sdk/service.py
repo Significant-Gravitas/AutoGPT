@@ -946,20 +946,6 @@ async def stream_chat_completion_sdk(
                         )
                     )
 
-        except RuntimeError as e:
-            # SDK cleanup can raise "Attempted to exit cancel scope in a different task"
-            # when cancelled. This is a known SDK issue - treat as cancellation.
-            if "cancel scope" in str(e):
-                logger.warning(
-                    "[SDK] [%s] Cleanup error during cancellation: %s",
-                    session_id[:12],
-                    e,
-                )
-                # Don't re-raise — treat as graceful cancellation.
-                # Error already sent via mark_session_completed in processor.
-                return
-            # Other RuntimeErrors should propagate
-            raise
         except ImportError:
             raise RuntimeError(
                 "claude-agent-sdk is not installed. "
@@ -974,7 +960,18 @@ async def stream_chat_completion_sdk(
             len(session.messages),
         )
     except Exception as e:
-        # Handle all exceptions (CancelledError and regular exceptions)
+        # Special case: SDK cleanup RuntimeError during cancellation
+        # "Attempted to exit cancel scope in a different task" - treat as graceful cancellation
+        if isinstance(e, RuntimeError) and "cancel scope" in str(e):
+            logger.warning(
+                "[SDK] [%s] Cleanup error during cancellation: %s",
+                session_id[:12],
+                e,
+            )
+            # Don't persist error or re-raise — processor already sent cancellation error
+            return
+
+        # Handle all other exceptions (CancelledError and regular exceptions)
         if isinstance(e, asyncio.CancelledError):
             logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
             error_msg = "Operation cancelled"
