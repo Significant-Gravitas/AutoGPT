@@ -1001,7 +1001,7 @@ async def stream_chat_completion_sdk(
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
         if not isinstance(e, asyncio.CancelledError):
             yield StreamError(
-                errorText="An error occurred. Please try again.",
+                errorText=error_msg,
                 code="sdk_error",
             )
 
