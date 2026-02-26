@@ -79,10 +79,13 @@ _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
 
+
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
-_SDK_TOOL_SUPPLEMENT = """
+def _build_sdk_tool_supplement(cwd: str) -> str:
+    """Build the SDK tool supplement with the actual working directory injected."""
+    return f"""
 
 ## Tool notes
 
@@ -90,9 +93,16 @@ _SDK_TOOL_SUPPLEMENT = """
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
 
+### Working directory
+- Your working directory is: `{cwd}`
+- All SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec` operate inside this
+  directory.  This is the ONLY writable path — do not attempt to read or write
+  anywhere else on the filesystem.
+- Use relative paths or absolute paths under `{cwd}` for all file operations.
+
 ### Two storage systems — CRITICAL to understand
 
-1. **Ephemeral working directory** (`/tmp/copilot-<session>/`):
+1. **Ephemeral working directory** (`{cwd}`):
    - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
    - Files here are **lost between turns** — do NOT rely on them persisting
    - Use for temporary work: running scripts, processing data, etc.
@@ -127,6 +137,7 @@ is delivered to the user via a background stream.
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 """
+
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
@@ -442,12 +453,16 @@ async def stream_chat_completion_sdk(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
 
-    # Build system prompt (reuses non-SDK path with Langfuse support)
+    # Build system prompt (reuses non-SDK path with Langfuse support).
+    # Pre-compute the cwd here (deterministic, no side effects) so the exact
+    # working directory path can be injected into the supplement instead of
+    # the generic `/tmp/copilot-<session>/` placeholder.
     has_history = len(session.messages) > 1
+    _precomputed_cwd = _make_sdk_cwd(session_id)
     system_prompt, _ = await _build_system_prompt(
         user_id, has_conversation_history=has_history
     )
-    system_prompt += _SDK_TOOL_SUPPLEMENT
+    system_prompt += _build_sdk_tool_supplement(_precomputed_cwd)
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
 
