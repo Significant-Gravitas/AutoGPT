@@ -411,44 +411,13 @@ class CoPilotExecutor(AppProcess):
 
         def on_run_done(f: Future):
             logger.info(f"Run completed for {session_id}")
+            error_msg = None
             try:
                 if exec_error := f.exception():
                     error_msg = str(exec_error) or type(exec_error).__name__
                     logger.error(f"Execution for {session_id} failed: {error_msg}")
-
-                    # Mark session as completed with error
-                    # Use new event loop to avoid conflicts with worker thread loops
-                    try:
-                        loop = asyncio.new_event_loop()
-                        try:
-                            loop.run_until_complete(
-                                stream_registry.mark_session_completed(
-                                    session_id, error_message=error_msg
-                                )
-                            )
-                        finally:
-                            loop.close()
-                    except Exception as mark_err:
-                        logger.error(
-                            f"Failed to mark session completed for {session_id}: {mark_err}"
-                        )
-
                     ack_message(reject=True, requeue=False)
                 else:
-                    # Mark session as completed successfully
-                    try:
-                        loop = asyncio.new_event_loop()
-                        try:
-                            loop.run_until_complete(
-                                stream_registry.mark_session_completed(session_id)
-                            )
-                        finally:
-                            loop.close()
-                    except Exception as mark_err:
-                        logger.error(
-                            f"Failed to mark session completed for {session_id}: {mark_err}"
-                        )
-
                     ack_message(reject=False, requeue=False)
             except asyncio.CancelledError:
                 logger.info(f"Run completion callback cancelled for {session_id}")
@@ -456,6 +425,23 @@ class CoPilotExecutor(AppProcess):
                 error_msg = str(e) or type(e).__name__
                 logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
+                # Mark session as completed (with error if one occurred)
+                # Use new event loop to avoid conflicts with worker thread loops
+                try:
+                    loop = asyncio.new_event_loop()
+                    try:
+                        loop.run_until_complete(
+                            stream_registry.mark_session_completed(
+                                session_id, error_message=error_msg
+                            )
+                        )
+                    finally:
+                        loop.close()
+                except Exception as mark_err:
+                    logger.error(
+                        f"Failed to mark session completed for {session_id}: {mark_err}"
+                    )
+
                 # Release the cluster lock
                 if session_id in self._task_locks:
                     logger.info(f"Releasing cluster lock for {session_id}")
