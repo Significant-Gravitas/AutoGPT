@@ -5,6 +5,7 @@ from typing import Any, Sequence, get_args, get_origin
 
 import prisma
 from prisma.enums import ContentType
+from prisma.models import mv_suggested_blocks
 
 import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
@@ -20,7 +21,6 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.llm import LlmModel
-from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -776,17 +776,12 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     and returns the top `count` blocks sorted by execution count, excluding
     Input/Output/Agent block types and blocks in EXCLUDED_BLOCK_IDS.
     """
-    results = await query_raw_with_schema(
-        """
-        SELECT block_id, execution_count
-        FROM {schema_prefix}"mv_suggested_blocks";
-        """
-    )
+    results = await mv_suggested_blocks.prisma().find_many()
 
     # Get the top blocks based on execution count
     # But ignore Input, Output, Agent, and excluded blocks
     blocks: list[tuple[BlockInfo, int]] = []
-    execution_counts = {row["block_id"]: int(row["execution_count"]) for row in results}
+    execution_counts = {row.block_id: row.execution_count for row in results}
 
     for block_type in load_all_blocks().values():
         block: AnyBlockSchema = block_type()
