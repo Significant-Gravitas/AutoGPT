@@ -24,6 +24,7 @@ repos:
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
         files: ^autogpt_platform/
+        exclude: pnpm-lock\.yaml$
         stages: [pre-push]
 
   - repo: local
