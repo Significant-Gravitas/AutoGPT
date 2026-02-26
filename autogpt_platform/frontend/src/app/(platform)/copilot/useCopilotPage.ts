@@ -49,30 +49,57 @@ function messageFingerprint(msg: UIMessage): string {
 }
 
 /**
- * Deduplicate messages by ID *and* by content fingerprint.
- * ID-based dedup catches duplicates within the same source (e.g. two
- * identical stream events).  Fingerprint-based dedup catches duplicates
- * across the hydration/stream boundary where IDs differ (synthetic
- * `${sessionId}-${index}` vs AI SDK nanoid).
- *
- * NOTE: Fingerprint dedup only applies to assistant messages, not user messages.
- * Users should be able to send the same message multiple times.
+ * Deduplicate messages by ID and conversational context.
+ * - ID-based dedup catches duplicates within the same source
+ * - Context-based dedup for assistant messages: only keep the most complete
+ *   assistant message following the same user message (handles reconnect duplicates)
  */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
-  return messages.filter((msg) => {
-    if (seenIds.has(msg.id)) return false;
+  const assistantByContext = new Map<string, UIMessage>();
+  let lastUserMessageId = "";
+
+  const deduplicated: UIMessage[] = [];
+
+  for (const msg of messages) {
+    // ID-based deduplication
+    if (seenIds.has(msg.id)) continue;
     seenIds.add(msg.id);
 
-    if (msg.role === "assistant") {
-      const fp = messageFingerprint(msg);
-      if (fp !== "::" && seenFingerprints.has(fp)) return false;
-      seenFingerprints.add(fp);
-    }
+    if (msg.role === "user") {
+      lastUserMessageId = msg.id;
+      deduplicated.push(msg);
+    } else if (msg.role === "assistant") {
+      // Context: which user message this assistant message responds to
+      const contextKey = lastUserMessageId;
+      const existing = assistantByContext.get(contextKey);
 
-    return true;
-  });
+      if (existing) {
+        // We have a duplicate assistant message in the same context
+        // Keep the one with more content
+        const existingContent = messageFingerprint(existing);
+        const currentContent = messageFingerprint(msg);
+
+        if (currentContent.length > existingContent.length) {
+          // Replace existing with current (has more content)
+          const existingIndex = deduplicated.indexOf(existing);
+          if (existingIndex !== -1) {
+            deduplicated[existingIndex] = msg;
+          }
+          assistantByContext.set(contextKey, msg);
+        }
+        // Skip adding current if existing has more content
+      } else {
+        assistantByContext.set(contextKey, msg);
+        deduplicated.push(msg);
+      }
+    } else {
+      // Tool messages, etc.
+      deduplicated.push(msg);
+    }
+  }
+
+  return deduplicated;
 }
 
 export function useCopilotPage() {
@@ -192,13 +219,13 @@ export function useCopilotPage() {
 
     reconnectTimerRef.current = setTimeout(() => {
       setIsReconnectScheduled(false);
-      // Clear old assistant messages and invalidate cache to prevent hydration re-adding them
-      setMessages((prev) => prev.filter((m) => m.role !== "assistant"));
+      // Invalidate cache before resuming so hydration gets fresh data
       if (sid) {
         queryClient.invalidateQueries({
           queryKey: getGetV2GetSessionQueryKey(sid),
         });
       }
+      // Resume stream - deduplication will handle any duplicates
       resumeStream();
     }, delay);
   }
