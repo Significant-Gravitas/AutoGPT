@@ -9,7 +9,7 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError
+from backend.util.request import HTTPClientError, validate_url
 
 from .base import BaseTool
 from .models import (
@@ -112,6 +112,15 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Validate URL to prevent SSRF — blocks loopback and private IP ranges
+        try:
+            await validate_url(server_url, trusted_origins=[])
+        except ValueError as e:
+            return ErrorResponse(
+                message=f"Invalid or blocked server URL: {e}",
+                session_id=session_id,
+            )
+
         # Fast DB lookup — no network call
         creds = await MCPToolBlock._auto_lookup_credential(user_id, server_url)
         auth_token = creds.access_token.get_secret_value() if creds else None
@@ -147,12 +156,12 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
-        except Exception as e:
+        except Exception:
             logger.error(
                 "Unexpected error calling MCP server %s", server_url, exc_info=True
             )
             return ErrorResponse(
-                message=f"Unexpected error: {e}",
+                message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
 
