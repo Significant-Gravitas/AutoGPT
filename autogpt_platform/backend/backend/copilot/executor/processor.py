@@ -161,7 +161,6 @@ class CoPilotProcessor:
         start_time = time.monotonic()
 
         # Run the async execution in our event loop
-        # All error handling is done in _execute_async to avoid duplicate mark_session_completed calls
         future = asyncio.run_coroutine_threadsafe(
             self._execute_async(entry, cancel, cluster_lock, log),
             self.execution_loop,
@@ -206,6 +205,7 @@ class CoPilotProcessor:
         """
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
+        error_msg = None
 
         try:
             # Choose service based on LaunchDarkly flag
@@ -259,12 +259,15 @@ class CoPilotProcessor:
             # Handle all exceptions (including CancelledError) with appropriate logging
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
+                error_msg = "Operation cancelled"
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
             raise
         finally:
-            error_msg = "Operation cancelled" if cancel.is_set() else None
+            # If no exception but user cancelled, still mark as cancelled
+            if not error_msg and cancel.is_set():
+                error_msg = "Operation cancelled"
             try:
                 await stream_registry.mark_session_completed(
                     entry.session_id, error_message=error_msg
