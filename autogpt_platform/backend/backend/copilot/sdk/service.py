@@ -459,9 +459,10 @@ async def stream_chat_completion_sdk(
     # Catch ValueError early so the failure yields a clean StreamError rather
     # than propagating outside the stream error-handling path.
     has_history = len(session.messages) > 1
+    sdk_cwd = ""
     try:
-        _precomputed_cwd = _make_sdk_cwd(session_id)
-        os.makedirs(_precomputed_cwd, exist_ok=True)
+        sdk_cwd = _make_sdk_cwd(session_id)
+        os.makedirs(sdk_cwd, exist_ok=True)
     except (ValueError, OSError) as e:
         logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
         yield StreamError(
@@ -472,7 +473,7 @@ async def stream_chat_completion_sdk(
     system_prompt, _ = await _build_system_prompt(
         user_id, has_conversation_history=has_history
     )
-    system_prompt += _build_sdk_tool_supplement(_precomputed_cwd)
+    system_prompt += _build_sdk_tool_supplement(sdk_cwd)
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
 
@@ -500,7 +501,6 @@ async def stream_chat_completion_sdk(
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     stream_completed = False
-    sdk_cwd = _precomputed_cwd  # set before try so finally can always clean up
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
