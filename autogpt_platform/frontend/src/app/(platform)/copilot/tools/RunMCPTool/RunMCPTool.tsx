@@ -14,6 +14,7 @@ import {
   isMCPToolOutput,
   isSetupRequirementsOutput,
   serverHost,
+  type MCPErrorOutput,
 } from "./helpers";
 
 export interface RunMCPToolPart {
@@ -49,6 +50,11 @@ export function RunMCPToolComponent({ part }: Props) {
       ? output
       : null;
 
+  const errorOutput =
+    isError && output && isErrorOutput(output)
+      ? (output as MCPErrorOutput)
+      : null;
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -58,6 +64,18 @@ export function RunMCPToolComponent({ part }: Props) {
           className={isError ? "text-red-500" : undefined}
         />
       </div>
+
+      {/* Error detail card */}
+      {errorOutput && (
+        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorOutput.message}
+          {errorOutput.error && (
+            <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
+              {errorOutput.error}
+            </pre>
+          )}
+        </div>
+      )}
 
       {/* Credential setup — same card as used in RunBlock / graph builder */}
       {setupRequirementsOutput && (
