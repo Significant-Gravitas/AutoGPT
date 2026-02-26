@@ -973,35 +973,16 @@ async def stream_chat_completion_sdk(
             session_id[:12],
             len(session.messages),
         )
-    except asyncio.CancelledError:
-        # Client disconnect / server shutdown — save session with error marker
-        # so it persists after refresh.
-        logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
-
-        # Append error marker to session (non-invasive text parsing approach)
-        if session:
-            session.messages.append(
-                ChatMessage(
-                    role="assistant",
-                    content=f"{COPILOT_ERROR_PREFIX} Operation cancelled",
-                )
-            )
-            try:
-                await asyncio.shield(upsert_chat_session(session))
-                logger.debug(
-                    "[SDK] [%s] Persisted cancellation error marker", session_id[:12]
-                )
-            except Exception as save_err:
-                logger.warning(
-                    "[SDK] [%s] Failed to persist error marker: %s",
-                    session_id[:12],
-                    save_err,
-                )
-
-        raise
     except Exception as e:
-        error_msg = str(e) or type(e).__name__
-        logger.error(f"[SDK] Error: {error_msg}", exc_info=True)
+        # Handle all exceptions (CancelledError and regular exceptions)
+        if isinstance(e, asyncio.CancelledError):
+            logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
+            error_msg = "Operation cancelled"
+        else:
+            error_msg = str(e) or type(e).__name__
+            logger.error(
+                f"[SDK] [%s] Error: {error_msg}", session_id[:12], exc_info=True
+            )
 
         # Append error marker to session (non-invasive text parsing approach)
         if session:
@@ -1020,11 +1001,14 @@ async def stream_chat_completion_sdk(
                     save_err,
                 )
 
-        # Also yield StreamError for immediate feedback during active stream
-        yield StreamError(
-            errorText="An error occurred. Please try again.",
-            code="sdk_error",
-        )
+        # Yield StreamError for immediate feedback (only for non-cancellation errors)
+        if not isinstance(e, asyncio.CancelledError):
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="sdk_error",
+            )
+
+        raise
     finally:
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when

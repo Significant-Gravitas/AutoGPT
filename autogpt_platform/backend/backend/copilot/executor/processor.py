@@ -160,62 +160,31 @@ class CoPilotProcessor:
 
         start_time = time.monotonic()
 
-        try:
-            # Run the async execution in our event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._execute_async(entry, cancel, cluster_lock, log),
-                self.execution_loop,
-            )
+        # Run the async execution in our event loop
+        # All error handling is done in _execute_async to avoid duplicate mark_session_completed calls
+        future = asyncio.run_coroutine_threadsafe(
+            self._execute_async(entry, cancel, cluster_lock, log),
+            self.execution_loop,
+        )
 
-            # Wait for completion, checking cancel periodically
-            while not future.done():
-                try:
-                    future.result(timeout=1.0)
-                except asyncio.TimeoutError:
-                    if cancel.is_set():
-                        log.info("Cancellation requested")
-                        future.cancel()
-                        break
-                    # Refresh cluster lock to maintain ownership
-                    cluster_lock.refresh()
-
-            if not future.cancelled():
-                # Get result to propagate any exceptions
-                future.result()
-
-            elapsed = time.monotonic() - start_time
-            log.info(f"Execution completed in {elapsed:.2f}s")
-
-        except asyncio.CancelledError:
-            elapsed = time.monotonic() - start_time
-            log.info(f"Execution cancelled after {elapsed:.2f}s")
-            # Mark session as cancelled and send error to frontend
+        # Wait for completion, checking cancel periodically
+        while not future.done():
             try:
-                asyncio.run_coroutine_threadsafe(
-                    stream_registry.mark_session_completed(
-                        entry.session_id, error_message="Operation cancelled"
-                    ),
-                    self.execution_loop,
-                ).result(timeout=5.0)
-            except Exception as cleanup_err:
-                log.error(f"Safety net mark_session_completed failed: {cleanup_err}")
-            raise
-        except BaseException as e:
-            elapsed = time.monotonic() - start_time
-            error_msg = str(e) or type(e).__name__
-            log.error(f"Execution failed after {elapsed:.2f}s: {error_msg}")
-            # Safety net: if _execute_async's error handler failed to mark
-            # the session (e.g. RuntimeError from SDK cleanup), do it here.
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    stream_registry.mark_session_completed(
-                        entry.session_id, error_message=error_msg
-                    ),
-                    self.execution_loop,
-                ).result(timeout=5.0)
-            except Exception as cleanup_err:
-                log.error(f"Safety net mark_session_completed failed: {cleanup_err}")
-            raise
+                future.result(timeout=1.0)
+            except asyncio.TimeoutError:
+                if cancel.is_set():
+                    log.info("Cancellation requested")
+                    future.cancel()
+                    break
+                # Refresh cluster lock to maintain ownership
+                cluster_lock.refresh()
+
+        if not future.cancelled():
+            # Get result to propagate any exceptions
+            future.result()
+
+        elapsed = time.monotonic() - start_time
+        log.info(f"Execution completed in {elapsed:.2f}s")
 
     async def _execute_async(
         self,
@@ -293,24 +262,19 @@ class CoPilotProcessor:
                 entry.session_id, error_message=error_message
             )
 
-        except asyncio.CancelledError:
-            # Expected cancellation (client disconnect, graceful shutdown)
-            log.info("Turn cancelled")
-            # Mark session as cancelled and send error to frontend
-            try:
-                await stream_registry.mark_session_completed(
-                    entry.session_id, error_message="Operation cancelled"
-                )
-            except Exception as mark_err:
-                log.error(f"mark_session_completed failed on cancel: {mark_err}")
-            raise
         except BaseException as e:
-            error_msg = str(e) or type(e).__name__
-            log.error(f"Turn failed: {error_msg}")
+            # Handle all exceptions (including CancelledError) with appropriate messages
+            if isinstance(e, asyncio.CancelledError):
+                log.info("Turn cancelled")
+                error_msg = "Operation cancelled"
+            else:
+                error_msg = str(e) or type(e).__name__
+                log.error(f"Turn failed: {error_msg}")
+
             try:
                 await stream_registry.mark_session_completed(
                     entry.session_id, error_message=error_msg
                 )
             except Exception as mark_err:
-                log.error(f"mark_session_completed also failed: {mark_err}")
+                log.error(f"mark_session_completed failed: {mark_err}")
             raise
