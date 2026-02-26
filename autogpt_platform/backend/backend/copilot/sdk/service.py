@@ -968,9 +968,8 @@ async def stream_chat_completion_sdk(
                 session_id[:12],
                 e,
             )
-            # Don't persist error or re-raise — processor already sent cancellation error
-            return
-
+            # Treat as cancellation - use friendly message instead of technical error
+            error_msg = "Operation cancelled"
         # Handle all other exceptions (CancelledError and regular exceptions)
         if isinstance(e, asyncio.CancelledError):
             logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
@@ -999,7 +998,11 @@ async def stream_chat_completion_sdk(
                 )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
-        if not isinstance(e, asyncio.CancelledError):
+        # Skip for CancelledError and RuntimeError cleanup issues (both are cancellations)
+        is_cancellation = isinstance(e, asyncio.CancelledError) or (
+            isinstance(e, RuntimeError) and "cancel scope" in str(e)
+        )
+        if not is_cancellation:
             yield StreamError(
                 errorText=error_msg,
                 code="sdk_error",
