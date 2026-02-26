@@ -199,9 +199,13 @@ class AIImageEditorBlock(Block):
             ImageEditorModel.NANO_BANANA_2,
         )
         if is_nano_banana:
+            # Nano Banana doesn't support "match_input_image"; fall back to "auto"
+            nb_aspect_ratio = (
+                "auto" if aspect_ratio == "match_input_image" else aspect_ratio
+            )
             input_params: dict = {
                 "prompt": prompt,
-                "aspect_ratio": aspect_ratio,
+                "aspect_ratio": nb_aspect_ratio,
                 "output_format": "jpg",
             }
             if input_image_b64:
