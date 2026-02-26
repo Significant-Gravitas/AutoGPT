@@ -200,11 +200,6 @@ export const ChatMessagesContainer = ({
           const isLastAssistant =
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
-          const messageHasVisibleContent = message.parts.some(
-            (p) =>
-              (p.type === "text" && p.text.trim().length > 0) ||
-              p.type.startsWith("tool-"),
-          );
 
           return (
             <Message from={message.role} key={message.id}>
