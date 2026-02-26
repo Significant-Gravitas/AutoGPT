@@ -417,12 +417,17 @@ class CoPilotExecutor(AppProcess):
                     logger.error(f"Execution for {session_id} failed: {error_msg}")
 
                     # Mark session as completed with error
+                    # Use new event loop to avoid conflicts with worker thread loops
                     try:
-                        asyncio.run(
-                            stream_registry.mark_session_completed(
-                                session_id, error_message=error_msg
+                        loop = asyncio.new_event_loop()
+                        try:
+                            loop.run_until_complete(
+                                stream_registry.mark_session_completed(
+                                    session_id, error_message=error_msg
+                                )
                             )
-                        )
+                        finally:
+                            loop.close()
                     except Exception as mark_err:
                         logger.error(
                             f"Failed to mark session completed for {session_id}: {mark_err}"
@@ -432,7 +437,13 @@ class CoPilotExecutor(AppProcess):
                 else:
                     # Mark session as completed successfully
                     try:
-                        asyncio.run(stream_registry.mark_session_completed(session_id))
+                        loop = asyncio.new_event_loop()
+                        try:
+                            loop.run_until_complete(
+                                stream_registry.mark_session_completed(session_id)
+                            )
+                        finally:
+                            loop.close()
                     except Exception as mark_err:
                         logger.error(
                             f"Failed to mark session completed for {session_id}: {mark_err}"
