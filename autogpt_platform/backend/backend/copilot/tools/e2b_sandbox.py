@@ -30,6 +30,7 @@ No special capabilities required beyond the standard container setup:
 - Outbound HTTPS (port 443) from the container — already open for API calls.
 """
 
+import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -50,6 +51,14 @@ _E2B_WORKDIR = "/home/user"
 # Maximum file size to sync (skip huge files to avoid long round-trips)
 _MAX_SYNC_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Placeholder written to Redis while a sandbox is being created.
+# Prevents concurrent requests from spawning duplicate sandboxes.
+_SANDBOX_CREATING = "__creating__"
+
+# How long (seconds) the creation placeholder lives in Redis.
+# Must comfortably exceed the time it takes AsyncSandbox.create() to return.
+_CREATION_LOCK_TTL = 60
+
 
 # ---------------------------------------------------------------------------
 # Sandbox lifecycle
@@ -67,6 +76,10 @@ async def get_or_create_sandbox(
     The sandbox_id is persisted in Redis so the same sandbox is reused
     across turns even when requests land on different pods.
 
+    Concurrent calls for the same *session_id* are safe: a Redis ``SET NX``
+    creation lock ensures only one caller creates the sandbox; the others
+    wait and then reconnect to the sandbox that was created.
+
     Args:
         session_id: CoPilot session ID (used as Redis key suffix).
         api_key: E2B API key.
@@ -81,34 +94,86 @@ async def get_or_create_sandbox(
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Step 1: Try to reconnect to an existing, live sandbox
+    # ──────────────────────────────────────────────────────────────────────
     raw = await redis.get(redis_key)
     if raw:
         sandbox_id = raw if isinstance(raw, str) else raw.decode()
-        try:
-            sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-            if await sandbox.is_running():
-                await redis.expire(redis_key, timeout)
+        if sandbox_id != _SANDBOX_CREATING:
+            try:
+                sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+                if await sandbox.is_running():
+                    await redis.expire(redis_key, timeout)
+                    logger.info(
+                        "[E2B] Reconnected to sandbox %.12s for session %.12s",
+                        sandbox_id,
+                        session_id,
+                    )
+                    return sandbox
                 logger.info(
-                    "[E2B] Reconnected to sandbox %.12s for session %.12s",
+                    "[E2B] Sandbox %.12s expired, creating new for session %.12s",
                     sandbox_id,
                     session_id,
                 )
-                return sandbox
-            logger.info(
-                "[E2B] Sandbox %.12s expired, creating new for session %.12s",
-                sandbox_id,
-                session_id,
-            )
-        except Exception as exc:
-            logger.warning(
-                "[E2B] Reconnect to sandbox %.12s failed: %s", sandbox_id, exc
-            )
+            except Exception as exc:
+                logger.warning(
+                    "[E2B] Reconnect to sandbox %.12s failed: %s", sandbox_id, exc
+                )
 
-    sandbox = await AsyncSandbox.create(
-        template=template,
-        api_key=api_key,
-        timeout=timeout,
+    # ──────────────────────────────────────────────────────────────────────
+    # Step 2: Atomically claim sandbox creation to prevent duplicate spawns
+    # ──────────────────────────────────────────────────────────────────────
+    claimed = await redis.set(
+        redis_key, _SANDBOX_CREATING, nx=True, ex=_CREATION_LOCK_TTL
     )
+    if not claimed:
+        # Another coroutine holds the creation lock.  Poll until it resolves.
+        poll_intervals = int(_CREATION_LOCK_TTL / 0.5)
+        for _ in range(poll_intervals):
+            await asyncio.sleep(0.5)
+            raw = await redis.get(redis_key)
+            if not raw:
+                # Placeholder expired before the sandbox was registered.
+                break
+            sandbox_id = raw if isinstance(raw, str) else raw.decode()
+            if sandbox_id != _SANDBOX_CREATING:
+                # The other coroutine finished; connect to their sandbox.
+                try:
+                    sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+                    if await sandbox.is_running():
+                        await redis.expire(redis_key, timeout)
+                        logger.info(
+                            "[E2B] Joined concurrently created sandbox %.12s "
+                            "for session %.12s",
+                            sandbox_id,
+                            session_id,
+                        )
+                        return sandbox
+                except Exception as exc:
+                    logger.warning(
+                        "[E2B] Join concurrently created sandbox %.12s failed: %s",
+                        sandbox_id,
+                        exc,
+                    )
+                break  # fall through to create our own
+        # Re-claim the creation lock for ourselves.
+        await redis.set(redis_key, _SANDBOX_CREATING, ex=_CREATION_LOCK_TTL)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Step 3: Create a new sandbox and register it
+    # ──────────────────────────────────────────────────────────────────────
+    try:
+        sandbox = await AsyncSandbox.create(
+            template=template,
+            api_key=api_key,
+            timeout=timeout,
+        )
+    except Exception:
+        # Release the creation lock so other waiters can retry.
+        await redis.delete(redis_key)
+        raise
+
     await redis.setex(redis_key, timeout, sandbox.sandbox_id)
     logger.info(
         "[E2B] Created new sandbox %.12s for session %.12s",
@@ -139,13 +204,24 @@ async def sync_from_sandbox(sandbox: "AsyncSandbox", local_dir: str) -> None:
         logger.error("[E2B] sync_from_sandbox: list failed: %s", exc)
         return
 
+    local_dir_abs = os.path.normpath(os.path.abspath(local_dir))
+
     for entry in entries:
         rel = os.path.relpath(entry.path, _E2B_WORKDIR)
         # Skip hidden files / hidden ancestor directories
         if any(part.startswith(".") for part in rel.split(os.sep)):
             continue
 
-        local_path = os.path.join(local_dir, rel)
+        local_path = os.path.normpath(os.path.join(local_dir, rel))
+
+        # Guard against path traversal: entry.path must stay within local_dir
+        if not (
+            local_path == local_dir_abs or local_path.startswith(local_dir_abs + os.sep)
+        ):
+            logger.warning(
+                "[E2B] sync_from_sandbox: skipping path outside workspace: %s", rel
+            )
+            continue
 
         if getattr(entry.type, "value", str(entry.type)) == "dir":
             os.makedirs(local_path, exist_ok=True)

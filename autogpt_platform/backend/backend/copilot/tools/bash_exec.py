@@ -3,8 +3,9 @@
 When an E2B sandbox is available in the current execution context the command
 runs directly on the remote E2B cloud environment.  This means:
 
-- **Persistent filesystem**: files survive across turns via the FUSE-mounted
-  ``/home/user`` directory shared with SDK Read/Write/Edit tools.
+- **Persistent filesystem**: files survive across turns via HTTP-based sync
+  with the sandbox's ``/home/user`` directory (E2B files API), shared with
+  SDK Read/Write/Edit tools.
 - **Full internet access**: E2B sandboxes have unrestricted outbound network.
 - **Execution isolation**: E2B provides a fresh, containerised Linux environment.
 
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Working directory inside E2B sandboxes (matches the sshfs mount source).
+# Working directory inside E2B sandboxes (must match _E2B_WORKDIR in e2b_sandbox.py).
 _E2B_WORKDIR = "/home/user"
 
 
