@@ -948,6 +948,17 @@ view mv_review_stats {
   // Refresh uses CONCURRENTLY to avoid blocking reads
 }
 
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every hour via pg_cron (with fallback to manual refresh)
+view mv_suggested_blocks {
+  block_id        String @unique
+  execution_count Int
+
+  // Pre-aggregated execution counts per block for the last 14 days
+  // Used by builder suggestions for ordering blocks by popularity
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
 model StoreListing {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
