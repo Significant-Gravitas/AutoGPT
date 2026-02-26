@@ -264,7 +264,8 @@ export function useCopilotPage() {
     setReconnectAttempts(0);
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
-  }, [sessionId]);
+    prevStatusRef.current = status; // Reset to avoid cross-session state bleeding
+  }, [sessionId, status]);
 
   // Invalidate session cache when stream completes
   const prevStatusRef = useRef(status);
