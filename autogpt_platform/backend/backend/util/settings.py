@@ -413,6 +413,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    user_storage_quota_mb: int = Field(
+        default=1024,
+        ge=1,
+        le=102400,
+        description="Per-user workspace storage quota in MB (default 1 GB). "
+        "Users are blocked from uploading once their total workspace usage "
+        "exceeds this limit.",
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,

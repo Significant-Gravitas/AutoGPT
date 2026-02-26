@@ -79,6 +79,7 @@ class StreamChatRequest(BaseModel):
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    file_ids: list[str] | None = None  # workspace file IDs attached to this message
 
 
 class CreateSessionResponse(BaseModel):
@@ -445,6 +446,7 @@ async def stream_chat_post(
         turn_id=turn_id,
         is_user_message=request.is_user_message,
         context=request.context,
+        file_ids=request.file_ids,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

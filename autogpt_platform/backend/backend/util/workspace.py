@@ -424,3 +424,27 @@ class WorkspaceManager:
         return await db.count_workspace_files(
             self.workspace_id, path_prefix=effective_path
         )
+
+    async def get_total_usage_bytes(self) -> int:
+        """
+        Get total storage usage for this workspace across all sessions.
+
+        Returns:
+            Total size in bytes
+        """
+        db = workspace_db()
+        return await db.get_workspace_total_size(self.workspace_id)
+
+    async def check_quota(self, additional_bytes: int = 0) -> tuple[bool, int, int]:
+        """
+        Check if the workspace is within storage quota.
+
+        Args:
+            additional_bytes: Size of a pending upload to include in the check
+
+        Returns:
+            Tuple of (within_quota, current_usage_bytes, quota_bytes)
+        """
+        current_usage = await self.get_total_usage_bytes()
+        quota_bytes = Config().user_storage_quota_mb * 1024 * 1024
+        return (current_usage + additional_bytes) <= quota_bytes, current_usage, quota_bytes

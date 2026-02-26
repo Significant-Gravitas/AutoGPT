@@ -23,7 +23,44 @@ from backend.util.retry import func_retry
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
+logger_mod = logging.getLogger(__name__)
+
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
+
+
+async def _build_file_attachment_context(
+    user_id: str,
+    session_id: str,
+    file_ids: list[str],
+) -> str:
+    """Build a context string describing workspace files attached by the user.
+
+    Fetches metadata for each file_id and returns a structured text block
+    that the agent can use to understand what files are available and how to
+    access them via the ``read_workspace_file`` tool.
+    """
+    from backend.data.db_accessors import workspace_db
+
+    db = workspace_db()
+    workspace = await db.get_or_create_workspace(user_id)
+
+    lines: list[str] = ["[Attached files]"]
+    for fid in file_ids:
+        info = await db.get_workspace_file(fid, workspace.id)
+        if info is None:
+            lines.append(f"- {fid}: (not found)")
+            continue
+        lines.append(
+            f"- {info.name} (id={info.id}, path={info.path}, "
+            f"type={info.mime_type}, size={info.size_bytes:,} bytes)"
+        )
+
+    lines.append(
+        "\nUse the read_workspace_file tool with the file_id above to read "
+        "file contents. For large or binary files, use save_to_path to copy "
+        "them to the working directory first."
+    )
+    return "\n".join(lines)
 
 
 # ============ Module Entry Points ============ #
@@ -235,10 +272,24 @@ class CoPilotProcessor:
             )
             log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
 
+            # If the user attached files, build context and append to message
+            message = entry.message if entry.message else None
+            if message and entry.file_ids and entry.user_id:
+                try:
+                    file_context = await _build_file_attachment_context(
+                        entry.user_id, entry.session_id, entry.file_ids
+                    )
+                    message = f"{message}\n\n{file_context}"
+                    log.info(
+                        f"Injected {len(entry.file_ids)} file attachment(s) into message"
+                    )
+                except Exception as e:
+                    log.error(f"Failed to build file attachment context: {e}")
+
             # Stream chat completion and publish chunks to Redis.
             async for chunk in stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=message,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
