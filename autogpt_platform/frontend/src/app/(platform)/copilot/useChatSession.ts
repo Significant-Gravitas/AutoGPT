@@ -18,9 +18,10 @@ export function useChatSession() {
   const sessionQuery = useGetV2GetSession(sessionId ?? "", {
     query: {
       enabled: !!sessionId,
-      staleTime: Infinity,
+      staleTime: Infinity, // Manual invalidation on session switch
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
     },
   });
 
@@ -40,15 +41,26 @@ export function useChatSession() {
     }
   }, [sessionId, queryClient]);
 
+  // Expose active_stream info so the caller can trigger manual resume
+  // after hydration completes (rather than relying on AI SDK's built-in
+  // resume which fires before hydration).
+  const hasActiveStream = useMemo(() => {
+    if (sessionQuery.data?.status !== 200) return false;
+    return !!sessionQuery.data.data.active_stream;
+  }, [sessionQuery.data, sessionId]);
+
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
+  // When the session is complete (no active stream), mark dangling tool
+  // calls as completed so stale spinners don't persist after refresh.
   const hydratedMessages = useMemo(() => {
     if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
     return convertChatSessionMessagesToUiMessages(
       sessionId,
       sessionQuery.data.data.messages ?? [],
+      { isComplete: !hasActiveStream },
     );
-  }, [sessionQuery.data, sessionId]);
+  }, [sessionQuery.data, sessionId, hasActiveStream]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession({
@@ -102,8 +114,11 @@ export function useChatSession() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
+    isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,
+    refetchSession: sessionQuery.refetch,
   };
 }

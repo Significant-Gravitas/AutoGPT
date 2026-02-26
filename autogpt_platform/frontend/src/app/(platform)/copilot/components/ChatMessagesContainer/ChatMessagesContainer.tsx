@@ -10,9 +10,9 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -28,18 +28,68 @@ import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
-// Workspace media support
+// Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
+
+// Special message prefixes for text-based markers (set by backend)
+const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
+const COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]";
+
+type MarkerType = "error" | "system" | null;
+
+/**
+ * Parse special markers from message content (error, system).
+ *
+ * Detects markers added by the backend for special rendering:
+ * - `[COPILOT_ERROR] message` → ErrorCard
+ * - `[COPILOT_SYSTEM] message` → System info message
+ *
+ * Returns marker type, marker text, and cleaned text.
+ */
+function parseSpecialMarkers(text: string): {
+  markerType: MarkerType;
+  markerText: string;
+  cleanText: string;
+} {
+  // Check for error marker
+  const errorMatch = text.match(
+    new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
+  );
+  if (errorMatch) {
+    return {
+      markerType: "error",
+      markerText: errorMatch[1].trim(),
+      cleanText: text.replace(errorMatch[0], "").trim(),
+    };
+  }
+
+  // Check for system marker
+  const systemMatch = text.match(
+    new RegExp(`\\${COPILOT_SYSTEM_PREFIX}\\s*(.+?)$`, "s"),
+  );
+  if (systemMatch) {
+    return {
+      markerType: "system",
+      markerText: systemMatch[1].trim(),
+      cleanText: text.replace(systemMatch[0], "").trim(),
+    };
+  }
+
+  return { markerType: null, markerText: "", cleanText: text };
+}
 
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
- * Detects MIME type from the hash fragment (e.g. workspace://id#video/mp4)
- * and prefixes the alt text with "video:" so the custom img component can
- * render a <video> element instead.
+ *
+ * Handles both image syntax  `![alt](workspace://id#mime)` and regular link
+ * syntax `[text](workspace://id)`.  For images the MIME type hash fragment is
+ * inspected so that videos can be rendered with a `<video>` element via the
+ * custom img component.
  */
 function resolveWorkspaceUrls(text: string): string {
-  return text.replace(
-    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+  // Handle image links: ![alt](workspace://id#mime)
+  let resolved = text.replace(
+    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
       const url = `/api/proxy${apiPath}`;
@@ -49,6 +99,21 @@ function resolveWorkspaceUrls(text: string): string {
       return `![${alt || "Image"}](${url})`;
     },
   );
+
+  // Handle regular links: [text](workspace://id) — without the leading "!"
+  // These are blocked by Streamdown's rehype-harden sanitizer because
+  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
+  // "[blocked]" to appear next to the link text.
+  resolved = resolved.replace(
+    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
+    (_match, linkText: string, fileId: string) => {
+      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = `/api/proxy${apiPath}`;
+      return `[${linkText || "Download file"}](${url})`;
+    },
+  );
+
+  return resolved;
 }
 
 /**
@@ -129,47 +194,53 @@ export const ChatMessagesContainer = ({
   headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-  const lastToastTimeRef = useRef(0);
-
-  useEffect(() => {
-    if (status === "submitted") {
-      setThinkingPhrase(getRandomPhrase());
-    }
-  }, [status]);
-
-  // Show a toast when a new error occurs, debounced to avoid spam
-  useEffect(() => {
-    if (!error) return;
-    const now = Date.now();
-    if (now - lastToastTimeRef.current < 3_000) return;
-    lastToastTimeRef.current = now;
-    toast({
-      variant: "destructive",
-      title: "Something went wrong",
-      description:
-        "The assistant encountered an error. Please try sending your message again.",
-    });
-  }, [error]);
 
   const lastMessage = messages[messages.length - 1];
-  const lastAssistantHasVisibleContent =
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.some(
-      (p) =>
-        (p.type === "text" && p.text.trim().length > 0) ||
-        p.type.startsWith("tool-"),
-    );
+
+  // Determine if something is visibly "in-flight" in the last assistant message:
+  // - Text is actively streaming (last part is non-empty text)
+  // - A tool call is pending (state is input-streaming or input-available)
+  const hasInflight = (() => {
+    if (lastMessage?.role !== "assistant") return false;
+    const parts = lastMessage.parts;
+    if (parts.length === 0) return false;
+
+    const lastPart = parts[parts.length - 1];
+
+    // Text is actively being written
+    if (lastPart.type === "text" && lastPart.text.trim().length > 0)
+      return true;
+
+    // A tool call is still pending (no output yet)
+    if (
+      lastPart.type.startsWith("tool-") &&
+      "state" in lastPart &&
+      (lastPart.state === "input-streaming" ||
+        lastPart.state === "input-available")
+    )
+      return true;
+
+    return false;
+  })();
 
   const showThinking =
-    status === "submitted" ||
-    (status === "streaming" && !lastAssistantHasVisibleContent);
+    status === "submitted" || (status === "streaming" && !hasInflight);
+
+  useEffect(() => {
+    if (showThinking) {
+      setThinkingPhrase(getRandomPhrase());
+    }
+  }, [showThinking]);
 
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
         {headerSlot}
         {isLoading && messages.length === 0 && (
-          <div className="flex min-h-full flex-1 items-center justify-center">
+          <div
+            className="flex flex-1 items-center justify-center"
+            style={{ minHeight: "calc(100vh - 12rem)" }}
+          >
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
@@ -177,11 +248,6 @@ export const ChatMessagesContainer = ({
           const isLastAssistant =
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
-          const messageHasVisibleContent = message.parts.some(
-            (p) =>
-              (p.type === "text" && p.text.trim().length > 0) ||
-              p.type.startsWith("tool-"),
-          );
 
           return (
             <Message from={message.role} key={message.id}>
@@ -194,15 +260,41 @@ export const ChatMessagesContainer = ({
               >
                 {message.parts.map((part, i) => {
                   switch (part.type) {
-                    case "text":
+                    case "text": {
+                      // Check for special markers (error, system)
+                      const { markerType, markerText, cleanText } =
+                        parseSpecialMarkers(part.text);
+
+                      if (markerType === "error") {
+                        return (
+                          <ErrorCard
+                            key={`${message.id}-${i}`}
+                            responseError={{ message: markerText }}
+                            context="execution"
+                          />
+                        );
+                      }
+
+                      if (markerType === "system") {
+                        return (
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+                          >
+                            {markerText}
+                          </div>
+                        );
+                      }
+
                       return (
                         <MessageResponse
                           key={`${message.id}-${i}`}
                           components={STREAMDOWN_COMPONENTS}
                         >
-                          {resolveWorkspaceUrls(part.text)}
+                          {resolveWorkspaceUrls(cleanText)}
                         </MessageResponse>
                       );
+                    }
                     case "tool-find_block":
                       return (
                         <FindBlocksTool
@@ -290,13 +382,11 @@ export const ChatMessagesContainer = ({
                       return null;
                   }
                 })}
-                {isLastAssistant &&
-                  !messageHasVisibleContent &&
-                  showThinking && (
-                    <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
-                      {thinkingPhrase}
-                    </span>
-                  )}
+                {isLastAssistant && showThinking && (
+                  <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
+                    {thinkingPhrase}
+                  </span>
+                )}
               </MessageContent>
             </Message>
           );
@@ -311,13 +401,15 @@ export const ChatMessagesContainer = ({
           </Message>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            <p className="font-medium">Something went wrong</p>
-            <p className="mt-1 text-red-600">
+          <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your
               message again.
-            </p>
-          </div>
+            </summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+              {error instanceof Error ? error.message : String(error)}
+            </pre>
+          </details>
         )}
       </ConversationContent>
       <ConversationScrollButton />

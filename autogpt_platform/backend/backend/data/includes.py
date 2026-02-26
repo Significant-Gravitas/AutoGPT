@@ -79,6 +79,12 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 }
 
 
+LIBRARY_FOLDER_INCLUDE: prisma.types.LibraryFolderInclude = {
+    "LibraryAgents": {"where": {"isDeleted": False}},
+    "Children": {"where": {"isDeleted": False}},
+}
+
+
 def library_agent_include(
     user_id: str,
     include_nodes: bool = True,
@@ -105,6 +111,7 @@ def library_agent_include(
     """
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
+        "Folder": True,  # Always needed for folder info
     }
 
     # Build AgentGraph include based on requested options

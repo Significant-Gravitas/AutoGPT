@@ -14,6 +14,8 @@ import json
 import logging
 import os
 import re
+import time
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,16 @@ _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 STRIPPABLE_TYPES = frozenset(
     {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
 )
+
+
+@dataclass
+class TranscriptDownload:
+    """Result of downloading a transcript with its metadata."""
+
+    content: str
+    message_count: int = 0  # session.messages length when uploaded
+    uploaded_at: float = 0.0  # epoch timestamp of upload
+
 
 # Workspace storage constants — deterministic path from session_id.
 TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
@@ -119,21 +131,20 @@ def read_transcript_file(transcript_path: str) -> str | None:
             content = f.read()
 
         if not content.strip():
-            logger.debug(f"[Transcript] Empty file: {transcript_path}")
+            logger.debug("[Transcript] File is empty: %s", transcript_path)
             return None
 
         lines = content.strip().split("\n")
-        if len(lines) < 3:
-            # Raw files with ≤2 lines are metadata-only
-            # (queue-operation + file-history-snapshot, no conversation).
+
+        # Validate that the transcript has real conversation content
+        # (not just metadata like queue-operation entries).
+        if not validate_transcript(content):
             logger.debug(
-                f"[Transcript] Too few lines ({len(lines)}): {transcript_path}"
+                "[Transcript] No conversation content (%d lines) in %s",
+                len(lines),
+                transcript_path,
             )
             return None
-
-        # Quick structural validation — parse first and last lines.
-        json.loads(lines[0])
-        json.loads(lines[-1])
 
         logger.info(
             f"[Transcript] Read {len(lines)} lines, "
@@ -158,6 +169,41 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 
 
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+
+
+def _encode_cwd_for_cli(cwd: str) -> str:
+    """Encode a working directory path the same way the Claude CLI does.
+
+    The CLI replaces all non-alphanumeric characters with ``-``.
+    """
+    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+
+
+def cleanup_cli_project_dir(sdk_cwd: str) -> None:
+    """Remove the CLI's project directory for a specific working directory.
+
+    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
+    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
+    safe to remove entirely after the transcript has been uploaded.
+    """
+    import shutil
+
+    cwd_encoded = _encode_cwd_for_cli(sdk_cwd)
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
+
+    if not project_dir.startswith(projects_base + os.sep):
+        logger.warning(
+            f"[Transcript] Cleanup path escaped projects base: {project_dir}"
+        )
+        return
+
+    if os.path.isdir(project_dir):
+        shutil.rmtree(project_dir, ignore_errors=True)
+        logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
+    else:
+        logger.debug(f"[Transcript] Project dir not found: {project_dir}")
 
 
 def write_transcript_to_tempfile(
@@ -248,6 +294,15 @@ def _storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
     )
 
 
+def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
+    """Return (workspace_id, file_id, filename) for a session's transcript metadata."""
+    return (
+        TRANSCRIPT_STORAGE_PREFIX,
+        _sanitize_id(user_id),
+        f"{_sanitize_id(session_id)}.meta.json",
+    )
+
+
 def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
     """Build the full storage path string that ``retrieve()`` expects.
 
@@ -268,21 +323,30 @@ def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
         return f"local://{wid}/{fid}/{fname}"
 
 
-async def upload_transcript(user_id: str, session_id: str, content: str) -> None:
+async def upload_transcript(
+    user_id: str,
+    session_id: str,
+    content: str,
+    message_count: int = 0,
+) -> None:
     """Strip progress entries and upload transcript to bucket storage.
 
     Safety: only overwrites when the new (stripped) transcript is larger than
     what is already stored.  Since JSONL is append-only, the latest transcript
     is always the longest.  This prevents a slow/stale background task from
     clobbering a newer upload from a concurrent turn.
+
+    Args:
+        message_count: ``len(session.messages)`` at upload time — used by
+            the next turn to detect staleness and compress only the gap.
     """
     from backend.util.workspace_storage import get_workspace_storage
 
     stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
         logger.warning(
-            f"[Transcript] Skipping upload — stripped content is not a valid "
-            f"transcript for session {session_id}"
+            f"[Transcript] Skipping upload — stripped content not valid "
+            f"for session {session_id}"
         )
         return
 
@@ -297,9 +361,8 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
         existing = await storage.retrieve(path)
         if len(existing) >= new_size:
             logger.info(
-                f"[Transcript] Skipping upload — existing transcript "
-                f"({len(existing)}B) >= new ({new_size}B) for session "
-                f"{session_id}"
+                f"[Transcript] Skipping upload — existing ({len(existing)}B) "
+                f">= new ({new_size}B) for session {session_id}"
             )
             return
     except (FileNotFoundError, Exception):
@@ -311,16 +374,38 @@ async def upload_transcript(user_id: str, session_id: str, content: str) -> None
         filename=fname,
         content=encoded,
     )
+
+    # Store metadata alongside the transcript so the next turn can detect
+    # staleness and only compress the gap instead of the full history.
+    # Wrapped in try/except so a metadata write failure doesn't orphan
+    # the already-uploaded transcript — the next turn will just fall back
+    # to full gap fill (msg_count=0).
+    try:
+        meta = {"message_count": message_count, "uploaded_at": time.time()}
+        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+        await storage.store(
+            workspace_id=mwid,
+            file_id=mfid,
+            filename=mfname,
+            content=json.dumps(meta).encode("utf-8"),
+        )
+    except Exception as e:
+        logger.warning(f"[Transcript] Failed to write metadata for {session_id}: {e}")
+
     logger.info(
-        f"[Transcript] Uploaded {new_size} bytes "
-        f"(stripped from {len(content)}) for session {session_id}"
+        f"[Transcript] Uploaded {new_size}B "
+        f"(stripped from {len(content)}B, msg_count={message_count}) "
+        f"for session {session_id}"
     )
 
 
-async def download_transcript(user_id: str, session_id: str) -> str | None:
-    """Download transcript from bucket storage.
+async def download_transcript(
+    user_id: str, session_id: str
+) -> TranscriptDownload | None:
+    """Download transcript and metadata from bucket storage.
 
-    Returns the JSONL content string, or ``None`` if not found.
+    Returns a ``TranscriptDownload`` with the JSONL content and the
+    ``message_count`` watermark from the upload, or ``None`` if not found.
     """
     from backend.util.workspace_storage import get_workspace_storage
 
@@ -330,16 +415,42 @@ async def download_transcript(user_id: str, session_id: str) -> str | None:
     try:
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
-        logger.info(
-            f"[Transcript] Downloaded {len(content)} bytes for session {session_id}"
-        )
-        return content
     except FileNotFoundError:
         logger.debug(f"[Transcript] No transcript in storage for {session_id}")
         return None
     except Exception as e:
         logger.warning(f"[Transcript] Failed to download transcript: {e}")
         return None
+
+    # Try to load metadata (best-effort — old transcripts won't have it)
+    message_count = 0
+    uploaded_at = 0.0
+    try:
+        from backend.util.workspace_storage import GCSWorkspaceStorage
+
+        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+        if isinstance(storage, GCSWorkspaceStorage):
+            blob = f"workspaces/{mwid}/{mfid}/{mfname}"
+            meta_path = f"gcs://{storage.bucket_name}/{blob}"
+        else:
+            meta_path = f"local://{mwid}/{mfid}/{mfname}"
+
+        meta_data = await storage.retrieve(meta_path)
+        meta = json.loads(meta_data.decode("utf-8"))
+        message_count = meta.get("message_count", 0)
+        uploaded_at = meta.get("uploaded_at", 0.0)
+    except (FileNotFoundError, json.JSONDecodeError, Exception):
+        pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+
+    logger.info(
+        f"[Transcript] Downloaded {len(content)}B "
+        f"(msg_count={message_count}) for session {session_id}"
+    )
+    return TranscriptDownload(
+        content=content,
+        message_count=message_count,
+        uploaded_at=uploaded_at,
+    )
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

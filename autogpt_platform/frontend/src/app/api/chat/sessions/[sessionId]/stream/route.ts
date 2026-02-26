@@ -3,6 +3,20 @@ import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
+export const maxDuration = 800;
+
+const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
+  ? Number(process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS)
+  : undefined;
+
+function debugSignal(): AbortSignal | undefined {
+  if (!DEBUG_SSE_TIMEOUT_MS) return undefined;
+  console.warn(
+    `[SSE_DEBUG] Simulating proxy timeout in ${DEBUG_SSE_TIMEOUT_MS}ms`,
+  );
+  return AbortSignal.timeout(DEBUG_SSE_TIMEOUT_MS);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -47,6 +61,7 @@ export async function POST(
         is_user_message: is_user_message ?? true,
         context: context || null,
       }),
+      signal: debugSignal(),
     });
 
     if (!response.ok) {
@@ -110,6 +125,7 @@ export async function GET(
     const response = await fetch(streamUrl.toString(), {
       method: "GET",
       headers,
+      signal: debugSignal(),
     });
 
     if (response.status === 204) {

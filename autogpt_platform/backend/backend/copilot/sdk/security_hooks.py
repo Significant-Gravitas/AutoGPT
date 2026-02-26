@@ -16,6 +16,7 @@ from .tool_adapter import (
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
+    stash_pending_tool_output,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,20 +124,20 @@ def _validate_user_isolation(
     """Validate that tool calls respect user isolation."""
     # For workspace file tools, ensure path doesn't escape
     if "workspace" in tool_name.lower():
+        # The "path" param is a cloud storage key (e.g. "/ASEAN/report.md")
+        # where a leading "/" is normal.  Only check for ".." traversal.
+        # Filesystem paths (source_path, save_to_path) are validated inside
+        # the tool itself via _validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
-        if path:
-            # Check for path traversal
-            if ".." in path or path.startswith("/"):
-                logger.warning(
-                    f"Blocked path traversal attempt: {path} by user {user_id}"
-                )
-                return {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": "Path traversal not allowed",
-                    }
+        if path and ".." in path:
+            logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "Path traversal not allowed",
                 }
+            }
 
     return {}
 
@@ -159,7 +160,7 @@ def create_security_hooks(
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
-        max_subtasks: Maximum Task (sub-agent) spawns allowed per session
+        max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
         on_stop: Callback ``(transcript_path, sdk_session_id)`` invoked when
             the SDK finishes processing — used to read the JSONL transcript
             before the CLI process exits.
@@ -171,8 +172,9 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
-        # Per-session counter for Task sub-agent spawns
-        task_spawn_count = 0
+        # Per-session tracking for Task sub-agent concurrency.
+        # Set of tool_use_ids that consumed a slot — len() is the active count.
+        task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -180,23 +182,34 @@ def create_security_hooks(
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Combined pre-tool-use validation hook."""
-            nonlocal task_spawn_count
             _ = context  # unused but required by signature
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
             # Rate-limit Task (sub-agent) spawns per session
             if tool_name == "Task":
-                task_spawn_count += 1
-                if task_spawn_count > max_subtasks:
+                # Block background task execution first — denied calls
+                # should not consume a subtask slot.
+                if tool_input.get("run_in_background"):
+                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
+                    return cast(
+                        SyncHookJSONOutput,
+                        _deny(
+                            "Background task execution is not supported. "
+                            "Run tasks in the foreground instead "
+                            "(remove the run_in_background parameter)."
+                        ),
+                    )
+                if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
                     )
                     return cast(
                         SyncHookJSONOutput,
                         _deny(
-                            f"Maximum {max_subtasks} sub-tasks per session. "
-                            "Please continue in the main conversation."
+                            f"Maximum {max_subtasks} concurrent sub-tasks. "
+                            "Wait for running sub-tasks to finish, "
+                            "or continue in the main conversation."
                         ),
                     )
 
@@ -216,18 +229,68 @@ def create_security_hooks(
             if result:
                 return cast(SyncHookJSONOutput, result)
 
+            # Reserve the Task slot only after all validations pass
+            if tool_name == "Task" and tool_use_id is not None:
+                task_tool_use_ids.add(tool_use_id)
+
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
+
+        def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
+            """Release a Task concurrency slot if one was reserved."""
+            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
+                task_tool_use_ids.discard(tool_use_id)
+                logger.info(
+                    "[SDK] Task slot released, active=%d/%d, user=%s",
+                    len(task_tool_use_ids),
+                    max_subtasks,
+                    user_id,
+                )
 
         async def post_tool_use_hook(
             input_data: HookInput,
             tool_use_id: str | None,
             context: HookContext,
         ) -> SyncHookJSONOutput:
-            """Log successful tool executions for observability."""
+            """Log successful tool executions and stash SDK built-in tool outputs.
+
+            MCP tools stash their output in ``_execute_tool_sync`` before the
+            SDK can truncate it.  SDK built-in tools (WebSearch, Read, etc.)
+            are executed by the CLI internally — this hook captures their
+            output so the response adapter can forward it to the frontend.
+            """
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
-            logger.debug(f"[SDK] Tool success: {tool_name}, tool_use_id={tool_use_id}")
+
+            _release_task_slot(tool_name, tool_use_id)
+            is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
+            logger.info(
+                "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
+                tool_name,
+                is_builtin,
+                (tool_use_id or "")[:12],
+            )
+
+            # Stash output for SDK built-in tools so the response adapter can
+            # emit StreamToolOutputAvailable even when the CLI doesn't surface
+            # a separate UserMessage with ToolResultBlock content.
+            if is_builtin:
+                tool_response = input_data.get("tool_response")
+                if tool_response is not None:
+                    resp_preview = str(tool_response)[:100]
+                    logger.info(
+                        "[SDK] Stashing builtin output for %s (%d chars): %s...",
+                        tool_name,
+                        len(str(tool_response)),
+                        resp_preview,
+                    )
+                    stash_pending_tool_output(tool_name, tool_response)
+                else:
+                    logger.warning(
+                        "[SDK] PostToolUse for builtin %s but tool_response is None",
+                        tool_name,
+                    )
+
             return cast(SyncHookJSONOutput, {})
 
         async def post_tool_failure_hook(
@@ -243,6 +306,9 @@ def create_security_hooks(
                 f"[SDK] Tool failed: {tool_name}, error={error}, "
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
+
+            _release_task_slot(tool_name, tool_use_id)
+
             return cast(SyncHookJSONOutput, {})
 
         async def pre_compact_hook(
