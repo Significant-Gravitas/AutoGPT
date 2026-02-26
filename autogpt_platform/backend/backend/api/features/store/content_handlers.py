@@ -13,6 +13,7 @@ from typing import Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
+from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
@@ -193,8 +194,6 @@ class BlockHandler(ContentHandler):
         ]
 
         # Convert to ContentItem
-        from backend.blocks.llm import LlmModel
-
         items = []
         for block_id, block_cls in missing_blocks[:batch_size]:
             try:
