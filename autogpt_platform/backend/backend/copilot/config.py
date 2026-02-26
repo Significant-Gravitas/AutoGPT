@@ -133,7 +133,7 @@ class ChatConfig(BaseSettings):
     def get_e2b_api_key(cls, v):
         """Get E2B API key from environment if not provided."""
         if v is None:
-            v = os.getenv("E2B_API_KEY")
+            v = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
         return v
 
     @field_validator("api_key", mode="before")
