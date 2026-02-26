@@ -943,6 +943,43 @@ async def stream_chat_completion_sdk(
                         )
                     )
 
+        except RuntimeError as e:
+            # SDK cleanup can raise "Attempted to exit cancel scope in a different task"
+            # when cancelled. This is a known SDK issue - treat as cancellation.
+            if "cancel scope" in str(e):
+                logger.warning(
+                    "[SDK] [%s] Cleanup error during cancellation: %s",
+                    session_id[:12],
+                    e,
+                )
+                if session:
+                    # Add cancellation marker
+                    if session.messages and session.messages[-1].role == "assistant":
+                        last_msg = session.messages[-1]
+                        if last_msg.content:
+                            last_msg.content = (
+                                f"{last_msg.content}\n\n[Operation cancelled]"
+                            )
+                        else:
+                            last_msg.content = "[Operation cancelled]"
+                    else:
+                        session.messages.append(
+                            ChatMessage(
+                                role="assistant", content="[Operation cancelled]"
+                            )
+                        )
+                    try:
+                        await asyncio.shield(upsert_chat_session(session))
+                    except Exception as save_err:
+                        logger.error(
+                            "[SDK] [%s] Failed to save session after cleanup error: %s",
+                            session_id[:12],
+                            save_err,
+                        )
+                # Don't re-raise - treat as graceful cancellation
+                return
+            # Other RuntimeErrors should propagate
+            raise
         except ImportError:
             raise RuntimeError(
                 "claude-agent-sdk is not installed. "
