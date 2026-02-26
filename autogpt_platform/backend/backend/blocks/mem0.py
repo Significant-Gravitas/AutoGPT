@@ -3,7 +3,7 @@ from typing import Any, Literal, Optional, Union
 from mem0 import MemoryClient
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,

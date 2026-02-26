@@ -22,6 +22,27 @@ from backend.util.settings import Settings
 
 settings = Settings()
 
+
+def provider_matches(stored: str, expected: str) -> bool:
+    """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
+
+    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
+    instead of ``"mcp"``.  OAuth states persisted with the buggy format need
+    to match when ``expected`` is the canonical value (e.g. ``"mcp"``).
+    """
+    if stored == expected:
+        return True
+    if stored.startswith("ProviderName."):
+        member = stored.removeprefix("ProviderName.")
+        from backend.integrations.providers import ProviderName
+
+        try:
+            return ProviderName[member].value == expected
+        except KeyError:
+            pass
+    return False
+
+
 # This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
 ollama_credentials = APIKeyCredentials(
     id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
@@ -224,6 +245,14 @@ openweathermap_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+elevenlabs_credentials = APIKeyCredentials(
+    id="f4a8b6c2-3d1e-4f5a-9b8c-7d6e5f4a3b2c",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -252,6 +281,7 @@ DEFAULT_CREDENTIALS = [
     v0_credentials,
     webshare_proxy_credentials,
     openweathermap_credentials,
+    elevenlabs_credentials,
 ]
 
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
@@ -366,6 +396,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(webshare_proxy_credentials)
         if settings.secrets.openweathermap_api_key:
             all_credentials.append(openweathermap_credentials)
+        if settings.secrets.elevenlabs_api_key:
+            all_credentials.append(elevenlabs_credentials)
         return all_credentials
 
     async def get_creds_by_id(
@@ -378,7 +410,7 @@ class IntegrationCredentialsStore:
         self, user_id: str, provider: str
     ) -> list[Credentials]:
         credentials = await self.get_all_creds(user_id)
-        return [c for c in credentials if c.provider == provider]
+        return [c for c in credentials if provider_matches(c.provider, provider)]
 
     async def get_authorized_providers(self, user_id: str) -> list[str]:
         credentials = await self.get_all_creds(user_id)
@@ -474,17 +506,6 @@ class IntegrationCredentialsStore:
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.oauth_states.append(state)
 
-        async with await self.locked_user_integrations(user_id):
-
-            user_integrations = await self._get_user_integrations(user_id)
-            oauth_states = user_integrations.oauth_states
-            oauth_states.append(state)
-            user_integrations.oauth_states = oauth_states
-
-            await self.db_manager.update_user_integrations(
-                user_id=user_id, data=user_integrations
-            )
-
         return token, code_challenge
 
     def _generate_code_challenge(self) -> tuple[str, str]:
@@ -510,7 +531,7 @@ class IntegrationCredentialsStore:
                     state
                     for state in oauth_states
                     if secrets.compare_digest(state.token, token)
-                    and state.provider == provider
+                    and provider_matches(state.provider, provider)
                     and state.expires_at > now.timestamp()
                 ),
                 None,

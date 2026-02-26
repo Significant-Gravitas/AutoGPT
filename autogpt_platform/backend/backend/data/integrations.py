@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, AsyncGenerator, Literal, Optional, overload
+from typing import AsyncGenerator, Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
@@ -21,9 +21,6 @@ from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
-
-if TYPE_CHECKING:
-    from backend.api.features.library.model import LibraryAgentPreset
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -64,9 +61,18 @@ class Webhook(BaseDbModel):
         )
 
 
+# LibraryAgentPreset import must be after Webhook definition to avoid
+# broken circular import:
+# integrations.py → library/model.py → integrations.py (for Webhook)
+from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
+
+# Resolve forward refs
+LibraryAgentPreset.model_rebuild()
+
+
 class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
-    triggered_presets: list["LibraryAgentPreset"]
+    triggered_presets: list[LibraryAgentPreset]
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
@@ -75,11 +81,6 @@ class WebhookWithRelations(Webhook):
                 "AgentNodes and AgentPresets must be included in "
                 "IntegrationWebhook query with relations"
             )
-        # LibraryAgentPreset import is moved to TYPE_CHECKING to avoid circular import:
-        # integrations.py → library/model.py → integrations.py (for Webhook)
-        # Runtime import is used in WebhookWithRelations.from_db() method instead
-        # Import at runtime to avoid circular dependency
-        from backend.api.features.library.model import LibraryAgentPreset
 
         return WebhookWithRelations(
             **Webhook.from_db(webhook).model_dump(),
@@ -183,7 +184,7 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
-    events: list[str],
+    events: Optional[list[str]],
 ) -> Webhook | None:
     webhook = await IntegrationWebhook.prisma().find_first(
         where={
@@ -191,7 +192,7 @@ async def find_webhook_by_credentials_and_props(
             "credentialsId": credentials_id,
             "webhookType": webhook_type,
             "resource": resource,
-            "events": {"has_every": events},
+            **({"events": {"has_every": events}} if events else {}),
         },
     )
     return Webhook.from_db(webhook) if webhook else None

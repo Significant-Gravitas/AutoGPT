@@ -6,10 +6,16 @@ on:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+      - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/docker-compose.yml"
+      - "autogpt_platform/docker-compose.platform.yml"
   pull_request:
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
+      - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/docker-compose.yml"
+      - "autogpt_platform/docker-compose.platform.yml"
   merge_group:
   workflow_dispatch:
 
@@ -26,34 +32,31 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      cache-key: ${{ steps.cache-key.outputs.key }}
+      components-changed: ${{ steps.filter.outputs.components }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Check for component changes
+        uses: dorny/paths-filter@v3
+        id: filter
         with:
-          node-version: "22.18.0"
+          filters: |
+            components:
+              - 'autogpt_platform/frontend/src/components/**'
 
       - name: Enable corepack
         run: corepack enable
 
-      - name: Generate cache key
-        id: cache-key
-        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}" >> $GITHUB_OUTPUT
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          path: ~/.pnpm-store
-          key: ${{ steps.cache-key.outputs.key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
-      - name: Install dependencies
+      - name: Install dependencies to populate cache
         run: pnpm install --frozen-lockfile
 
   lint:
@@ -62,24 +65,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.18.0"
+        uses: actions/checkout@v6
 
       - name: Enable corepack
         run: corepack enable
 
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -90,31 +86,27 @@ jobs:
   chromatic:
     runs-on: ubuntu-latest
     needs: setup
-    # Only run on dev branch pushes or PRs targeting dev
-    if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+    # Disabled: to re-enable, remove 'false &&' from the condition below
+    if: >-
+      false
+      && (github.ref == 'refs/heads/dev' || github.base_ref == 'dev')
+      && needs.setup.outputs.components-changed == 'true'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.18.0"
 
       - name: Enable corepack
         run: corepack enable
 
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -129,30 +121,20 @@ jobs:
           exitOnceUploaded: true
 
   e2e_test:
+    name: end-to-end tests
     runs-on: big-boi
-    needs: setup
-    strategy:
-      fail-fast: false
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.18.0"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Copy default supabase .env
+      - name: Set up Platform - Copy default supabase .env
         run: |
           cp ../.env.default ../.env
 
-      - name: Copy backend .env and set OpenAI API key
+      - name: Set up Platform - Copy backend .env and set OpenAI API key
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
@@ -160,77 +142,125 @@ jobs:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      - name: Set up Docker Buildx
+      - name: Set up Platform - Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Cache Docker layers
-        uses: actions/cache@v4
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-frontend-test-${{ hashFiles('autogpt_platform/docker-compose.yml', 'autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/pyproject.toml', 'autogpt_platform/backend/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-frontend-test-
+          driver: docker-container
+          driver-opts: network=host
 
-      - name: Run docker compose
+      - name: Set up Platform - Expose GHA cache to docker buildx CLI
+        uses: crazy-max/ghaction-github-runtime@v3
+
+      - name: Set up Platform - Build Docker images (with cache)
+        working-directory: autogpt_platform
         run: |
-          NEXT_PUBLIC_PW_TEST=true docker compose -f ../docker-compose.yml up -d
+          pip install pyyaml
+
+          # Resolve extends and generate a flat compose file that bake can understand
+          docker compose -f docker-compose.yml config > docker-compose.resolved.yml
+
+          # Add cache configuration to the resolved compose file
+          python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
+            --source docker-compose.resolved.yml \
+            --cache-from "type=gha" \
+            --cache-to "type=gha,mode=max" \
+            --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend') }}" \
+            --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src') }}" \
+            --git-ref "${{ github.ref }}"
+
+          # Build with bake using the resolved compose file (now includes cache config)
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
-          DOCKER_BUILDKIT: 1
-          BUILDX_CACHE_FROM: type=local,src=/tmp/.buildx-cache
-          BUILDX_CACHE_TO: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          NEXT_PUBLIC_PW_TEST: true
 
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          if [ -d "/tmp/.buildx-cache-new" ]; then
-            mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-          fi
+      - name: Set up tests - Cache E2E test data
+        id: e2e-data-cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/e2e_test_data.sql
+          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-frontend-ci.yml') }}
 
-      - name: Wait for services to be ready
+      - name: Set up Platform - Start Supabase DB + Auth
         run: |
+          docker compose -f ../docker-compose.resolved.yml up -d db auth --no-build
+          echo "Waiting for database to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+          echo "Waiting for auth service to be ready..."
+          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -c "SELECT 1 FROM auth.users LIMIT 1" 2>/dev/null; do sleep 2; done' || echo "Auth schema check timeout, continuing..."
+
+      - name: Set up Platform - Run migrations
+        run: |
+          echo "Running migrations..."
+          docker compose -f ../docker-compose.resolved.yml run --rm migrate
+          echo "✅ Migrations completed"
+        env:
+          NEXT_PUBLIC_PW_TEST: true
+
+      - name: Set up tests - Load cached E2E test data
+        if: steps.e2e-data-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "✅ Found cached E2E test data, restoring..."
+          {
+            echo "SET session_replication_role = 'replica';"
+            cat /tmp/e2e_test_data.sql
+            echo "SET session_replication_role = 'origin';"
+          } | docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -b
+          # Refresh materialized views after restore
+          docker compose -f ../docker-compose.resolved.yml exec -T db \
+            psql -U postgres -d postgres -b -c "SET search_path TO platform; SELECT refresh_store_materialized_views();" || true
+
+          echo "✅ E2E test data restored from cache"
+
+      - name: Set up Platform - Start (all other services)
+        run: |
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build
           echo "Waiting for rest_server to be ready..."
           timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
-          echo "Waiting for database to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+        env:
+          NEXT_PUBLIC_PW_TEST: true
 
-      - name: Create E2E test data
+      - name: Set up tests - Create E2E test data
+        if: steps.e2e-data-cache.outputs.cache-hit != 'true'
         run: |
           echo "Creating E2E test data..."
-          # First try to run the script from inside the container
-          if docker compose -f ../docker-compose.yml exec -T rest_server test -f /app/autogpt_platform/backend/test/e2e_test_data.py; then
-            echo "✅ Found e2e_test_data.py in container, running it..."
-            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python backend/test/e2e_test_data.py" || {
-              echo "❌ E2E test data creation failed!"
-              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
-              exit 1
-            }
-          else
-            echo "⚠️ e2e_test_data.py not found in container, copying and running..."
-            # Copy the script into the container and run it
-            docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.yml ps -q rest_server):/tmp/e2e_test_data.py || {
-              echo "❌ Failed to copy script to container"
-              exit 1
-            }
-            docker compose -f ../docker-compose.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
-              echo "❌ E2E test data creation failed!"
-              docker compose -f ../docker-compose.yml logs --tail=50 rest_server
-              exit 1
-            }
-          fi
+          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+            echo "❌ E2E test data creation failed!"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
+            exit 1
+          }
 
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
+          # Dump auth.users + platform schema for cache (two separate dumps)
+          echo "Dumping database for cache..."
+          {
+            docker compose -f ../docker-compose.resolved.yml exec -T db \
+              pg_dump -U postgres --data-only --column-inserts \
+              --table='auth.users' postgres
+            docker compose -f ../docker-compose.resolved.yml exec -T db \
+              pg_dump -U postgres --data-only --column-inserts \
+              --schema=platform \
+              --exclude-table='platform._prisma_migrations' \
+              --exclude-table='platform.apscheduler_jobs' \
+              --exclude-table='platform.apscheduler_jobs_batched_notifications' \
+              postgres
+          } > /tmp/e2e_test_data.sql
+
+          echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
+
+      - name: Set up tests - Enable corepack
+        run: corepack enable
+
+      - name: Set up tests - Set up Node
+        uses: actions/setup-node@v6
         with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
-      - name: Install dependencies
+      - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Browser 'chromium'
+      - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
       - name: Run Playwright tests
@@ -257,7 +287,7 @@ jobs:
 
       - name: Print Final Docker Compose logs
         if: always()
-        run: docker compose -f ../docker-compose.yml logs
+        run: docker compose -f ../docker-compose.resolved.yml logs
 
   integration_test:
     runs-on: ubuntu-latest
@@ -265,26 +295,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.18.0"
 
       - name: Enable corepack
         run: corepack enable
 
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          path: ~/.pnpm-store
-          key: ${{ needs.setup.outputs.cache-key }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          node-version: "22.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

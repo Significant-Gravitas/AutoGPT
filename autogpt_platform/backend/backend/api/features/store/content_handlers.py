@@ -9,13 +9,24 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
+from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
+
+
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
 @dataclass
@@ -152,7 +163,7 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
-        from backend.data.block import get_blocks
+        from backend.blocks import get_blocks
 
         # Get all available blocks
         all_blocks = get_blocks()
@@ -188,45 +199,51 @@ class BlockHandler(ContentHandler):
             try:
                 block_instance = block_cls()
 
-                # Skip disabled blocks - they shouldn't be indexed
                 if block_instance.disabled:
                     continue
 
                 # Build searchable text from block metadata
                 parts = []
-                if hasattr(block_instance, "name") and block_instance.name:
+                if block_instance.name:
                     parts.append(block_instance.name)
-                if (
-                    hasattr(block_instance, "description")
-                    and block_instance.description
-                ):
+                if block_instance.description:
                     parts.append(block_instance.description)
-                if hasattr(block_instance, "categories") and block_instance.categories:
-                    # Convert BlockCategory enum to strings
+                if block_instance.categories:
                     parts.append(
                         " ".join(str(cat.value) for cat in block_instance.categories)
                     )
 
-                # Add input/output schema info
-                if hasattr(block_instance, "input_schema"):
-                    schema = block_instance.input_schema
-                    if hasattr(schema, "model_json_schema"):
-                        schema_dict = schema.model_json_schema()
-                        if "properties" in schema_dict:
-                            for prop_name, prop_info in schema_dict[
-                                "properties"
-                            ].items():
-                                if "description" in prop_info:
-                                    parts.append(
-                                        f"{prop_name}: {prop_info['description']}"
-                                    )
+                # Add input schema field descriptions
+                block_input_fields = block_instance.input_schema.model_fields
+                parts += [
+                    f"{field_name}: {field_info.description}"
+                    for field_name, field_info in block_input_fields.items()
+                    if field_info.description
+                ]
 
                 searchable_text = " ".join(parts)
 
-                # Convert categories set of enums to list of strings for JSON serialization
-                categories = getattr(block_instance, "categories", set())
                 categories_list = (
-                    [cat.value for cat in categories] if categories else []
+                    [cat.value for cat in block_instance.categories]
+                    if block_instance.categories
+                    else []
+                )
+
+                # Extract provider names from credentials fields
+                credentials_info = (
+                    block_instance.input_schema.get_credentials_fields_info()
+                )
+                is_integration = len(credentials_info) > 0
+                provider_names = [
+                    provider.value.lower()
+                    for info in credentials_info.values()
+                    for provider in info.provider
+                ]
+
+                # Check if block has LlmModel field in input schema
+                has_llm_model_field = any(
+                    _contains_type(field.annotation, LlmModel)
+                    for field in block_instance.input_schema.model_fields.values()
                 )
 
                 items.append(
@@ -235,8 +252,11 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": getattr(block_instance, "name", ""),
+                            "name": block_instance.name,
                             "categories": categories_list,
+                            "providers": provider_names,
+                            "has_llm_model_field": has_llm_model_field,
+                            "is_integration": is_integration,
                         },
                         user_id=None,  # Blocks are public
                     )
@@ -249,7 +269,7 @@ class BlockHandler(ContentHandler):
 
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about block embedding coverage."""
-        from backend.data.block import get_blocks
+        from backend.blocks import get_blocks
 
         all_blocks = get_blocks()
 

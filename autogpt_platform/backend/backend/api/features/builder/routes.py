@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Sequence
+from typing import Annotated, Sequence, cast, get_args
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
@@ -9,6 +9,8 @@ from backend.util.models import Pagination
 
 from . import db as builder_db
 from . import model as builder_model
+
+VALID_FILTER_VALUES = get_args(builder_model.FilterType)
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +51,6 @@ async def get_suggestions(
     Get all suggestions for the Blocks Menu.
     """
     return builder_model.SuggestionsResponse(
-        otto_suggestions=[
-            "What blocks do I need to get started?",
-            "Help me create a list",
-            "Help me feed my data to Google Maps",
-        ],
         recent_searches=await builder_db.get_recent_searches(user_id),
         providers=[
             ProviderName.TWITTER,
@@ -88,7 +85,7 @@ async def get_block_categories(
 )
 async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
-    type: Annotated[builder_model.BlockType | None, fastapi.Query()] = None,
+    type: Annotated[builder_model.BlockTypeFilter | None, fastapi.Query()] = None,
     provider: Annotated[ProviderName | None, fastapi.Query()] = None,
     page: Annotated[int, fastapi.Query()] = 1,
     page_size: Annotated[int, fastapi.Query()] = 50,
@@ -151,7 +148,7 @@ async def get_providers(
 async def search(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     search_query: Annotated[str | None, fastapi.Query()] = None,
-    filter: Annotated[list[builder_model.FilterType] | None, fastapi.Query()] = None,
+    filter: Annotated[str | None, fastapi.Query()] = None,
     search_id: Annotated[str | None, fastapi.Query()] = None,
     by_creator: Annotated[list[str] | None, fastapi.Query()] = None,
     page: Annotated[int, fastapi.Query()] = 1,
@@ -160,9 +157,20 @@ async def search(
     """
     Search for blocks (including integrations), marketplace agents, and user library agents.
     """
-    # If no filters are provided, then we will return all types
-    if not filter:
-        filter = [
+    # Parse and validate filter parameter
+    filters: list[builder_model.FilterType]
+    if filter:
+        filter_values = [f.strip() for f in filter.split(",")]
+        invalid_filters = [f for f in filter_values if f not in VALID_FILTER_VALUES]
+        if invalid_filters:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"Invalid filter value(s): {', '.join(invalid_filters)}. "
+                f"Valid values are: {', '.join(VALID_FILTER_VALUES)}",
+            )
+        filters = cast(list[builder_model.FilterType], filter_values)
+    else:
+        filters = [
             "blocks",
             "integrations",
             "marketplace_agents",
@@ -174,7 +182,7 @@ async def search(
     cached_results = await builder_db.get_sorted_search_results(
         user_id=user_id,
         search_query=search_query,
-        filters=filter,
+        filters=filters,
         by_creator=by_creator,
     )
 
@@ -196,7 +204,7 @@ async def search(
         user_id,
         builder_model.SearchEntry(
             search_query=search_query,
-            filter=filter,
+            filter=filters,
             by_creator=by_creator,
             search_id=search_id,
         ),

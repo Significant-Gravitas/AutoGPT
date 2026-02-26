@@ -6,12 +6,12 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
   "/profile",
   "/library",
-  "/monitoring",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;

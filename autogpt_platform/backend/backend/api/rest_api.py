@@ -26,6 +26,7 @@ import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
@@ -40,9 +41,9 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features.chat.completion_consumer import (
-    start_completion_consumer,
-    stop_completion_consumer,
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
@@ -122,20 +123,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
-    # Start chat completion consumer for Redis Streams notifications
-    try:
-        await start_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Could not start chat completion consumer: {e}")
-
     with launch_darkly_context():
         yield
-
-    # Stop chat completion consumer
-    try:
-        await stop_completion_consumer()
-    except Exception as e:
-        logger.warning(f"Error stopping chat completion consumer: {e}")
 
     try:
         await shutdown_cloud_storage_handler()
@@ -276,6 +265,10 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
+app.add_exception_handler(
+    FolderAlreadyExistsError, handle_internal_http_error(409, False)
+)
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -342,6 +335,11 @@ app.include_router(
     workspace_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
+)
+app.include_router(
+    mcp_routes.router,
+    tags=["v2", "mcp"],
+    prefix="/api/mcp",
 )
 app.include_router(
     backend.api.features.oauth.router,

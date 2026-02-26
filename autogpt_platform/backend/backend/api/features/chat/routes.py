@@ -1,23 +1,53 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
+import asyncio
 import logging
-import uuid as uuid_module
 from collections.abc import AsyncGenerator
 from typing import Annotated
+from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.copilot import service as chat_service
+from backend.copilot import stream_registry
+from backend.copilot.config import ChatConfig
+from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
+from backend.copilot.model import (
+    ChatMessage,
+    ChatSession,
+    append_and_save_message,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    get_user_sessions,
+)
+from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.tools.models import (
+    AgentDetailsResponse,
+    AgentOutputResponse,
+    AgentPreviewResponse,
+    AgentSavedResponse,
+    AgentsFoundResponse,
+    BlockDetailsResponse,
+    BlockListResponse,
+    BlockOutputResponse,
+    ClarificationNeededResponse,
+    DocPageResponse,
+    DocSearchResultsResponse,
+    ErrorResponse,
+    ExecutionStartedResponse,
+    InputValidationErrorResponse,
+    NeedLoginResponse,
+    NoResultsResponse,
+    SetupRequirementsResponse,
+    SuggestedGoalResponse,
+    UnderstandingUpdatedResponse,
+)
+from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-
-from . import service as chat_service
-from . import stream_registry
-from .completion_handler import process_operation_failure, process_operation_success
-from .config import ChatConfig
-from .model import ChatSession, create_chat_session, get_chat_session, get_user_sessions
-from .response_model import StreamFinish, StreamHeartbeat, StreamStart
 
 config = ChatConfig()
 
@@ -62,10 +92,8 @@ class CreateSessionResponse(BaseModel):
 class ActiveStreamInfo(BaseModel):
     """Information about an active stream for reconnection."""
 
-    task_id: str
+    turn_id: str
     last_message_id: str  # Redis Stream message ID for resumption
-    operation_id: str  # Operation ID for completion tracking
-    tool_name: str  # Name of the tool being executed
 
 
 class SessionDetailResponse(BaseModel):
@@ -95,12 +123,11 @@ class ListSessionsResponse(BaseModel):
     total: int
 
 
-class OperationCompleteRequest(BaseModel):
-    """Request model for external completion webhook."""
+class CancelSessionResponse(BaseModel):
+    """Response model for the cancel session endpoint."""
 
-    success: bool
-    result: dict | str | None = None
-    error: str | None = None
+    cancelled: bool
+    reason: str | None = None
 
 
 # ========== Routes ==========
@@ -177,6 +204,43 @@ async def create_session(
     )
 
 
+@router.delete(
+    "/sessions/{session_id}",
+    dependencies=[Security(auth.requires_user)],
+    status_code=204,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def delete_session(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> Response:
+    """
+    Delete a chat session.
+
+    Permanently removes a chat session and all its messages.
+    Only the owner can delete their sessions.
+
+    Args:
+        session_id: The session ID to delete.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        204 No Content on success.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    deleted = await delete_chat_session(session_id, user_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    return Response(status_code=204)
+
+
 @router.get(
     "/sessions/{session_id}",
 )
@@ -188,7 +252,7 @@ async def get_session(
     Retrieve the details of a specific chat session.
 
     Looks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.
-    If there's an active stream for this session, returns the task_id for reconnection.
+    If there's an active stream for this session, returns active_stream info for reconnection.
 
     Args:
         session_id: The unique identifier for the desired chat session.
@@ -206,24 +270,21 @@ async def get_session(
 
     # Check if there's an active stream for this session
     active_stream_info = None
-    active_task, last_message_id = await stream_registry.get_active_task_for_session(
+    active_session, last_message_id = await stream_registry.get_active_session(
         session_id, user_id
     )
-    if active_task:
-        # Filter out the in-progress assistant message from the session response.
-        # The client will receive the complete assistant response through the SSE
-        # stream replay instead, preventing duplicate content.
-        if messages and messages[-1].get("role") == "assistant":
-            messages = messages[:-1]
-
-        # Use "0-0" as last_message_id to replay the stream from the beginning.
-        # Since we filtered out the cached assistant message, the client needs
-        # the full stream to reconstruct the response.
+    logger.info(
+        f"[GET_SESSION] session={session_id}, active_session={active_session is not None}, "
+        f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
+    )
+    if active_session:
+        # Keep the assistant message (including tool_calls) so the frontend can
+        # render the correct tool UI (e.g. CreateAgent with mini game).
+        # convertChatSessionToUiMessages handles isComplete=false by setting
+        # tool parts without output to state "input-available".
         active_stream_info = ActiveStreamInfo(
-            task_id=active_task.task_id,
-            last_message_id="0-0",
-            operation_id=active_task.operation_id,
-            tool_name=active_task.tool_name,
+            turn_id=active_session.turn_id,
+            last_message_id=last_message_id,
         )
 
     return SessionDetailResponse(
@@ -234,6 +295,51 @@ async def get_session(
         messages=messages,
         active_stream=active_stream_info,
     )
+
+
+@router.post(
+    "/sessions/{session_id}/cancel",
+    status_code=200,
+)
+async def cancel_session_task(
+    session_id: str,
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+) -> CancelSessionResponse:
+    """Cancel the active streaming task for a session.
+
+    Publishes a cancel event to the executor via RabbitMQ FANOUT, then
+    polls Redis until the task status flips from ``running`` or a timeout
+    (5 s) is reached.  Returns only after the cancellation is confirmed.
+    """
+    await _validate_and_get_session(session_id, user_id)
+
+    active_session, _ = await stream_registry.get_active_session(session_id, user_id)
+    if not active_session:
+        return CancelSessionResponse(cancelled=True, reason="no_active_session")
+
+    await enqueue_cancel_task(session_id)
+    logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
+
+    # Poll until the executor confirms the task is no longer running.
+    poll_interval = 0.5
+    max_wait = 5.0
+    waited = 0.0
+    while waited < max_wait:
+        await asyncio.sleep(poll_interval)
+        waited += poll_interval
+        session_state = await stream_registry.get_session(session_id)
+        if session_state is None or session_state.status != "running":
+            logger.info(
+                f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
+                f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
+            )
+            return CancelSessionResponse(cancelled=True)
+
+    logger.warning(
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
+    )
+    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    return CancelSessionResponse(cancelled=True)
 
 
 @router.post(
@@ -253,73 +359,120 @@ async def stream_chat_post(
       - Tool execution results
 
     The AI generation runs in a background task that continues even if the client disconnects.
-    All chunks are written to Redis for reconnection support. If the client disconnects,
-    they can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.
+    All chunks are written to a per-turn Redis stream for reconnection support. If the client
+    disconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.
 
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
         user_id: Optional authenticated user ID.
     Returns:
-        StreamingResponse: SSE-formatted response chunks. First chunk is a "start" event
-        containing the task_id for reconnection.
+        StreamingResponse: SSE-formatted response chunks.
 
     """
     import asyncio
+    import time
 
-    session = await _validate_and_get_session(session_id, user_id)
+    stream_start_time = time.perf_counter()
+    log_meta = {"component": "ChatStream", "session_id": session_id}
+    if user_id:
+        log_meta["user_id"] = user_id
 
-    # Create a task in the stream registry for reconnection support
-    task_id = str(uuid_module.uuid4())
-    operation_id = str(uuid_module.uuid4())
-    await stream_registry.create_task(
-        task_id=task_id,
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id="chat_stream",  # Not a tool call, but needed for the model
-        tool_name="chat",
-        operation_id=operation_id,
+    logger.info(
+        f"[TIMING] stream_chat_post STARTED, session={session_id}, "
+        f"user={user_id}, message_len={len(request.message)}",
+        extra={"json_fields": log_meta},
+    )
+    await _validate_and_get_session(session_id, user_id)
+    logger.info(
+        f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "duration_ms": (time.perf_counter() - stream_start_time) * 1000,
+            }
+        },
     )
 
-    # Background task that runs the AI generation independently of SSE connection
-    async def run_ai_generation():
-        try:
-            # Emit a start event with task_id for reconnection
-            start_chunk = StreamStart(messageId=task_id, taskId=task_id)
-            await stream_registry.publish_chunk(task_id, start_chunk)
-
-            async for chunk in chat_service.stream_chat_completion(
-                session_id,
-                request.message,
-                is_user_message=request.is_user_message,
+    # Atomically append user message to session BEFORE creating task to avoid
+    # race condition where GET_SESSION sees task as "running" but message isn't
+    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
+    # message loss from concurrent requests.
+    if request.message:
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
+        )
+        if request.is_user_message:
+            track_user_message(
                 user_id=user_id,
-                session=session,  # Pass pre-fetched session to avoid double-fetch
-                context=request.context,
-            ):
-                # Write to Redis (subscribers will receive via XREAD)
-                await stream_registry.publish_chunk(task_id, chunk)
-
-            # Mark task as completed
-            await stream_registry.mark_task_completed(task_id, "completed")
-        except Exception as e:
-            logger.error(
-                f"Error in background AI generation for session {session_id}: {e}"
+                session_id=session_id,
+                message_length=len(request.message),
             )
-            await stream_registry.mark_task_completed(task_id, "failed")
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        await append_and_save_message(session_id, message)
+        logger.info(f"[STREAM] User message saved for session {session_id}")
 
-    # Start the AI generation in a background task
-    bg_task = asyncio.create_task(run_ai_generation())
-    await stream_registry.set_task_asyncio_task(task_id, bg_task)
+    # Create a task in the stream registry for reconnection support
+    turn_id = str(uuid4())
+    log_meta["turn_id"] = turn_id
+
+    session_create_start = time.perf_counter()
+    await stream_registry.create_session(
+        session_id=session_id,
+        user_id=user_id,
+        tool_call_id="chat_stream",
+        tool_name="chat",
+        turn_id=turn_id,
+    )
+    logger.info(
+        f"[TIMING] create_session completed in {(time.perf_counter() - session_create_start) * 1000:.1f}ms",
+        extra={
+            "json_fields": {
+                **log_meta,
+                "duration_ms": (time.perf_counter() - session_create_start) * 1000,
+            }
+        },
+    )
+
+    # Per-turn stream is always fresh (unique turn_id), subscribe from beginning
+    subscribe_from_id = "0-0"
+
+    await enqueue_copilot_turn(
+        session_id=session_id,
+        user_id=user_id,
+        message=request.message,
+        turn_id=turn_id,
+        is_user_message=request.is_user_message,
+        context=request.context,
+    )
+
+    setup_time = (time.perf_counter() - stream_start_time) * 1000
+    logger.info(
+        f"[TIMING] Task enqueued to RabbitMQ, setup={setup_time:.1f}ms",
+        extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
+    )
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
+        import time as time_module
+
+        event_gen_start = time_module.perf_counter()
+        logger.info(
+            f"[TIMING] event_generator STARTED, turn={turn_id}, session={session_id}, "
+            f"user={user_id}",
+            extra={"json_fields": log_meta},
+        )
         subscriber_queue = None
+        first_chunk_yielded = False
+        chunks_yielded = 0
         try:
-            # Subscribe to the task stream (this replays existing messages + live updates)
-            subscriber_queue = await stream_registry.subscribe_to_task(
-                task_id=task_id,
+            # Subscribe from the position we captured before enqueuing
+            # This avoids replaying old messages while catching all new ones
+            subscriber_queue = await stream_registry.subscribe_to_session(
+                session_id=session_id,
                 user_id=user_id,
-                last_message_id="0-0",  # Get all messages from the beginning
+                last_message_id=subscribe_from_id,
             )
 
             if subscriber_queue is None:
@@ -328,35 +481,101 @@ async def stream_chat_post(
                 return
 
             # Read from the subscriber queue and yield to SSE
+            logger.info(
+                "[TIMING] Starting to read from subscriber_queue",
+                extra={"json_fields": log_meta},
+            )
             while True:
                 try:
                     chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunks_yielded += 1
+
+                    if not first_chunk_yielded:
+                        first_chunk_yielded = True
+                        elapsed = time_module.perf_counter() - event_gen_start
+                        logger.info(
+                            f"[TIMING] FIRST CHUNK from queue at {elapsed:.2f}s, "
+                            f"type={type(chunk).__name__}",
+                            extra={
+                                "json_fields": {
+                                    **log_meta,
+                                    "chunk_type": type(chunk).__name__,
+                                    "elapsed_ms": elapsed * 1000,
+                                }
+                            },
+                        )
+
                     yield chunk.to_sse()
 
                     # Check for finish signal
                     if isinstance(chunk, StreamFinish):
+                        total_time = time_module.perf_counter() - event_gen_start
+                        logger.info(
+                            f"[TIMING] StreamFinish received in {total_time:.2f}s; "
+                            f"n_chunks={chunks_yielded}",
+                            extra={
+                                "json_fields": {
+                                    **log_meta,
+                                    "chunks_yielded": chunks_yielded,
+                                    "total_time_ms": total_time * 1000,
+                                }
+                            },
+                        )
                         break
                 except asyncio.TimeoutError:
-                    # Send heartbeat to keep connection alive
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
+            logger.info(
+                f"[TIMING] GeneratorExit (client disconnected), chunks={chunks_yielded}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "chunks_yielded": chunks_yielded,
+                        "reason": "client_disconnect",
+                    }
+                },
+            )
             pass  # Client disconnected - background task continues
         except Exception as e:
-            logger.error(f"Error in SSE stream for task {task_id}: {e}")
+            elapsed = (time_module.perf_counter() - event_gen_start) * 1000
+            logger.error(
+                f"[TIMING] event_generator ERROR after {elapsed:.1f}ms: {e}",
+                extra={
+                    "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
+                },
+            )
+            # Surface error to frontend so it doesn't appear stuck
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="stream_error",
+            ).to_sse()
+            yield StreamFinish().to_sse()
         finally:
-            # Unsubscribe when client disconnects or stream ends to prevent resource leak
+            # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
-                    await stream_registry.unsubscribe_from_task(
-                        task_id, subscriber_queue
+                    await stream_registry.unsubscribe_from_session(
+                        session_id, subscriber_queue
                     )
                 except Exception as unsub_err:
                     logger.error(
-                        f"Error unsubscribing from task {task_id}: {unsub_err}",
+                        f"Error unsubscribing from session {session_id}: {unsub_err}",
                         exc_info=True,
                     )
             # AI SDK protocol termination - always yield even if unsubscribe fails
+            total_time = time_module.perf_counter() - event_gen_start
+            logger.info(
+                f"[TIMING] event_generator FINISHED in {total_time:.2f}s; "
+                f"turn={turn_id}, session={session_id}, n_chunks={chunks_yielded}",
+                extra={
+                    "json_fields": {
+                        **log_meta,
+                        "total_time_ms": total_time * 1000,
+                        "chunks_yielded": chunks_yielded,
+                    }
+                },
+            )
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -374,63 +593,94 @@ async def stream_chat_post(
 @router.get(
     "/sessions/{session_id}/stream",
 )
-async def stream_chat_get(
+async def resume_session_stream(
     session_id: str,
-    message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(auth.get_user_id),
-    is_user_message: bool = Query(default=True),
 ):
     """
-    Stream chat responses for a session (GET - legacy endpoint).
+    Resume an active stream for a session.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    Called by the AI SDK's ``useChat(resume: true)`` on page load.
+    Checks for an active (in-progress) task on the session and either replays
+    the full SSE stream or returns 204 No Content if nothing is running.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        message: The user's new message to process.
+        session_id: The chat session identifier.
         user_id: Optional authenticated user ID.
-        is_user_message: Whether the message is a user message.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
 
+    Returns:
+        StreamingResponse (SSE) when an active stream exists,
+        or 204 No Content when there is nothing to resume.
     """
-    session = await _validate_and_get_session(session_id, user_id)
+    import asyncio
+
+    active_session, last_message_id = await stream_registry.get_active_session(
+        session_id, user_id
+    )
+
+    if not active_session:
+        return Response(status_code=204)
+
+    # Always replay from the beginning ("0-0") on resume.
+    # We can't use last_message_id because it's the latest ID in the backend
+    # stream, not the latest the frontend received — the gap causes lost
+    # messages. The frontend deduplicates replayed content.
+    subscriber_queue = await stream_registry.subscribe_to_session(
+        session_id=session_id,
+        user_id=user_id,
+        last_message_id="0-0",
+    )
+
+    if subscriber_queue is None:
+        return Response(status_code=204)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         chunk_count = 0
         first_chunk_type: str | None = None
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            message,
-            is_user_message=is_user_message,
-            user_id=user_id,
-            session=session,  # Pass pre-fetched session to avoid double-fetch
-        ):
-            if chunk_count < 3:
-                logger.info(
-                    "Chat stream chunk",
-                    extra={
-                        "session_id": session_id,
-                        "chunk_type": str(chunk.type),
-                    },
+        try:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    if chunk_count < 3:
+                        logger.info(
+                            "Resume stream chunk",
+                            extra={
+                                "session_id": session_id,
+                                "chunk_type": str(chunk.type),
+                            },
+                        )
+                    if not first_chunk_type:
+                        first_chunk_type = str(chunk.type)
+                    chunk_count += 1
+                    yield chunk.to_sse()
+
+                    if isinstance(chunk, StreamFinish):
+                        break
+                except asyncio.TimeoutError:
+                    yield StreamHeartbeat().to_sse()
+        except GeneratorExit:
+            pass
+        except Exception as e:
+            logger.error(f"Error in resume stream for session {session_id}: {e}")
+        finally:
+            try:
+                await stream_registry.unsubscribe_from_session(
+                    session_id, subscriber_queue
                 )
-            if not first_chunk_type:
-                first_chunk_type = str(chunk.type)
-            chunk_count += 1
-            yield chunk.to_sse()
-        logger.info(
-            "Chat stream completed",
-            extra={
-                "session_id": session_id,
-                "chunk_count": chunk_count,
-                "first_chunk_type": first_chunk_type,
-            },
-        )
-        # AI SDK protocol termination
-        yield "data: [DONE]\n\n"
+            except Exception as unsub_err:
+                logger.error(
+                    f"Error unsubscribing from session {active_session.session_id}: {unsub_err}",
+                    exc_info=True,
+                )
+            logger.info(
+                "Resume stream completed",
+                extra={
+                    "session_id": session_id,
+                    "n_chunks": chunk_count,
+                    "first_chunk_type": first_chunk_type,
+                },
+            )
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -438,8 +688,8 @@ async def stream_chat_get(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
         },
     )
 
@@ -468,231 +718,6 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
-
-
-# ========== Task Streaming (SSE Reconnection) ==========
-
-
-@router.get(
-    "/tasks/{task_id}/stream",
-)
-async def stream_task(
-    task_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
-    last_message_id: str = Query(
-        default="0-0",
-        description="Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
-    ),
-):
-    """
-    Reconnect to a long-running task's SSE stream.
-
-    When a long-running operation (like agent generation) starts, the client
-    receives a task_id. If the connection drops, the client can reconnect
-    using this endpoint to resume receiving updates.
-
-    Args:
-        task_id: The task ID from the operation_started response.
-        user_id: Authenticated user ID for ownership validation.
-        last_message_id: Last Redis Stream message ID received ("0-0" for full replay).
-
-    Returns:
-        StreamingResponse: SSE-formatted response chunks starting after last_message_id.
-
-    Raises:
-        HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.
-    """
-    # Check task existence and expiry before subscribing
-    task, error_code = await stream_registry.get_task_with_expiry_info(task_id)
-
-    if error_code == "TASK_EXPIRED":
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "code": "TASK_EXPIRED",
-                "message": "This operation has expired. Please try again.",
-            },
-        )
-
-    if error_code == "TASK_NOT_FOUND":
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "TASK_NOT_FOUND",
-                "message": f"Task {task_id} not found.",
-            },
-        )
-
-    # Validate ownership if task has an owner
-    if task and task.user_id and user_id != task.user_id:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "ACCESS_DENIED",
-                "message": "You do not have access to this task.",
-            },
-        )
-
-    # Get subscriber queue from stream registry
-    subscriber_queue = await stream_registry.subscribe_to_task(
-        task_id=task_id,
-        user_id=user_id,
-        last_message_id=last_message_id,
-    )
-
-    if subscriber_queue is None:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "TASK_NOT_FOUND",
-                "message": f"Task {task_id} not found or access denied.",
-            },
-        )
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        import asyncio
-
-        heartbeat_interval = 15.0  # Send heartbeat every 15 seconds
-        try:
-            while True:
-                try:
-                    # Wait for next chunk with timeout for heartbeats
-                    chunk = await asyncio.wait_for(
-                        subscriber_queue.get(), timeout=heartbeat_interval
-                    )
-                    yield chunk.to_sse()
-
-                    # Check for finish signal
-                    if isinstance(chunk, StreamFinish):
-                        break
-                except asyncio.TimeoutError:
-                    # Send heartbeat to keep connection alive
-                    yield StreamHeartbeat().to_sse()
-        except Exception as e:
-            logger.error(f"Error in task stream {task_id}: {e}", exc_info=True)
-        finally:
-            # Unsubscribe when client disconnects or stream ends
-            try:
-                await stream_registry.unsubscribe_from_task(task_id, subscriber_queue)
-            except Exception as unsub_err:
-                logger.error(
-                    f"Error unsubscribing from task {task_id}: {unsub_err}",
-                    exc_info=True,
-                )
-            # AI SDK protocol termination - always yield even if unsubscribe fails
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "x-vercel-ai-ui-message-stream": "v1",
-        },
-    )
-
-
-@router.get(
-    "/tasks/{task_id}",
-)
-async def get_task_status(
-    task_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
-) -> dict:
-    """
-    Get the status of a long-running task.
-
-    Args:
-        task_id: The task ID to check.
-        user_id: Authenticated user ID for ownership validation.
-
-    Returns:
-        dict: Task status including task_id, status, tool_name, and operation_id.
-
-    Raises:
-        NotFoundError: If task_id is not found or user doesn't have access.
-    """
-    task = await stream_registry.get_task(task_id)
-
-    if task is None:
-        raise NotFoundError(f"Task {task_id} not found.")
-
-    # Validate ownership - if task has an owner, requester must match
-    if task.user_id and user_id != task.user_id:
-        raise NotFoundError(f"Task {task_id} not found.")
-
-    return {
-        "task_id": task.task_id,
-        "session_id": task.session_id,
-        "status": task.status,
-        "tool_name": task.tool_name,
-        "operation_id": task.operation_id,
-        "created_at": task.created_at.isoformat(),
-    }
-
-
-# ========== External Completion Webhook ==========
-
-
-@router.post(
-    "/operations/{operation_id}/complete",
-    status_code=200,
-)
-async def complete_operation(
-    operation_id: str,
-    request: OperationCompleteRequest,
-    x_api_key: str | None = Header(default=None),
-) -> dict:
-    """
-    External completion webhook for long-running operations.
-
-    Called by Agent Generator (or other services) when an operation completes.
-    This triggers the stream registry to publish completion and continue LLM generation.
-
-    Args:
-        operation_id: The operation ID to complete.
-        request: Completion payload with success status and result/error.
-        x_api_key: Internal API key for authentication.
-
-    Returns:
-        dict: Status of the completion.
-
-    Raises:
-        HTTPException: If API key is invalid or operation not found.
-    """
-    # Validate internal API key - reject if not configured or invalid
-    if not config.internal_api_key:
-        logger.error(
-            "Operation complete webhook rejected: CHAT_INTERNAL_API_KEY not configured"
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Webhook not available: internal API key not configured",
-        )
-    if x_api_key != config.internal_api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    # Find task by operation_id
-    task = await stream_registry.find_task_by_operation_id(operation_id)
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Operation {operation_id} not found",
-        )
-
-    logger.info(
-        f"Received completion webhook for operation {operation_id} "
-        f"(task_id={task.task_id}, success={request.success})"
-    )
-
-    if request.success:
-        await process_operation_success(task, request.result)
-    else:
-        await process_operation_failure(task, request.error)
-
-    return {"status": "ok", "task_id": task.task_id}
 
 
 # ========== Configuration ==========
@@ -751,3 +776,41 @@ async def health_check() -> dict:
         "service": "chat",
         "version": "0.1.0",
     }
+
+
+# ========== Schema Export (for OpenAPI / Orval codegen) ==========
+
+ToolResponseUnion = (
+    AgentsFoundResponse
+    | NoResultsResponse
+    | AgentDetailsResponse
+    | SetupRequirementsResponse
+    | ExecutionStartedResponse
+    | NeedLoginResponse
+    | ErrorResponse
+    | InputValidationErrorResponse
+    | AgentOutputResponse
+    | UnderstandingUpdatedResponse
+    | AgentPreviewResponse
+    | AgentSavedResponse
+    | ClarificationNeededResponse
+    | SuggestedGoalResponse
+    | BlockListResponse
+    | BlockDetailsResponse
+    | BlockOutputResponse
+    | DocSearchResultsResponse
+    | DocPageResponse
+)
+
+
+@router.get(
+    "/schema/tool-responses",
+    response_model=ToolResponseUnion,
+    include_in_schema=True,
+    summary="[Dummy] Tool response type export for codegen",
+    description="This endpoint is not meant to be called. It exists solely to "
+    "expose tool response models in the OpenAPI schema for frontend codegen.",
+)
+async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
+    """Never called at runtime. Exists only so Orval generates TS types."""
+    raise HTTPException(status_code=501, detail="Schema-only endpoint")

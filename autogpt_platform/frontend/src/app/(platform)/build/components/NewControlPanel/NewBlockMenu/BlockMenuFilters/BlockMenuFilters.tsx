@@ -2,7 +2,7 @@ import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore"
 import { FilterChip } from "../FilterChip";
 import { categories } from "./constants";
 import { FilterSheet } from "../FilterSheet/FilterSheet";
-import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
+import { CategoryKey } from "./types";
 
 export const BlockMenuFilters = () => {
   const {
@@ -15,7 +15,7 @@ export const BlockMenuFilters = () => {
     removeCreator,
   } = useBlockMenuStore();
 
-  const handleFilterClick = (filter: GetV2BuilderSearchFilterAnyOfItem) => {
+  const handleFilterClick = (filter: CategoryKey) => {
     if (filters.includes(filter)) {
       removeFilter(filter);
     } else {

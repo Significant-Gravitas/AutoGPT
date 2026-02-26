@@ -820,21 +820,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "enum": [
-                      "blocks",
-                      "integrations",
-                      "marketplace_agents",
-                      "my_agents"
-                    ],
-                    "type": "string"
-                  }
-                },
-                { "type": "null" }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Filter"
             }
           },
@@ -961,57 +947,49 @@
         }
       }
     },
-    "/api/chat/operations/{operation_id}/complete": {
-      "post": {
+    "/api/chat/schema/tool-responses": {
+      "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Complete Operation",
-        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
-        "operationId": "postV2CompleteOperation",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Operation Id" }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OperationCompleteRequest"
-              }
-            }
-          }
-        },
+        "summary": "[Dummy] Tool response type export for codegen",
+        "description": "This endpoint is not meant to be called. It exists solely to expose tool response models in the OpenAPI schema for frontend codegen.",
+        "operationId": "getV2[dummy] tool response type export for codegen",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Completeoperation"
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/AgentsFoundResponse" },
+                    { "$ref": "#/components/schemas/NoResultsResponse" },
+                    { "$ref": "#/components/schemas/AgentDetailsResponse" },
+                    {
+                      "$ref": "#/components/schemas/SetupRequirementsResponse"
+                    },
+                    { "$ref": "#/components/schemas/ExecutionStartedResponse" },
+                    { "$ref": "#/components/schemas/NeedLoginResponse" },
+                    { "$ref": "#/components/schemas/ErrorResponse" },
+                    {
+                      "$ref": "#/components/schemas/InputValidationErrorResponse"
+                    },
+                    { "$ref": "#/components/schemas/AgentOutputResponse" },
+                    {
+                      "$ref": "#/components/schemas/UnderstandingUpdatedResponse"
+                    },
+                    { "$ref": "#/components/schemas/AgentPreviewResponse" },
+                    { "$ref": "#/components/schemas/AgentSavedResponse" },
+                    {
+                      "$ref": "#/components/schemas/ClarificationNeededResponse"
+                    },
+                    { "$ref": "#/components/schemas/SuggestedGoalResponse" },
+                    { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockDetailsResponse" },
+                    { "$ref": "#/components/schemas/BlockOutputResponse" },
+                    { "$ref": "#/components/schemas/DocSearchResultsResponse" },
+                    { "$ref": "#/components/schemas/DocPageResponse" }
+                  ],
+                  "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -1098,10 +1076,40 @@
       }
     },
     "/api/chat/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1179,12 +1187,12 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/stream": {
-      "get": {
+    "/api/chat/sessions/{session_id}/cancel": {
+      "post": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Chat Get",
-        "description": "Stream chat responses for a session (GET - legacy endpoint).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
-        "operationId": "getV2StreamChatGet",
+        "summary": "Cancel Session Task",
+        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "operationId": "postV2CancelSessionTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -1192,27 +1200,46 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelSessionResponse"
+                }
+              }
+            }
           },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Resume Session Stream",
+        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse (SSE) when an active stream exists,\n    or 204 No Content when there is nothing to resume.",
+        "operationId": "getV2ResumeSessionStream",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
           {
-            "name": "message",
-            "in": "query",
+            "name": "session_id",
+            "in": "path",
             "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 10000,
-              "title": "Message"
-            }
-          },
-          {
-            "name": "is_user_message",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": true,
-              "title": "Is User Message"
-            }
+            "schema": { "type": "string", "title": "Session Id" }
           }
         ],
         "responses": {
@@ -1236,7 +1263,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1255,94 +1282,6 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/tasks/{task_id}": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Get Task Status",
-        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
-        "operationId": "getV2GetTaskStatus",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Getv2Gettaskstatus"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/tasks/{task_id}/stream": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Task",
-        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
-        "operationId": "getV2StreamTask",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
-          },
-          {
-            "name": "last_message_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
-              "default": "0-0",
-              "title": "Last Message Id"
-            },
-            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3557,6 +3496,29 @@
               "title": "Page Size"
             },
             "description": "Number of agents per page (must be >= 1)"
+          },
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by folder ID",
+              "title": "Folder Id"
+            },
+            "description": "Filter by folder ID"
+          },
+          {
+            "name": "include_root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return agents without a folder (root-level agents)",
+              "default": false,
+              "title": "Include Root Only"
+            },
+            "description": "Only return agents without a folder (root-level agents)"
           }
         ],
         "responses": {
@@ -3924,6 +3886,338 @@
         }
       }
     },
+    "/api/library/folders": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "List Library Folders",
+        "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_relations: Whether to include agent and subfolder relations for counts.\n\nReturns:\n    A FolderListResponse containing folders.",
+        "operationId": "getV2List library folders",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by parent folder ID. If not provided, returns root-level folders.",
+              "title": "Parent Id"
+            },
+            "description": "Filter by parent folder ID. If not provided, returns root-level folders."
+          },
+          {
+            "name": "include_relations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include agent and subfolder relations (for counts)",
+              "default": true,
+              "title": "Include Relations"
+            },
+            "description": "Include agent and subfolder relations (for counts)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of folders",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Create Folder",
+        "description": "Create a new folder.\n\nArgs:\n    payload: The folder creation request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The created LibraryFolder.",
+        "operationId": "postV2Create folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Folder created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Parent folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/agents/bulk-move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Bulk Move Agents",
+        "description": "Move multiple agents to a folder.\n\nArgs:\n    payload: The bulk move request with agent IDs and target folder.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryAgents.",
+        "operationId": "postV2Bulk move agents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkMoveAgentsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agents moved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "type": "array",
+                  "title": "Response Postv2Bulk Move Agents"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/tree": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder Tree",
+        "description": "Get the full folder tree for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n\nReturns:\n    A FolderTreeResponse containing the nested folder structure.",
+        "operationId": "getV2Get folder tree",
+        "responses": {
+          "200": {
+            "description": "Folder tree structure",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderTreeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/{folder_id}": {
+      "delete": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Delete Folder",
+        "description": "Soft-delete a folder and all its contents.\n\nArgs:\n    folder_id: ID of the folder to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.",
+        "operationId": "deleteV2Delete folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Folder deleted successfully" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder",
+        "description": "Get a specific folder.\n\nArgs:\n    folder_id: ID of the folder to retrieve.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The requested LibraryFolder.",
+        "operationId": "getV2Get folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folder details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Update Folder",
+        "description": "Update a folder's properties.\n\nArgs:\n    folder_id: ID of the folder to update.\n    payload: The folder update request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryFolder.",
+        "operationId": "patchV2Update folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/{folder_id}/move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Move Folder",
+        "description": "Move a folder to a new parent.\n\nArgs:\n    folder_id: ID of the folder to move.\n    payload: The move request with target parent.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The moved LibraryFolder.",
+        "operationId": "postV2Move folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderMoveRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder moved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error (circular reference)" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder or target parent not found" },
+          "409": { "description": "Folder name conflict in target location" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -4235,6 +4529,128 @@
             }
           }
         }
+      }
+    },
+    "/api/mcp/discover-tools": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Discover available tools on an MCP server",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "operationId": "postV2Discover available tools on an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DiscoverToolsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverToolsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/callback": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Exchange OAuth code for MCP tokens",
+        "description": "Exchange the authorization code for tokens and store the credential.\n\nThe frontend calls this after receiving the OAuth code from the popup.\nOn success, subsequent ``/discover-tools`` calls for the same server URL\nwill automatically use the stored credential.",
+        "operationId": "postV2Exchange oauth code for mcp tokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPOAuthCallbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/login": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Initiate OAuth login for an MCP server",
+        "description": "Discover OAuth metadata from the MCP server and return a login URL.\n\n1. Discovers the protected-resource metadata (RFC 9728)\n2. Fetches the authorization server metadata (RFC 8414)\n3. Performs Dynamic Client Registration (RFC 7591) if available\n4. Returns the authorization URL for the frontend to open in a popup",
+        "operationId": "postV2Initiate oauth login for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPOAuthLoginRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPOAuthLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/oauth/app/{client_id}": {
@@ -5629,7 +6045,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphMeta" }
+                "schema": {
+                  "$ref": "#/components/schemas/GraphModelWithoutNodes"
+                }
               }
             }
           },
@@ -6236,9 +6654,11 @@
           "IDENTITY",
           "EXECUTE_GRAPH",
           "READ_GRAPH",
+          "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
           "READ_STORE",
+          "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
@@ -6337,13 +6757,11 @@
       },
       "ActiveStreamInfo": {
         "properties": {
-          "task_id": { "type": "string", "title": "Task Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
+          "turn_id": { "type": "string", "title": "Turn Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
@@ -6355,6 +6773,75 @@
         "type": "object",
         "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
+      },
+      "AgentDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "in_library": {
+            "type": "boolean",
+            "title": "In Library",
+            "default": false
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          },
+          "execution_options": {
+            "$ref": "#/components/schemas/ExecutionOptions"
+          },
+          "trigger_info": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Trigger Info"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "AgentDetails",
+        "description": "Detailed agent information."
+      },
+      "AgentDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent": { "$ref": "#/components/schemas/AgentDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "agent"],
+        "title": "AgentDetailsResponse",
+        "description": "Response for get_details action."
       },
       "AgentExecutionStatus": {
         "type": "string",
@@ -6368,6 +6855,224 @@
           "REVIEW"
         ],
         "title": "AgentExecutionStatus"
+      },
+      "AgentInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "marketplace or library"
+          },
+          "in_library": {
+            "type": "boolean",
+            "title": "In Library",
+            "default": false
+          },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "category": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Category"
+          },
+          "rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Rating"
+          },
+          "runs": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Runs"
+          },
+          "is_featured": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Featured"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "can_access_graph": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Can Access Graph"
+          },
+          "has_external_trigger": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has External Trigger"
+          },
+          "new_output": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "New Output"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs",
+            "description": "Input schema for the agent, including field names, types, and defaults"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description", "source"],
+        "title": "AgentInfo",
+        "description": "Information about an agent."
+      },
+      "AgentOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "library_agent_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Link"
+          },
+          "execution": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExecutionOutputInfo" },
+              { "type": "null" }
+            ]
+          },
+          "available_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Available Executions"
+          },
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["message", "agent_name", "agent_id"],
+        "title": "AgentOutputResponse",
+        "description": "Response for agent_output tool."
+      },
+      "AgentPreviewResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_preview"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Agent Json"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "description": { "type": "string", "title": "Description" },
+          "node_count": { "type": "integer", "title": "Node Count" },
+          "link_count": {
+            "type": "integer",
+            "title": "Link Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "agent_json",
+          "agent_name",
+          "description",
+          "node_count"
+        ],
+        "title": "AgentPreviewResponse",
+        "description": "Response for previewing a generated agent before saving."
+      },
+      "AgentSavedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agent_saved"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "library_agent_id": { "type": "string", "title": "Library Agent Id" },
+          "library_agent_link": {
+            "type": "string",
+            "title": "Library Agent Link"
+          },
+          "agent_page_link": { "type": "string", "title": "Agent Page Link" }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "agent_id",
+          "agent_name",
+          "library_agent_id",
+          "library_agent_link",
+          "agent_page_link"
+        ],
+        "title": "AgentSavedResponse",
+        "description": "Response when an agent is saved to the library."
+      },
+      "AgentsFoundResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "agents_found"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Available Agents"
+          },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/AgentInfo" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "agents_found"
+          }
+        },
+        "type": "object",
+        "required": ["message", "agents", "count"],
+        "title": "AgentsFoundResponse",
+        "description": "Response for find_agent tool."
       },
       "ApiResponse": {
         "properties": {
@@ -6495,18 +7200,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6514,11 +7207,22 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BaseGraph-Output": {
         "properties": {
@@ -6539,18 +7243,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -6558,6 +7250,16 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
           },
           "input_schema": {
             "additionalProperties": true,
@@ -6605,7 +7307,8 @@
           "has_sensitive_action",
           "trigger_setup_info"
         ],
-        "title": "BaseGraph"
+        "title": "BaseGraph",
+        "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
       "BlockCategoryResponse": {
         "properties": {
@@ -6639,6 +7342,58 @@
         "type": "string",
         "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
+      },
+      "BlockDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "BlockDetails",
+        "description": "Detailed block information."
+      },
+      "BlockDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block": { "$ref": "#/components/schemas/BlockDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "block"],
+        "title": "BlockDetailsResponse",
+        "description": "Response for block details (first run_block attempt)."
       },
       "BlockInfo": {
         "properties": {
@@ -6690,6 +7445,115 @@
           "uiType"
         ],
         "title": "BlockInfo"
+      },
+      "BlockInfoSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema",
+            "description": "Full JSON schema for block inputs"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema",
+            "description": "Full JSON schema for block outputs"
+          },
+          "required_inputs": {
+            "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
+            "type": "array",
+            "title": "Required Inputs",
+            "description": "List of input fields for this block"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description", "categories"],
+        "title": "BlockInfoSummary",
+        "description": "Summary of a block for search results."
+      },
+      "BlockInputFieldInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "type": { "type": "string", "title": "Type" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "default": { "anyOf": [{}, { "type": "null" }], "title": "Default" }
+        },
+        "type": "object",
+        "required": ["name", "type"],
+        "title": "BlockInputFieldInfo",
+        "description": "Information about a block input field."
+      },
+      "BlockListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": { "$ref": "#/components/schemas/BlockInfoSummary" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "query": { "type": "string", "title": "Query" },
+          "usage_hint": {
+            "type": "string",
+            "title": "Usage Hint",
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
+          }
+        },
+        "type": "object",
+        "required": ["message", "blocks", "count", "query"],
+        "title": "BlockListResponse",
+        "description": "Response for find_block tool."
+      },
+      "BlockOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Outputs"
+          },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "block_id", "block_name", "outputs"],
+        "title": "BlockOutputResponse",
+        "description": "Response for run_block tool."
       },
       "BlockResponse": {
         "properties": {
@@ -6904,6 +7768,36 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "BulkMoveAgentsRequest": {
+        "properties": {
+          "agent_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Agent Ids"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          }
+        },
+        "type": "object",
+        "required": ["agent_ids"],
+        "title": "BulkMoveAgentsRequest",
+        "description": "Request model for moving multiple agents to a folder."
+      },
+      "CancelSessionResponse": {
+        "properties": {
+          "cancelled": { "type": "boolean", "title": "Cancelled" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["cancelled"],
+        "title": "CancelSessionResponse",
+        "description": "Response model for the cancel session endpoint."
+      },
       "ChangelogEntry": {
         "properties": {
           "version": { "type": "string", "title": "Version" },
@@ -6936,6 +7830,42 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "ClarificationNeededResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "clarification_needed"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "questions": {
+            "items": { "$ref": "#/components/schemas/ClarifyingQuestion" },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ClarificationNeededResponse",
+        "description": "Response when the LLM needs more information from the user."
+      },
+      "ClarifyingQuestion": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "keyword": { "type": "string", "title": "Keyword" },
+          "example": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Example"
+          }
+        },
+        "type": "object",
+        "required": ["question", "keyword"],
+        "title": "ClarifyingQuestion",
+        "description": "A question that needs user clarification."
       },
       "CountResponse": {
         "properties": {
@@ -7175,7 +8105,7 @@
           "host": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
-            "description": "Host pattern for host-scoped credentials"
+            "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           }
         },
         "type": "object",
@@ -7195,6 +8125,110 @@
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
       },
+      "DiscoverToolsRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server"
+          },
+          "auth_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth Token",
+            "description": "Optional Bearer token for authenticated MCP servers"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "DiscoverToolsRequest",
+        "description": "Request to discover tools on an MCP server."
+      },
+      "DiscoverToolsResponse": {
+        "properties": {
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolResponse" },
+            "type": "array",
+            "title": "Tools"
+          },
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "protocol_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Protocol Version"
+          }
+        },
+        "type": "object",
+        "required": ["tools"],
+        "title": "DiscoverToolsResponse",
+        "description": "Response containing the list of tools available on an MCP server."
+      },
+      "DocPageResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "doc_page"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "path": { "type": "string", "title": "Path" },
+          "content": { "type": "string", "title": "Content" },
+          "doc_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Doc Url"
+          }
+        },
+        "type": "object",
+        "required": ["message", "title", "path", "content"],
+        "title": "DocPageResponse",
+        "description": "Response for get_doc_page tool."
+      },
+      "DocSearchResult": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "path": { "type": "string", "title": "Path" },
+          "section": { "type": "string", "title": "Section" },
+          "snippet": { "type": "string", "title": "Snippet" },
+          "score": { "type": "number", "title": "Score" },
+          "doc_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Doc Url"
+          }
+        },
+        "type": "object",
+        "required": ["title", "path", "section", "snippet", "score"],
+        "title": "DocSearchResult",
+        "description": "A single documentation search result."
+      },
+      "DocSearchResultsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "doc_search_results"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "results": {
+            "items": { "$ref": "#/components/schemas/DocSearchResult" },
+            "type": "array",
+            "title": "Results"
+          },
+          "count": { "type": "integer", "title": "Count" },
+          "query": { "type": "string", "title": "Query" }
+        },
+        "type": "object",
+        "required": ["message", "results", "count", "query"],
+        "title": "DocSearchResultsResponse",
+        "description": "Response for search_docs tool."
+      },
       "Document": {
         "properties": {
           "url": { "type": "string", "title": "Url" },
@@ -7203,6 +8237,34 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "error"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "details": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ErrorResponse",
+        "description": "Response for errors."
       },
       "ExecutionAnalyticsConfig": {
         "properties": {
@@ -7380,6 +8442,175 @@
         ],
         "title": "ExecutionAnalyticsResult"
       },
+      "ExecutionOptions": {
+        "properties": {
+          "manual": { "type": "boolean", "title": "Manual", "default": true },
+          "scheduled": {
+            "type": "boolean",
+            "title": "Scheduled",
+            "default": true
+          },
+          "webhook": { "type": "boolean", "title": "Webhook", "default": false }
+        },
+        "type": "object",
+        "title": "ExecutionOptions",
+        "description": "Available execution options for an agent."
+      },
+      "ExecutionOutputInfo": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "status": { "type": "string", "title": "Status" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "outputs": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Outputs"
+          },
+          "inputs_summary": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs Summary"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id", "status", "outputs"],
+        "title": "ExecutionOutputInfo",
+        "description": "Summary of a single execution's outputs."
+      },
+      "ExecutionStartedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "execution_started"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "library_agent_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Link"
+          },
+          "status": { "type": "string", "title": "Status", "default": "QUEUED" }
+        },
+        "type": "object",
+        "required": ["message", "execution_id", "graph_id", "graph_name"],
+        "title": "ExecutionStartedResponse",
+        "description": "Response for run/schedule actions."
+      },
+      "FolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Color",
+            "description": "Hex color code (#RRGGBB)"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "FolderCreateRequest",
+        "description": "Request model for creating a folder."
+      },
+      "FolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/LibraryFolder" },
+            "type": "array",
+            "title": "Folders"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["folders", "pagination"],
+        "title": "FolderListResponse",
+        "description": "Response schema for a list of folders."
+      },
+      "FolderMoveRequest": {
+        "properties": {
+          "target_parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Parent Id"
+          }
+        },
+        "type": "object",
+        "title": "FolderMoveRequest",
+        "description": "Request model for moving a folder to a new parent."
+      },
+      "FolderTreeResponse": {
+        "properties": {
+          "tree": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Tree"
+          }
+        },
+        "type": "object",
+        "required": ["tree"],
+        "title": "FolderTreeResponse",
+        "description": "Response schema for folder tree structure."
+      },
+      "FolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "title": "FolderUpdateRequest",
+        "description": "Request model for updating a folder."
+      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7399,18 +8630,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/Node" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -7419,16 +8638,26 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/Node" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Input" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           }
         },
         "type": "object",
         "required": ["name", "description"],
-        "title": "Graph"
+        "title": "Graph",
+        "description": "Creatable graph model used in API create/update endpoints."
       },
       "GraphExecution": {
         "properties": {
@@ -7780,6 +9009,52 @@
       "GraphMeta": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
+          "version": { "type": "integer", "title": "Version" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
+          },
+          "forked_from_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Forked From Id"
+          },
+          "forked_from_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Forked From Version"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "name",
+          "description",
+          "user_id",
+          "created_at"
+        ],
+        "title": "GraphMeta",
+        "description": "Lightweight graph metadata model representing an existing graph from the database,\nfor use in listings and summaries.\n\nLacks `GraphModel`'s nodes, links, and expensive computed fields.\nUse for list endpoints where full graph data is not needed and performance matters."
+      },
+      "GraphModel": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
           "is_active": {
             "type": "boolean",
@@ -7804,13 +9079,27 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
           },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/NodeModel" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": { "$ref": "#/components/schemas/Link" },
+            "type": "array",
+            "title": "Links"
+          },
           "sub_graphs": {
             "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
             "type": "array",
-            "title": "Sub Graphs",
-            "default": []
+            "title": "Sub Graphs"
           },
-          "user_id": { "type": "string", "title": "User Id" },
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -7857,6 +9146,7 @@
           "name",
           "description",
           "user_id",
+          "created_at",
           "input_schema",
           "output_schema",
           "has_external_trigger",
@@ -7865,9 +9155,10 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphMeta"
+        "title": "GraphModel",
+        "description": "Full graph model representing an existing graph from the database.\n\nThis is the primary model for working with persisted graphs. Includes all\ngraph data (nodes, links, sub_graphs) plus user ownership and timestamps.\nProvides computed fields (input_schema, output_schema, etc.) used during\nset-up (frontend) and execution (backend).\n\nInherits from:\n- `Graph`: provides structure (nodes, links, sub_graphs) and computed schemas\n- `GraphMeta`: provides user_id, created_at for database records"
       },
-      "GraphModel": {
+      "GraphModelWithoutNodes": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "version": { "type": "integer", "title": "Version", "default": 1 },
@@ -7886,18 +9177,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "nodes": {
-            "items": { "$ref": "#/components/schemas/NodeModel" },
-            "type": "array",
-            "title": "Nodes",
-            "default": []
-          },
-          "links": {
-            "items": { "$ref": "#/components/schemas/Link" },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
           "forked_from_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Forked From Id"
@@ -7905,12 +9184,6 @@
           "forked_from_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Forked From Version"
-          },
-          "sub_graphs": {
-            "items": { "$ref": "#/components/schemas/BaseGraph-Output" },
-            "type": "array",
-            "title": "Sub Graphs",
-            "default": []
           },
           "user_id": { "type": "string", "title": "User Id" },
           "created_at": {
@@ -7973,7 +9246,8 @@
           "trigger_setup_info",
           "credentials_input_schema"
         ],
-        "title": "GraphModel"
+        "title": "GraphModelWithoutNodes",
+        "description": "GraphModel variant that excludes nodes, links, and sub-graphs from serialization.\n\nUsed in contexts like the store where exposing internal graph structure\nis not desired. Inherits all computed fields from GraphModel but marks\nnodes and links as excluded from JSON output."
       },
       "GraphSettings": {
         "properties": {
@@ -8088,6 +9362,43 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "InputValidationErrorResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "input_validation_error"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "unrecognized_fields": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Unrecognized Fields",
+            "description": "List of input field names that were not recognized"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "description": "The agent's valid input schema for reference"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "unrecognized_fields", "inputs"],
+        "title": "InputValidationErrorResponse",
+        "description": "Response when run_agent receives unknown input fields."
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8188,6 +9499,14 @@
             "title": "Is Latest Version"
           },
           "is_favorite": { "type": "boolean", "title": "Is Favorite" },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
+          "folder_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Name"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -8455,11 +9774,108 @@
               { "type": "null" }
             ],
             "description": "User-specific settings for this library agent"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id",
+            "description": "Folder ID to move agent to (None to move to root)"
           }
         },
         "type": "object",
         "title": "LibraryAgentUpdateRequest",
         "description": "Schema for updating a library agent via PUT.\n\nIncludes flags for auto-updating version, marking as favorite,\narchiving, or deleting."
+      },
+      "LibraryFolder": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolder",
+        "description": "Represents a folder for organizing library agents."
+      },
+      "LibraryFolderTree": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          },
+          "children": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Children",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolderTree",
+        "description": "Folder with nested children for tree view."
       },
       "Link": {
         "properties": {
@@ -8518,6 +9934,62 @@
         "type": "object",
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
+      },
+      "MCPOAuthCallbackRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Authorization code from OAuth callback"
+          },
+          "state_token": {
+            "type": "string",
+            "title": "State Token",
+            "description": "State token for CSRF verification"
+          }
+        },
+        "type": "object",
+        "required": ["code", "state_token"],
+        "title": "MCPOAuthCallbackRequest",
+        "description": "Request to exchange an OAuth code for tokens."
+      },
+      "MCPOAuthLoginRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server that requires OAuth"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "MCPOAuthLoginRequest",
+        "description": "Request to start an OAuth flow for an MCP server."
+      },
+      "MCPOAuthLoginResponse": {
+        "properties": {
+          "login_url": { "type": "string", "title": "Login Url" },
+          "state_token": { "type": "string", "title": "State Token" }
+        },
+        "type": "object",
+        "required": ["login_url", "state_token"],
+        "title": "MCPOAuthLoginResponse",
+        "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPToolResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolResponse",
+        "description": "A single MCP tool returned by discovery."
       },
       "MarketplaceListing": {
         "properties": {
@@ -8606,6 +10078,54 @@
         "required": ["agents", "pagination"],
         "title": "MyAgentsResponse"
       },
+      "NeedLoginResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "need_login"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "agent_info": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Agent Info"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "NeedLoginResponse",
+        "description": "Response when login is needed."
+      },
+      "NoResultsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "no_results"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggestions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Suggestions",
+            "default": []
+          },
+          "name": { "type": "string", "title": "Name", "default": "no_results" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "NoResultsResponse",
+        "description": "Response when no agents found."
+      },
       "Node": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8613,26 +10133,22 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           }
         },
         "type": "object",
@@ -8712,38 +10228,28 @@
           "input_default": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Default",
-            "default": {}
+            "title": "Input Default"
           },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "input_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Input Links",
-            "default": []
+            "title": "Input Links"
           },
           "output_links": {
             "items": { "$ref": "#/components/schemas/Link" },
             "type": "array",
-            "title": "Output Links",
-            "default": []
+            "title": "Output Links"
           },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
           "webhook_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Webhook Id"
-          },
-          "webhook": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
-              { "type": "null" }
-            ]
           }
         },
         "type": "object",
@@ -9001,27 +10507,6 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
-      },
-      "OperationCompleteRequest": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "result": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "OperationCompleteRequest",
-        "description": "Request model for external completion webhook."
       },
       "Pagination": {
         "properties": {
@@ -9654,6 +11139,42 @@
         "required": ["credit_amount"],
         "title": "RequestTopUp"
       },
+      "ResponseType": {
+        "type": "string",
+        "enum": [
+          "agents_found",
+          "agent_details",
+          "setup_requirements",
+          "execution_started",
+          "need_login",
+          "error",
+          "no_results",
+          "agent_output",
+          "understanding_updated",
+          "agent_preview",
+          "agent_saved",
+          "clarification_needed",
+          "block_list",
+          "block_details",
+          "block_output",
+          "doc_search_results",
+          "doc_page",
+          "workspace_file_list",
+          "workspace_file_content",
+          "workspace_file_metadata",
+          "workspace_file_written",
+          "workspace_file_deleted",
+          "operation_in_progress",
+          "input_validation_error",
+          "web_fetch",
+          "bash_exec",
+          "feature_request_search",
+          "feature_request_created",
+          "suggested_goal"
+        ],
+        "title": "ResponseType",
+        "description": "Types of tool responses."
+      },
       "ReviewItem": {
         "properties": {
           "node_exec_id": {
@@ -9916,6 +11437,48 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetupInfo": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "requirements": {
+            "additionalProperties": { "items": {}, "type": "array" },
+            "type": "object",
+            "title": "Requirements"
+          },
+          "user_readiness": { "$ref": "#/components/schemas/UserReadiness" }
+        },
+        "type": "object",
+        "required": ["agent_id", "agent_name"],
+        "title": "SetupInfo",
+        "description": "Complete setup information."
+      },
+      "SetupRequirementsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "setup_requirements"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "setup_info": { "$ref": "#/components/schemas/SetupInfo" },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          }
+        },
+        "type": "object",
+        "required": ["message", "setup_info"],
+        "title": "SetupRequirementsResponse",
+        "description": "Response for validate action."
       },
       "ShareRequest": {
         "properties": {},
@@ -10488,13 +12051,49 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
+      "SuggestedGoalResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "suggested_goal"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggested_goal": {
+            "type": "string",
+            "title": "Suggested Goal",
+            "description": "The suggested alternative goal"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the original goal needs refinement",
+            "default": ""
+          },
+          "original_goal": {
+            "type": "string",
+            "title": "Original Goal",
+            "description": "The user's original goal for context",
+            "default": ""
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": ["vague", "unachievable"],
+            "title": "Goal Type",
+            "description": "Type: 'vague' or 'unachievable'",
+            "default": "vague"
+          }
+        },
+        "type": "object",
+        "required": ["message", "suggested_goal"],
+        "title": "SuggestedGoalResponse",
+        "description": "Response when the goal needs refinement with a suggested alternative."
+      },
       "SuggestionsResponse": {
         "properties": {
-          "otto_suggestions": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Otto Suggestions"
-          },
           "recent_searches": {
             "items": { "$ref": "#/components/schemas/SearchEntry" },
             "type": "array",
@@ -10515,12 +12114,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "otto_suggestions",
-          "recent_searches",
-          "providers",
-          "top_blocks"
-        ],
+        "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
       "TimezoneResponse": {
@@ -11312,6 +12906,33 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UnderstandingUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "understanding_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "updated_fields": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Updated Fields"
+          },
+          "current_understanding": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Current Understanding"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UnderstandingUpdatedResponse",
+        "description": "Response for add_understanding tool."
       },
       "UnifiedSearchResponse": {
         "properties": {
@@ -12191,6 +13812,29 @@
         "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
       },
+      "UserReadiness": {
+        "properties": {
+          "has_all_credentials": {
+            "type": "boolean",
+            "title": "Has All Credentials",
+            "default": false
+          },
+          "missing_credentials": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Missing Credentials",
+            "default": {}
+          },
+          "ready_to_run": {
+            "type": "boolean",
+            "title": "Ready To Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UserReadiness",
+        "description": "User readiness status."
+      },
       "UserTransaction": {
         "properties": {
           "transaction_key": {
@@ -12272,7 +13916,9 @@
             "title": "Location"
           },
           "msg": { "type": "string", "title": "Message" },
-          "type": { "type": "string", "title": "Error Type" }
+          "type": { "type": "string", "title": "Error Type" },
+          "input": { "title": "Input" },
+          "ctx": { "type": "object", "title": "Context" }
         },
         "type": "object",
         "required": ["loc", "msg", "type"],

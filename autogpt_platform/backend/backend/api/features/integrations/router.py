@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -14,7 +14,7 @@ from fastapi import (
     Security,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
@@ -39,7 +39,11 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.credentials_store import provider_matches
+from backend.integrations.creds_manager import (
+    IntegrationCredentialsManager,
+    create_mcp_oauth_handler,
+)
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -102,8 +106,36 @@ class CredentialsMetaResponse(BaseModel):
     scopes: list[str] | None
     username: str | None
     host: str | None = Field(
-        default=None, description="Host pattern for host-scoped credentials"
+        default=None,
+        description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug."""
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
+
+    @staticmethod
+    def get_host(cred: Credentials) -> str | None:
+        """Extract host from credential: HostScoped host or MCP server URL."""
+        if isinstance(cred, HostScopedCredentials):
+            return cred.host
+        if isinstance(cred, OAuth2Credentials) and cred.provider in (
+            ProviderName.MCP,
+            ProviderName.MCP.value,
+            "ProviderName.MCP",
+        ):
+            return (cred.metadata or {}).get("mcp_server_url")
+        return None
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -179,9 +211,7 @@ async def callback(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
-        host=(
-            credentials.host if isinstance(credentials, HostScopedCredentials) else None
-        ),
+        host=(CredentialsMetaResponse.get_host(credentials)),
     )
 
 
@@ -199,7 +229,7 @@ async def list_credentials(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
     ]
@@ -222,7 +252,7 @@ async def list_credentials_by_provider(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
     ]
@@ -322,7 +352,11 @@ async def delete_credentials(
 
     tokens_revoked = None
     if isinstance(creds, OAuth2Credentials):
-        handler = _get_provider_oauth_handler(request, provider)
+        if provider_matches(provider.value, ProviderName.MCP.value):
+            # MCP uses dynamic per-server OAuth — create handler from metadata
+            handler = create_mcp_oauth_handler(creds)
+        else:
+            handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
 
     return CredentialsDeletionResponse(revoked=tokens_revoked)

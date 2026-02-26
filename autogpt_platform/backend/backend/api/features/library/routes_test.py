@@ -115,6 +115,8 @@ async def test_get_library_agents_success(
         sort_by=library_model.LibraryAgentSort.UPDATED_AT,
         page=1,
         page_size=15,
+        folder_id=None,
+        include_root_only=False,
     )
 
 

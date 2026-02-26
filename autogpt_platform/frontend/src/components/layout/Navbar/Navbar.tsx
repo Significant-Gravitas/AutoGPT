@@ -47,7 +47,7 @@ export function Navbar() {
 
   const actualLoggedInLinks = [
     { name: "Home", href: homeHref },
-    ...(isChatEnabled === true ? [{ name: "Tasks", href: "/library" }] : []),
+    ...(isChatEnabled === true ? [{ name: "Agents", href: "/library" }] : []),
     ...loggedInLinks,
   ];
 
@@ -62,7 +62,7 @@ export function Navbar() {
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="border-zinc-[#EFEFF0] inline-flex w-full items-center border border-[#EFEFF0] bg-[#F3F4F6]/20 p-3 backdrop-blur-[26px]"
+          className="inline-flex w-full items-center border border-none bg-[#FAFAFA] p-3 backdrop-blur-[26px]"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}

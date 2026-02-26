@@ -29,6 +29,7 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
+    model_validator,
 )
 from pydantic_core import (
     CoreSchema,
@@ -163,10 +164,12 @@ class User(BaseModel):
 if TYPE_CHECKING:
     from prisma.models import User as PrismaUser
 
-    from backend.data.block import BlockSchema
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+GraphInput = dict[str, Any]
 
 
 class BlockSecret:
@@ -500,6 +503,25 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug.
+
+        Python 3.13 changed ``str(StrEnum)`` to return ``"ClassName.MEMBER"``
+        instead of the plain value.  Old stored credential references may have
+        ``provider: "ProviderName.MCP"`` instead of ``"mcp"``.
+        """
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
+
     @classmethod
     def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
         return get_args(cls.model_fields["provider"].annotation)
@@ -508,15 +530,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
         return get_args(cls.model_fields["type"].annotation)
 
-    @classmethod
-    def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
+    @staticmethod
+    def validate_credentials_field_schema(
+        field_schema: dict[str, Any], field_name: str
+    ):
         """Validates the schema of a credentials input field"""
-        field_name = next(
-            name for name, type in model.get_credentials_fields().items() if type is cls
-        )
-        field_schema = model.jsonschema()["properties"][field_name]
         try:
-            schema_extra = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
+            field_info = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
         except ValidationError as e:
             if "Field required [type=missing" not in str(e):
                 raise
@@ -526,11 +546,11 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        providers = cls.allowed_providers()
+        providers = field_info.provider
         if (
             providers is not None
             and len(providers) > 1
-            and not schema_extra.discriminator
+            and not field_info.discriminator
         ):
             raise TypeError(
                 f"Multi-provider CredentialsField '{field_name}' "
@@ -606,11 +626,18 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         ] = defaultdict(list)
 
         for field, key in fields:
-            if field.provider == frozenset([ProviderName.HTTP]):
-                # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
-                # Group by host extracted from the URL
+            if (
+                field.discriminator
+                and not field.discriminator_mapping
+                and field.discriminator_values
+            ):
+                # URL-based discrimination (e.g. HTTP host-scoped, MCP server URL):
+                # Each unique host gets its own credential entry.
+                provider_prefix = next(iter(field.provider))
+                # Use .value for enum types to get the plain string (e.g. "mcp" not "ProviderName.MCP")
+                prefix_str = getattr(provider_prefix, "value", str(provider_prefix))
                 providers = frozenset(
-                    [cast(CP, "http")]
+                    [cast(CP, prefix_str)]
                     + [
                         cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values

@@ -25,8 +25,12 @@ RUN if [ -f .env.production ]; then \
       cp .env.default .env; \
     fi
 RUN pnpm run generate:api
+# Disable source-map generation in Docker builds to halve webpack memory usage.
+# Source maps are only useful when SENTRY_AUTH_TOKEN is set (Vercel deploys);
+# the Docker image never uploads them, so generating them just wastes RAM.
+ENV NEXT_PUBLIC_SOURCEMAPS="false"
 # In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
-RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=4096" pnpm build; else NODE_OPTIONS="--max-old-space-size=4096" pnpm build; fi
+RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod
