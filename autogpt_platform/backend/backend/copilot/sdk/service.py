@@ -83,10 +83,13 @@ COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
 
+
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
-_SDK_TOOL_SUPPLEMENT = """
+def _build_sdk_tool_supplement(cwd: str) -> str:
+    """Build the SDK tool supplement with the actual working directory injected."""
+    return f"""
 
 ## Tool notes
 
@@ -94,9 +97,16 @@ _SDK_TOOL_SUPPLEMENT = """
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
   for shell commands — it runs in a network-isolated sandbox.
 
+### Working directory
+- Your working directory is: `{cwd}`
+- All SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec` operate inside this
+  directory.  This is the ONLY writable path — do not attempt to read or write
+  anywhere else on the filesystem.
+- Use relative paths or absolute paths under `{cwd}` for all file operations.
+
 ### Two storage systems — CRITICAL to understand
 
-1. **Ephemeral working directory** (`/tmp/copilot-<session>/`):
+1. **Ephemeral working directory** (`{cwd}`):
    - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
    - Files here are **lost between turns** — do NOT rely on them persisting
    - Use for temporary work: running scripts, processing data, etc.
@@ -122,6 +132,21 @@ When you create or modify important files (code, configs, outputs), you MUST:
 2. At the start of a new turn, call `list_workspace_files` to see what files
    are available from previous turns
 
+### Sharing files with the user
+After saving a file to the persistent workspace with `write_workspace_file`,
+share it with the user by embedding the `download_url` from the response in
+your message as a Markdown link or image:
+
+- **Any file** — shows as a clickable download link:
+  `[report.csv](workspace://file_id#text/csv)`
+- **Image** — renders inline in chat:
+  `![chart](workspace://file_id#image/png)`
+- **Video** — renders inline in chat with player controls:
+  `![recording](workspace://file_id#video/mp4)`
+
+The `download_url` field in the `write_workspace_file` response is already
+in the correct format — paste it directly after the `(` in the Markdown.
+
 ### Long-running tools
 Long-running tools (create_agent, edit_agent, etc.) are handled
 asynchronously.  You will receive an immediate response; the actual result
@@ -131,6 +156,7 @@ is delivered to the user via a background stream.
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 """
+
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
@@ -460,14 +486,13 @@ async def stream_chat_completion_sdk(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
 
-    # Build system prompt (reuses non-SDK path with Langfuse support)
-    has_history = len(session.messages) > 1
-    system_prompt, _ = await _build_system_prompt(
-        user_id, has_conversation_history=has_history
-    )
-    system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
+    stream_completed = False
+    use_resume = False
+    resume_file: str | None = None
+    captured_transcript = CapturedTranscript()
+    sdk_cwd = ""
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -490,21 +515,30 @@ async def stream_chat_completion_sdk(
         )
         return
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
-
-    stream_completed = False
-    # Initialise variables before the try so the finally block can
-    # always attempt transcript upload regardless of errors.
-    sdk_cwd = ""
-    use_resume = False
-    resume_file: str | None = None
-    captured_transcript = CapturedTranscript()
-
+    # Make sure there is no more code between the lock acquitition and try-block.
     try:
-        # Use a session-specific temp dir to avoid cleanup race conditions
-        # between concurrent sessions.
-        sdk_cwd = _make_sdk_cwd(session_id)
-        os.makedirs(sdk_cwd, exist_ok=True)
+        # Build system prompt (reuses non-SDK path with Langfuse support).
+        # Pre-compute the cwd here so the exact working directory path can be
+        # injected into the supplement instead of the generic placeholder.
+        # Catch ValueError early so the failure yields a clean StreamError rather
+        # than propagating outside the stream error-handling path.
+        has_history = len(session.messages) > 1
+        try:
+            sdk_cwd = _make_sdk_cwd(session_id)
+            os.makedirs(sdk_cwd, exist_ok=True)
+        except (ValueError, OSError) as e:
+            logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
+            yield StreamError(
+                errorText="Unable to initialize working directory.",
+                code="sdk_cwd_error",
+            )
+            return
+        system_prompt, _ = await _build_system_prompt(
+            user_id, has_conversation_history=has_history
+        )
+        system_prompt += _build_sdk_tool_supplement(sdk_cwd)
+
+        yield StreamStart(messageId=message_id, sessionId=session_id)
 
         set_execution_context(user_id, session)
         try:
