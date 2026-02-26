@@ -33,10 +33,17 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - AutoGPT Platform - Backend
         alias: poetry-install-platform-backend
-        entry: poetry -C autogpt_platform/backend install
         # include autogpt_libs source (since it's a path dependency)
-        files: ^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$
-        types: [file]
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$" || exit 0;
+          poetry -C autogpt_platform/backend install
+          '
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -44,9 +51,16 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - AutoGPT Platform - Libs
         alias: poetry-install-platform-libs
-        entry: poetry -C autogpt_platform/autogpt_libs install
-        files: ^autogpt_platform/autogpt_libs/poetry\.lock$
-        types: [file]
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/autogpt_libs/poetry\.lock$" || exit 0;
+          poetry -C autogpt_platform/autogpt_libs install
+          '
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -54,9 +68,16 @@ repos:
       - id: pnpm-install
         name: Check & Install dependencies - AutoGPT Platform - Frontend
         alias: pnpm-install-platform-frontend
-        entry: pnpm --prefix autogpt_platform/frontend install
-        files: ^autogpt_platform/frontend/pnpm-lock\.yaml$
-        types: [file]
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/frontend/pnpm-lock\.yaml$" || exit 0;
+          pnpm --prefix autogpt_platform/frontend install
+          '
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -64,10 +85,17 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - Classic - AutoGPT
         alias: poetry-install-classic-autogpt
-        entry: poetry -C classic/original_autogpt install
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^classic/(original_autogpt|forge)/poetry\.lock$" || exit 0;
+          poetry -C classic/original_autogpt install
+          '
         # include forge source (since it's a path dependency)
-        files: ^classic/(original_autogpt|forge)/poetry\.lock$
-        types: [file]
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -75,9 +103,16 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - Classic - Forge
         alias: poetry-install-classic-forge
-        entry: poetry -C classic/forge install
-        files: ^classic/forge/poetry\.lock$
-        types: [file]
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^classic/forge/poetry\.lock$" || exit 0;
+          poetry -C classic/forge install
+          '
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -85,9 +120,16 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - Classic - Benchmark
         alias: poetry-install-classic-benchmark
-        entry: poetry -C classic/benchmark install
-        files: ^classic/benchmark/poetry\.lock$
-        types: [file]
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^classic/benchmark/poetry\.lock$" || exit 0;
+          poetry -C classic/benchmark install
+          '
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -100,13 +142,17 @@ repos:
         alias: prisma-generate-platform-backend
         entry: >
           bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema\.prisma)$" || exit 0;
           cd autogpt_platform/backend
           && poetry run prisma generate
           && rm -rf /tmp/pyright-*
           '
         # include everything that triggers poetry install + the prisma schema
-        files: ^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema.prisma)$
-        types: [file]
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
@@ -116,14 +162,18 @@ repos:
         alias: sync-api-types-platform
         entry: >
           bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/backend/" || exit 0;
           cd autogpt_platform/backend
           && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
           && cd ../frontend
           && pnpm prettier --write ./src/app/api/openapi.json
           && pnpm generate:api
           '
-        files: ^autogpt_platform/backend/
-        types: [file]
+        always_run: true
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
