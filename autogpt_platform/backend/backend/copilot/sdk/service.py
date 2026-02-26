@@ -629,9 +629,24 @@ async def stream_chat_completion_sdk(
                 )
                 await client.query(query_message, session_id=session_id)
 
-                assistant_response = ChatMessage(role="assistant", content="")
-                accumulated_tool_calls: list[dict[str, Any]] = []
-                has_appended_assistant = False
+                # On resume, reuse the existing assistant message if present to avoid duplicates
+                if (
+                    use_resume
+                    and session.messages
+                    and session.messages[-1].role == "assistant"
+                ):
+                    assistant_response = session.messages[-1]
+                    accumulated_tool_calls = (
+                        assistant_response.tool_calls
+                        if hasattr(assistant_response, "tool_calls")
+                        and assistant_response.tool_calls
+                        else []
+                    )
+                    has_appended_assistant = True
+                else:
+                    assistant_response = ChatMessage(role="assistant", content="")
+                    accumulated_tool_calls = []
+                    has_appended_assistant = False
                 has_tool_results = False
 
                 # Use an explicit async iterator with non-cancelling heartbeats.
@@ -904,7 +919,6 @@ async def stream_chat_completion_sdk(
                 # CLI exited unexpectedly or the user stopped execution.
                 # Close any open text/step so chunks are well-formed, and
                 # append a cancellation message so users see feedback.
-                # StreamFinish is published by mark_session_completed in the processor.
                 if not stream_completed:
                     logger.info(
                         "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
