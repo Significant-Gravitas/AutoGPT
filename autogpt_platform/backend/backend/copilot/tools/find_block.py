@@ -32,6 +32,7 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
     BlockType.NOTE,  # Visual annotation only - no runtime behavior
     BlockType.HUMAN_IN_THE_LOOP,  # Pauses for human approval - CoPilot IS human-in-the-loop
     BlockType.AGENT,  # AgentExecutorBlock requires execution_context - use run_agent tool
+    BlockType.MCP_TOOL,  # Has dedicated run_mcp_tool tool with proper discovery + auth flow
 }
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)

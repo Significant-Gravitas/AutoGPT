@@ -23,6 +23,7 @@ import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
+import { RunMCPToolComponent } from "../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
@@ -325,6 +326,13 @@ export const ChatMessagesContainer = ({
                     case "tool-run_block":
                       return (
                         <RunBlockTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-run_mcp_tool":
+                      return (
+                        <RunMCPToolComponent
                           key={`${message.id}-${i}`}
                           part={part as ToolUIPart}
                         />

@@ -48,6 +48,9 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_CREATED = "feature_request_created"
     # Goal refinement
     SUGGESTED_GOAL = "suggested_goal"
+    # MCP tool types
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
 
 
 # Base response model
@@ -476,3 +479,30 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
     issue_url: str
     is_new_issue: bool  # False if added to existing
     customer_name: str
+
+
+# MCP tool models
+class MCPToolInfo(BaseModel):
+    """Information about a single MCP tool discovered from a server."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPToolsDiscoveredResponse(ToolResponseBase):
+    """Response when MCP tools are discovered from a server (agent-internal)."""
+
+    type: ResponseType = ResponseType.MCP_TOOLS_DISCOVERED
+    server_url: str
+    tools: list[MCPToolInfo]
+
+
+class MCPToolOutputResponse(ToolResponseBase):
+    """Response after executing an MCP tool."""
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    server_url: str
+    tool_name: str
+    result: Any = None
+    success: bool = True
