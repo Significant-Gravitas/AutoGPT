@@ -265,8 +265,8 @@ class CoPilotProcessor:
         except BaseException as e:
             # Handle all exceptions (including CancelledError) with appropriate messages
             if isinstance(e, asyncio.CancelledError):
-                log.info("Turn cancelled")
                 error_msg = "Operation cancelled"
+                log.info("Turn cancelled")
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
