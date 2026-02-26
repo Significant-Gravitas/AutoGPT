@@ -165,7 +165,10 @@ export function PromptInputTextarea({
     <InputGroupTextarea
       ref={textareaRef}
       rows={1}
-      className={cn("max-h-48 min-h-0 text-base leading-6 md:text-base", className)}
+      className={cn(
+        "max-h-48 min-h-0 text-base leading-6 md:text-base",
+        className,
+      )}
       name="message"
       value={value}
       onChange={handleChange}
@@ -290,10 +293,13 @@ export function PromptInputSubmit({
   status,
   onStop,
   onClick,
+  disabled,
   children,
   ...props
 }: PromptInputSubmitProps) {
   const isGenerating = status === "submitted" || status === "streaming";
+  const canStop = isGenerating && Boolean(onStop);
+  const isDisabled = Boolean(disabled) || (isGenerating && !canStop);
 
   let Icon = <ArrowUpIcon className="size-4" weight="bold" />;
 
@@ -305,26 +311,31 @@ export function PromptInputSubmit({
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (isGenerating && onStop) {
+      if (canStop && onStop) {
         e.preventDefault();
         onStop();
         return;
       }
+      if (isGenerating) {
+        e.preventDefault();
+        return;
+      }
       onClick?.(e);
     },
-    [isGenerating, onStop, onClick],
+    [canStop, isGenerating, onStop, onClick],
   );
 
   return (
     <InputGroupButton
-      aria-label={isGenerating ? "Stop" : "Submit"}
+      aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
         "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
         className,
       )}
+      disabled={isDisabled}
       onClick={handleClick}
       size={size}
-      type={isGenerating && onStop ? "button" : "submit"}
+      type={canStop ? "button" : "submit"}
       variant={variant}
       {...props}
     >

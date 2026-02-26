@@ -66,7 +66,8 @@ export function ChatInput({
     baseHandleChange(e);
   }
 
-  const canSend = !disabled && !!value.trim() && !isRecording;
+  const canSend =
+    !disabled && !!value.trim() && !isRecording && !isTranscribing;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
@@ -97,7 +98,7 @@ export function ChatInput({
           )}
         </PromptInputBody>
 
-        <span id="chat-input-hint" className="sr-only">
+        <span id={`${inputId}-hint`} className="sr-only">
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
 
@@ -119,10 +120,7 @@ export function ChatInput({
                 {isTranscribing ? (
                   <CircleNotchIcon className="h-4 w-4 animate-spin" />
                 ) : (
-                  <MicrophoneIcon
-                    className="h-4 w-4 text-zinc-500"
-                    weight="bold"
-                  />
+                  <MicrophoneIcon className="h-4 w-4" weight="bold" />
                 )}
               </PromptInputButton>
             )}
