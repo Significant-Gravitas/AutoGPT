@@ -283,22 +283,15 @@ class AIImageGeneratorBlock(Block):
                 )
                 return output
 
-            elif input_data.model == ImageGenModel.NANO_BANANA_PRO:
-                # Use Nano Banana Pro (Google Gemini 3 Pro Image)
-                input_params = {
-                    "prompt": modified_prompt,
-                    "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
-                    "resolution": "2K",  # Default to 2K for good quality/cost balance
-                    "output_format": "jpg",
-                    "safety_filter_level": "block_only_high",  # Most permissive
+            elif input_data.model in (
+                ImageGenModel.NANO_BANANA_PRO,
+                ImageGenModel.NANO_BANANA_2,
+            ):
+                # Use Nano Banana models (Google Gemini image variants)
+                model_map = {
+                    ImageGenModel.NANO_BANANA_PRO: "google/nano-banana-pro",
+                    ImageGenModel.NANO_BANANA_2: "google/nano-banana-2",
                 }
-                output = await self._run_client(
-                    credentials, "google/nano-banana-pro", input_params
-                )
-                return output
-
-            elif input_data.model == ImageGenModel.NANO_BANANA_2:
-                # Use Nano Banana 2 (Google Gemini 3.1 Flash Image)
                 input_params = {
                     "prompt": modified_prompt,
                     "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
@@ -307,7 +300,7 @@ class AIImageGeneratorBlock(Block):
                     "safety_filter_level": "block_only_high",
                 }
                 output = await self._run_client(
-                    credentials, "google/nano-banana-2", input_params
+                    credentials, model_map[input_data.model], input_params
                 )
                 return output
 

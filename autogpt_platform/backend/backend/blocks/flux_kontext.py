@@ -34,7 +34,7 @@ TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
 }
 
 
