@@ -11,7 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -146,12 +146,7 @@ export const ChatMessagesContainer = ({
   headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-
-  useEffect(() => {
-    if (status === "submitted") {
-      setThinkingPhrase(getRandomPhrase());
-    }
-  }, [status]);
+  const wasThinkingAfterTool = useRef(false);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
@@ -162,9 +157,36 @@ export const ChatMessagesContainer = ({
         p.type.startsWith("tool-"),
     );
 
+  // Detect when the LLM is thinking after a completed tool call
+  const lastPart =
+    lastMessage?.role === "assistant" && lastMessage.parts.length > 0
+      ? lastMessage.parts[lastMessage.parts.length - 1]
+      : undefined;
+
+  const isThinkingAfterToolCall =
+    status === "streaming" &&
+    lastPart !== undefined &&
+    lastPart.type.startsWith("tool-") &&
+    (lastPart as ToolUIPart).state === "output-available";
+
   const showThinking =
     status === "submitted" ||
-    (status === "streaming" && !lastAssistantHasVisibleContent);
+    (status === "streaming" && !lastAssistantHasVisibleContent) ||
+    isThinkingAfterToolCall;
+
+  useEffect(() => {
+    if (status === "submitted") {
+      setThinkingPhrase(getRandomPhrase());
+    }
+  }, [status]);
+
+  // Pick a new phrase when entering "thinking after tool call" state
+  useEffect(() => {
+    if (isThinkingAfterToolCall && !wasThinkingAfterTool.current) {
+      setThinkingPhrase(getRandomPhrase());
+    }
+    wasThinkingAfterTool.current = isThinkingAfterToolCall;
+  }, [isThinkingAfterToolCall]);
 
   return (
     <Conversation className="min-h-0 flex-1">
@@ -296,8 +318,8 @@ export const ChatMessagesContainer = ({
                   }
                 })}
                 {isLastAssistant &&
-                  !messageHasVisibleContent &&
-                  showThinking && (
+                  showThinking &&
+                  (!messageHasVisibleContent || isThinkingAfterToolCall) && (
                     <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                       {thinkingPhrase}
                     </span>
