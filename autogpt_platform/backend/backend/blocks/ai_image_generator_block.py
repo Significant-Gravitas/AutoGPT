@@ -115,6 +115,7 @@ class ImageGenModel(str, Enum):
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
     NANO_BANANA_PRO = "Nano Banana Pro"
+    NANO_BANANA_2 = "Nano Banana 2"
 
 
 class AIImageGeneratorBlock(Block):
@@ -179,7 +180,9 @@ class AIImageGeneratorBlock(Block):
             ],
             test_mock={
                 # Return a data URI directly so store_media_file doesn't need to download
-                "_run_client": lambda *args, **kwargs: "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
+                "_run_client": lambda *args, **kwargs: (
+                    "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
+                )
             },
         )
 
@@ -291,6 +294,20 @@ class AIImageGeneratorBlock(Block):
                 }
                 output = await self._run_client(
                     credentials, "google/nano-banana-pro", input_params
+                )
+                return output
+
+            elif input_data.model == ImageGenModel.NANO_BANANA_2:
+                # Use Nano Banana 2 (Google Gemini 3.1 Flash Image)
+                input_params = {
+                    "prompt": modified_prompt,
+                    "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
+                    "resolution": "2K",
+                    "output_format": "jpg",
+                    "safety_filter_level": "block_only_high",
+                }
+                output = await self._run_client(
+                    credentials, "google/nano-banana-2", input_params
                 )
                 return output
 

@@ -27,6 +27,7 @@ from backend.util.file import MediaFileType, store_media_file
 class GeminiImageModel(str, Enum):
     NANO_BANANA = "google/nano-banana"
     NANO_BANANA_PRO = "google/nano-banana-pro"
+    NANO_BANANA_2 = "google/nano-banana-2"
 
 
 class AspectRatio(str, Enum):
@@ -103,7 +104,7 @@ class AIImageCustomizerBlock(Block):
         super().__init__(
             id="d76bbe4c-930e-4894-8469-b66775511f71",
             description=(
-                "Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5. "
+                "Generate and edit custom images using Google's Nano-Banana models from Gemini. "
                 "Provide a prompt and optional reference images to create or modify images."
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
