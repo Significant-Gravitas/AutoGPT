@@ -63,8 +63,19 @@ const CustomEdge = ({
 
   return (
     <>
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="black"
+        strokeOpacity={0}
+        strokeWidth={20}
+        className="react-flow__edge-interaction cursor-pointer"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      />
       <BaseEdge
         path={edgePath}
+        interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
