@@ -63,7 +63,6 @@ const CustomEdge = ({
 
   return (
     <>
-      {/* Invisible interaction path - wider hit area for hover detection */}
       <path
         d={edgePath}
         fill="none"
@@ -76,6 +75,7 @@ const CustomEdge = ({
       />
       <BaseEdge
         path={edgePath}
+        interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
