@@ -1,24 +1,21 @@
 "use client";
 
-import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ProgressBar } from "../../components/ProgressBar/ProgressBar";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
-  ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { useAsymptoticProgress } from "../../hooks/useAsymptoticProgress";
-import {
-  ClarificationQuestionsCard,
-  ClarifyingQuestion,
-} from "./components/ClarificationQuestionsCard";
+import { ClarificationQuestionsCard } from "./components/ClarificationQuestionsCard";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
+import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -28,11 +25,10 @@ import {
   isAgentSavedOutput,
   isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
+  isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
+  normalizeClarifyingQuestions,
   type CreateAgentToolOutput,
 } from "./helpers";
 
@@ -48,12 +44,18 @@ interface Props {
   part: CreateAgentToolPart;
 }
 
-function getAccordionMeta(output: CreateAgentToolOutput) {
+function getAccordionMeta(output: CreateAgentToolOutput | null) {
   const icon = <AccordionIcon />;
 
-  if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name };
+  if (!output) {
+    return {
+      icon,
+      title:
+        "Creating agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
   }
+
   if (isAgentPreviewOutput(output)) {
     return {
       icon,
@@ -70,23 +72,14 @@ function getAccordionMeta(output: CreateAgentToolOutput) {
       expanded: true,
     };
   }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
+  if (isSuggestedGoalOutput(output)) {
     return {
       icon,
-      title: "Creating agent, this may take a few minutes. Sit back and relax.",
+      title: "Goal needs refinement",
+      expanded: true,
     };
   }
-  return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
-    title: "Error",
-    titleClassName: "text-red-500",
-  };
+  return { icon, title: "" };
 }
 
 export function CreateAgentTool({ part }: Props) {
@@ -101,24 +94,15 @@ export function CreateAgentTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
+  const isOperating = !output;
 
-  const progress = useAsymptoticProgress(isOperating);
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
-  const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isErrorOutput(output));
+  function handleUseSuggestedGoal(goal: string) {
+    onSend(`Please create an agent with this goal: ${goal}`);
+  }
 
   function handleClarificationAnswers(answers: Record<string, string>) {
     const questions =
@@ -140,94 +124,90 @@ export function CreateAgentTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
+      {isOperating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming={isStreaming} isError={isError} />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
+
+      {isError && output && isErrorOutput(output) && (
+        <ToolErrorCard
+          message={output.message}
+          fallbackMessage="Failed to generate the agent. Please try again."
+          error={output.error ? formatMaybeJson(output.error) : undefined}
+          details={output.details ? formatMaybeJson(output.details) : undefined}
+          actions={[
+            {
+              label: "Try again",
+              onClick: () => onSend("Please try creating the agent again."),
+            },
+            {
+              label: "Simplify goal",
+              variant: "ghost",
+              onClick: () => onSend("Can you help me simplify this goal?"),
+            },
+          ]}
         />
-      </div>
+      )}
 
-      {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <ProgressBar value={progress} className="max-w-[280px]" />
-              <ContentHint>
-                This could take a few minutes, grab a coffee ☕
-              </ContentHint>
-            </ContentGrid>
-          )}
+      {hasExpandableContent &&
+        !(output && isClarificationNeededOutput(output)) &&
+        !(output && isAgentSavedOutput(output)) && (
+          <ToolAccordion {...getAccordionMeta(output)}>
+            {isOperating && (
+              <ContentGrid>
+                <MiniGame />
+                <ContentHint>
+                  This could take a few minutes — play while you wait!
+                </ContentHint>
+              </ContentGrid>
+            )}
 
-          {isAgentSavedOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <div className="flex flex-wrap gap-2">
-                <ContentLink href={output.library_agent_link}>
-                  Open in library
-                </ContentLink>
-                <ContentLink href={output.agent_page_link}>
-                  Open in builder
-                </ContentLink>
-              </div>
-              <ContentCodeBlock>
-                {truncateText(
-                  formatMaybeJson({ agent_id: output.agent_id }),
-                  800,
+            {output && isAgentPreviewOutput(output) && (
+              <ContentGrid>
+                <ContentMessage>{output.message}</ContentMessage>
+                {output.description?.trim() && (
+                  <ContentCardDescription>
+                    {output.description}
+                  </ContentCardDescription>
                 )}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
-
-          {isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
-
-          {isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsCard
-              questions={(output.questions ?? []).map((q) => {
-                const item: ClarifyingQuestion = {
-                  question: q.question,
-                  keyword: q.keyword,
-                };
-                const example =
-                  typeof q.example === "string" && q.example.trim()
-                    ? q.example.trim()
-                    : null;
-                if (example) item.example = example;
-                return item;
-              })}
-              message={output.message}
-              onSubmitAnswers={handleClarificationAnswers}
-            />
-          )}
-
-          {isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
                 <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
+                  {truncateText(formatMaybeJson(output.agent_json), 1600)}
                 </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-            </ContentGrid>
-          )}
-        </ToolAccordion>
+              </ContentGrid>
+            )}
+
+            {output && isSuggestedGoalOutput(output) && (
+              <SuggestedGoalCard
+                message={output.message}
+                suggestedGoal={output.suggested_goal}
+                reason={output.reason}
+                goalType={output.goal_type ?? "vague"}
+                onUseSuggestedGoal={handleUseSuggestedGoal}
+              />
+            )}
+          </ToolAccordion>
+        )}
+
+      {output && isAgentSavedOutput(output) && (
+        <AgentSavedCard
+          agentName={output.agent_name}
+          message="has been saved to your library!"
+          libraryAgentLink={output.library_agent_link}
+          agentPageLink={output.agent_page_link}
+        />
+      )}
+
+      {output && isClarificationNeededOutput(output) && (
+        <ClarificationQuestionsCard
+          questions={normalizeClarifyingQuestions(output.questions ?? [])}
+          message={output.message}
+          onSubmitAnswers={handleClarificationAnswers}
+        />
       )}
     </div>
   );

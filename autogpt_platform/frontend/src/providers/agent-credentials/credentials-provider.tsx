@@ -8,6 +8,7 @@ import {
   HostScopedCredentials,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
+import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
@@ -35,6 +36,11 @@ export type CredentialsProviderData = {
   /** Whether this provider has platform credits available (system credentials) */
   isSystemProvider: boolean;
   oAuthCallback: (
+    code: string,
+    state_token: string,
+  ) => Promise<CredentialsMetaResponse>;
+  /** MCP-specific OAuth callback that uses dynamic per-server OAuth discovery. */
+  mcpOAuthCallback: (
     code: string,
     state_token: string,
   ) => Promise<CredentialsMetaResponse>;
@@ -118,6 +124,35 @@ export default function CredentialsProvider({
       }
     },
     [api, addCredentials, onFailToast],
+  );
+
+  /** Exchanges an MCP OAuth code for tokens and adds the result to the internal credentials store. */
+  const mcpOAuthCallback = useCallback(
+    async (
+      code: string,
+      state_token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      try {
+        const response = await postV2ExchangeOauthCodeForMcpTokens({
+          code,
+          state_token,
+        });
+        if (response.status !== 200) throw response.data;
+        const credsMeta: CredentialsMetaResponse = {
+          ...response.data,
+          title: response.data.title ?? undefined,
+          scopes: response.data.scopes ?? undefined,
+          username: response.data.username ?? undefined,
+          host: response.data.host ?? undefined,
+        };
+        addCredentials("mcp", credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("complete MCP OAuth authentication")(error);
+        throw error;
+      }
+    },
+    [addCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -258,6 +293,7 @@ export default function CredentialsProvider({
                   isSystemProvider: systemProviders.has(provider),
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
+                  mcpOAuthCallback,
                   createAPIKeyCredentials: (
                     credentials: APIKeyCredentialsCreatable,
                   ) => createAPIKeyCredentials(provider, credentials),
@@ -286,6 +322,7 @@ export default function CredentialsProvider({
     createHostScopedCredentials,
     deleteCredentials,
     oAuthCallback,
+    mcpOAuthCallback,
     onFailToast,
   ]);
 

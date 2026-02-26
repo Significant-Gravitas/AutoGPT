@@ -6,9 +6,12 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-from backend.data.block import BlockInput
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
-from backend.data.model import CredentialsMetaInput, is_credentials_field_name
+from backend.data.model import (
+    CredentialsMetaInput,
+    GraphInput,
+    is_credentials_field_name,
+)
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
@@ -21,6 +24,95 @@ class LibraryAgentStatus(str, Enum):
     HEALTHY = "HEALTHY"
     WAITING = "WAITING"
     ERROR = "ERROR"
+
+
+# === Folder Models ===
+
+
+class LibraryFolder(pydantic.BaseModel):
+    """Represents a folder for organizing library agents."""
+
+    id: str
+    user_id: str
+    name: str
+    icon: str | None = None
+    color: str | None = None
+    parent_id: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    agent_count: int = 0  # Direct agents in folder
+    subfolder_count: int = 0  # Direct child folders
+
+    @staticmethod
+    def from_db(
+        folder: prisma.models.LibraryFolder,
+        agent_count: int = 0,
+        subfolder_count: int = 0,
+    ) -> "LibraryFolder":
+        """Factory method that constructs a LibraryFolder from a Prisma model."""
+        return LibraryFolder(
+            id=folder.id,
+            user_id=folder.userId,
+            name=folder.name,
+            icon=folder.icon,
+            color=folder.color,
+            parent_id=folder.parentId,
+            created_at=folder.createdAt,
+            updated_at=folder.updatedAt,
+            agent_count=agent_count,
+            subfolder_count=subfolder_count,
+        )
+
+
+class LibraryFolderTree(LibraryFolder):
+    """Folder with nested children for tree view."""
+
+    children: list["LibraryFolderTree"] = []
+
+
+class FolderCreateRequest(pydantic.BaseModel):
+    """Request model for creating a folder."""
+
+    name: str = pydantic.Field(..., min_length=1, max_length=100)
+    icon: str | None = None
+    color: str | None = pydantic.Field(
+        None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color code (#RRGGBB)"
+    )
+    parent_id: str | None = None
+
+
+class FolderUpdateRequest(pydantic.BaseModel):
+    """Request model for updating a folder."""
+
+    name: str | None = pydantic.Field(None, min_length=1, max_length=100)
+    icon: str | None = None
+    color: str | None = None
+
+
+class FolderMoveRequest(pydantic.BaseModel):
+    """Request model for moving a folder to a new parent."""
+
+    target_parent_id: str | None = None  # None = move to root
+
+
+class BulkMoveAgentsRequest(pydantic.BaseModel):
+    """Request model for moving multiple agents to a folder."""
+
+    agent_ids: list[str]
+    folder_id: str | None = None  # None = move to root
+
+
+class FolderListResponse(pydantic.BaseModel):
+    """Response schema for a list of folders."""
+
+    folders: list[LibraryFolder]
+    pagination: Pagination
+
+
+class FolderTreeResponse(pydantic.BaseModel):
+    """Response schema for folder tree structure."""
+
+    tree: list[LibraryFolderTree]
 
 
 class MarketplaceListingCreator(pydantic.BaseModel):
@@ -117,6 +209,9 @@ class LibraryAgent(pydantic.BaseModel):
     can_access_graph: bool
     is_latest_version: bool
     is_favorite: bool
+    folder_id: str | None = None
+    folder_name: str | None = None  # Denormalized for display
+
     recommended_schedule_cron: str | None = None
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
@@ -256,6 +351,8 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            folder_id=agent.folderId,
+            folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
@@ -323,7 +420,7 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     graph_id: str
     graph_version: int
 
-    inputs: BlockInput
+    inputs: GraphInput
     credentials: dict[str, CredentialsMetaInput]
 
     name: str
@@ -352,7 +449,7 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     Request model used when updating a preset for a library agent.
     """
 
-    inputs: Optional[BlockInput] = None
+    inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
     name: Optional[str] = None
@@ -395,7 +492,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
                 "Webhook must be included in AgentPreset query when webhookId is set"
             )
 
-        input_data: BlockInput = {}
+        input_data: GraphInput = {}
         input_credentials: dict[str, CredentialsMetaInput] = {}
 
         for preset_input in preset.InputPresets:
@@ -466,4 +563,8 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"
+    )
+    folder_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Folder ID to move agent to (None to move to root)",
     )

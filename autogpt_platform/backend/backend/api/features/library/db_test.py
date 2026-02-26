@@ -144,6 +144,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
@@ -178,7 +179,6 @@ async def test_add_agent_to_library(mocker):
                 "agentGraphVersion": 1,
             }
         },
-        include={"AgentGraph": True},
     )
     # Check that create was called with the expected data including settings
     create_call_args = mock_library_agent.return_value.create.call_args

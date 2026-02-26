@@ -10,16 +10,20 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
+import {
+  CreateFeatureRequestTool,
+  SearchFeatureRequestsTool,
+} from "../../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../../tools/SearchDocs/SearchDocs";
+import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
@@ -28,13 +32,16 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
- * Detects MIME type from the hash fragment (e.g. workspace://id#video/mp4)
- * and prefixes the alt text with "video:" so the custom img component can
- * render a <video> element instead.
+ *
+ * Handles both image syntax  `![alt](workspace://id#mime)` and regular link
+ * syntax `[text](workspace://id)`.  For images the MIME type hash fragment is
+ * inspected so that videos can be rendered with a `<video>` element via the
+ * custom img component.
  */
 function resolveWorkspaceUrls(text: string): string {
-  return text.replace(
-    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)\s]*))?\)/g,
+  // Handle image links: ![alt](workspace://id#mime)
+  let resolved = text.replace(
+    /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
       const url = `/api/proxy${apiPath}`;
@@ -44,6 +51,21 @@ function resolveWorkspaceUrls(text: string): string {
       return `![${alt || "Image"}](${url})`;
     },
   );
+
+  // Handle regular links: [text](workspace://id) — without the leading "!"
+  // These are blocked by Streamdown's rehype-harden sanitizer because
+  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
+  // "[blocked]" to appear next to the link text.
+  resolved = resolved.replace(
+    /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
+    (_match, linkText: string, fileId: string) => {
+      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = `/api/proxy${apiPath}`;
+      return `[${linkText || "Download file"}](${url})`;
+    },
+  );
+
+  return resolved;
 }
 
 /**
@@ -113,6 +135,7 @@ interface ChatMessagesContainerProps {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  headerSlot?: React.ReactNode;
 }
 
 export const ChatMessagesContainer = ({
@@ -120,29 +143,15 @@ export const ChatMessagesContainer = ({
   status,
   error,
   isLoading,
+  headerSlot,
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
-  const lastToastTimeRef = useRef(0);
 
   useEffect(() => {
     if (status === "submitted") {
       setThinkingPhrase(getRandomPhrase());
     }
   }, [status]);
-
-  // Show a toast when a new error occurs, debounced to avoid spam
-  useEffect(() => {
-    if (!error) return;
-    const now = Date.now();
-    if (now - lastToastTimeRef.current < 3_000) return;
-    lastToastTimeRef.current = now;
-    toast({
-      variant: "destructive",
-      title: "Something went wrong",
-      description:
-        "The assistant encountered an error. Please try sending your message again.",
-    });
-  }, [error]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantHasVisibleContent =
@@ -159,9 +168,13 @@ export const ChatMessagesContainer = ({
 
   return (
     <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="flex min-h-screen flex-1 flex-col gap-6 px-3 py-6">
+      <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+        {headerSlot}
         {isLoading && messages.length === 0 && (
-          <div className="flex min-h-full flex-1 items-center justify-center">
+          <div
+            className="flex flex-1 items-center justify-center"
+            style={{ minHeight: "calc(100vh - 12rem)" }}
+          >
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
@@ -254,7 +267,31 @@ export const ChatMessagesContainer = ({
                           part={part as ToolUIPart}
                         />
                       );
+                    case "tool-search_feature_requests":
+                      return (
+                        <SearchFeatureRequestsTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
+                    case "tool-create_feature_request":
+                      return (
+                        <CreateFeatureRequestTool
+                          key={`${message.id}-${i}`}
+                          part={part as ToolUIPart}
+                        />
+                      );
                     default:
+                      // Render a generic tool indicator for SDK built-in
+                      // tools (Read, Glob, Grep, etc.) or any unrecognized tool
+                      if (part.type.startsWith("tool-")) {
+                        return (
+                          <GenericTool
+                            key={`${message.id}-${i}`}
+                            part={part as ToolUIPart}
+                          />
+                        );
+                      }
                       return null;
                   }
                 })}
@@ -279,13 +316,15 @@ export const ChatMessagesContainer = ({
           </Message>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            <p className="font-medium">Something went wrong</p>
-            <p className="mt-1 text-red-600">
+          <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your
               message again.
-            </p>
-          </div>
+            </summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+              {error instanceof Error ? error.message : String(error)}
+            </pre>
+          </details>
         )}
       </ConversationContent>
       <ConversationScrollButton />
