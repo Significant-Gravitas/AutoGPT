@@ -18,7 +18,7 @@ export function useChatSession() {
   const sessionQuery = useGetV2GetSession(sessionId ?? "", {
     query: {
       enabled: !!sessionId,
-      staleTime: 0, // Always treat as stale so switching chats refetches
+      staleTime: Infinity, // Manual invalidation on session switch
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,

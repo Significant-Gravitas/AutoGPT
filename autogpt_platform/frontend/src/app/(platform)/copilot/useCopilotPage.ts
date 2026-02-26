@@ -17,6 +17,7 @@ import { useChatSession } from "./useChatSession";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+const RECONNECT_MAX_ATTEMPTS = 5;
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -153,47 +154,47 @@ export function useCopilotPage() {
     [sessionId],
   );
 
-  // Track reconnect attempts and timer for exponential backoff
-  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
+  // Reconnect state
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const hasShownDisconnectToast = useRef(false);
 
-  // resumeStreamRef / setMessagesRef: always point to the latest functions
-  // so the scheduleReconnect closure doesn't capture stale references.
-  const resumeStreamRef = useRef<() => void>(() => {});
-  const setMessagesRef = useRef<
-    (fn: (prev: UIMessage[]) => UIMessage[]) => void
-  >(() => {});
+  // Consolidated reconnect logic
+  function handleReconnect(sid: string) {
+    if (isReconnectScheduled || !sid) return;
 
-  const reconnectingRef = useRef(false);
-  const shouldClearOnNextMessageRef = useRef(false);
+    const nextAttempt = reconnectAttempts + 1;
+    if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
+      toast({
+        title: "Connection lost",
+        description: "Unable to reconnect. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  // Shared reconnect logic used by both onFinish (isDisconnect) and onError
-  // (network abort where flush() never runs).
-  function scheduleReconnect(sid: string) {
-    if (reconnectingRef.current) return;
-    reconnectingRef.current = true;
+    setIsReconnectScheduled(true);
+    setReconnectAttempts(nextAttempt);
 
-    const attempts = reconnectAttemptsRef.current.get(sid) ?? 0;
-    reconnectAttemptsRef.current.set(sid, attempts + 1);
-
-    const delay = Math.min(
-      RECONNECT_BASE_DELAY_MS * 2 ** attempts,
-      RECONNECT_MAX_DELAY_MS,
-    );
-
-    if (attempts === 0) {
+    if (!hasShownDisconnectToast.current) {
+      hasShownDisconnectToast.current = true;
       toast({
         title: "Connection lost",
         description: "Reconnecting...",
       });
     }
 
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempts,
+      RECONNECT_MAX_DELAY_MS,
+    );
+
     reconnectTimerRef.current = setTimeout(() => {
-      reconnectTimerRef.current = undefined;
-      reconnectingRef.current = false;
-      // Mark that we should clear assistant messages once new ones arrive
-      shouldClearOnNextMessageRef.current = true;
-      resumeStreamRef.current();
+      setIsReconnectScheduled(false);
+      // Clear old assistant messages before resuming
+      setMessages((prev) => prev.filter((m) => m.role !== "assistant"));
+      resumeStream();
     }, delay);
   }
 
@@ -208,52 +209,33 @@ export function useCopilotPage() {
   } = useChat({
     id: sessionId ?? undefined,
     transport: transport ?? undefined,
-    // Don't use resume: true — it fires before hydration completes, causing
-    // the hydrated messages to overwrite the resumed stream.  Instead we
-    // call resumeStream() manually after hydration + active_stream detection.
     onFinish: async ({ isDisconnect, isAbort }) => {
       if (isAbort || !sessionId) return;
 
       if (isDisconnect) {
-        scheduleReconnect(sessionId);
+        handleReconnect(sessionId);
         return;
       }
 
-      // isDisconnect=false means the stream closed cleanly. But a proxy
-      // timeout (e.g. Vercel maxDuration) also closes cleanly — the
-      // function's finally block sends [DONE] before exiting. Check if the
-      // backend executor is actually still running.
+      // Check if backend executor is still running after clean close
       const result = await refetchSession();
       const backendActive =
         result.data?.status === 200 && !!result.data.data.active_stream;
 
       if (backendActive) {
-        scheduleReconnect(sessionId);
+        handleReconnect(sessionId);
       }
     },
     onError: (error) => {
       if (!sessionId) return;
-      // Only reconnect on network-level disconnects (proxy/LB killing TCP).
-      // TypeError = fetch body stream interrupted; AbortError = signal aborted.
-      // HTTP errors from the backend should not trigger reconnect.
+      // Only reconnect on network errors (not HTTP errors)
       const isNetworkError =
         error.name === "TypeError" || error.name === "AbortError";
       if (isNetworkError) {
-        scheduleReconnect(sessionId);
+        handleReconnect(sessionId);
       }
     },
   });
-  resumeStreamRef.current = resumeStream;
-  setMessagesRef.current = setMessages;
-
-  // Clear assistant messages once new messages arrive after reconnect
-  useEffect(() => {
-    if (shouldClearOnNextMessageRef.current && rawMessages.length > 0) {
-      shouldClearOnNextMessageRef.current = false;
-      // Drop old assistant messages now that new ones are arriving
-      setMessages((prev) => prev.filter((m) => m.role !== "assistant"));
-    }
-  }, [rawMessages.length, setMessages]);
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
@@ -291,64 +273,48 @@ export function useCopilotPage() {
     }
   }
 
-  // Hydrate messages from the REST session endpoint.
-  // Skip hydration while streaming or during reconnect to avoid overwriting
-  // the SDK's in-flight messages (which would cause duplicates on resume).
+  // Hydrate messages from REST API when not actively streaming
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
-    if (reconnectingRef.current || reconnectTimerRef.current) return;
+    if (isReconnectScheduled) return;
     setMessages((prev) => {
       if (prev.length >= hydratedMessages.length) return prev;
       return deduplicateMessages(hydratedMessages);
     });
-  }, [hydratedMessages, setMessages, status]);
+  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
 
-  // Ref: tracks whether we've already resumed for a given session.
-  // Format: Map<sessionId, hasResumed>
+  // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // Clean up reconnect and status state on session switch.
-  const prevStatusRef = useRef(status);
-  const prevSessionIdForCleanup = useRef(sessionId);
+  // Clean up reconnect state on session switch
   useEffect(() => {
-    const prev = prevSessionIdForCleanup.current;
-    prevSessionIdForCleanup.current = sessionId;
-
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
-    reconnectingRef.current = false;
-    reconnectAttemptsRef.current.delete(sessionId ?? "");
+    setReconnectAttempts(0);
+    setIsReconnectScheduled(false);
+    hasShownDisconnectToast.current = false;
+  }, [sessionId]);
 
-    // Clear hasResumed flag when navigating away so we can resume again when returning
-    if (prev && prev !== sessionId) {
-      hasResumedRef.current.delete(prev);
-    }
-
-    prevStatusRef.current = status;
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When the stream ends (or drops), invalidate the session cache so the
-  // next hydration fetches fresh messages from the backend.
+  // Invalidate session cache when stream completes
+  const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
-    if (wasActive && isIdle && sessionId) {
-      // Don't invalidate during reconnect — re-hydration would clobber
-      // the SDK's in-flight messages, causing duplicates on resume.
-      if (!reconnectingRef.current && !reconnectTimerRef.current) {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetSessionQueryKey(sessionId),
-        });
-      }
+
+    if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
       if (status === "ready") {
-        reconnectAttemptsRef.current.delete(sessionId);
+        setReconnectAttempts(0);
+        hasShownDisconnectToast.current = false;
       }
     }
-  }, [status, sessionId, queryClient]);
+  }, [status, sessionId, queryClient, isReconnectScheduled]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
@@ -445,16 +411,16 @@ export function useCopilotPage() {
     }
   }, [isDeleting]);
 
-  // True while we know the backend has an active stream but haven't
-  // reconnected yet.  Used to disable the send button and show stop UI.
+  // True while reconnecting or backend has active stream but we haven't connected yet
   const isReconnecting =
-    hasActiveStream && status !== "streaming" && status !== "submitted";
+    isReconnectScheduled ||
+    (hasActiveStream && status !== "streaming" && status !== "submitted");
 
   return {
     sessionId,
     messages,
     status,
-    error: reconnectingRef.current ? undefined : error,
+    error: isReconnecting ? undefined : error,
     stop,
     isReconnecting,
     isLoadingSession,
