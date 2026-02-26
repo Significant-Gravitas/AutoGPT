@@ -28,6 +28,7 @@ class ProviderName(str, Enum):
     HUBSPOT = "hubspot"
     ENRICHLAYER = "enrichlayer"
     IDEOGRAM = "ideogram"
+    INSTAGRAM = "instagram"
     JINA = "jina"
     LLAMA_API = "llama_api"
     MCP = "mcp"

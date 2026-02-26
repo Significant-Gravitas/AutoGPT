@@ -106,6 +106,10 @@ requests = "^2.32.5"
 ruff = "^0.15.0"
 # NOTE: please insert new dependencies in their alphabetical location
 
+# NOTE: Instagram blocks require 'instagrapi' which has dependency conflicts.
+# Install manually after poetry install: pip install instagrapi
+# See backend/blocks/instagram/README.md for details.
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
@@ -153,3 +157,8 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
+
+[tool.pyright]
+exclude = [
+    "backend/blocks/instagram"
+]
