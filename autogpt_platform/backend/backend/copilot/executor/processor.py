@@ -125,7 +125,10 @@ class CoPilotProcessor:
             )
             future.result(timeout=5)
         except Exception as e:
-            logger.warning(f"[CoPilotExecutor] Worker {self.tid} cleanup error: {e}")
+            error_msg = str(e) or type(e).__name__
+            logger.warning(
+                f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
+            )
 
         # Stop the event loop
         self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
@@ -186,7 +189,7 @@ class CoPilotProcessor:
         except asyncio.CancelledError:
             elapsed = time.monotonic() - start_time
             log.info(f"Execution cancelled after {elapsed:.2f}s")
-            # Safety net: mark session as cancelled
+            # Mark session as cancelled and send error to frontend
             try:
                 asyncio.run_coroutine_threadsafe(
                     stream_registry.mark_session_completed(
@@ -293,6 +296,7 @@ class CoPilotProcessor:
         except asyncio.CancelledError:
             # Expected cancellation (client disconnect, graceful shutdown)
             log.info("Turn cancelled")
+            # Mark session as cancelled and send error to frontend
             try:
                 await stream_registry.mark_session_completed(
                     entry.session_id, error_message="Operation cancelled"

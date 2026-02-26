@@ -961,6 +961,18 @@ async def stream_chat_completion_sdk(
         # so accumulated messages aren't lost.
         logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
         if session:
+            # Add cancellation marker to the last assistant message or create new one
+            if session.messages and session.messages[-1].role == "assistant":
+                last_msg = session.messages[-1]
+                if last_msg.content:
+                    last_msg.content = f"{last_msg.content}\n\n[Operation cancelled]"
+                else:
+                    last_msg.content = "[Operation cancelled]"
+            else:
+                # No assistant message to mark, add a new one
+                session.messages.append(
+                    ChatMessage(role="assistant", content="[Operation cancelled]")
+                )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
@@ -976,8 +988,21 @@ async def stream_chat_completion_sdk(
                 )
         raise
     except Exception as e:
-        logger.error(f"[SDK] Error: {e}", exc_info=True)
+        error_msg = str(e) or type(e).__name__
+        logger.error(f"[SDK] Error: {error_msg}", exc_info=True)
         if session:
+            # Add error message to chat history so it persists on refresh
+            if session.messages and session.messages[-1].role == "assistant":
+                last_msg = session.messages[-1]
+                if last_msg.content:
+                    last_msg.content = f"{last_msg.content}\n\n[Error: {error_msg}]"
+                else:
+                    last_msg.content = f"[Error: {error_msg}]"
+            else:
+                # No assistant message to mark, add a new one
+                session.messages.append(
+                    ChatMessage(role="assistant", content=f"[Error: {error_msg}]")
+                )
             try:
                 await asyncio.shield(upsert_chat_session(session))
             except Exception as save_err:
