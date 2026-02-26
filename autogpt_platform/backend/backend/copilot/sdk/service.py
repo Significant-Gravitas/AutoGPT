@@ -966,10 +966,9 @@ async def stream_chat_completion_sdk(
             session_id[:12],
             len(session.messages),
         )
-    except Exception as e:
-        # Special case: SDK cleanup RuntimeError during cancellation
-        # "Attempted to exit cancel scope in a different task" - treat as graceful cancellation
-        # Determine error message and log level
+    except BaseException as e:
+        # Catch BaseException to handle both Exception and CancelledError
+        # (CancelledError inherits from BaseException in Python 3.8+)
         if isinstance(e, asyncio.CancelledError):
             logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
             error_msg = "Operation cancelled"
