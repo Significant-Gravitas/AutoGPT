@@ -19,7 +19,7 @@ export function useChatSession() {
     query: {
       enabled: !!sessionId,
       staleTime: Infinity,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true, // Refetch when tab becomes visible
       refetchOnReconnect: true,
       refetchOnMount: true,
     },

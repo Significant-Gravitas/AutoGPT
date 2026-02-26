@@ -165,6 +165,7 @@ export function useCopilotPage() {
   >(() => {});
 
   const reconnectingRef = useRef(false);
+  const shouldClearOnNextMessageRef = useRef(false);
 
   // Shared reconnect logic used by both onFinish (isDisconnect) and onError
   // (network abort where flush() never runs).
@@ -196,9 +197,8 @@ export function useCopilotPage() {
         delay,
         ts: Date.now(),
       });
-      // Don't pre-clear assistant messages — rely on fingerprint-based
-      // deduplication to handle replayed chunks. This prevents the chat
-      // from appearing empty during reconnect.
+      // Mark that we should clear assistant messages once new ones arrive
+      shouldClearOnNextMessageRef.current = true;
       resumeStreamRef.current();
     }, delay);
   }
@@ -272,6 +272,15 @@ export function useCopilotPage() {
   });
   resumeStreamRef.current = resumeStream;
   setMessagesRef.current = setMessages;
+
+  // Clear assistant messages once new messages arrive after reconnect
+  useEffect(() => {
+    if (shouldClearOnNextMessageRef.current && rawMessages.length > 0) {
+      shouldClearOnNextMessageRef.current = false;
+      // Drop old assistant messages now that new ones are arriving
+      setMessages((prev) => prev.filter((m) => m.role !== "assistant"));
+    }
+  }, [rawMessages.length, setMessages]);
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
