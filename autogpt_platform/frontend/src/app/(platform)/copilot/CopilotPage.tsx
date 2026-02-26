@@ -1,8 +1,16 @@
 "use client";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { DotsThree } from "@phosphor-icons/react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
+import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
@@ -15,9 +23,11 @@ export function CopilotPage() {
     status,
     error,
     stop,
+    isReconnecting,
     createSession,
     onSend,
     isLoadingSession,
+    isSessionError,
     isCreatingSession,
     isUserLoading,
     isLoggedIn,
@@ -31,6 +41,12 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
+    // Delete functionality
+    sessionToDelete,
+    isDeleting,
+    handleDeleteClick,
+    handleConfirmDelete,
+    handleCancelDelete,
   } = useCopilotPage();
 
   if (isUserLoading || !isLoggedIn) {
@@ -56,10 +72,44 @@ export function CopilotPage() {
             error={error}
             sessionId={sessionId}
             isLoadingSession={isLoadingSession}
+            isSessionError={isSessionError}
             isCreatingSession={isCreatingSession}
+            isReconnecting={isReconnecting}
             onCreateSession={createSession}
             onSend={onSend}
             onStop={stop}
+            headerSlot={
+              isMobile && sessionId ? (
+                <div className="flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="rounded p-1.5 hover:bg-neutral-100"
+                        aria-label="More actions"
+                      >
+                        <DotsThree className="h-5 w-5 text-neutral-600" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          const session = sessions.find(
+                            (s) => s.id === sessionId,
+                          );
+                          if (session) {
+                            handleDeleteClick(session.id, session.title);
+                          }
+                        }}
+                        disabled={isDeleting}
+                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                      >
+                        Delete chat
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : undefined
+            }
           />
         </div>
       </div>
@@ -73,6 +123,15 @@ export function CopilotPage() {
           onNewChat={handleNewChat}
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
+        />
+      )}
+      {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
+      {isMobile && (
+        <DeleteChatDialog
+          session={sessionToDelete}
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
         />
       )}
     </SidebarProvider>

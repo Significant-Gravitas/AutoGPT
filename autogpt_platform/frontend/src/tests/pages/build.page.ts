@@ -125,16 +125,8 @@ export class BuildPage extends BasePage {
       `[data-id="block-card-${blockCardId}"]`,
     );
 
-    try {
-      // Wait for the block card to be visible with a reasonable timeout
-      await blockCard.waitFor({ state: "visible", timeout: 10000 });
-      await blockCard.click();
-    } catch (error) {
-      console.log(
-        `Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
-      );
-      console.log(`Error: ${error}`);
-    }
+    await blockCard.waitFor({ state: "visible", timeout: 10000 });
+    await blockCard.click();
   }
 
   async hasBlock(_block: Block) {
@@ -528,6 +520,9 @@ export class BuildPage extends BasePage {
   async getBlocksToSkip(): Promise<string[]> {
     return [
       (await this.getGithubTriggerBlockDetails()).map((b) => b.id),
+      // MCP Tool block requires an interactive dialog (server URL + OAuth) before
+      // it can be placed, so it can't be tested via the standard "add block" flow.
+      "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
     ].flat();
   }
 

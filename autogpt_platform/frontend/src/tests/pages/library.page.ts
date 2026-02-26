@@ -252,21 +252,6 @@ export class LibraryPage extends BasePage {
     ]);
   }
 
-  async clickMonitoringLink(): Promise<void> {
-    console.log(`clicking monitoring link in alert`);
-    await this.page.getByRole("link", { name: "here" }).click();
-  }
-
-  async isMonitoringAlertVisible(): Promise<boolean> {
-    console.log(`checking if monitoring alert is visible`);
-    try {
-      const alertText = this.page.locator("text=/Prefer the old experience/");
-      return await alertText.isVisible();
-    } catch {
-      return false;
-    }
-  }
-
   async getSearchValue(): Promise<string> {
     console.log(`getting search input value`);
     try {
@@ -459,15 +444,22 @@ export async function navigateToAgentByName(
   // Wait for the agent card to be visible before clicking
   // This handles async loading of agents after page navigation
   await agentCard.waitFor({ state: "visible", timeout: 15000 });
-  await agentCard.click();
+  // Click the link inside the card to navigate reliably through
+  // the motion.div + draggable wrapper layers.
+  const link = agentCard.locator('a[href*="/library/agents/"]').first();
+  await link.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
   const { getId } = getSelectors(page);
 
-  // Wait for page to stabilize and buttons to render
-  // The NewAgentLibraryView shows either "Setup your task" (empty state)
-  // or "New task" (with items) button
+  // Wait for sidebar loading to complete before detecting buttons.
+  // During sidebar loading, the "New task" button appears transiently
+  // even for agents with no items, then switches to "Setup your task"
+  // once loading finishes. Waiting for network idle ensures the page
+  // has settled into its final state.
+  await page.waitForLoadState("networkidle");
+
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
@@ -475,8 +467,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   const runButton = getId("agent-run-button");
   const runAgainButton = getId("run-again-button");
 
-  // Use Promise.race with waitFor to wait for any of the buttons to appear
-  // This handles the async rendering in CI environments
+  // Wait for any of the buttons to appear
   try {
     await Promise.race([
       setupTaskButton.waitFor({ state: "visible", timeout: 15000 }),
@@ -490,24 +481,20 @@ export async function clickRunButton(page: Page): Promise<void> {
     );
   }
 
-  // Now check which button is visible and click it
+  // Check which button is visible and click it
   if (await setupTaskButton.isVisible()) {
     await setupTaskButton.click();
-    const startTaskButton = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
-    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
-    await startTaskButton.click();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
-    const startTaskButton = page
-      .getByRole("button", { name: /Start Task/i })
-      .first();
-    await startTaskButton.waitFor({ state: "visible", timeout: 10000 });
-    await startTaskButton.click();
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 
@@ -534,7 +521,9 @@ export async function runAgent(page: Page): Promise<void> {
 
 export async function waitForAgentPageLoad(page: Page): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
-  await page.getByTestId("Run actions").isVisible({ timeout: 10000 });
+  // Wait for sidebar data to finish loading so the page settles
+  // into its final state (empty view vs sidebar view)
+  await page.waitForLoadState("networkidle");
 }
 
 export async function getAgentName(page: Page): Promise<string> {

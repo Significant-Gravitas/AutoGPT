@@ -84,6 +84,7 @@
 * [Linear Projects](block-integrations/linear/projects.md)
 * [LLM](block-integrations/llm.md)
 * [Logic](block-integrations/logic.md)
+* [Mcp Block](block-integrations/mcp/block.md)
 * [Misc](block-integrations/misc.md)
 * [Notion Create Page](block-integrations/notion/create_page.md)
 * [Notion Read Database](block-integrations/notion/read_database.md)
