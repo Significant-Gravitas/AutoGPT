@@ -165,6 +165,42 @@ export function useCopilotPage() {
   // so the onFinish closure doesn't capture a stale reference.
   const resumeStreamRef = useRef<() => void>(() => {});
 
+  const reconnectingRef = useRef(false);
+
+  // Shared reconnect logic used by both onFinish (isDisconnect) and onError
+  // (network abort where flush() never runs).
+  function scheduleReconnect(sid: string) {
+    if (reconnectingRef.current) return;
+    reconnectingRef.current = true;
+
+    const attempts = reconnectAttemptsRef.current.get(sid) ?? 0;
+    reconnectAttemptsRef.current.set(sid, attempts + 1);
+
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** attempts,
+      RECONNECT_MAX_DELAY_MS,
+    );
+
+    if (attempts === 0) {
+      toast({
+        title: "Connection lost",
+        description: "Reconnecting...",
+      });
+    }
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = undefined;
+      reconnectingRef.current = false;
+      console.info("[STREAM_DIAG] resumeStream fired", {
+        sessionId: sid,
+        attempt: attempts + 1,
+        delay,
+        ts: Date.now(),
+      });
+      resumeStreamRef.current();
+    }, delay);
+  }
+
   const {
     messages: rawMessages,
     sendMessage,
@@ -188,32 +224,25 @@ export function useCopilotPage() {
         ts: Date.now(),
       });
       if (!isDisconnect || !sessionId) return;
-
-      const attempts = reconnectAttemptsRef.current.get(sessionId) ?? 0;
-      reconnectAttemptsRef.current.set(sessionId, attempts + 1);
-
-      const delay = Math.min(
-        RECONNECT_BASE_DELAY_MS * 2 ** attempts,
-        RECONNECT_MAX_DELAY_MS,
-      );
-
-      toast({
-        title: "Connection lost",
-        description:
-          attempts === 0
-            ? "Reconnecting..."
-            : `Reconnecting (attempt ${attempts + 1})...`,
+      scheduleReconnect(sessionId);
+    },
+    onError: (error) => {
+      console.warn("[STREAM_DIAG] onError", {
+        sessionId,
+        name: error.name,
+        error: error.message,
+        status,
+        ts: Date.now(),
       });
-
-      reconnectTimerRef.current = setTimeout(() => {
-        console.info("[STREAM_DIAG] resumeStream fired", {
-          sessionId,
-          attempt: attempts + 1,
-          delay,
-          ts: Date.now(),
-        });
-        resumeStreamRef.current();
-      }, delay);
+      if (!sessionId) return;
+      // Only reconnect on network-level disconnects (proxy/LB killing TCP).
+      // TypeError = fetch body stream interrupted; AbortError = signal aborted.
+      // HTTP errors from the backend should not trigger reconnect.
+      const isNetworkError =
+        error.name === "TypeError" || error.name === "AbortError";
+      if (isNetworkError) {
+        scheduleReconnect(sessionId);
+      }
     },
   });
   resumeStreamRef.current = resumeStream;
@@ -297,6 +326,8 @@ export function useCopilotPage() {
   const prevStatusRef = useRef(status);
   useEffect(() => {
     clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = undefined;
+    reconnectingRef.current = false;
     reconnectAttemptsRef.current.delete(sessionId ?? "");
     prevStatusRef.current = status;
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
