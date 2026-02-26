@@ -38,38 +38,49 @@ function resolveInProgressTools(
   }));
 }
 
-/** Build a fingerprint from a message's role + text/tool content for cross-boundary dedup. */
-function messageFingerprint(msg: UIMessage): string {
-  const fragments = msg.parts.map((p) => {
-    if ("text" in p && typeof p.text === "string") return p.text;
-    if ("toolCallId" in p && typeof p.toolCallId === "string")
-      return `tool:${p.toolCallId}`;
-    return "";
-  });
-  return `${msg.role}::${fragments.join("\n")}`;
-}
-
 /**
- * Deduplicate messages by ID *and* by content fingerprint.
- * ID-based dedup catches duplicates within the same source (e.g. two
- * identical stream events).  Fingerprint-based dedup catches duplicates
- * across the hydration/stream boundary where IDs differ (synthetic
- * `${sessionId}-${index}` vs AI SDK nanoid).
+ * Deduplicate messages by ID, content fingerprint, and toolCallId overlap.
  *
- * NOTE: Fingerprint dedup only applies to assistant messages, not user messages.
- * Users should be able to send the same message multiple times.
+ * Three layers handle different duplicate scenarios:
+ * 1. ID-based: same message processed twice (within a single stream).
+ * 2. Fingerprint-based: hydration/stream boundary where IDs differ but
+ *    the final content is identical.
+ * 3. ToolCallId-based: reconnect replay from "0-0" where the SDK assigns
+ *    a new nanoid to the replayed message.  During replay the message is
+ *    still being built, so text fingerprints don't match — but toolCallIds
+ *    are backend-generated UUIDs that stay the same across replays.
  */
 function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
+  const seenToolCallIds = new Set<string>();
   const seenFingerprints = new Set<string>();
+
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
-    // Only apply fingerprint deduplication to assistant messages
-    // User messages should allow duplicates (same text sent multiple times)
     if (msg.role === "assistant") {
-      const fp = messageFingerprint(msg);
+      // Check toolCallId overlap — catches reconnect replay duplicates
+      const toolIds = msg.parts
+        .filter(
+          (p): p is typeof p & { toolCallId: string } =>
+            "toolCallId" in p &&
+            typeof (p as Record<string, unknown>).toolCallId === "string",
+        )
+        .map((p) => p.toolCallId);
+
+      if (toolIds.length > 0 && toolIds.some((id) => seenToolCallIds.has(id)))
+        return false;
+      toolIds.forEach((id) => seenToolCallIds.add(id));
+
+      // Fingerprint dedup for messages without tool calls (pure text)
+      const fragments = msg.parts.map((p) => {
+        if ("text" in p && typeof p.text === "string") return p.text;
+        if ("toolCallId" in p && typeof p.toolCallId === "string")
+          return `tool:${p.toolCallId}`;
+        return "";
+      });
+      const fp = `${msg.role}::${fragments.join("\n")}`;
       if (fp !== "::" && seenFingerprints.has(fp)) return false;
       seenFingerprints.add(fp);
     }
@@ -215,16 +226,39 @@ export function useCopilotPage() {
     // Don't use resume: true — it fires before hydration completes, causing
     // the hydrated messages to overwrite the resumed stream.  Instead we
     // call resumeStream() manually after hydration + active_stream detection.
-    onFinish: ({ isDisconnect }) => {
+    onFinish: async ({ isDisconnect, isAbort }) => {
       console.info("[STREAM_DIAG] onFinish", {
         sessionId,
         isDisconnect,
+        isAbort,
         status,
         attempt: reconnectAttemptsRef.current.get(sessionId ?? "") ?? 0,
         ts: Date.now(),
       });
-      if (!isDisconnect || !sessionId) return;
-      scheduleReconnect(sessionId);
+      if (isAbort || !sessionId) return;
+
+      if (isDisconnect) {
+        scheduleReconnect(sessionId);
+        return;
+      }
+
+      // isDisconnect=false means the stream closed cleanly. But a proxy
+      // timeout (e.g. Vercel maxDuration) also closes cleanly — the
+      // function's finally block sends [DONE] before exiting. Check if the
+      // backend executor is actually still running.
+      const result = await refetchSession();
+      const backendActive =
+        result.data?.status === 200 && !!result.data.data.active_stream;
+
+      console.info("[STREAM_DIAG] onFinish backend check", {
+        sessionId,
+        backendActive,
+        ts: Date.now(),
+      });
+
+      if (backendActive) {
+        scheduleReconnect(sessionId);
+      }
     },
     onError: (error) => {
       console.warn("[STREAM_DIAG] onError", {
@@ -524,7 +558,7 @@ export function useCopilotPage() {
     sessionId,
     messages,
     status,
-    error,
+    error: reconnectingRef.current ? undefined : error,
     stop,
     isReconnecting,
     isLoadingSession,

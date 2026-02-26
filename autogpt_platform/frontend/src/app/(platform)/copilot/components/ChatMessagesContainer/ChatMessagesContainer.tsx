@@ -147,24 +147,42 @@ export const ChatMessagesContainer = ({
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
 
-  useEffect(() => {
-    if (status === "submitted") {
-      setThinkingPhrase(getRandomPhrase());
-    }
-  }, [status]);
-
   const lastMessage = messages[messages.length - 1];
-  const lastAssistantHasVisibleContent =
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.some(
-      (p) =>
-        (p.type === "text" && p.text.trim().length > 0) ||
-        p.type.startsWith("tool-"),
-    );
+
+  // Determine if something is visibly "in-flight" in the last assistant message:
+  // - Text is actively streaming (last part is non-empty text)
+  // - A tool call is pending (state is input-streaming or input-available)
+  const hasInflight = (() => {
+    if (lastMessage?.role !== "assistant") return false;
+    const parts = lastMessage.parts;
+    if (parts.length === 0) return false;
+
+    const lastPart = parts[parts.length - 1];
+
+    // Text is actively being written
+    if (lastPart.type === "text" && lastPart.text.trim().length > 0)
+      return true;
+
+    // A tool call is still pending (no output yet)
+    if (
+      lastPart.type.startsWith("tool-") &&
+      "state" in lastPart &&
+      (lastPart.state === "input-streaming" ||
+        lastPart.state === "input-available")
+    )
+      return true;
+
+    return false;
+  })();
 
   const showThinking =
-    status === "submitted" ||
-    (status === "streaming" && !lastAssistantHasVisibleContent);
+    status === "submitted" || (status === "streaming" && !hasInflight);
+
+  useEffect(() => {
+    if (showThinking) {
+      setThinkingPhrase(getRandomPhrase());
+    }
+  }, [showThinking]);
 
   return (
     <Conversation className="min-h-0 flex-1">
@@ -295,13 +313,11 @@ export const ChatMessagesContainer = ({
                       return null;
                   }
                 })}
-                {isLastAssistant &&
-                  !messageHasVisibleContent &&
-                  showThinking && (
-                    <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
-                      {thinkingPhrase}
-                    </span>
-                  )}
+                {isLastAssistant && showThinking && (
+                  <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
+                    {thinkingPhrase}
+                  </span>
+                )}
               </MessageContent>
             </Message>
           );

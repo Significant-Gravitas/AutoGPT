@@ -626,14 +626,17 @@ async def resume_session_stream(
     if not active_session:
         return Response(status_code=204)
 
-    # Subscribe from the latest message ID — the frontend already has all
-    # messages up to the disconnect in its rawMessages state.  Replaying
-    # from "0-0" causes visible duplicates because the AI SDK assigns new
-    # IDs to replayed chunks and dedup can't match them.
+    # Subscribe from the beginning ("0-0") to replay all chunks for this turn.
+    # This is necessary because:
+    # 1. On page refresh, hydrated messages filter out incomplete tool calls
+    #    to avoid "No tool invocation found" errors — resume delivers them fresh.
+    # 2. Subscribing from last_message_id risks missing chunks published between
+    #    get_active_session and subscribe_to_session, causing premature StreamFinish.
+    # The AI SDK deduplicates by message ID; the frontend adds fingerprint dedup.
     subscriber_queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
-        last_message_id=last_message_id,
+        last_message_id="0-0",
     )
 
     if subscriber_queue is None:
