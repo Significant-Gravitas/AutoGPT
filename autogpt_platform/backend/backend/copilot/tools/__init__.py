@@ -20,6 +20,7 @@ from .find_library_agent import FindLibraryAgentTool
 from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
+from .run_mcp_tool import RunMCPToolTool
 from .search_docs import SearchDocsTool
 from .web_fetch import WebFetchTool
 from .workspace_files import (
@@ -45,6 +46,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_library_agent": FindLibraryAgentTool(),
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
+    "run_mcp_tool": RunMCPToolTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
