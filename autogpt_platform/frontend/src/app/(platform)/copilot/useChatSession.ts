@@ -18,9 +18,10 @@ export function useChatSession() {
   const sessionQuery = useGetV2GetSession(sessionId ?? "", {
     query: {
       enabled: !!sessionId,
-      staleTime: Infinity,
+      staleTime: Infinity, // Manual invalidation on session switch
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
     },
   });
 
@@ -46,7 +47,7 @@ export function useChatSession() {
   const hasActiveStream = useMemo(() => {
     if (sessionQuery.data?.status !== 200) return false;
     return !!sessionQuery.data.data.active_stream;
-  }, [sessionQuery.data]);
+  }, [sessionQuery.data, sessionId]);
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
@@ -115,7 +116,9 @@ export function useChatSession() {
     hydratedMessages,
     hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
+    isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,
+    refetchSession: sessionQuery.refetch,
   };
 }

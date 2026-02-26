@@ -921,26 +921,29 @@ export default function StyleguidePage() {
                     output: {
                       type: ResponseType.agent_details,
                       agent: {
+                        id: "agent-yt-1",
                         name: "YouTube Summarizer",
                         description:
                           "Summarizes YouTube videos into key points.",
-                        inputs: [
-                          {
-                            name: "video_url",
-                            title: "Video URL",
-                            type: "string",
-                            required: true,
-                            description: "The YouTube video URL to summarize",
+                        inputs: {
+                          type: "object",
+                          properties: {
+                            video_url: {
+                              type: "string",
+                              title: "Video URL",
+                              description: "The YouTube video URL to summarize",
+                              default: "https://youtube.com/watch?v=example",
+                            },
+                            language: {
+                              type: "string",
+                              title: "Output Language",
+                              description:
+                                "Language for the summary (default: English)",
+                              default: "English",
+                            },
                           },
-                          {
-                            name: "language",
-                            title: "Output Language",
-                            type: "string",
-                            required: false,
-                            description:
-                              "Language for the summary (default: English)",
-                          },
-                        ],
+                          required: ["video_url"],
+                        },
                       },
                       message: "This agent requires inputs to run.",
                     },
@@ -1120,56 +1123,6 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (operation started)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation has been started. This may take a moment.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation pending)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_pending,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation is queued and will begin shortly.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation in progress)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_in_progress,
-                      tool_call_id: "tc-456",
-                      message:
-                        "An agent creation operation is already in progress. Please wait for it to finish.",
-                    },
-                  }}
-                />
-              </SubSection>
-
               <SubSection label="Output available (agent preview)">
                 <CreateAgentTool
                   part={{
@@ -1288,22 +1241,6 @@ export default function StyleguidePage() {
                     type: "tool-edit_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <EditAgentTool
-                  part={{
-                    type: "tool-edit_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-edit-456",
-                      tool_name: "edit_agent",
-                      message: "Agent editing has started.",
-                    },
                   }}
                 />
               </SubSection>

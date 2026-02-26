@@ -444,7 +444,10 @@ export async function navigateToAgentByName(
   // Wait for the agent card to be visible before clicking
   // This handles async loading of agents after page navigation
   await agentCard.waitFor({ state: "visible", timeout: 15000 });
-  await agentCard.click();
+  // Click the link inside the card to navigate reliably through
+  // the motion.div + draggable wrapper layers.
+  const link = agentCard.locator('a[href*="/library/agents/"]').first();
+  await link.click();
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
@@ -481,19 +484,17 @@ export async function clickRunButton(page: Page): Promise<void> {
   // Check which button is visible and click it
   if (await setupTaskButton.isVisible()) {
     await setupTaskButton.click();
-    await page
-      .getByRole("button", { name: /Start Task/i })
-      .first()
-      .click({ timeout: 10000 });
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 
   if (await newTaskButton.isVisible()) {
     await newTaskButton.click();
-    await page
-      .getByRole("button", { name: /Start Task/i })
-      .first()
-      .click({ timeout: 10000 });
+    const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+    await startBtn.waitFor({ state: "visible", timeout: 15000 });
+    await startBtn.click();
     return;
   }
 

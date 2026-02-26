@@ -103,6 +103,8 @@
 * [Stagehand Blocks](block-integrations/stagehand/blocks.md)
 * [System Library Operations](block-integrations/system/library_operations.md)
 * [System Store Operations](block-integrations/system/store_operations.md)
+* [Telegram Blocks](block-integrations/telegram/blocks.md)
+* [Telegram Triggers](block-integrations/telegram/triggers.md)
 * [Text](block-integrations/text.md)
 * [Todoist Comments](block-integrations/todoist/comments.md)
 * [Todoist Labels](block-integrations/todoist/labels.md)

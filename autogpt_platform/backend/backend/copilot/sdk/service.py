@@ -13,7 +13,6 @@ from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 
-from .. import stream_registry
 from ..config import ChatConfig
 from ..model import (
     ChatMessage,
@@ -26,19 +25,13 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
-    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from ..service import (
-    _build_system_prompt,
-    _execute_long_running_tool_with_streaming,
-    _generate_session_title,
-)
-from ..tools.models import OperationPendingResponse, OperationStartedResponse
+from ..service import _build_system_prompt, _generate_session_title
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -46,7 +39,6 @@ from .security_hooks import create_security_hooks
 from .tool_adapter import (
     COPILOT_TOOL_NAMES,
     SDK_DISALLOWED_TOOLS,
-    LongRunningCallback,
     create_copilot_mcp_server,
     set_execution_context,
     wait_for_stash,
@@ -83,8 +75,13 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
+# Special message prefixes for text-based markers (parsed by frontend)
+COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"  # Renders as ErrorCard
+COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
+
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
-_HEARTBEAT_INTERVAL = 15.0  # seconds
+# IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
+_HEARTBEAT_INTERVAL = 10.0  # seconds
 
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
@@ -136,127 +133,6 @@ is delivered to the user via a background stream.
 """
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
-
-
-def _build_long_running_callback(
-    user_id: str | None,
-) -> LongRunningCallback:
-    """Build a callback that delegates long-running tools to the non-SDK infrastructure.
-
-    Long-running tools (create_agent, edit_agent, etc.) are delegated to the
-    existing background infrastructure: stream_registry (Redis Streams),
-    database persistence, and SSE reconnection.  This means results survive
-    page refreshes / pod restarts, and the frontend shows the proper loading
-    widget with progress updates.
-
-    Args:
-        user_id: User ID for the session
-
-    The returned callback matches the ``LongRunningCallback`` signature:
-    ``(tool_name, args, session) -> MCP response dict``.
-    """
-
-    async def _callback(
-        tool_name: str, args: dict[str, Any], session: ChatSession
-    ) -> dict[str, Any]:
-        operation_id = str(uuid.uuid4())
-        task_id = str(uuid.uuid4())
-        tool_call_id = f"sdk-{uuid.uuid4().hex[:12]}"
-        session_id = session.session_id
-
-        # --- Build user-friendly messages (matches non-SDK service) ---
-        if tool_name == "create_agent":
-            desc = args.get("description", "")
-            desc_preview = (desc[:100] + "...") if len(desc) > 100 else desc
-            pending_msg = (
-                f"Creating your agent: {desc_preview}"
-                if desc_preview
-                else "Creating agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent creation started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        elif tool_name == "edit_agent":
-            changes = args.get("changes", "")
-            changes_preview = (changes[:100] + "...") if len(changes) > 100 else changes
-            pending_msg = (
-                f"Editing agent: {changes_preview}"
-                if changes_preview
-                else "Editing agent... This may take a few minutes."
-            )
-            started_msg = (
-                "Agent edit started. You can close this tab - "
-                "check your library in a few minutes."
-            )
-        else:
-            pending_msg = f"Running {tool_name}... This may take a few minutes."
-            started_msg = (
-                f"{tool_name} started. You can close this tab - "
-                "check back in a few minutes."
-            )
-
-        # --- Register task in Redis for SSE reconnection ---
-        await stream_registry.create_task(
-            task_id=task_id,
-            session_id=session_id,
-            user_id=user_id,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            operation_id=operation_id,
-        )
-
-        # --- Save OperationPendingResponse to chat history ---
-        pending_message = ChatMessage(
-            role="tool",
-            content=OperationPendingResponse(
-                message=pending_msg,
-                operation_id=operation_id,
-                tool_name=tool_name,
-            ).model_dump_json(),
-            tool_call_id=tool_call_id,
-        )
-        session.messages.append(pending_message)
-        # Collision detection happens in add_chat_messages_batch (db.py)
-        session = await upsert_chat_session(session)
-
-        # --- Spawn background task (reuses non-SDK infrastructure) ---
-        bg_task = asyncio.create_task(
-            _execute_long_running_tool_with_streaming(
-                tool_name=tool_name,
-                parameters=args,
-                tool_call_id=tool_call_id,
-                operation_id=operation_id,
-                task_id=task_id,
-                session_id=session_id,
-                user_id=user_id,
-            )
-        )
-        _background_tasks.add(bg_task)
-        bg_task.add_done_callback(_background_tasks.discard)
-        await stream_registry.set_task_asyncio_task(task_id, bg_task)
-
-        logger.info(
-            f"[SDK] Long-running tool {tool_name} delegated to background "
-            f"(operation_id={operation_id}, task_id={task_id})"
-        )
-
-        # --- Return OperationStartedResponse as MCP tool result ---
-        # This flows through SDK → response adapter → frontend, triggering
-        # the loading widget with SSE reconnection support.
-        started_json = OperationStartedResponse(
-            message=started_msg,
-            operation_id=operation_id,
-            tool_name=tool_name,
-            task_id=task_id,
-        ).model_dump_json()
-
-        return {
-            "content": [{"type": "text", "text": started_json}],
-            "isError": False,
-        }
-
-    return _callback
 
 
 def _resolve_sdk_model() -> str | None:
@@ -541,6 +417,20 @@ async def stream_chat_completion_sdk(
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Clean up stale error markers from previous turn before starting new turn
+    # If the last message contains an error marker, remove it (user is retrying)
+    if (
+        len(session.messages) > 0
+        and session.messages[-1].role == "assistant"
+        and session.messages[-1].content
+        and COPILOT_ERROR_PREFIX in session.messages[-1].content
+    ):
+        logger.info(
+            "[SDK] [%s] Removing stale error marker from previous turn",
+            session_id[:12],
+        )
+        session.messages.pop()
+
     # Append the new message to the session if it's not already there
     new_message_role = "user" if is_user_message else "assistant"
     if message and (
@@ -577,8 +467,7 @@ async def stream_chat_completion_sdk(
     )
     system_prompt += _SDK_TOOL_SUPPLEMENT
     message_id = str(uuid.uuid4())
-    task_id = str(uuid.uuid4())
-    stream_id = task_id  # Use task_id as unique stream identifier
+    stream_id = str(uuid.uuid4())
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -599,10 +488,9 @@ async def stream_chat_completion_sdk(
             "Please wait or stop it.",
             code="stream_already_active",
         )
-        yield StreamFinish()
         return
 
-    yield StreamStart(messageId=message_id, taskId=task_id)
+    yield StreamStart(messageId=message_id, sessionId=session_id)
 
     stream_completed = False
     # Initialise variables before the try so the finally block can
@@ -618,11 +506,7 @@ async def stream_chat_completion_sdk(
         sdk_cwd = _make_sdk_cwd(session_id)
         os.makedirs(sdk_cwd, exist_ok=True)
 
-        set_execution_context(
-            user_id,
-            session,
-            long_running_callback=_build_long_running_callback(user_id),
-        )
+        set_execution_context(user_id, session)
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -714,7 +598,6 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-            adapter.set_task_id(task_id)
 
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
@@ -728,7 +611,6 @@ async def stream_chat_completion_sdk(
                         errorText="Message cannot be empty.",
                         code="empty_prompt",
                     )
-                    yield StreamFinish()
                     return
 
                 query_message = await _build_query_message(
@@ -739,8 +621,7 @@ async def stream_chat_completion_sdk(
                     session_id,
                 )
                 logger.info(
-                    "[SDK] [%s] Sending query — resume=%s, "
-                    "total_msgs=%d, query_len=%d",
+                    "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
                     session_id[:12],
                     use_resume,
                     len(session.messages),
@@ -789,8 +670,7 @@ async def stream_chat_completion_sdk(
                             sdk_msg = done.pop().result()
                         except StopAsyncIteration:
                             logger.info(
-                                "[SDK] [%s] Stream ended normally "
-                                "(StopAsyncIteration)",
+                                "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
                                 session_id[:12],
                             )
                             break
@@ -863,6 +743,25 @@ async def stream_chat_completion_sdk(
                                     - len(adapter.resolved_tool_calls),
                                 )
 
+                        # Log ResultMessage details for debugging
+                        if isinstance(sdk_msg, ResultMessage):
+                            logger.info(
+                                "[SDK] [%s] Received: ResultMessage %s "
+                                "(unresolved=%d, current=%d, resolved=%d)",
+                                session_id[:12],
+                                sdk_msg.subtype,
+                                len(adapter.current_tool_calls)
+                                - len(adapter.resolved_tool_calls),
+                                len(adapter.current_tool_calls),
+                                len(adapter.resolved_tool_calls),
+                            )
+                            if sdk_msg.subtype in ("error", "error_during_execution"):
+                                logger.error(
+                                    "[SDK] [%s] SDK execution failed with error: %s",
+                                    session_id[:12],
+                                    sdk_msg.result or "(no error message provided)",
+                                )
+
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
                                 continue
@@ -885,6 +784,15 @@ async def stream_chat_completion_sdk(
                                     type(response).__name__,
                                     getattr(response, "toolName", "N/A"),
                                     extra,
+                                )
+
+                            # Log errors being sent to frontend
+                            if isinstance(response, StreamError):
+                                logger.error(
+                                    "[SDK] [%s] Sending error to frontend: %s (code=%s)",
+                                    session_id[:12],
+                                    response.errorText,
+                                    response.code,
                                 )
 
                             yield response
@@ -927,18 +835,6 @@ async def stream_chat_completion_sdk(
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
                                     has_appended_assistant = True
-                                # Save before tool execution starts so the
-                                # pending tool call is visible on refresh /
-                                # other devices. Collision detection happens
-                                # in add_chat_messages_batch (db.py).
-                                try:
-                                    session = await upsert_chat_session(session)
-                                except Exception as save_err:
-                                    logger.warning(
-                                        "[SDK] [%s] Incremental save " "failed: %s",
-                                        session_id[:12],
-                                        save_err,
-                                    )
 
                             elif isinstance(response, StreamToolOutputAvailable):
                                 session.messages.append(
@@ -953,17 +849,6 @@ async def stream_chat_completion_sdk(
                                     )
                                 )
                                 has_tool_results = True
-                                # Save after tool completes so the result is
-                                # visible on refresh / other devices.
-                                # Collision detection happens in add_chat_messages_batch (db.py).
-                                try:
-                                    session = await upsert_chat_session(session)
-                                except Exception as save_err:
-                                    logger.warning(
-                                        "[SDK] [%s] Incremental save " "failed: %s",
-                                        session_id[:12],
-                                        save_err,
-                                    )
 
                             elif isinstance(response, StreamFinish):
                                 stream_completed = True
@@ -973,8 +858,7 @@ async def stream_chat_completion_sdk(
                     # server shutdown).  Log and let the safety-net / finally
                     # blocks handle cleanup.
                     logger.warning(
-                        "[SDK] [%s] Streaming loop cancelled "
-                        "(asyncio.CancelledError)",
+                        "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
                         session_id[:12],
                     )
                     raise
@@ -1016,25 +900,29 @@ async def stream_chat_completion_sdk(
                             )
                         yield response
 
-                # If the stream ended without a ResultMessage (no
-                # StreamFinish), the SDK CLI exited unexpectedly.  Close
-                # the open step and emit StreamFinish so the frontend
-                # transitions to the "ready" state.
+                # If the stream ended without a ResultMessage, the SDK
+                # CLI exited unexpectedly or the user stopped execution.
+                # Close any open text/step so chunks are well-formed, and
+                # append a cancellation message so users see feedback.
+                # StreamFinish is published by mark_session_completed in the processor.
                 if not stream_completed:
-                    logger.warning(
-                        "[SDK] [%s] Stream ended without ResultMessage "
-                        "(StopAsyncIteration) — emitting StreamFinish",
+                    logger.info(
+                        "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
                         session_id[:12],
                     )
-                    if adapter.step_open:
-                        yield StreamFinishStep()
-                        adapter.step_open = False
                     closing_responses: list[StreamBaseResponse] = []
                     adapter._end_text_if_open(closing_responses)
                     for r in closing_responses:
                         yield r
-                    yield StreamFinish()
-                    stream_completed = True
+
+                    # Add "Stopped by user" message so it persists after refresh
+                    # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
+                    session.messages.append(
+                        ChatMessage(
+                            role="assistant",
+                            content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+                        )
+                    )
 
                 if (
                     assistant_response.content or assistant_response.tool_calls
@@ -1054,7 +942,7 @@ async def stream_chat_completion_sdk(
                 elif captured_transcript.path:
                     raw_transcript = read_transcript_file(captured_transcript.path)
                     logger.debug(
-                        "[SDK] Transcript source: stop hook (%s), " "read result: %s",
+                        "[SDK] Transcript source: stop hook (%s), read result: %s",
                         captured_transcript.path,
                         f"{len(raw_transcript)}B" if raw_transcript else "None",
                     )
@@ -1089,34 +977,76 @@ async def stream_chat_completion_sdk(
                 "to use the OpenAI-compatible fallback."
             )
 
-        session = cast(ChatSession, await asyncio.shield(upsert_chat_session(session)))
         logger.info(
-            "[SDK] [%s] Session saved with %d messages",
+            "[SDK] [%s] Stream completed successfully with %d messages",
             session_id[:12],
             len(session.messages),
         )
-        if not stream_completed:
-            yield StreamFinish()
+    except BaseException as e:
+        # Catch BaseException to handle both Exception and CancelledError
+        # (CancelledError inherits from BaseException in Python 3.8+)
+        if isinstance(e, asyncio.CancelledError):
+            logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
+            error_msg = "Operation cancelled"
+        else:
+            error_msg = str(e) or type(e).__name__
+            # SDK cleanup RuntimeError is expected during cancellation, log as warning
+            if isinstance(e, RuntimeError) and "cancel scope" in str(e):
+                logger.warning(
+                    "[SDK] [%s] SDK cleanup error: %s", session_id[:12], error_msg
+                )
+            else:
+                logger.error(
+                    f"[SDK] [%s] Error: {error_msg}", session_id[:12], exc_info=True
+                )
 
-    except asyncio.CancelledError:
-        # Client disconnect / server shutdown — log but re-raise so
-        # the framework can clean up.  The finally block still runs
-        # for transcript upload.
-        logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
-        raise
-    except Exception as e:
-        logger.error(f"[SDK] Error: {e}", exc_info=True)
+        # Append error marker to session (non-invasive text parsing approach)
+        # The finally block will persist the session with this error marker
         if session:
+            session.messages.append(
+                ChatMessage(
+                    role="assistant", content=f"{COPILOT_ERROR_PREFIX} {error_msg}"
+                )
+            )
+            logger.debug(
+                "[SDK] [%s] Appended error marker, will be persisted in finally",
+                session_id[:12],
+            )
+
+        # Yield StreamError for immediate feedback (only for non-cancellation errors)
+        # Skip for CancelledError and RuntimeError cleanup issues (both are cancellations)
+        is_cancellation = isinstance(e, asyncio.CancelledError) or (
+            isinstance(e, RuntimeError) and "cancel scope" in str(e)
+        )
+        if not is_cancellation:
+            yield StreamError(
+                errorText=error_msg,
+                code="sdk_error",
+            )
+
+        raise
+    finally:
+        # --- Persist session messages ---
+        # This MUST run in finally to persist messages even when the generator
+        # is stopped early (e.g., user clicks stop, processor breaks stream loop).
+        # Without this, messages disappear after refresh because they were never
+        # saved to the database.
+        if session is not None:
             try:
                 await asyncio.shield(upsert_chat_session(session))
-            except Exception as save_err:
-                logger.error(f"[SDK] Failed to save session on error: {save_err}")
-        yield StreamError(
-            errorText="An error occurred. Please try again.",
-            code="sdk_error",
-        )
-        yield StreamFinish()
-    finally:
+                logger.info(
+                    "[SDK] [%s] Session persisted in finally with %d messages",
+                    session_id[:12],
+                    len(session.messages),
+                )
+            except Exception as persist_err:
+                logger.error(
+                    "[SDK] [%s] Failed to persist session in finally: %s",
+                    session_id[:12],
+                    persist_err,
+                    exc_info=True,
+                )
+
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
         # the streaming loop raises an exception.  The CLI uses
