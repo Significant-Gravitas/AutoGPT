@@ -486,27 +486,6 @@ async def stream_chat_completion_sdk(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
 
-    # Build system prompt (reuses non-SDK path with Langfuse support).
-    # Pre-compute the cwd here so the exact working directory path can be
-    # injected into the supplement instead of the generic placeholder.
-    # Catch ValueError early so the failure yields a clean StreamError rather
-    # than propagating outside the stream error-handling path.
-    has_history = len(session.messages) > 1
-    sdk_cwd = ""
-    try:
-        sdk_cwd = _make_sdk_cwd(session_id)
-        os.makedirs(sdk_cwd, exist_ok=True)
-    except (ValueError, OSError) as e:
-        logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
-        yield StreamError(
-            errorText="Unable to initialize working directory.",
-            code="sdk_cwd_error",
-        )
-        return
-    system_prompt, _ = await _build_system_prompt(
-        user_id, has_conversation_history=has_history
-    )
-    system_prompt += _build_sdk_tool_supplement(sdk_cwd)
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
 
@@ -530,6 +509,28 @@ async def stream_chat_completion_sdk(
             code="stream_already_active",
         )
         return
+
+    # Build system prompt (reuses non-SDK path with Langfuse support).
+    # Pre-compute the cwd here so the exact working directory path can be
+    # injected into the supplement instead of the generic placeholder.
+    # Catch ValueError early so the failure yields a clean StreamError rather
+    # than propagating outside the stream error-handling path.
+    has_history = len(session.messages) > 1
+    sdk_cwd = ""
+    try:
+        sdk_cwd = _make_sdk_cwd(session_id)
+        os.makedirs(sdk_cwd, exist_ok=True)
+    except (ValueError, OSError) as e:
+        logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
+        yield StreamError(
+            errorText="Unable to initialize working directory.",
+            code="sdk_cwd_error",
+        )
+        return
+    system_prompt, _ = await _build_system_prompt(
+        user_id, has_conversation_history=has_history
+    )
+    system_prompt += _build_sdk_tool_supplement(sdk_cwd)
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
