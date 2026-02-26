@@ -22,7 +22,7 @@ export default function ShareLayout({
               src="/autogpt-logo-dark-bg.png"
               alt="AutoGPT"
               width={120}
-              height={32}
+              height={54}
               className="hidden h-8 w-auto dark:block"
               priority
             />
@@ -30,7 +30,7 @@ export default function ShareLayout({
               src="/autogpt-logo-light-bg.png"
               alt="AutoGPT"
               width={120}
-              height={32}
+              height={54}
               className="block h-8 w-auto dark:hidden"
               priority
             />
