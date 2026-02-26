@@ -454,11 +454,20 @@ async def stream_chat_completion_sdk(
                 task.add_done_callback(_background_tasks.discard)
 
     # Build system prompt (reuses non-SDK path with Langfuse support).
-    # Pre-compute the cwd here (deterministic, no side effects) so the exact
-    # working directory path can be injected into the supplement instead of
-    # the generic `/tmp/copilot-<session>/` placeholder.
+    # Pre-compute the cwd here so the exact working directory path can be
+    # injected into the supplement instead of the generic placeholder.
+    # Catch ValueError early so the failure yields a clean StreamError rather
+    # than propagating outside the stream error-handling path.
     has_history = len(session.messages) > 1
-    _precomputed_cwd = _make_sdk_cwd(session_id)
+    try:
+        _precomputed_cwd = _make_sdk_cwd(session_id)
+    except ValueError as e:
+        logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
+        yield StreamError(
+            errorText="Unable to initialize working directory.",
+            code="sdk_cwd_error",
+        )
+        return
     system_prompt, _ = await _build_system_prompt(
         user_id, has_conversation_history=has_history
     )
@@ -499,8 +508,9 @@ async def stream_chat_completion_sdk(
 
     try:
         # Use a session-specific temp dir to avoid cleanup race conditions
-        # between concurrent sessions.
-        sdk_cwd = _make_sdk_cwd(session_id)
+        # between concurrent sessions.  Reuse the value computed above so
+        # the prompt and execution directory cannot drift.
+        sdk_cwd = _precomputed_cwd
         os.makedirs(sdk_cwd, exist_ok=True)
 
         set_execution_context(user_id, session)
