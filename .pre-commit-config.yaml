@@ -76,7 +76,12 @@ repos:
       - id: prisma-generate
         name: Prisma Generate - AutoGPT Platform - Backend
         alias: prisma-generate-platform-backend
-        entry: bash -c 'cd autogpt_platform/backend && poetry run prisma generate'
+        entry: >
+          bash -c '
+          cd autogpt_platform/backend
+          && poetry run prisma generate
+          && rm -rf /tmp/pyright-*
+          '
         # include everything that triggers poetry install + the prisma schema
         files: ^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema.prisma)$
         types: [file]
