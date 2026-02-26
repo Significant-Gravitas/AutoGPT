@@ -34,7 +34,9 @@ def main(output: Path, pretty: bool):
     """Generate and output the OpenAPI JSON specification."""
     openapi_schema = get_openapi_schema()
 
-    json_output = json.dumps(openapi_schema, indent=2 if pretty else None)
+    json_output = json.dumps(
+        openapi_schema, indent=2 if pretty else None, ensure_ascii=False
+    )
 
     if output:
         output.write_text(json_output)
