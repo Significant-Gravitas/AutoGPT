@@ -11170,7 +11170,9 @@
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
-          "suggested_goal"
+          "suggested_goal",
+          "mcp_tools_discovered",
+          "mcp_tool_output"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
