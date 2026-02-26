@@ -149,7 +149,7 @@ repos:
           fi | grep -qE "^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema\.prisma)$" || exit 0;
           cd autogpt_platform/backend
           && poetry run prisma generate
-          && rm -rf /tmp/pyright-*
+          && poetry run gen-prisma-stub
           '
         # include everything that triggers poetry install + the prisma schema
         always_run: true
