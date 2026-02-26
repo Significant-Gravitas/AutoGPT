@@ -39,6 +39,11 @@ const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
 
 type MarkerType = "error" | "system" | null;
 
+/** Escape all regex special characters in a string. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Parse special markers from message content (error, system).
  *
@@ -55,7 +60,7 @@ function parseSpecialMarkers(text: string): {
 } {
   // Check for error marker
   const errorMatch = text.match(
-    new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
+    new RegExp(`${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`, "s"),
   );
   if (errorMatch) {
     return {
@@ -67,7 +72,7 @@ function parseSpecialMarkers(text: string): {
 
   // Check for system marker
   const systemMatch = text.match(
-    new RegExp(`\\${COPILOT_SYSTEM_PREFIX}\\s*(.+?)$`, "s"),
+    new RegExp(`${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`, "s"),
   );
   if (systemMatch) {
     return {

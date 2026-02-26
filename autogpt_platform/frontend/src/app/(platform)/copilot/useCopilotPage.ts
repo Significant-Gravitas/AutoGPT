@@ -252,6 +252,22 @@ export function useCopilotPage() {
     },
     onError: (error) => {
       if (!sessionId) return;
+
+      // Detect authentication failures (from getAuthHeaders or 401 responses)
+      const isAuthError =
+        error.message.includes("Authentication failed") ||
+        error.message.includes("Unauthorized") ||
+        error.message.includes("Not authenticated") ||
+        error.message.toLowerCase().includes("401");
+      if (isAuthError) {
+        toast({
+          title: "Authentication error",
+          description: "Your session may have expired. Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Only reconnect on network errors (not HTTP errors)
       const isNetworkError =
         error.name === "TypeError" || error.name === "AbortError";
