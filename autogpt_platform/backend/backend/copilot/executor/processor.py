@@ -183,15 +183,30 @@ class CoPilotProcessor:
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
+        except asyncio.CancelledError:
+            elapsed = time.monotonic() - start_time
+            log.info(f"Execution cancelled after {elapsed:.2f}s")
+            # Safety net: mark session as cancelled
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    stream_registry.mark_session_completed(
+                        entry.session_id, error_message="Operation cancelled"
+                    ),
+                    self.execution_loop,
+                ).result(timeout=5.0)
+            except Exception as cleanup_err:
+                log.error(f"Safety net mark_session_completed failed: {cleanup_err}")
+            raise
         except BaseException as e:
             elapsed = time.monotonic() - start_time
-            log.error(f"Execution failed after {elapsed:.2f}s: {e}")
+            error_msg = str(e) or type(e).__name__
+            log.error(f"Execution failed after {elapsed:.2f}s: {error_msg}")
             # Safety net: if _execute_async's error handler failed to mark
             # the session (e.g. RuntimeError from SDK cleanup), do it here.
             try:
                 asyncio.run_coroutine_threadsafe(
                     stream_registry.mark_session_completed(
-                        entry.session_id, error_message=str(e) or "Unknown error"
+                        entry.session_id, error_message=error_msg
                     ),
                     self.execution_loop,
                 ).result(timeout=5.0)
@@ -275,11 +290,22 @@ class CoPilotProcessor:
                 entry.session_id, error_message=error_message
             )
 
-        except BaseException as e:
-            log.error(f"Turn failed: {e}")
+        except asyncio.CancelledError:
+            # Expected cancellation (client disconnect, graceful shutdown)
+            log.info("Turn cancelled")
             try:
                 await stream_registry.mark_session_completed(
-                    entry.session_id, error_message=str(e) or "Unknown error"
+                    entry.session_id, error_message="Operation cancelled"
+                )
+            except Exception as mark_err:
+                log.error(f"mark_session_completed failed on cancel: {mark_err}")
+            raise
+        except BaseException as e:
+            error_msg = str(e) or type(e).__name__
+            log.error(f"Turn failed: {error_msg}")
+            try:
+                await stream_registry.mark_session_completed(
+                    entry.session_id, error_message=error_msg
                 )
             except Exception as mark_err:
                 log.error(f"mark_session_completed also failed: {mark_err}")

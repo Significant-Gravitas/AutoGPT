@@ -4,6 +4,7 @@ This module contains the CoPilotExecutor class that consumes chat tasks from
 RabbitMQ and processes them using a thread pool, following the graph executor pattern.
 """
 
+import asyncio
 import logging
 import os
 import threading
@@ -411,12 +412,16 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"Run completed for {session_id}")
             try:
                 if exec_error := f.exception():
-                    logger.error(f"Execution for {session_id} failed: {exec_error}")
+                    error_msg = str(exec_error) or type(exec_error).__name__
+                    logger.error(f"Execution for {session_id} failed: {error_msg}")
                     ack_message(reject=True, requeue=False)
                 else:
                     ack_message(reject=False, requeue=False)
+            except asyncio.CancelledError:
+                logger.info(f"Run completion callback cancelled for {session_id}")
             except BaseException as e:
-                logger.exception(f"Error in run completion callback: {e}")
+                error_msg = str(e) or type(e).__name__
+                logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
                 # Release the cluster lock
                 if session_id in self._task_locks:

@@ -344,13 +344,20 @@ export function useCopilotPage() {
   // Format: Map<sessionId, hasResumed>
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // Clean up reconnect and status state on session switch.
+  // Stall detection refs (declared before cleanup effect that references them)
+  const lastMessageCountRef = useRef(0);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Clean up reconnect, stall detection, and status state on session switch.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
+    clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = undefined;
     reconnectingRef.current = false;
     reconnectAttemptsRef.current.delete(sessionId ?? "");
+    lastMessageCountRef.current = 0;
     prevStatusRef.current = status;
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -407,8 +414,6 @@ export function useCopilotPage() {
 
   // Stall detection: if streaming but no new messages for 30s, recheck
   // backend state via REST and recover if the stream silently died.
-  const lastMessageCountRef = useRef(0);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (status !== "streaming") {
       clearTimeout(stallTimerRef.current);
