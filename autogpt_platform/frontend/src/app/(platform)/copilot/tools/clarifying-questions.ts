@@ -35,3 +35,22 @@ export function normalizeClarifyingQuestions(
     return item;
   });
 }
+
+/**
+ * Formats clarification answers as a context message and sends it via onSend.
+ */
+export function buildClarificationAnswersMessage(
+  answers: Record<string, string>,
+  rawQuestions: Array<{ question: string; keyword: string }>,
+  mode: "create" | "edit",
+): string {
+  const contextMessage = rawQuestions
+    .map((q) => {
+      const answer = answers[q.keyword] || "";
+      return `> ${q.question}\n\n${answer}`;
+    })
+    .join("\n\n");
+
+  const action = mode === "create" ? "creating" : "editing";
+  return `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with ${action} the agent.`;
+}
