@@ -408,7 +408,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=10,
             cost_filter={
-                "model": FluxKontextModelName.FLUX_KONTEXT_PRO.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -419,7 +419,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=20,
             cost_filter={
-                "model": FluxKontextModelName.FLUX_KONTEXT_MAX.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_MAX,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -430,7 +430,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana Pro
             cost_filter={
-                "model": FluxKontextModelName.NANO_BANANA_PRO.api_name,
+                "model": FluxKontextModelName.NANO_BANANA_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -441,7 +441,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana 2
             cost_filter={
-                "model": FluxKontextModelName.NANO_BANANA_2.api_name,
+                "model": FluxKontextModelName.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
