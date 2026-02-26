@@ -132,7 +132,7 @@ class AIImageGeneratorBlock(Block):
         )
         model: ImageGenModel = SchemaField(
             description="The AI model to use for image generation",
-            default=ImageGenModel.SD3_5,
+            default=ImageGenModel.NANO_BANANA_2,
             title="Model",
         )
         size: ImageSize = SchemaField(
@@ -166,7 +166,7 @@ class AIImageGeneratorBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "prompt": "An octopus using a laptop in a snowy forest with 'AutoGPT' clearly visible on the screen",
-                "model": ImageGenModel.RECRAFT,
+                "model": ImageGenModel.NANO_BANANA_2,
                 "size": ImageSize.SQUARE,
                 "style": ImageStyle.REALISTIC,
             },

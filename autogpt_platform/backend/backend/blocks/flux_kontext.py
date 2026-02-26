@@ -99,14 +99,14 @@ class AIImageEditorBlock(Block):
             advanced=False,
         )
         seed: Optional[int] = SchemaField(
-            description="Random seed. Set for reproducible generation",
+            description="Random seed. Set for reproducible generation (Flux Kontext only; ignored by Nano Banana models)",
             default=None,
             title="Seed",
             advanced=True,
         )
         model: ImageEditorModel = SchemaField(
             description="Model variant to use",
-            default=ImageEditorModel.FLUX_KONTEXT_PRO,
+            default=ImageEditorModel.NANO_BANANA_2,
             title="Model",
         )
 
@@ -130,7 +130,7 @@ class AIImageEditorBlock(Block):
                 "input_image": "data:image/png;base64,MQ==",
                 "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "seed": None,
-                "model": ImageEditorModel.FLUX_KONTEXT_PRO,
+                "model": ImageEditorModel.NANO_BANANA_2,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
@@ -199,15 +199,13 @@ class AIImageEditorBlock(Block):
             ImageEditorModel.NANO_BANANA_2,
         )
         if is_nano_banana:
-            # Nano Banana doesn't support "match_input_image"; fall back to "auto"
-            nb_aspect_ratio = (
-                "auto" if aspect_ratio == "match_input_image" else aspect_ratio
-            )
             input_params: dict = {
                 "prompt": prompt,
-                "aspect_ratio": nb_aspect_ratio,
+                "aspect_ratio": aspect_ratio,
                 "output_format": "jpg",
+                "safety_filter_level": "block_only_high",
             }
+            # NB API expects "image_input" as a list, unlike Flux's single "input_image"
             if input_image_b64:
                 input_params["image_input"] = [input_image_b64]
         else:

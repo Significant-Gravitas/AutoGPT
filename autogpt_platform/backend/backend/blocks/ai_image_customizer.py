@@ -78,7 +78,7 @@ class AIImageCustomizerBlock(Block):
         )
         model: GeminiImageModel = SchemaField(
             description="The AI model to use for image generation and editing",
-            default=GeminiImageModel.NANO_BANANA,
+            default=GeminiImageModel.NANO_BANANA_2,
             title="Model",
         )
         images: list[MediaFileType] = SchemaField(
@@ -112,7 +112,7 @@ class AIImageCustomizerBlock(Block):
             output_schema=AIImageCustomizerBlock.Output,
             test_input={
                 "prompt": "Make the scene more vibrant and colorful",
-                "model": GeminiImageModel.NANO_BANANA,
+                "model": GeminiImageModel.NANO_BANANA_2,
                 "images": [],
                 "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "output_format": OutputFormat.JPG,

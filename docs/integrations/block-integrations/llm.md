@@ -181,7 +181,7 @@ Choose between Flux Kontext Pro, Max, or Nano Banana models for different qualit
 | prompt | Text instruction describing the desired edit | str | Yes |
 | input_image | Reference image URI (jpeg, png, gif, webp) | str (file) | No |
 | aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "16:9" \| "9:16" \| "4:3" \| "3:4" \| "3:2" \| "2:3" \| "4:5" \| "5:4" \| "21:9" \| "9:21" \| "2:1" \| "1:2" | No |
-| seed | Random seed. Set for reproducible generation | int | No |
+| seed | Random seed. Set for reproducible generation (Flux Kontext only; ignored by Nano Banana models) | int | No |
 | model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" \| "Nano Banana Pro" \| "Nano Banana 2" | No |
 
 ### Outputs
