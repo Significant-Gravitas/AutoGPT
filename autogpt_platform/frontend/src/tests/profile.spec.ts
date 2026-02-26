@@ -2,7 +2,7 @@ import { LoginPage } from "./pages/login.page";
 import { ProfilePage } from "./pages/profile.page";
 import test, { expect } from "@playwright/test";
 import { getTestUser } from "./utils/auth";
-import { hasUrl } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl } from "./utils/assertion";
 
 test.beforeEach(async ({ page }) => {
   const loginPage = new LoginPage(page);
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 });
 
 test("user can view their profile information", async ({ page }) => {

@@ -53,3 +53,9 @@ export async function hasMinCount(el: Locator, minCount: number) {
 export async function matchesUrl(page: Page, pattern: RegExp) {
   expect(page.url()).toMatch(pattern);
 }
+
+export const POST_AUTH_LANDING_URL = /\/(marketplace|library|copilot)(\?.*)?$/;
+
+export async function hasPostAuthLandingUrl(page: Page) {
+  await expect(page).toHaveURL(POST_AUTH_LANDING_URL);
+}

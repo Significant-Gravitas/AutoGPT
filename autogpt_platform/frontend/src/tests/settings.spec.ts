@@ -1,7 +1,13 @@
 import test, { expect } from "@playwright/test";
 import { getTestUser } from "./utils/auth";
 import { LoginPage } from "./pages/login.page";
-import { hasAttribute, hasUrl, isHidden, isVisible } from "./utils/assertion";
+import {
+  hasAttribute,
+  hasPostAuthLandingUrl,
+  hasUrl,
+  isHidden,
+  isVisible,
+} from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.beforeEach(async ({ page }) => {
@@ -11,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   // Login and navigate to settings
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   // Navigate to settings page
   await page.goto("/profile/settings");

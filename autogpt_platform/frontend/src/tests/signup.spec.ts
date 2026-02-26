@@ -6,25 +6,20 @@ import {
   validateSignupForm,
 } from "./utils/signup";
 import { getSelectors } from "./utils/selectors";
-import { hasUrl, isVisible } from "./utils/assertion";
+import { hasPostAuthLandingUrl, hasUrl, isVisible } from "./utils/assertion";
 
 test("user can signup successfully", async ({ page }) => {
   try {
     const testUser = await signupTestUser(page);
-    const { getText, getId } = getSelectors(page);
+    const { getId } = getSelectors(page);
 
     // Verify user was created
     expect(testUser.email).toBeTruthy();
     expect(testUser.password).toBeTruthy();
     expect(testUser.createdAt).toBeTruthy();
 
-    const marketplaceText = getText(
-      "Bringing you AI agents designed by thinkers from around the world",
-    ).first();
-
-    // Verify we're on marketplace and authenticated
-    await hasUrl(page, "/marketplace");
-    await isVisible(marketplaceText);
+    // Verify we landed on a post-auth page (marketplace, library, or copilot) and are authenticated
+    await hasPostAuthLandingUrl(page);
     await isVisible(getId("profile-popout-menu-trigger"));
   } catch (error) {
     console.error("❌ Signup test failed:", error);
@@ -68,8 +63,8 @@ test("user can signup with custom credentials", async ({ page }) => {
     expect(testUser.email).toBe(customEmail);
     expect(testUser.password).toBe(customPassword);
 
-    // Verify successful signup
-    await hasUrl(page, "/marketplace");
+    // Verify successful signup (app may land on marketplace, library, or copilot)
+    await hasPostAuthLandingUrl(page);
     await isVisible(getId("profile-popout-menu-trigger"));
   } catch (error) {
     console.error("❌ Custom credentials signup test failed:", error);

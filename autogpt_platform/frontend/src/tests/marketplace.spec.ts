@@ -2,7 +2,13 @@ import { expect, test } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";
-import { hasMinCount, hasUrl, isVisible, matchesUrl } from "./utils/assertion";
+import {
+  hasMinCount,
+  hasPostAuthLandingUrl,
+  hasUrl,
+  isVisible,
+  matchesUrl,
+} from "./utils/assertion";
 
 // Marketplace tests for store agent search functionality
 test.describe("Marketplace – Basic Functionality", () => {
@@ -27,7 +33,7 @@ test.describe("Marketplace – Basic Functionality", () => {
     await loginPage.goto();
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
-    await hasUrl(page, "/marketplace");
+    await hasPostAuthLandingUrl(page);
 
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");

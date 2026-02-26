@@ -2,7 +2,12 @@ import { test } from "@playwright/test";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";
-import { hasUrl, isVisible, matchesUrl } from "./utils/assertion";
+import {
+  hasPostAuthLandingUrl,
+  hasUrl,
+  isVisible,
+  matchesUrl,
+} from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
 test.describe("Marketplace Creator Page – Basic Functionality", () => {
@@ -27,7 +32,7 @@ test.describe("Marketplace Creator Page – Basic Functionality", () => {
     await loginPage.goto();
     const richUser = getTestUserWithLibraryAgents();
     await loginPage.login(richUser.email, richUser.password);
-    await hasUrl(page, "/marketplace");
+    await hasPostAuthLandingUrl(page);
 
     await marketplacePage.goto(page);
     await hasUrl(page, "/marketplace");

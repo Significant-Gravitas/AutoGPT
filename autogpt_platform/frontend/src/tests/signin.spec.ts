@@ -3,7 +3,12 @@
 import test from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import { hasUrl, isHidden, isVisible } from "./utils/assertion";
+import {
+  hasPostAuthLandingUrl,
+  hasUrl,
+  isHidden,
+  isVisible,
+} from "./utils/assertion";
 import { getTestUser } from "./utils/auth";
 import { getSelectors } from "./utils/selectors";
 
@@ -35,7 +40,7 @@ test("user can login successfully", async ({ page }) => {
   const { getId, getButton, getRole } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   const accountMenuTrigger = getId("profile-popout-menu-trigger");
 
@@ -62,7 +67,7 @@ test("user can logout successfully", async ({ page }) => {
   const { getButton, getId } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   // Open account menu
   await getId("profile-popout-menu-trigger").click();
@@ -78,7 +83,7 @@ test("login in, then out, then in again", async ({ page }) => {
   const { getButton, getId } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   // Click on the profile menu trigger to open account menu
   await getId("profile-popout-menu-trigger").click();
@@ -88,7 +93,7 @@ test("login in, then out, then in again", async ({ page }) => {
 
   await test.expect(page).toHaveURL("/login");
   await loginPage.login(testUser.email, testUser.password);
-  await test.expect(page).toHaveURL("/marketplace");
+  await hasPostAuthLandingUrl(page);
   await test
     .expect(page.getByTestId("profile-popout-menu-trigger"))
     .toBeVisible();
@@ -115,7 +120,7 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Login
   await page1.goto("/login");
   await loginPage1.login(testUser.email, testUser.password);
-  await hasUrl(page1, "/marketplace");
+  await hasPostAuthLandingUrl(page1);
 
   //  Navigate to builder + wait for WebSocket connection
   await page1.goto("/build");
@@ -179,7 +184,7 @@ test("logged in user is redirected from /login to /copilot", async ({
   const loginPage = new LoginPage(page);
 
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   await page.goto("/login");
   await hasUrl(page, "/library?sort=updatedAt");
@@ -192,7 +197,7 @@ test("logged in user is redirected from /signup to /library", async ({
   const loginPage = new LoginPage(page);
 
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   await page.goto("/signup");
   await hasUrl(page, "/library?sort=updatedAt");

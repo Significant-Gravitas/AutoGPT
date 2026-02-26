@@ -2,7 +2,11 @@ import test, { expect } from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
 import * as LibraryPage from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
-import { hasTextContent, hasUrl, isVisible } from "./utils/assertion";
+import {
+  hasPostAuthLandingUrl,
+  hasTextContent,
+  isVisible,
+} from "./utils/assertion";
 import { getTestUser } from "./utils/auth";
 import { getSelectors } from "./utils/selectors";
 
@@ -13,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
+  await hasPostAuthLandingUrl(page);
 
   await page.goto("/build");
   await buildPage.closeTutorial();
