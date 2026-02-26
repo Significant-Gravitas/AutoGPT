@@ -10,6 +10,7 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
@@ -27,8 +28,38 @@ import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
-// Workspace media support
+// Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
+
+// Error marker prefix for text-based error persistence (set by backend)
+const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
+
+/**
+ * Parse error markers from message content.
+ *
+ * Detects `[COPILOT_ERROR] error message` markers added by the backend
+ * when execution errors occur. Returns error status and cleaned text.
+ */
+function parseErrorMarker(text: string): {
+  isError: boolean;
+  errorText: string;
+  cleanText: string;
+} {
+  // Match [COPILOT_ERROR] followed by error message at end of text
+  const errorMatch = text.match(
+    new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
+  );
+
+  if (errorMatch) {
+    return {
+      isError: true,
+      errorText: errorMatch[1].trim(),
+      cleanText: text.replace(errorMatch[0], "").trim(),
+    };
+  }
+
+  return { isError: false, errorText: "", cleanText: text };
+}
 
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
@@ -212,15 +243,30 @@ export const ChatMessagesContainer = ({
               >
                 {message.parts.map((part, i) => {
                   switch (part.type) {
-                    case "text":
+                    case "text": {
+                      // Check for error markers first
+                      const { isError, errorText, cleanText } =
+                        parseErrorMarker(part.text);
+
+                      if (isError) {
+                        return (
+                          <ErrorCard
+                            key={`${message.id}-${i}`}
+                            responseError={{ message: errorText }}
+                            context="execution"
+                          />
+                        );
+                      }
+
                       return (
                         <MessageResponse
                           key={`${message.id}-${i}`}
                           components={STREAMDOWN_COMPONENTS}
                         >
-                          {resolveWorkspaceUrls(part.text)}
+                          {resolveWorkspaceUrls(cleanText)}
                         </MessageResponse>
                       );
+                    }
                     case "tool-find_block":
                       return (
                         <FindBlocksTool

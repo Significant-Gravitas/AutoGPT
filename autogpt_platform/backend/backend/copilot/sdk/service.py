@@ -75,6 +75,9 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
+# Error marker prefix for text-based error persistence (parsed by frontend)
+COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"
+
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
@@ -952,31 +955,8 @@ async def stream_chat_completion_sdk(
                     session_id[:12],
                     e,
                 )
-                if session:
-                    # Add cancellation marker
-                    if session.messages and session.messages[-1].role == "assistant":
-                        last_msg = session.messages[-1]
-                        if last_msg.content:
-                            last_msg.content = (
-                                f"{last_msg.content}\n\n[Operation cancelled]"
-                            )
-                        else:
-                            last_msg.content = "[Operation cancelled]"
-                    else:
-                        session.messages.append(
-                            ChatMessage(
-                                role="assistant", content="[Operation cancelled]"
-                            )
-                        )
-                    try:
-                        await asyncio.shield(upsert_chat_session(session))
-                    except Exception as save_err:
-                        logger.error(
-                            "[SDK] [%s] Failed to save session after cleanup error: %s",
-                            session_id[:12],
-                            save_err,
-                        )
-                # Don't re-raise - treat as graceful cancellation
+                # Don't re-raise — treat as graceful cancellation.
+                # Error already sent via mark_session_completed in processor.
                 return
             # Other RuntimeErrors should propagate
             raise
@@ -994,56 +974,53 @@ async def stream_chat_completion_sdk(
             len(session.messages),
         )
     except asyncio.CancelledError:
-        # Client disconnect / server shutdown — save session before re-raising
-        # so accumulated messages aren't lost.
+        # Client disconnect / server shutdown — save session with error marker
+        # so it persists after refresh.
         logger.warning("[SDK] [%s] Session cancelled (CancelledError)", session_id[:12])
+
+        # Append error marker to session (non-invasive text parsing approach)
         if session:
-            # Add cancellation marker to the last assistant message or create new one
-            if session.messages and session.messages[-1].role == "assistant":
-                last_msg = session.messages[-1]
-                if last_msg.content:
-                    last_msg.content = f"{last_msg.content}\n\n[Operation cancelled]"
-                else:
-                    last_msg.content = "[Operation cancelled]"
-            else:
-                # No assistant message to mark, add a new one
-                session.messages.append(
-                    ChatMessage(role="assistant", content="[Operation cancelled]")
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_ERROR_PREFIX} Operation cancelled",
                 )
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
-                logger.info(
-                    "[SDK] [%s] Session saved on cancel (%d messages)",
-                    session_id[:12],
-                    len(session.messages),
+                logger.debug(
+                    "[SDK] [%s] Persisted cancellation error marker", session_id[:12]
                 )
             except Exception as save_err:
-                logger.error(
-                    "[SDK] [%s] Failed to save session on cancel: %s",
+                logger.warning(
+                    "[SDK] [%s] Failed to persist error marker: %s",
                     session_id[:12],
                     save_err,
                 )
+
         raise
     except Exception as e:
         error_msg = str(e) or type(e).__name__
         logger.error(f"[SDK] Error: {error_msg}", exc_info=True)
+
+        # Append error marker to session (non-invasive text parsing approach)
         if session:
-            # Add error message to chat history so it persists on refresh
-            if session.messages and session.messages[-1].role == "assistant":
-                last_msg = session.messages[-1]
-                if last_msg.content:
-                    last_msg.content = f"{last_msg.content}\n\n[Error: {error_msg}]"
-                else:
-                    last_msg.content = f"[Error: {error_msg}]"
-            else:
-                # No assistant message to mark, add a new one
-                session.messages.append(
-                    ChatMessage(role="assistant", content=f"[Error: {error_msg}]")
+            session.messages.append(
+                ChatMessage(
+                    role="assistant", content=f"{COPILOT_ERROR_PREFIX} {error_msg}"
                 )
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
+                logger.debug("[SDK] [%s] Persisted error marker", session_id[:12])
             except Exception as save_err:
-                logger.error(f"[SDK] Failed to save session on error: {save_err}")
+                logger.warning(
+                    "[SDK] [%s] Failed to persist error marker: %s",
+                    session_id[:12],
+                    save_err,
+                )
+
+        # Also yield StreamError for immediate feedback during active stream
         yield StreamError(
             errorText="An error occurred. Please try again.",
             code="sdk_error",

@@ -15,10 +15,8 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
-const STREAM_START_TIMEOUT_MS = 12_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
-const STALL_DETECTION_MS = 30_000;
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 function resolveInProgressTools(
@@ -159,9 +157,12 @@ export function useCopilotPage() {
   const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // resumeStreamRef: always points to the latest resumeStream function
-  // so the onFinish closure doesn't capture a stale reference.
+  // resumeStreamRef / setMessagesRef: always point to the latest functions
+  // so the scheduleReconnect closure doesn't capture stale references.
   const resumeStreamRef = useRef<() => void>(() => {});
+  const setMessagesRef = useRef<
+    (fn: (prev: UIMessage[]) => UIMessage[]) => void
+  >(() => {});
 
   const reconnectingRef = useRef(false);
 
@@ -195,6 +196,13 @@ export function useCopilotPage() {
         delay,
         ts: Date.now(),
       });
+      // Drop assistant messages before replay — the backend replays all
+      // chunks from "0-0" including `start` with the server messageId.
+      // If the old assistant message stays, the replayed `start` overwrites
+      // its ID → write() sees a mismatch → pushMessage → duplicate.
+      setMessagesRef.current((prev) =>
+        prev.filter((m) => m.role !== "assistant"),
+      );
       resumeStreamRef.current();
     }, delay);
   }
@@ -267,6 +275,7 @@ export function useCopilotPage() {
     },
   });
   resumeStreamRef.current = resumeStream;
+  setMessagesRef.current = setMessages;
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
@@ -304,29 +313,6 @@ export function useCopilotPage() {
     }
   }
 
-  // Abort the stream if the backend doesn't start sending data within 12s.
-  const stopRef = useRef(stop);
-  stopRef.current = stop;
-  useEffect(() => {
-    if (status !== "submitted") return;
-
-    const timer = setTimeout(() => {
-      console.warn("[STREAM_DIAG] stream start timeout", {
-        sessionId,
-        status,
-        ts: Date.now(),
-      });
-      stopRef.current();
-      toast({
-        title: "Stream timed out",
-        description: "The server took too long to respond. Please try again.",
-        variant: "destructive",
-      });
-    }, STREAM_START_TIMEOUT_MS);
-
-    return () => clearTimeout(timer);
-  }, [status]);
-
   // Hydrate messages from the REST session endpoint.
   // Skip hydration while streaming or during reconnect to avoid overwriting
   // the SDK's in-flight messages (which would cause duplicates on resume).
@@ -344,20 +330,13 @@ export function useCopilotPage() {
   // Format: Map<sessionId, hasResumed>
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // Stall detection refs (declared before cleanup effect that references them)
-  const lastMessageCountRef = useRef(0);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  // Clean up reconnect, stall detection, and status state on session switch.
+  // Clean up reconnect and status state on session switch.
   const prevStatusRef = useRef(status);
   useEffect(() => {
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
-    clearTimeout(stallTimerRef.current);
-    stallTimerRef.current = undefined;
     reconnectingRef.current = false;
     reconnectAttemptsRef.current.delete(sessionId ?? "");
-    lastMessageCountRef.current = 0;
     prevStatusRef.current = status;
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -411,64 +390,6 @@ export function useCopilotPage() {
     hasResumedRef.current.set(sessionId, true);
     resumeStream();
   }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
-
-  // Stall detection: if streaming but no new messages for 30s, recheck
-  // backend state via REST and recover if the stream silently died.
-  useEffect(() => {
-    if (status !== "streaming") {
-      clearTimeout(stallTimerRef.current);
-      return;
-    }
-
-    const currentCount = rawMessages.length;
-    if (currentCount !== lastMessageCountRef.current) {
-      lastMessageCountRef.current = currentCount;
-      clearTimeout(stallTimerRef.current);
-    }
-
-    stallTimerRef.current = setTimeout(async () => {
-      console.warn("[STREAM_DIAG] STALL DETECTED", {
-        sessionId,
-        status,
-        messageCount: rawMessages.length,
-        ts: Date.now(),
-      });
-
-      const result = await refetchSession();
-      const data = result.data;
-      const backendActive = data?.status === 200 && !!data.data.active_stream;
-
-      console.info("[STREAM_DIAG] stall recheck result", {
-        sessionId,
-        backendActive,
-        ts: Date.now(),
-      });
-
-      if (!backendActive) {
-        // Backend finished but SDK missed it — force stop
-        toast({
-          title: "Stream ended",
-          description: "The response finished. Refreshing...",
-        });
-        sdkStop();
-        setMessages((prev) => resolveInProgressTools(prev, "completed"));
-      } else {
-        toast({
-          title: "Still processing",
-          description: "The agent is working on a long task...",
-        });
-      }
-    }, STALL_DETECTION_MS);
-
-    return () => clearTimeout(stallTimerRef.current);
-  }, [
-    status,
-    rawMessages.length,
-    sessionId,
-    refetchSession,
-    sdkStop,
-    setMessages,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear messages when session is null
   useEffect(() => {

@@ -626,10 +626,14 @@ async def resume_session_stream(
     if not active_session:
         return Response(status_code=204)
 
+    # Always replay from the beginning ("0-0") on resume.
+    # We can't use last_message_id because it's the latest ID in the backend
+    # stream, not the latest the frontend received — the gap causes lost
+    # messages. The frontend deduplicates replayed content.
     subscriber_queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
-        last_message_id=last_message_id,
+        last_message_id="0-0",
     )
 
     if subscriber_queue is None:
