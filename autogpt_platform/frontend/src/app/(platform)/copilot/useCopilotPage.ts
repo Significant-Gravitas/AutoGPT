@@ -236,7 +236,10 @@ export function useCopilotPage() {
   }, [hydratedMessages, setMessages, status]);
 
   // Ref: tracks whether we've already resumed for a given session.
-  // Format: Map<sessionId, hasResumed>
+  // Only cleared on error (SSE drop) to allow re-resume when the backend
+  // task is still running.  Not cleared on clean finish (status "ready")
+  // to prevent a spurious resume if the session refetch races with
+  // mark_session_completed (SECRT-2021).
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
   // When the stream ends (or drops), invalidate the session cache so the
@@ -254,6 +257,13 @@ export function useCopilotPage() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
+      // Only allow re-resume on error (SSE drop without clean finish).
+      // On clean finish (status === "ready"), the backend task is done —
+      // resetting the ref would allow a spurious resume if the session
+      // refetch races with mark_session_completed (SECRT-2021).
+      if (status === "error") {
+        hasResumedRef.current.delete(sessionId);
+      }
     }
   }, [status, sessionId, queryClient]);
 
