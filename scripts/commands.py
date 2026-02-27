@@ -13,6 +13,7 @@ from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import browser_agent
 
 cfg = Config()
 
@@ -111,6 +112,27 @@ def execute_command(command_name, arguments):
                 return "You are not allowed to run local shell commands. To execute shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' in your config. Do not attempt to bypass the restriction."
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "browser_navigate":
+            return browser_agent.browser_navigate(arguments["url"])
+        elif command_name == "browser_snapshot":
+            return browser_agent.browser_snapshot()
+        elif command_name == "browser_screenshot":
+            return browser_agent.browser_screenshot(
+                arguments.get("filename", "screenshot.png"))
+        elif command_name == "browser_click":
+            return browser_agent.browser_click(arguments["selector"])
+        elif command_name == "browser_type":
+            return browser_agent.browser_type(
+                arguments["selector"], arguments["text"])
+        elif command_name == "browser_fill":
+            return browser_agent.browser_fill(
+                arguments["selector"], arguments["value"])
+        elif command_name == "browser_scroll":
+            return browser_agent.browser_scroll(
+                arguments.get("direction", "down"),
+                arguments.get("amount", "page"))
+        elif command_name == "browser_get_text":
+            return browser_agent.browser_get_text(arguments["selector"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

@@ -48,6 +48,7 @@ class Config(metaclass=Singleton):
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
+        self.browser_agent_enabled = os.getenv('BROWSER_AGENT_ENABLED', 'True') == 'True'
 
         if self.use_azure:
             self.load_azure_config()

@@ -38,6 +38,14 @@ def get_prompt():
         ("Execute Shell Command, non-interactive commands only", "execute_shell", { "command_line": "<command_line>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+        ("Browser Navigate to URL", "browser_navigate", {"url": "<url>"}),
+        ("Browser Get Page Snapshot (accessibility tree for AI)", "browser_snapshot", {}),
+        ("Browser Take Screenshot", "browser_screenshot", {"filename": "<filename>"}),
+        ("Browser Click Element", "browser_click", {"selector": "<css_selector_or_text_locator>"}),
+        ("Browser Type Text into Element", "browser_type", {"selector": "<css_selector_or_text_locator>", "text": "<text_to_type>"}),
+        ("Browser Fill Form Field", "browser_fill", {"selector": "<css_selector_or_text_locator>", "value": "<value>"}),
+        ("Browser Scroll Page", "browser_scroll", {"direction": "<up_or_down>", "amount": "<page_or_pixels>"}),
+        ("Browser Get Element Text", "browser_get_text", {"selector": "<css_selector_or_text_locator>"}),
         ("Do Nothing", "do_nothing", {}),
     ]
 
@@ -50,6 +58,7 @@ def get_prompt():
     prompt_generator.add_resource("Long Term memory management.")
     prompt_generator.add_resource("GPT-3.5 powered Agents for delegation of simple tasks.")
     prompt_generator.add_resource("File output.")
+    prompt_generator.add_resource("Headless browser automation for interacting with JavaScript-rendered web pages, filling forms, clicking buttons, and taking screenshots.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation("Continuously review and analyze your actions to ensure you are performing to the best of your abilities.")
