@@ -9,6 +9,8 @@ import {
 interface Args {
   onSend: (message: string) => void;
   disabled?: boolean;
+  /** Allow sending when text is empty (e.g. when files are attached). */
+  canSendEmpty?: boolean;
   maxRows?: number;
   inputId?: string;
 }
@@ -16,6 +18,7 @@ interface Args {
 export function useChatInput({
   onSend,
   disabled = false,
+  canSendEmpty = false,
   maxRows = 5,
   inputId = "chat-input",
 }: Args) {
@@ -102,7 +105,7 @@ export function useChatInput({
   }, [value, maxRows, inputId]);
 
   async function handleSend() {
-    if (disabled || isSending || !value.trim()) return;
+    if (disabled || isSending || (!value.trim() && !canSendEmpty)) return;
 
     setIsSending(true);
     try {

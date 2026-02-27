@@ -29,6 +29,7 @@ export function CopilotPage() {
     isLoadingSession,
     isSessionError,
     isCreatingSession,
+    isUploadingFiles,
     isUserLoading,
     isLoggedIn,
     // Mobile drawer
@@ -78,6 +79,7 @@ export function CopilotPage() {
             onCreateSession={createSession}
             onSend={onSend}
             onStop={stop}
+            isUploadingFiles={isUploadingFiles}
             headerSlot={
               isMobile && sessionId ? (
                 <div className="flex justify-end">

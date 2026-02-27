@@ -18,8 +18,9 @@ export interface ChatContainerProps {
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string) => void | Promise<void>;
+  onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
+  isUploadingFiles?: boolean;
   headerSlot?: ReactNode;
 }
 export const ChatContainer = ({
@@ -34,6 +35,7 @@ export const ChatContainer = ({
   onCreateSession,
   onSend,
   onStop,
+  isUploadingFiles,
   headerSlot,
 }: ChatContainerProps) => {
   const isBusy =
@@ -69,6 +71,7 @@ export const ChatContainer = ({
                   onSend={onSend}
                   disabled={isBusy}
                   isStreaming={isBusy}
+                  isUploadingFiles={isUploadingFiles}
                   onStop={onStop}
                   placeholder="What else can I help with?"
                 />
@@ -80,6 +83,7 @@ export const ChatContainer = ({
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
               onSend={onSend}
+              isUploadingFiles={isUploadingFiles}
             />
           )}
         </div>

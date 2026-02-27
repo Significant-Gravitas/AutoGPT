@@ -79,6 +79,7 @@ class StreamChatRequest(BaseModel):
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    file_ids: list[str] | None = None  # Workspace file IDs attached to this message
 
 
 class CreateSessionResponse(BaseModel):
@@ -394,6 +395,28 @@ async def stream_chat_post(
         },
     )
 
+    # Enrich message with file metadata if file_ids are provided
+    if request.file_ids and user_id:
+        from backend.data.workspace import get_or_create_workspace, get_workspace_file
+
+        workspace = await get_or_create_workspace(user_id)
+        file_lines: list[str] = []
+        for fid in request.file_ids:
+            wf = await get_workspace_file(fid, workspace.id)
+            if wf is None:
+                continue
+            size_kb = round(wf.size_bytes / 1024, 1)
+            file_lines.append(
+                f"- {wf.name} ({wf.mime_type}, {size_kb} KB), file_id={fid}"
+            )
+        if file_lines:
+            files_block = (
+                "\n\n[Attached files]\n"
+                + "\n".join(file_lines)
+                + "\nUse read_workspace_file with the file_id to access file contents."
+            )
+            request.message += files_block
+
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
     # saved yet.  append_and_save_message re-fetches inside a lock to prevent
@@ -445,6 +468,7 @@ async def stream_chat_post(
         turn_id=turn_id,
         is_user_message=request.is_user_message,
         context=request.context,
+        file_ids=request.file_ids,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

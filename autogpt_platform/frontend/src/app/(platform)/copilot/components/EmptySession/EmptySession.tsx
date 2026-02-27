@@ -17,13 +17,15 @@ interface Props {
   inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string) => void | Promise<void>;
+  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  isUploadingFiles?: boolean;
 }
 
 export function EmptySession({
   inputLayoutId,
   isCreatingSession,
   onSend,
+  isUploadingFiles,
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
@@ -51,12 +53,12 @@ export function EmptySession({
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
       <motion.div
-        className="w-full max-w-3xl text-center"
+        className="w-full max-w-[52rem] text-center"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-[52rem]">
           <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
             Hey, <span className="text-violet-600">{greetingName}</span>
           </Text>
@@ -74,6 +76,7 @@ export function EmptySession({
                 inputId="chat-input-empty"
                 onSend={onSend}
                 disabled={isCreatingSession}
+                isUploadingFiles={isUploadingFiles}
                 placeholder={inputPlaceholder}
                 className="w-full"
               />

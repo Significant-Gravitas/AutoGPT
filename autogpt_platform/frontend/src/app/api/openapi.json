@@ -2039,7 +2039,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                }
               }
             }
           },
@@ -6497,6 +6499,59 @@
         }
       }
     },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload file to workspace",
+        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
+        "operationId": "postWorkspaceUpload file to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],
@@ -6529,6 +6584,30 @@
             }
           }
         }
+      }
+    },
+    "/api/workspace/storage/usage": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Get workspace storage usage",
+        "description": "Get storage usage information for the user's workspace.",
+        "operationId": "getWorkspaceGet workspace storage usage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/health": {
@@ -7767,6 +7846,14 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
+      },
+      "Body_postWorkspaceUpload_file_to_workspace": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postWorkspaceUpload file to workspace"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -11592,6 +11679,17 @@
         "type": "object",
         "title": "Stats"
       },
+      "StorageUsageResponse": {
+        "properties": {
+          "used_bytes": { "type": "integer", "title": "Used Bytes" },
+          "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
+          "used_percent": { "type": "number", "title": "Used Percent" },
+          "file_count": { "type": "integer", "title": "File Count" }
+        },
+        "type": "object",
+        "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
+        "title": "StorageUsageResponse"
+      },
       "StoreAgent": {
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
@@ -12039,6 +12137,13 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "file_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
           }
         },
         "type": "object",
@@ -13620,24 +13725,6 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
-      "UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -13966,6 +14053,36 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "backend__api__features__workspace__routes__UploadFileResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "UploadFileResponse"
+      },
+      "backend__api__model__UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

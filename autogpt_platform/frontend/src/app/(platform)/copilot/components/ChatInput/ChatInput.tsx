@@ -6,15 +6,18 @@ import {
   MicrophoneIcon,
   StopIcon,
 } from "@phosphor-icons/react";
-import { ChangeEvent, useCallback } from "react";
+import { ChangeEvent, useCallback, useState } from "react";
+import { AttachmentMenu } from "./components/AttachmentMenu";
+import { FileChips } from "./components/FileChips";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
 export interface Props {
-  onSend: (message: string) => void | Promise<void>;
+  onSend: (message: string, files?: File[]) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
+  isUploadingFiles?: boolean;
   onStop?: () => void;
   placeholder?: string;
   className?: string;
@@ -25,11 +28,17 @@ export function ChatInput({
   onSend,
   disabled = false,
   isStreaming = false,
+  isUploadingFiles = false,
   onStop,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
 }: Props) {
+  const [files, setFiles] = useState<File[]>([]);
+
+  const hasFiles = files.length > 0;
+  const isBusy = disabled || isStreaming || isUploadingFiles;
+
   const {
     value,
     setValue,
@@ -38,8 +47,13 @@ export function ChatInput({
     handleChange: baseHandleChange,
     hasMultipleLines,
   } = useChatInput({
-    onSend,
-    disabled: disabled || isStreaming,
+    onSend: async (message: string) => {
+      await onSend(message, hasFiles ? files : undefined);
+      // Only clear files after successful send (onSend throws on failure)
+      setFiles([]);
+    },
+    disabled: isBusy,
+    canSendEmpty: hasFiles,
     maxRows: 4,
     inputId,
   });
@@ -55,7 +69,7 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: disabled || isStreaming,
+    disabled: isBusy,
     isStreaming,
     value,
     baseHandleKeyDown,
@@ -71,70 +85,91 @@ export function ChatInput({
     [isRecording, baseHandleChange],
   );
 
+  function handleFilesSelected(newFiles: File[]) {
+    setFiles((prev) => [...prev, ...newFiles]);
+  }
+
+  function handleRemoveFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const isExpanded = hasMultipleLines || hasFiles;
+
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       <div className="relative">
         <div
-          id={`${inputId}-wrapper`}
           className={cn(
-            "relative overflow-hidden border bg-white shadow-sm",
+            "overflow-hidden border bg-white shadow-sm",
             "focus-within:ring-1",
             isRecording
               ? "border-red-400 focus-within:border-red-400 focus-within:ring-red-400"
               : "border-neutral-200 focus-within:border-zinc-400 focus-within:ring-zinc-400",
-            hasMultipleLines ? "rounded-xlarge" : "rounded-full",
+            isExpanded ? "rounded-xlarge" : "rounded-full",
           )}
         >
-          {!value && !isRecording && (
-            <div
-              className="pointer-events-none absolute inset-0 top-0.5 flex items-center justify-start pl-14 text-[1rem] text-zinc-400"
-              aria-hidden="true"
-            >
-              {isTranscribing ? "Transcribing..." : placeholder}
-            </div>
-          )}
-          <textarea
-            id={inputId}
-            aria-label="Chat message input"
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            disabled={isInputDisabled}
-            rows={1}
-            className={cn(
-              "w-full resize-none overflow-y-auto border-0 bg-transparent text-[1rem] leading-6 text-black",
-              "placeholder:text-zinc-400",
-              "focus:outline-none focus:ring-0",
-              "disabled:text-zinc-500",
-              hasMultipleLines
-                ? "pb-6 pl-4 pr-4 pt-2"
-                : showMicButton
-                  ? "pb-4 pl-14 pr-14 pt-4"
-                  : "pb-4 pl-4 pr-14 pt-4",
-            )}
+          <FileChips
+            files={files}
+            onRemove={handleRemoveFile}
+            isUploading={isUploadingFiles}
           />
-          {isRecording && !value && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <RecordingIndicator
-                elapsedTime={elapsedTime}
-                audioStream={audioStream}
-              />
-            </div>
-          )}
+          <div id={`${inputId}-wrapper`} className="relative">
+            {!value && !isRecording && !hasFiles && (
+              <div
+                className="pointer-events-none absolute inset-0 top-0.5 flex items-center justify-start pl-14 text-[1rem] text-zinc-400"
+                aria-hidden="true"
+              >
+                {isTranscribing ? "Transcribing..." : placeholder}
+              </div>
+            )}
+            <textarea
+              id={inputId}
+              aria-label="Chat message input"
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              disabled={isInputDisabled}
+              rows={1}
+              className={cn(
+                "w-full resize-none overflow-y-auto border-0 bg-transparent text-[1rem] leading-6 text-black",
+                "placeholder:text-zinc-400",
+                "focus:outline-none focus:ring-0",
+                "disabled:text-zinc-500",
+                showMicButton
+                  ? "pb-4 pl-14 pr-[6.25rem] pt-4"
+                  : "pb-4 pl-14 pr-14 pt-4",
+              )}
+            />
+            {isRecording && !value && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <RecordingIndicator
+                  elapsedTime={elapsedTime}
+                  audioStream={audioStream}
+                />
+              </div>
+            )}
+          </div>
         </div>
         <span id="chat-input-hint" className="sr-only">
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
 
-        {showMicButton && (
-          <div className="absolute bottom-[7px] left-2 flex items-center gap-1">
+        <div className="absolute bottom-[7px] left-2 flex items-center gap-1">
+          <AttachmentMenu
+            onFilesSelected={handleFilesSelected}
+            disabled={isBusy}
+          />
+        </div>
+
+        <div className="absolute bottom-[7px] right-2 flex items-center gap-1">
+          {showMicButton && (
             <Button
               type="button"
               variant="icon"
               size="icon"
               aria-label={isRecording ? "Stop recording" : "Start recording"}
               onClick={toggleRecording}
-              disabled={disabled || isTranscribing || isStreaming}
+              disabled={isBusy || isTranscribing}
               className={cn(
                 isRecording
                   ? "animate-pulse border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600"
@@ -150,10 +185,7 @@ export function ChatInput({
                 <MicrophoneIcon className="h-4 w-4" weight="bold" />
               )}
             </Button>
-          </div>
-        )}
-
-        <div className="absolute bottom-[7px] right-2 flex items-center gap-1">
+          )}
           {isStreaming ? (
             <Button
               type="button"
@@ -173,9 +205,10 @@ export function ChatInput({
               aria-label="Send message"
               className={cn(
                 "border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900",
-                (disabled || !value.trim() || isRecording) && "opacity-20",
+                (isBusy || (!value.trim() && !hasFiles) || isRecording) &&
+                  "opacity-20",
               )}
-              disabled={disabled || !value.trim() || isRecording}
+              disabled={isBusy || (!value.trim() && !hasFiles) || isRecording}
             >
               <ArrowUpIcon className="h-4 w-4" weight="bold" />
             </Button>
