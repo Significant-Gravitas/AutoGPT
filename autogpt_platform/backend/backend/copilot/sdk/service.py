@@ -493,6 +493,9 @@ async def stream_chat_completion_sdk(
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
     sdk_cwd = ""
+    # Langfuse observability (populated inside inner try, closed in finally)
+    _lf_client: Any | None = None
+    _lf_ctx: Any | None = None
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -632,6 +635,32 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+
+            # --- Open Langfuse generation span for SDK session ---
+            try:
+                from langfuse import get_client as _get_lf_client
+
+                from ..service import _is_langfuse_configured
+
+                if _is_langfuse_configured():
+                    _lf_client = _get_lf_client()
+                    _lf_ctx = _lf_client.start_as_current_observation(
+                        name="copilot-sdk-session",
+                        as_type="generation",
+                        model=sdk_model,
+                        input=message,
+                    )
+                    if _lf_ctx is not None:
+                        _lf_ctx.__enter__()
+                    _lf_client.update_current_trace(
+                        session_id=session_id,
+                        user_id=user_id,
+                        tags=["sdk"],
+                    )
+            except Exception as _lf_init_err:
+                logger.debug("[SDK] Langfuse trace init failed: %s", _lf_init_err)
+                _lf_client = None
+                _lf_ctx = None
 
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
@@ -795,6 +824,26 @@ async def stream_chat_completion_sdk(
                                     session_id[:12],
                                     sdk_msg.result or "(no error message provided)",
                                 )
+                            # Capture token usage in Langfuse generation
+                            if _lf_client is not None:
+                                try:
+                                    _lf_usage = sdk_msg.usage or {}
+                                    _lf_client.update_current_generation(
+                                        usage_details={
+                                            "input": _lf_usage.get("input_tokens", 0),
+                                            "output": _lf_usage.get("output_tokens", 0),
+                                        },
+                                        cost_details=(
+                                            {"total": sdk_msg.total_cost_usd}
+                                            if sdk_msg.total_cost_usd
+                                            else None
+                                        ),
+                                    )
+                                except Exception as _lf_gen_err:
+                                    logger.debug(
+                                        "[SDK] Langfuse generation update failed: %s",
+                                        _lf_gen_err,
+                                    )
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
@@ -963,6 +1012,18 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
+            # --- Update Langfuse trace with final output ---
+            if _lf_client is not None:
+                try:
+                    _lf_output = locals().get("assistant_response")
+                    _lf_client.update_current_trace(
+                        output=_lf_output.content if _lf_output else None,
+                    )
+                except Exception as _lf_out_err:
+                    logger.debug(
+                        "[SDK] Langfuse trace output update failed: %s", _lf_out_err
+                    )
+
             # --- Upload transcript for next-turn --resume ---
             # After async with the SDK task group has exited, so the Stop
             # hook has already fired and the CLI has been SIGTERMed.  The
@@ -1060,6 +1121,13 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
+        # --- Close Langfuse span ---
+        if _lf_ctx is not None:
+            try:
+                _lf_ctx.__exit__(None, None, None)
+            except Exception as _lf_close_err:
+                logger.debug("[SDK] Langfuse span close failed: %s", _lf_close_err)
+
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).
