@@ -215,9 +215,11 @@ class BrowserNavigateTool(BaseTool):
                 "[browser_navigate] wait(%s) failed: %s", wait_for, wait_err[:300]
             )
 
-        # Get current title and URL
-        _, title_out, _ = await _run(session_name, "get", "title")
-        _, url_out, _ = await _run(session_name, "get", "url")
+        # Get current title and URL in parallel
+        (_, title_out, _), (_, url_out, _) = await asyncio.gather(
+            _run(session_name, "get", "title"),
+            _run(session_name, "get", "url"),
+        )
 
         snapshot = await _snapshot(session_name)
 

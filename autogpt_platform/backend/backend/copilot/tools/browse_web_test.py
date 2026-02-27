@@ -64,7 +64,21 @@ def env_vars(monkeypatch):
 
 
 @pytest.fixture()
-def stagehand_mocks(monkeypatch):
+def mock_validate_url(monkeypatch):
+    """Prevent real DNS lookups from validate_url in unit tests.
+
+    Patched at the module level where it is imported so that all code paths
+    in browse_web.py that call validate_url() use the no-op stub.
+    """
+
+    async def _noop(url: str, **kwargs: object) -> None:
+        pass  # Accept all URLs (scheme is validated before this is called)
+
+    monkeypatch.setattr(_browse_web_mod, "validate_url", _noop)
+
+
+@pytest.fixture()
+def stagehand_mocks(mock_validate_url, monkeypatch):
     """Inject mock stagehand + stagehand.main into sys.modules.
 
     Returns a dict with the mock objects so individual tests can
@@ -182,7 +196,7 @@ class TestInputValidation:
 
 
 class TestEnvVarChecks:
-    async def test_missing_api_key(self, monkeypatch):
+    async def test_missing_api_key(self, mock_validate_url, monkeypatch):
         monkeypatch.delenv("STAGEHAND_API_KEY", raising=False)
         monkeypatch.setenv("STAGEHAND_PROJECT_ID", "proj")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
@@ -192,7 +206,7 @@ class TestEnvVarChecks:
         assert isinstance(result, ErrorResponse)
         assert result.error == "not_configured"
 
-    async def test_missing_project_id(self, monkeypatch):
+    async def test_missing_project_id(self, mock_validate_url, monkeypatch):
         monkeypatch.setenv("STAGEHAND_API_KEY", "key")
         monkeypatch.delenv("STAGEHAND_PROJECT_ID", raising=False)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
@@ -202,7 +216,7 @@ class TestEnvVarChecks:
         assert isinstance(result, ErrorResponse)
         assert result.error == "not_configured"
 
-    async def test_missing_anthropic_key(self, monkeypatch):
+    async def test_missing_anthropic_key(self, mock_validate_url, monkeypatch):
         monkeypatch.setenv("STAGEHAND_API_KEY", "key")
         monkeypatch.setenv("STAGEHAND_PROJECT_ID", "proj")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -219,7 +233,9 @@ class TestEnvVarChecks:
 
 
 class TestStagehandAbsent:
-    async def test_returns_not_configured_error(self, env_vars, monkeypatch):
+    async def test_returns_not_configured_error(
+        self, env_vars, mock_validate_url, monkeypatch
+    ):
         """Blocking the stagehand import must return a graceful ErrorResponse."""
         # sys.modules entry set to None → Python raises ImportError on import
         monkeypatch.setitem(sys.modules, "stagehand", None)

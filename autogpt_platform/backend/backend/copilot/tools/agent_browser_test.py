@@ -4,6 +4,7 @@ All subprocess calls are mocked — no agent-browser binary or real browser need
 """
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -624,8 +625,6 @@ class TestAuthCheck:
             tool_call_id="call-1",
             url="https://example.com",
         )
-        import json
-
         assert isinstance(result.output, str)
         data = json.loads(result.output)
         assert data["type"] == ResponseType.NEED_LOGIN
@@ -641,8 +640,6 @@ class TestAuthCheck:
             action="click",
             target="@e1",
         )
-        import json
-
         assert isinstance(result.output, str)
         data = json.loads(result.output)
         assert data["type"] == ResponseType.NEED_LOGIN
@@ -656,8 +653,6 @@ class TestAuthCheck:
             session=session,
             tool_call_id="call-3",
         )
-        import json
-
         assert isinstance(result.output, str)
         data = json.loads(result.output)
         assert data["type"] == ResponseType.NEED_LOGIN
@@ -720,12 +715,10 @@ class TestRunHelper:
     async def test_run_timeout(self):
         from .agent_browser import _run
 
-        async def slow_communicate():
-            await asyncio.sleep(100)
-            return b"", b""
-
         mock_proc = MagicMock()
-        mock_proc.communicate = slow_communicate
+        mock_proc.returncode = None  # Simulate a process that is still running
+        mock_proc.kill = MagicMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
             with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
@@ -735,6 +728,8 @@ class TestRunHelper:
 
         assert rc == 1
         assert "timed out" in stderr
+        mock_proc.kill.assert_called_once()
+        mock_proc.communicate.assert_called()
 
     @pytest.mark.asyncio
     async def test_run_agent_browser_not_installed(self):
