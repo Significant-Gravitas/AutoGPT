@@ -38,15 +38,15 @@ export const ContentRenderer: React.FC<{
     !shortContent
   ) {
     return (
-      <div className="[&>*]:rounded-xlarge [&>*]:!text-xs">
+      <div className="overflow-hidden [&>*]:rounded-xlarge [&>*]:!text-xs [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
         {renderer?.render(value, metadata)}
       </div>
     );
   }
 
   return (
-    <div className="[&>*]:rounded-xlarge [&>*]:!text-xs">
-      <TextRenderer value={value} truncateLengthLimit={100} />
+    <div className="overflow-hidden [&>*]:rounded-xlarge [&>*]:!text-xs">
+      <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );
 };
