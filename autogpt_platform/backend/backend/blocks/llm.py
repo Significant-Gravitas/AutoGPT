@@ -378,6 +378,9 @@ class LLMResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     reasoning: Optional[str] = None
+    resolved_max_output_tokens: Optional[int] = (
+        None  # Max output tokens of resolved model (after fallback)
+    )
 
 
 def convert_openai_tool_fmt_to_anthropic(
@@ -553,6 +556,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "anthropic":
 
@@ -633,6 +637,7 @@ async def llm_call(
                 prompt_tokens=resp.usage.input_tokens,
                 completion_tokens=resp.usage.output_tokens,
                 reasoning=reasoning,
+                resolved_max_output_tokens=model_max_output,
             )
         except anthropic.APIError as e:
             error_message = f"Anthropic API error: {str(e)}"
@@ -658,6 +663,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=None,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "ollama":
         if tools:
@@ -680,6 +686,7 @@ async def llm_call(
             prompt_tokens=response.get("prompt_eval_count") or 0,
             completion_tokens=response.get("eval_count") or 0,
             reasoning=None,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -722,6 +729,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -764,6 +772,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "aiml_api":
         client = openai.AsyncOpenAI(
@@ -792,6 +801,7 @@ async def llm_call(
                 completion.usage.completion_tokens if completion.usage else 0
             ),
             reasoning=None,
+            resolved_max_output_tokens=model_max_output,
         )
     elif provider == "v0":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -828,6 +838,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            resolved_max_output_tokens=model_max_output,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -953,6 +964,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     prompt_tokens=0,
                     completion_tokens=0,
                     reasoning=None,
+                    resolved_max_output_tokens=None,
                 ),
                 "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
@@ -1027,6 +1039,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         error_feedback_message = ""
         llm_model = input_data.model
+
+        # Resolve the model once before retry loop to get correct max_output_tokens
+        # for retry logic (handles fallback models correctly)
+        resolved = await resolve_model_for_call(llm_model)
+        resolved_max_output = resolved.max_output_tokens
 
         for retry_count in range(input_data.retry):
             logger.debug(f"LLM request: {prompt}")
@@ -1150,7 +1167,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     or "token limit" in str(e).lower()
                 ):
                     if input_data.max_tokens is None:
-                        input_data.max_tokens = llm_model.max_output_tokens or 4096
+                        # Use resolved model's max_output_tokens (handles fallback correctly)
+                        input_data.max_tokens = resolved_max_output or 4096
                     input_data.max_tokens = int(input_data.max_tokens * 0.85)
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"

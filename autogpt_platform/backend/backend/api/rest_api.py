@@ -120,8 +120,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     AutoRegistry.patch_integrations()
 
     # Refresh LLM registry before initializing blocks so blocks can use registry data
-    await llm_registry.refresh_llm_registry()
-    await refresh_llm_costs()
+    try:
+        await llm_registry.refresh_llm_registry()
+        await refresh_llm_costs()
+    except Exception as e:
+        logger.warning(f"Failed to refresh LLM registry/costs at startup: {e}")
 
     # Clear block schema caches so they're regenerated with updated discriminator_mapping
     from backend.blocks._base import BlockSchema

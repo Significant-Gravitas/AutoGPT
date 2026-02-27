@@ -47,6 +47,8 @@ async def _refresh_runtime_state() -> None:
             logger.info("Cleared v2 builder providers cache")
             builder_db._build_cached_search_results.cache_clear()
             logger.info("Cleared v2 builder search results cache")
+            builder_db._get_llm_models.cache_clear()
+            logger.info("Cleared v2 builder LLM models cache")
         except Exception as e:
             logger.debug("Could not clear v2 builder cache: %s", e)
 

@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from functools import lru_cache
 from typing import Any, Sequence, get_args, get_origin
 
 import prisma
@@ -40,11 +41,17 @@ from .model import (
 logger = logging.getLogger(__name__)
 
 
-def _get_llm_models() -> list[str]:
-    """Get LLM model names for search matching from the registry."""
-    return [
+@lru_cache(maxsize=1)
+def _get_llm_models() -> tuple[str, ...]:
+    """Get LLM model names for search matching from the registry.
+
+    Cached to avoid rebuilding on every search call.
+    Cache is cleared when registry is refreshed via _refresh_runtime_state.
+    Returns tuple for hashability (required by lru_cache).
+    """
+    return tuple(
         slug.lower().replace("-", " ") for slug in get_all_model_slugs_for_validation()
-    ]
+    )
 
 
 MAX_LIBRARY_AGENT_RESULTS = 100

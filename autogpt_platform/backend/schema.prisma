@@ -1265,7 +1265,7 @@ model LlmModel {
 
   @@index([providerId, isEnabled])
   @@index([creatorId])
-  @@index([slug])
+  // Note: slug already has @unique which creates an implicit index
 }
 
 model LlmModelCost {
@@ -1330,6 +1330,9 @@ model LlmModelMigration {
   @@index([isReverted])
   @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
 }
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 //////////////   OAUTH PROVIDER TABLES    //////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////

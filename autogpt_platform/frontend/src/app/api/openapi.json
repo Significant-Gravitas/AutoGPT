@@ -4636,7 +4636,7 @@
         "tags": ["v2", "admin", "llm", "llm", "admin"],
         "summary": "Get creator details",
         "description": "Get details of a specific model creator.",
-        "operationId": "getV2Get creator details",
+        "operationId": "getV2GetLlmCreatorDetails",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {

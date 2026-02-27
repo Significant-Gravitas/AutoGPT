@@ -163,8 +163,11 @@ async def refresh_llm_costs() -> None:
     This function also checks for active model migrations with custom pricing overrides
     and applies them to ensure accurate billing.
     """
+    # Build new costs first, then swap atomically to avoid race condition
+    # where concurrent readers see an empty list during the await
+    new_costs = await _build_llm_costs_from_registry()
     LLM_COST.clear()
-    LLM_COST.extend(await _build_llm_costs_from_registry())
+    LLM_COST.extend(new_costs)
 
 
 # Initial load will happen after registry is refreshed at startup
