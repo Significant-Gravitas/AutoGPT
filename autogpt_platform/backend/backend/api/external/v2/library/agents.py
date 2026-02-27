@@ -13,15 +13,18 @@ from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.data import execution as execution_db
+from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
 from backend.executor import utils as execution_utils
 
 from ..common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
     AgentRunListResponse,
     AgentRunRequest,
+    CredentialRequirementsResponse,
     LibraryAgent,
     LibraryAgentListResponse,
     LibraryAgentUpdateRequest,
@@ -319,3 +322,45 @@ async def list_agent_runs(
         total_count=result.pagination.total_items,
         total_pages=result.pagination.total_pages,
     )
+
+
+@agents_router.get(
+    path="/agents/{agent_id}/credentials",
+    summary="List credentials matching agent requirements",
+)
+async def list_agent_credential_requirements(
+    agent_id: str = Path(description="Library agent ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+    ),
+) -> CredentialRequirementsResponse:
+    """
+    List credential requirements for a library agent and matching user credentials.
+
+    This helps identify which credentials the user needs to provide
+    when executing an agent from their library.
+    """
+    try:
+        library_agent = await library_db.get_library_agent(
+            id=agent_id,
+            user_id=auth.user_id,
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
+
+    graph = await graph_db.get_graph(
+        graph_id=library_agent.graph_id,
+        version=library_agent.graph_version,
+        user_id=auth.user_id,
+        include_subgraphs=True,
+    )
+    if not graph:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Graph for agent #{agent_id} not found",
+        )
+
+    requirements = await get_credential_requirements(
+        graph.credentials_input_schema, auth.user_id
+    )
+    return CredentialRequirementsResponse(requirements=requirements)

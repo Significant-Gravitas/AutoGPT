@@ -20,9 +20,11 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .integrations.helpers import get_credential_requirements
 from .models import (
     BlockInfo,
     CreatableGraph,
+    CredentialRequirementsResponse,
     Graph,
     GraphDeleteResponse,
     GraphListResponse,
@@ -391,3 +393,34 @@ async def list_graph_blocks(
             blocks.append(BlockInfo.from_internal(block))
 
     return blocks
+
+
+@graphs_router.get(
+    path="/{graph_id}/credentials",
+    summary="List credentials matching graph requirements",
+)
+async def list_graph_credential_requirements(
+    graph_id: str = Path(description="Graph ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+    ),
+) -> CredentialRequirementsResponse:
+    """
+    List credential requirements for a graph and matching user credentials.
+
+    This helps identify which credentials the user needs to provide
+    when executing a graph.
+    """
+    graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=None,
+        user_id=auth.user_id,
+        include_subgraphs=True,
+    )
+    if not graph:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+
+    requirements = await get_credential_requirements(
+        graph.credentials_input_schema, auth.user_id
+    )
+    return CredentialRequirementsResponse(requirements=requirements)
