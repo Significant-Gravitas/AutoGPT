@@ -1010,10 +1010,7 @@ async def llm_call(
         )
 
         if not response.choices:
-            if response:
-                raise ValueError(f"Avian API error: {response}")
-            else:
-                raise ValueError("No response from Avian API.")
+            raise ValueError(f"Avian API error: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
