@@ -1,8 +1,10 @@
 import type { InfiniteData } from "@tanstack/react-query";
-import {
-  getV1IsOnboardingEnabled,
-  getV1OnboardingState,
-} from "./__generated__/endpoints/onboarding/onboarding";
+// Note: The following imports are only used in getOnboardingStatus()
+// They are conditionally imported to avoid issues when __generated__ doesn't exist
+// import {
+//   getV1IsOnboardingEnabled,
+//   getV1OnboardingState,
+// } from "./__generated__/endpoints/onboarding/onboarding";
 import { Pagination } from "./__generated__/models/pagination";
 
 export type OKData<TResponse extends { status: number; data?: any }> =
@@ -42,7 +44,11 @@ export function getPaginatedTotalCount(
 ): number {
   const lastPage = infiniteData?.pages.at(-1);
   if (!hasValidPaginationInfo(lastPage)) return fallbackCount ?? 0;
-  return lastPage.data.pagination.total_items ?? fallbackCount ?? 0;
+  // Safely access pagination with optional chaining
+  const pagination = (
+    lastPage.data as { pagination?: { total_items?: number } }
+  )?.pagination;
+  return pagination?.total_items ?? fallbackCount ?? 0;
 }
 
 export function getPaginationNextPageNumber(
@@ -50,9 +56,13 @@ export function getPaginationNextPageNumber(
     | { data: { pagination?: Pagination; [key: string]: any } }
     | undefined,
 ): number | undefined {
+  // Handle 401 or other error responses where data might be undefined
+  if (!lastPage || !lastPage.data) return undefined;
+
   if (!hasValidPaginationInfo(lastPage)) return undefined;
 
-  const { pagination } = lastPage.data;
+  // Safely access pagination properties
+  const pagination = (lastPage.data as { pagination: Pagination }).pagination;
   const hasMore =
     pagination.current_page * pagination.page_size < pagination.total_items;
   return hasMore ? pagination.current_page + 1 : undefined;
@@ -101,19 +111,37 @@ function hasValidListPage<TKey extends string>(
 function hasValidPaginationInfo(
   page: unknown,
 ): page is { data: { pagination: Pagination; [key: string]: any } } {
+  if (
+    typeof page !== "object" ||
+    page === null ||
+    !("data" in page) ||
+    typeof page.data !== "object" ||
+    page.data === null
+  ) {
+    return false;
+  }
+
+  // Check if pagination exists and is valid
+  const data = page.data as Record<string, unknown>;
+  if (
+    !("pagination" in data) ||
+    typeof data.pagination !== "object" ||
+    data.pagination === null
+  ) {
+    return false;
+  }
+
+  const pagination = data.pagination as Record<string, unknown>;
+
   return (
-    typeof page === "object" &&
-    page !== null &&
-    "data" in page &&
-    typeof page.data === "object" &&
-    page.data !== null &&
-    "pagination" in page.data &&
-    typeof page.data.pagination === "object" &&
-    page.data.pagination !== null &&
-    "total_items" in page.data.pagination &&
-    "total_pages" in page.data.pagination &&
-    "current_page" in page.data.pagination &&
-    "page_size" in page.data.pagination
+    "total_items" in pagination &&
+    typeof pagination.total_items === "number" &&
+    "total_pages" in pagination &&
+    typeof pagination.total_pages === "number" &&
+    "current_page" in pagination &&
+    typeof pagination.current_page === "number" &&
+    "page_size" in pagination &&
+    typeof pagination.page_size === "number"
   );
 }
 
@@ -176,6 +204,10 @@ export async function resolveResponse<
 }
 
 export async function getOnboardingStatus() {
+  // Dynamic import to avoid issues when __generated__ doesn't exist
+  const { getV1IsOnboardingEnabled, getV1OnboardingState } = await import(
+    "./__generated__/endpoints/onboarding/onboarding"
+  );
   const status = await resolveResponse(getV1IsOnboardingEnabled());
   const onboarding = await resolveResponse(getV1OnboardingState());
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");
