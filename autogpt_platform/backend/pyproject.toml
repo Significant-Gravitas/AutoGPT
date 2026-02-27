@@ -95,7 +95,7 @@ langsmith = "^0.7.7"
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
-faker = "^38.2.0"
+faker = "^40.5.1"
 httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.41.0"
