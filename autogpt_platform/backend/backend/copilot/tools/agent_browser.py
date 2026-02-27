@@ -525,7 +525,7 @@ class BrowserScreenshotTool(BaseTool):
             user_id=user_id,
             session=session,
             filename=filename,
-            content_b64=png_b64,
+            content_base64=png_b64,
         )
 
         if not isinstance(write_resp, WorkspaceWriteResponse):
