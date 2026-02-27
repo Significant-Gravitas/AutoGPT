@@ -61,8 +61,23 @@ async def _run(
     *args: str,
     timeout: int = _CMD_TIMEOUT,
 ) -> tuple[int, str, str]:
-    """Run agent-browser for the given session and return (rc, stdout, stderr)."""
-    cmd = ["agent-browser", "--session-name", session_name, *args]
+    """Run agent-browser for the given session and return (rc, stdout, stderr).
+
+    Uses both:
+      --session <name>       → isolated Chromium context (no shared history/cookies
+                               with other Copilot sessions — prevents cross-session
+                               browser state leakage)
+      --session-name <name>  → persist cookies/localStorage across tool calls within
+                               the same session (enables login → navigate flows)
+    """
+    cmd = [
+        "agent-browser",
+        "--session",
+        session_name,
+        "--session-name",
+        session_name,
+        *args,
+    ]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -210,8 +225,10 @@ class BrowserNavigateTool(BaseTool):
 
 _NO_TARGET_ACTIONS = frozenset({"back", "forward", "reload"})
 _SCROLL_ACTIONS = frozenset({"scroll"})
-_TARGET_ONLY_ACTIONS = frozenset({"click", "hover", "check", "uncheck"})
-_TARGET_VALUE_ACTIONS = frozenset({"fill", "select"})
+_TARGET_ONLY_ACTIONS = frozenset({"click", "dblclick", "hover", "check", "uncheck"})
+_TARGET_VALUE_ACTIONS = frozenset({"fill", "type", "select"})
+# wait <selector|ms>: waits for a DOM element or a fixed delay (e.g. "1000" for 1 s)
+_WAIT_ACTIONS = frozenset({"wait"})
 
 
 class BrowserActTool(BaseTool):
@@ -231,8 +248,10 @@ class BrowserActTool(BaseTool):
         return (
             "Interact with the current browser page. Use @ref IDs from the "
             "snapshot (e.g. '@e3') to target elements. Returns an updated snapshot. "
-            "Supported actions: click, fill, scroll, hover, press, check, uncheck, "
-            "select, back, forward, reload. "
+            "Supported actions: click, dblclick, fill, type, scroll, hover, press, "
+            "check, uncheck, select, wait, back, forward, reload. "
+            "fill clears the field before typing; type appends without clearing. "
+            "wait accepts a CSS selector (waits for element) or milliseconds string (e.g. '1000'). "
             "Example login flow: fill @e1 with email → fill @e2 with password → "
             "click @e3 (submit) → browser_navigate to the target page."
         )
@@ -246,13 +265,16 @@ class BrowserActTool(BaseTool):
                     "type": "string",
                     "enum": [
                         "click",
+                        "dblclick",
                         "fill",
+                        "type",
                         "scroll",
                         "hover",
                         "press",
                         "check",
                         "uncheck",
                         "select",
+                        "wait",
                         "back",
                         "forward",
                         "reload",
@@ -264,13 +286,14 @@ class BrowserActTool(BaseTool):
                     "description": (
                         "Element to target. Use @ref from snapshot (e.g. '@e3'), "
                         "a CSS selector, or a text description. "
-                        "Required for: click, fill, hover, check, uncheck, select."
+                        "Required for: click, dblclick, fill, type, hover, check, uncheck, select. "
+                        "For wait: a CSS selector to wait for, or milliseconds as a string (e.g. '1000')."
                     ),
                 },
                 "value": {
                     "type": "string",
                     "description": (
-                        "For fill: the text to enter. "
+                        "For fill/type: the text to enter. "
                         "For press: key name (e.g. 'Enter', 'Tab', 'Control+a'). "
                         "For select: the option value to select."
                     ),
@@ -341,6 +364,18 @@ class BrowserActTool(BaseTool):
                     session_id=session_name,
                 )
             cmd_args = [action, target, value]
+
+        elif action in _WAIT_ACTIONS:
+            if not target:
+                return ErrorResponse(
+                    message=(
+                        "'wait' requires a 'target': a CSS selector to wait for, "
+                        "or milliseconds as a string (e.g. '1000')."
+                    ),
+                    error="missing_target",
+                    session_id=session_name,
+                )
+            cmd_args = ["wait", target]
 
         else:
             return ErrorResponse(

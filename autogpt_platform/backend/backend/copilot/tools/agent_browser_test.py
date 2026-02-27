@@ -281,13 +281,16 @@ class TestBrowserActMetadata:
         actions = self.tool.parameters["properties"]["action"]["enum"]
         expected = {
             "click",
+            "dblclick",
             "fill",
+            "type",
             "scroll",
             "hover",
             "press",
             "check",
             "uncheck",
             "select",
+            "wait",
             "back",
             "forward",
             "reload",
@@ -438,6 +441,60 @@ class TestBrowserActExecute:
     async def test_uncheck_success(self):
         result = await self._act(action="uncheck", target="@e2")
         assert isinstance(result, BrowserActResponse)
+
+    @pytest.mark.asyncio
+    async def test_dblclick_success(self):
+        result = await self._act(action="dblclick", target="@e4")
+        assert isinstance(result, BrowserActResponse)
+        assert result.action == "dblclick"
+
+    @pytest.mark.asyncio
+    async def test_type_success(self):
+        """type appends text without clearing the field first (unlike fill)."""
+        result = await self._act(action="type", target="@e1", value="hello")
+        assert isinstance(result, BrowserActResponse)
+        assert result.action == "type"
+
+    @pytest.mark.asyncio
+    async def test_wait_selector_success(self):
+        """wait with a CSS selector waits for the element to appear."""
+        result = await self._act(action="wait", target=".my-element")
+        assert isinstance(result, BrowserActResponse)
+        assert result.action == "wait"
+
+    @pytest.mark.asyncio
+    async def test_wait_ms_success(self):
+        """wait with a numeric string pauses for the given milliseconds."""
+        result = await self._act(action="wait", target="1000")
+        assert isinstance(result, BrowserActResponse)
+
+    @pytest.mark.asyncio
+    async def test_dblclick_without_target_returns_error(self):
+        result = await self.tool._execute(
+            user_id="user1", session=self.session, action="dblclick", target=""
+        )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "missing_target"
+
+    @pytest.mark.asyncio
+    async def test_type_without_value_returns_error(self):
+        result = await self.tool._execute(
+            user_id="user1",
+            session=self.session,
+            action="type",
+            target="@e1",
+            value="",
+        )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "missing_params"
+
+    @pytest.mark.asyncio
+    async def test_wait_without_target_returns_error(self):
+        result = await self.tool._execute(
+            user_id="user1", session=self.session, action="wait", target=""
+        )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "missing_target"
 
 
 # ---------------------------------------------------------------------------
