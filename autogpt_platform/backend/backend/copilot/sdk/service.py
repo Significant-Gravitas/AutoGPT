@@ -11,9 +11,13 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
 
+from langfuse import propagate_attributes
+from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
+from backend.util.settings import Settings
 
 from ..config import ChatConfig
 from ..model import (
@@ -76,8 +80,6 @@ def _setup_langfuse_otel() -> None:
         return
 
     try:
-        from backend.util.settings import Settings
-
         settings = Settings()
         pk = settings.secrets.langfuse_public_key
         sk = settings.secrets.langfuse_secret_key
@@ -94,12 +96,20 @@ def _setup_langfuse_otel() -> None:
             "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
         )
 
-        from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+        # Set the Langfuse environment via OTEL resource attributes so the
+        # Langfuse server maps it to the first-class environment field.
+        tracing_env = settings.secrets.langfuse_tracing_environment
+        os.environ.setdefault(
+            "OTEL_RESOURCE_ATTRIBUTES",
+            f"langfuse.environment={tracing_env}",
+        )
 
         configure_claude_agent_sdk(tags=["sdk"])
-        logger.info("OTEL tracing configured for Claude Agent SDK → %s", host)
+        logger.info(
+            "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
+        )
     except Exception:
-        logger.debug("OTEL setup skipped — failed to configure", exc_info=True)
+        logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
 
 
 _setup_langfuse_otel()
@@ -689,10 +699,12 @@ async def stream_chat_completion_sdk(
             # langsmith tracing integration attaches them to every span.  This
             # is what Langfuse (or any OTEL backend) maps to its native
             # user/session fields.
-            from langfuse import propagate_attributes
-
             _otel_ctx = propagate_attributes(
-                user_id=user_id, session_id=session_id, tags=["sdk"]
+                user_id=user_id,
+                session_id=session_id,
+                trace_name="copilot-sdk",
+                tags=["sdk"],
+                metadata={"resume": str(use_resume)},
             )
             _otel_ctx.__enter__()
 
@@ -1128,7 +1140,7 @@ async def stream_chat_completion_sdk(
             try:
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
-                logger.debug("OTEL context teardown failed", exc_info=True)
+                logger.warning("OTEL context teardown failed", exc_info=True)
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

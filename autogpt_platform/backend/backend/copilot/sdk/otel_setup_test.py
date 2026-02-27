@@ -38,15 +38,16 @@ class TestSetupLangfuseOtel:
         mock_settings.secrets.langfuse_public_key = "pk-test-123"
         mock_settings.secrets.langfuse_secret_key = "sk-test-456"
         mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
+        mock_settings.secrets.langfuse_tracing_environment = "test"
 
         with (
             patch(
                 "backend.copilot.sdk.service._is_langfuse_configured",
                 return_value=True,
             ),
-            patch("backend.util.settings.Settings", return_value=mock_settings),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
             patch(
-                "langsmith.integrations.claude_agent_sdk.configure_claude_agent_sdk",
+                "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
             ) as mock_configure,
         ):
@@ -59,6 +60,7 @@ class TestSetupLangfuseOtel:
                 "LANGSMITH_TRACING",
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "OTEL_EXPORTER_OTLP_HEADERS",
+                "OTEL_RESOURCE_ATTRIBUTES",
             ]
             saved = {k: os.environ.pop(k, None) for k in env_keys}
             try:
@@ -72,6 +74,10 @@ class TestSetupLangfuseOtel:
                     == "https://langfuse.example.com/api/public/otel"
                 )
                 assert "Authorization=Basic" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+                assert (
+                    os.environ["OTEL_RESOURCE_ATTRIBUTES"]
+                    == "langfuse.environment=test"
+                )
 
                 mock_configure.assert_called_once_with(tags=["sdk"])
             finally:
@@ -93,9 +99,9 @@ class TestSetupLangfuseOtel:
                 "backend.copilot.sdk.service._is_langfuse_configured",
                 return_value=True,
             ),
-            patch("backend.util.settings.Settings", return_value=mock_settings),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
             patch(
-                "langsmith.integrations.claude_agent_sdk.configure_claude_agent_sdk",
+                "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
             ),
         ):
@@ -123,7 +129,7 @@ class TestSetupLangfuseOtel:
                 return_value=True,
             ),
             patch(
-                "backend.util.settings.Settings",
+                "backend.copilot.sdk.service.Settings",
                 side_effect=RuntimeError("settings unavailable"),
             ),
         ):
