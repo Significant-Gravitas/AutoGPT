@@ -19,7 +19,6 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
 )
-from claude_agent_sdk.types import StreamEvent
 
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -57,10 +56,6 @@ class SDKResponseAdapter:
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
-        # Partial-message streaming: track text delivered via StreamEvent
-        # so we can skip duplicate text in the complete AssistantMessage.
-        self._text_streamed_via_events = False
-        self._event_block_types: dict[int, str] = {}
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -80,9 +75,6 @@ class SDKResponseAdapter:
                 responses.append(StreamStartStep())
                 self.step_open = True
 
-        elif isinstance(sdk_message, StreamEvent):
-            self._handle_stream_event(sdk_message, responses)
-
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
             # result (e.g. WebSearch, Read handled internally by the CLI).
@@ -101,10 +93,6 @@ class SDKResponseAdapter:
 
             for block in sdk_message.content:
                 if isinstance(block, TextBlock):
-                    # When include_partial_messages is enabled, text was
-                    # already streamed incrementally via StreamEvent deltas.
-                    if self._text_streamed_via_events:
-                        continue
                     if block.text:
                         self._ensure_text_started(responses)
                         responses.append(
@@ -129,10 +117,6 @@ class SDKResponseAdapter:
                         )
                     )
                     self.current_tool_calls[block.id] = {"name": tool_name}
-
-            # Reset partial-message tracking for next AssistantMessage turn.
-            self._text_streamed_via_events = False
-            self._event_block_types.clear()
 
         elif isinstance(sdk_message, UserMessage):
             # UserMessage carries tool results back from tool execution.
@@ -245,49 +229,6 @@ class SDKResponseAdapter:
             logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
 
         return responses
-
-    def _handle_stream_event(
-        self, sdk_message: StreamEvent, responses: list[StreamBaseResponse]
-    ) -> None:
-        """Handle a StreamEvent (partial message) for incremental text streaming.
-
-        When ``include_partial_messages`` is enabled, the SDK emits raw
-        Anthropic API streaming events *before* the complete
-        ``AssistantMessage``.  We convert the text-related events to
-        ``StreamTextStart`` / ``StreamTextDelta`` / ``StreamTextEnd`` so the
-        frontend can render tokens as they arrive.  Tool-related events are
-        ignored here — they are handled via the complete ``AssistantMessage``.
-        """
-        event = sdk_message.event
-        event_type = event.get("type")
-
-        if event_type == "content_block_start":
-            content_block = event.get("content_block", {})
-            block_type = content_block.get("type")
-            index = event.get("index", 0)
-            self._event_block_types[index] = block_type
-
-            if block_type == "text":
-                # Open a step if needed (e.g. after tool results closed the
-                # previous step — the next AssistantMessage would normally
-                # do this, but stream events arrive first).
-                if not self.step_open:
-                    responses.append(StreamStartStep())
-                    self.step_open = True
-                self._ensure_text_started(responses)
-
-        elif event_type == "content_block_delta":
-            delta = event.get("delta", {})
-            if delta.get("type") == "text_delta":
-                text = delta.get("text", "")
-                if text:
-                    responses.append(StreamTextDelta(id=self.text_block_id, delta=text))
-                    self._text_streamed_via_events = True
-
-        elif event_type == "content_block_stop":
-            index = event.get("index", 0)
-            if self._event_block_types.get(index) == "text":
-                self._end_text_if_open(responses)
 
     def _ensure_text_started(self, responses: list[StreamBaseResponse]) -> None:
         """Start (or restart) a text block if needed."""

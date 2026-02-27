@@ -92,11 +92,6 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
-    transcript_download_timeout: float = Field(
-        default=3.0,
-        description="Timeout in seconds for downloading transcript from storage. "
-        "Prevents long delays when GCS is unreachable (e.g. local dev).",
-    )
 
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(

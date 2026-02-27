@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import os
-import time
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -497,12 +496,6 @@ async def stream_chat_completion_sdk(
     captured_transcript = CapturedTranscript()
     sdk_cwd = ""
 
-    # Timing instrumentation — track where startup latency is spent
-    _t0 = time.monotonic()
-
-    def _elapsed() -> str:
-        return f"{(time.monotonic() - _t0) * 1000:.0f}ms"
-
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
         redis=await get_redis_async(),
@@ -512,7 +505,6 @@ async def stream_chat_completion_sdk(
     )
 
     lock_owner = await lock.try_acquire()
-    logger.info("[SDK] [%s] [TIMING] Lock acquired at %s", session_id[:12], _elapsed())
     if lock_owner != stream_id:
         # Another stream is active
         logger.warning(
@@ -547,11 +539,6 @@ async def stream_chat_completion_sdk(
             user_id, has_conversation_history=has_history
         )
         system_prompt += _build_sdk_tool_supplement(sdk_cwd)
-        logger.info(
-            "[SDK] [%s] [TIMING] System prompt built at %s",
-            session_id[:12],
-            _elapsed(),
-        )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
@@ -602,19 +589,7 @@ async def stream_chat_completion_sdk(
             transcript_msg_count = 0  # watermark: session.messages length at upload
 
             if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-                try:
-                    dl = await asyncio.wait_for(
-                        download_transcript(user_id, session_id),
-                        timeout=config.transcript_download_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "[SDK] Transcript download timed out after %ss for %s "
-                        "(GCS may be unreachable)",
-                        config.transcript_download_timeout,
-                        session_id[:12],
-                    )
-                    dl = None
+                dl = await download_transcript(user_id, session_id)
                 is_valid = bool(dl and validate_transcript(dl.content))
                 if dl and is_valid:
                     logger.info(
@@ -649,7 +624,6 @@ async def stream_chat_completion_sdk(
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
-                "include_partial_messages": True,
             }
             if sdk_env:
                 sdk_options_kwargs["model"] = sdk_model
@@ -658,21 +632,10 @@ async def stream_chat_completion_sdk(
                 sdk_options_kwargs["resume"] = resume_file
 
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
-            logger.info(
-                "[SDK] [%s] [TIMING] Options built at %s (resume=%s)",
-                session_id[:12],
-                _elapsed(),
-                use_resume,
-            )
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
 
             async with ClaudeSDKClient(options=options) as client:
-                logger.info(
-                    "[SDK] [%s] [TIMING] SDK client connected at %s",
-                    session_id[:12],
-                    _elapsed(),
-                )
                 current_message = message or ""
                 if not current_message and session.messages:
                     last_user = [m for m in session.messages if m.role == "user"]
@@ -701,11 +664,6 @@ async def stream_chat_completion_sdk(
                     len(query_message),
                 )
                 await client.query(query_message, session_id=session_id)
-                logger.info(
-                    "[SDK] [%s] [TIMING] Query sent at %s",
-                    session_id[:12],
-                    _elapsed(),
-                )
 
                 assistant_response = ChatMessage(role="assistant", content="")
                 accumulated_tool_calls: list[dict[str, Any]] = []
@@ -722,7 +680,6 @@ async def stream_chat_completion_sdk(
                 # Task alive so it can deliver the next message.
                 msg_iter = client.receive_messages().__aiter__()
                 pending_task: asyncio.Task[Any] | None = None
-                _first_msg_logged = False
                 try:
                     while not stream_completed:
                         if pending_task is None:
@@ -769,15 +726,6 @@ async def stream_chat_completion_sdk(
                                 code="sdk_stream_error",
                             )
                             break
-
-                        if not _first_msg_logged:
-                            _first_msg_logged = True
-                            logger.info(
-                                "[SDK] [%s] [TIMING] First message at %s: %s",
-                                session_id[:12],
-                                _elapsed(),
-                                type(sdk_msg).__name__,
-                            )
 
                         logger.info(
                             "[SDK] [%s] Received: %s %s "
@@ -1114,12 +1062,6 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
-        # Release stream lock FIRST to allow new streams for this session.
-        # Session persist and transcript upload can be slow — releasing the
-        # lock early prevents "Another stream is already active" errors when
-        # the user sends a new message immediately after a stream completes.
-        await lock.release()
-
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).
@@ -1175,6 +1117,9 @@ async def stream_chat_completion_sdk(
 
         if sdk_cwd:
             _cleanup_sdk_tool_results(sdk_cwd)
+
+        # Release stream lock to allow new streams for this session
+        await lock.release()
 
 
 async def _try_upload_transcript(

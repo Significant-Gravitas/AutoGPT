@@ -105,7 +105,6 @@ def test_agent_options_accepts_all_our_fields():
         "env",
         "resume",
         "max_buffer_size",
-        "include_partial_messages",
     ]
     sig = inspect.signature(ClaudeAgentOptions)
     for field in fields_we_use:
