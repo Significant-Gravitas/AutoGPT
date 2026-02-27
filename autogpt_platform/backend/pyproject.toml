@@ -11,7 +11,7 @@ packages = [{ include = "backend", format = "sdist" }]
 python = ">=3.10,<3.14"
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
-aiodns = "^3.5.0"
+aiodns = "^4.0.0"
 anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
