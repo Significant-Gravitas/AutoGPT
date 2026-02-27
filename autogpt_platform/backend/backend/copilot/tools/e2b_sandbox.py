@@ -157,8 +157,24 @@ async def get_or_create_sandbox(
                         exc,
                     )
                 break  # fall through to create our own
-        # Re-claim the creation lock for ourselves.
-        await redis.set(redis_key, _SANDBOX_CREATING, ex=_CREATION_LOCK_TTL)
+        # Re-claim the creation lock atomically to avoid overwriting a valid
+        # sandbox ID that another request may have just registered.
+        reclaimed = await redis.set(
+            redis_key, _SANDBOX_CREATING, nx=True, ex=_CREATION_LOCK_TTL
+        )
+        if not reclaimed:
+            # Another creator won the race — re-read and try to connect.
+            raw = await redis.get(redis_key)
+            if raw:
+                sid = raw if isinstance(raw, str) else raw.decode()
+                if sid != _SANDBOX_CREATING:
+                    try:
+                        sandbox = await AsyncSandbox.connect(sid, api_key=api_key)
+                        if await sandbox.is_running():
+                            await redis.expire(redis_key, timeout)
+                            return sandbox
+                    except Exception:
+                        pass  # fall through to create
 
     # ──────────────────────────────────────────────────────────────────────
     # Step 3: Create a new sandbox and register it

@@ -26,20 +26,26 @@ _E2B_WORKDIR = "/home/user"
 # ---------------------------------------------------------------------------
 
 
-def _is_local_path(path: str) -> bool:
-    """Return True when *path* refers to the host filesystem, not the sandbox.
+_ALLOWED_LOCAL_ROOTS = (
+    os.path.realpath(os.path.expanduser("~/.claude")),
+    "/tmp/copilot-",  # SDK ephemeral cwd prefix (matched by startswith)
+)
 
-    Local paths are SDK-internal artefacts (tool-results, transcripts, temp
-    files) that the CLI writes to the host machine.  Everything else is
-    treated as a sandbox path.
+
+def _is_local_path(path: str) -> bool:
+    """Return True when *path* refers to an allowed SDK-internal host path.
+
+    Only paths under ``~/.claude/`` (tool-results, transcripts) and
+    ``/tmp/copilot-*/`` (SDK ephemeral cwd) are allowed locally.
+    Everything else is treated as a sandbox path.
     """
     if not path:
         return False
-    if path.startswith("~"):
-        return True
-    if os.path.isabs(path) and not path.startswith(f"{_E2B_WORKDIR}/"):
-        return path != _E2B_WORKDIR
-    return False
+    real = os.path.realpath(os.path.expanduser(path))
+    return any(
+        real == root or real.startswith(root + os.sep) or real.startswith(root)
+        for root in _ALLOWED_LOCAL_ROOTS
+    )
 
 
 def _resolve_remote(path: str) -> str:
@@ -74,8 +80,8 @@ def _mcp_error(text: str) -> dict[str, Any]:
 
 async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     file_path: str = args.get("file_path", "")
-    offset: int = args.get("offset", 0)
-    limit: int = args.get("limit", 2000)
+    offset: int = max(0, int(args.get("offset", 0)))
+    limit: int = max(1, int(args.get("limit", 2000)))
 
     if not file_path:
         return _mcp_error("file_path is required")
@@ -237,6 +243,11 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
     """Read a file from the host filesystem (SDK-internal paths only)."""
     expanded = os.path.expanduser(file_path)
     real = os.path.realpath(expanded)
+    if not any(
+        real == root or real.startswith(root + os.sep) or real.startswith(root)
+        for root in _ALLOWED_LOCAL_ROOTS
+    ):
+        return _mcp_error(f"Local path not allowed: {file_path}")
     try:
         with open(real) as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))

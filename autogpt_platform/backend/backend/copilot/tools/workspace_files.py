@@ -77,17 +77,33 @@ async def _resolve_write_content(
     return content_text.encode("utf-8")
 
 
+def _resolve_sandbox_path(
+    path: str, session_id: str | None, param_name: str
+) -> str | ErrorResponse:
+    """Normalize *path* to an absolute sandbox path under ``/home/user``.
+
+    Returns an :class:`ErrorResponse` if the resolved path escapes the
+    ``/home/user`` boundary (e.g. via ``/etc/passwd`` or ``../`` traversal).
+    """
+    candidate = path if os.path.isabs(path) else os.path.join("/home/user", path)
+    normalized = os.path.normpath(candidate)
+    if normalized != "/home/user" and not normalized.startswith("/home/user/"):
+        return ErrorResponse(
+            message=f"{param_name} must be within /home/user",
+            session_id=session_id,
+        )
+    return normalized
+
+
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
     """Read *source_path* from E2B sandbox or local ephemeral directory."""
     from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is not None:
-        remote = (
-            source_path
-            if source_path.startswith("/home/user")
-            else os.path.join("/home/user", source_path)
-        )
+        remote = _resolve_sandbox_path(source_path, session_id, "source_path")
+        if isinstance(remote, ErrorResponse):
+            return remote
         try:
             data = await sandbox.files.read(remote, format="bytes")
             return bytes(data)
@@ -481,11 +497,11 @@ class ReadWorkspaceFileTool(BaseTool):
                 cached_content = await manager.read_file_by_id(target_file_id)
                 if sandbox is not None:
                     # Write to E2B sandbox filesystem.
-                    remote = (
-                        save_to_path
-                        if save_to_path.startswith("/home/user")
-                        else os.path.join("/home/user", save_to_path)
+                    remote = _resolve_sandbox_path(
+                        save_to_path, session_id, "save_to_path"
                     )
+                    if isinstance(remote, ErrorResponse):
+                        return remote
                     await sandbox.files.write(remote, cached_content)
                     save_to_path = remote
                 else:
