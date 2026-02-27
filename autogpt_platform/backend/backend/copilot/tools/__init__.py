@@ -7,6 +7,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
+from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
@@ -53,6 +54,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "web_fetch": WebFetchTool(),
     # Browser-based browsing for JS-rendered pages (Stagehand + Browserbase)
     "browse_web": BrowseWebTool(),
+    # Agent-browser multi-step automation (navigate, act, screenshot)
+    "browser_navigate": BrowserNavigateTool(),
+    "browser_act": BrowserActTool(),
+    "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
