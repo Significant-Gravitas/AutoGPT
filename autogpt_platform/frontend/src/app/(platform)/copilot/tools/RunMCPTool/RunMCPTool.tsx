@@ -80,7 +80,11 @@ export function RunMCPToolComponent({ part }: Props) {
       {/* Credential setup — same card as used in RunBlock / graph builder */}
       {setupRequirementsOutput && (
         <div className="mt-2">
-          <SetupRequirementsCard output={setupRequirementsOutput} />
+          <SetupRequirementsCard
+            output={setupRequirementsOutput}
+            credentialsLabel="MCP server credentials"
+            retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+          />
         </div>
       )}
 
