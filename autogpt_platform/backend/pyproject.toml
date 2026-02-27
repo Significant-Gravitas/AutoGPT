@@ -89,6 +89,7 @@ croniter = "^6.0.0"
 stagehand = "^0.5.1"
 gravitas-md2gdocs = "^0.1.0"
 posthog = "^7.6.0"
+fpdf2 = "^2.8.6"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

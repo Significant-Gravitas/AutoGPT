@@ -111,11 +111,15 @@ function resolveWorkspaceUrls(text: string): string {
   // These are blocked by Streamdown's rehype-harden sanitizer because
   // "workspace://" is not in the allowed URL-scheme whitelist, which causes
   // "[blocked]" to appear next to the link text.
+  // Use an absolute URL so Streamdown's "Copy link" button copies the full
+  // URL (including host) rather than just the path.
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-      const url = `/api/proxy${apiPath}`;
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const url = `${origin}/api/proxy${apiPath}`;
       return `[${linkText || "Download file"}](${url})`;
     },
   );
