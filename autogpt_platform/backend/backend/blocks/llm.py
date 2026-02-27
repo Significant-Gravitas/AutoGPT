@@ -506,13 +506,13 @@ MODEL_METADATA = {
         "avian", 164000, 65000, "DeepSeek V3.2", "Avian", "DeepSeek", 1
     ),
     LlmModel.AVIAN_KIMI_K2_5: ModelMetadata(
-        "avian", 131000, 8000, "Kimi K2.5", "Avian", "Moonshot AI", 1
+        "avian", 262000, 262000, "Kimi K2.5", "Avian", "Moonshot AI", 1
     ),
     LlmModel.AVIAN_GLM_5: ModelMetadata(
-        "avian", 131000, 16000, "GLM-5", "Avian", "Zhipu AI", 1
+        "avian", 205000, 131000, "GLM-5", "Avian", "Zhipu AI", 1
     ),
     LlmModel.AVIAN_MINIMAX_M2_5: ModelMetadata(
-        "avian", 204800, 131000, "MiniMax M2.5", "Avian", "MiniMax", 1
+        "avian", 196000, 131000, "MiniMax M2.5", "Avian", "MiniMax", 1
     ),
     # v0 by Vercel models
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
