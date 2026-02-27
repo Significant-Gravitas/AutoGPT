@@ -6,7 +6,7 @@ export function FileWidget(props: WidgetProps) {
   const { onChange, disabled, readonly, value, schema, formContext } = props;
   const { size } = formContext || {};
   const displayName = schema?.title || "File";
-  const { handleUploadFile, uploadProgress } = useWorkspaceUpload();
+  const { handleUploadFile, handleDeleteFile } = useWorkspaceUpload();
 
   function handleChange(fileURI: string) {
     onChange(fileURI);
@@ -19,8 +19,8 @@ export function FileWidget(props: WidgetProps) {
       value={value}
       placeholder={displayName}
       onChange={handleChange}
+      onDeleteFile={handleDeleteFile}
       onUploadFile={handleUploadFile}
-      uploadProgress={uploadProgress}
       showStorageNote={false}
       className={
         disabled || readonly ? "pointer-events-none opacity-50" : undefined

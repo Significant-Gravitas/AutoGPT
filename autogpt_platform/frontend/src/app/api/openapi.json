@@ -6539,6 +6539,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/workspace/files/{file_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete a workspace file",
+        "description": "Soft-delete a workspace file and remove it from storage.\n\nUsed when a user clears a file input in the builder.",
+        "operationId": "deleteWorkspaceDelete a workspace file",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "type": "boolean" },
+                  "title": "Response Deleteworkspacedelete A Workspace File"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],

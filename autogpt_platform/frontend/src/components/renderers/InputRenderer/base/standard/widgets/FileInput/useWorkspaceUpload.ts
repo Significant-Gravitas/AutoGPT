@@ -1,18 +1,24 @@
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import {
-  uploadFileToWorkspace,
-  WorkspaceUploadResult,
+  uploadWorkspaceFile,
+  deleteWorkspaceFile,
+  parseWorkspaceFileID,
 } from "@/services/workspace-upload";
 
 export function useWorkspaceUpload() {
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const { mutateAsync: uploadFile } = useMutation({
+    mutationFn: uploadWorkspaceFile,
+  });
 
-  async function handleUploadFile(file: File): Promise<WorkspaceUploadResult> {
-    setUploadProgress(0);
-    const result = await uploadFileToWorkspace(file, setUploadProgress);
-    setUploadProgress(100);
-    return result;
+  const { mutate: deleteFile } = useMutation({
+    mutationFn: deleteWorkspaceFile,
+  });
+
+  function handleDeleteFile(fileURI: string) {
+    const fileID = parseWorkspaceFileID(fileURI);
+    if (!fileID) return;
+    deleteFile(fileID);
   }
 
-  return { handleUploadFile, uploadProgress };
+  return { handleUploadFile: uploadFile, handleDeleteFile };
 }

@@ -131,6 +131,31 @@ async def download_file(
     return await _create_file_download_response(file)
 
 
+@router.delete(
+    "/files/{file_id}",
+    summary="Delete a workspace file",
+)
+async def delete_workspace_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+) -> dict[str, bool]:
+    """
+    Soft-delete a workspace file and remove it from storage.
+
+    Used when a user clears a file input in the builder.
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    manager = WorkspaceManager(user_id, workspace.id)
+    deleted = await manager.delete_file(file_id)
+    if not deleted:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    return {"deleted": True}
+
+
 class WorkspaceUploadResponse(pydantic.BaseModel):
     file_uri: str
     file_name: str
