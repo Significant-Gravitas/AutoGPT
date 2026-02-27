@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -212,10 +213,21 @@ class _LangfuseSDKSpan:
             )
         except Exception as exc:
             logger.debug("[SDK] Langfuse trace init failed: %s", exc)
+            # Close the span if __enter__ already ran to avoid a resource leak.
+            if self._ctx is not None:
+                try:
+                    self._ctx.__exit__(None, None, None)
+                except Exception:
+                    pass
             self._lf = None
             self._ctx = None
 
     def update_usage(self, usage: dict | None, cost_usd: float | None) -> None:
+        """Update the generation with aggregated token counts.
+
+        The SDK emits exactly one ResultMessage per run with totals across all
+        internal tool-use turns, so this is called at most once per span.
+        """
         if self._lf is None:
             return
         try:
@@ -237,11 +249,11 @@ class _LangfuseSDKSpan:
         except Exception as exc:
             logger.debug("[SDK] Langfuse trace output update failed: %s", exc)
 
-    def close(self) -> None:
+    def close(self, exc_info: tuple = (None, None, None)) -> None:
         if self._ctx is None:
             return
         try:
-            self._ctx.__exit__(None, None, None)
+            self._ctx.__exit__(*exc_info)
         except Exception as exc:
             logger.debug("[SDK] Langfuse span close failed: %s", exc)
 
@@ -1167,7 +1179,7 @@ async def stream_chat_completion_sdk(
         raise
     finally:
         if lf_span is not None:
-            lf_span.close()
+            lf_span.close(sys.exc_info())
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

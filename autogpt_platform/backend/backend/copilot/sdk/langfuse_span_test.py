@@ -205,11 +205,21 @@ def test_span_finish(mock_langfuse):
     mock_lf.update_current_trace.assert_called_with(output="final answer")
 
 
-def test_span_close(mock_langfuse):
+def test_span_close_no_exc_info(mock_langfuse):
     _, mock_ctx = mock_langfuse
     span = _LangfuseSDKSpan(session_id="s1", user_id=None, model=None, input=None)
     span.close()
     mock_ctx.__exit__.assert_called_once_with(None, None, None)
+
+
+def test_span_close_passes_exc_info(mock_langfuse):
+    """close(sys.exc_info()) forwards exception details to Langfuse."""
+    _, mock_ctx = mock_langfuse
+    span = _LangfuseSDKSpan(session_id="s1", user_id=None, model=None, input=None)
+    exc = ValueError("boom")
+    exc_info = (type(exc), exc, None)
+    span.close(exc_info)
+    mock_ctx.__exit__.assert_called_once_with(*exc_info)
 
 
 def test_span_init_failure_is_silent():
@@ -226,6 +236,28 @@ def test_span_init_failure_is_silent():
     span.update_usage({}, None)
     span.finish(None)
     span.close()
+
+
+def test_span_init_ctx_leaked_when_update_trace_fails():
+    """If __enter__ succeeds but update_current_trace raises, __exit__ is called."""
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+    mock_ctx.__exit__ = MagicMock(return_value=False)
+
+    mock_lf = MagicMock()
+    mock_lf.start_as_current_observation.return_value = mock_ctx
+    mock_lf.update_current_trace.side_effect = RuntimeError("trace update failed")
+
+    with patch(
+        "backend.copilot.sdk.service._is_langfuse_configured", return_value=True
+    ), patch("backend.copilot.sdk.service._get_langfuse_client", return_value=mock_lf):
+        span = _LangfuseSDKSpan(session_id="s1", user_id=None, model=None, input=None)
+
+    # Span must degrade to no-op
+    assert span._lf is None
+    assert span._ctx is None
+    # The already-entered context must have been exited to avoid a leak
+    mock_ctx.__exit__.assert_called_once()
 
 
 def test_span_close_noop_when_no_ctx(langfuse_disabled):
