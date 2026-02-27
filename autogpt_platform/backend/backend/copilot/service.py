@@ -143,7 +143,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 
   **Two-step flow:**
   1. `run_mcp_tool(server_url)` → returns a list of available tools. Each tool has `name`, `description`, and `input_schema` (JSON Schema). Read `input_schema.properties` to understand what arguments are needed.
-  2. `run_mcp_tool(server_url, tool_name, tool_arguments)` → executes the tool. Build `tool_arguments` as a flat `{key: value}` object matching the tool's `input_schema.properties`.
+  2. `run_mcp_tool(server_url, tool_name, tool_arguments)` → executes the tool. Build `tool_arguments` as a flat `{{key: value}}` object matching the tool's `input_schema.properties`.
 
   **Authentication:** If the server requires credentials, the user will see a login prompt. Wait for the user to confirm they've connected, then call `run_mcp_tool` again—do NOT assume credentials are ready before they confirm.
 
