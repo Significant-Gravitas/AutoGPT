@@ -195,7 +195,8 @@ class BrowseWebTool(BaseTool):
             await client.init()
 
             page = client.page
-            assert page is not None, "Stagehand page is not initialized"
+            if page is None:
+                raise RuntimeError("Stagehand page is not initialized")
             await page.goto(url, timeoutMs=_GOTO_TIMEOUT_MS)
             result = await page.extract(instruction, timeoutMs=_EXTRACT_TIMEOUT_MS)
 
@@ -229,4 +230,4 @@ class BrowseWebTool(BaseTool):
                 try:
                     await client.close()
                 except Exception:
-                    pass
+                    pass  # Best-effort cleanup; close failure must not mask the original result.
