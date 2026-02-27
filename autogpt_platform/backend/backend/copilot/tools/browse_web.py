@@ -11,13 +11,8 @@ Requires environment variables:
 
 import logging
 import os
-import signal
 import threading
-from contextlib import contextmanager
-from typing import Any, Generator
-
-import stagehand.main
-from stagehand import Stagehand
+from typing import Any
 
 from backend.copilot.model import ChatSession
 
@@ -30,36 +25,44 @@ logger = logging.getLogger(__name__)
 _STAGEHAND_MODEL = "anthropic/claude-sonnet-4-5-20250929"
 # Hard cap on extracted content returned to the LLM context.
 _MAX_CONTENT_CHARS = 50_000
+# Explicit timeouts for Stagehand browser operations (milliseconds).
+_GOTO_TIMEOUT_MS = 30_000  # page navigation
+_EXTRACT_TIMEOUT_MS = 60_000  # LLM extraction
 
 # ---------------------------------------------------------------------------
-# Thread-safety patch for Stagehand signal handlers
-# Stagehand tries to register signal handlers on init. In worker threads
-# (e.g. the CoPilot executor thread pool) this raises a ValueError because
-# signal.signal() is only allowed in the main thread.
+# Thread-safety patch for Stagehand signal handlers (applied lazily, once).
+#
+# Stagehand calls signal.signal() during __init__, which raises ValueError
+# when called from a non-main thread (e.g. the CoPilot executor thread pool).
+# We patch _register_signal_handlers to be a no-op outside the main thread.
+# The patch is applied exactly once per process via double-checked locking.
 # ---------------------------------------------------------------------------
-_original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
+_stagehand_patched = False
+_patch_lock = threading.Lock()
 
 
-def _safe_register_signal_handlers(self: Any) -> None:
-    if threading.current_thread() is threading.main_thread():
-        _original_register_signal_handlers(self)
+def _patch_stagehand_once() -> None:
+    """Monkey-patch Stagehand signal handler registration to be thread-safe.
 
+    Must be called after ``import stagehand.main`` has succeeded.
+    Safe to call from multiple threads — applies the patch at most once.
+    """
+    global _stagehand_patched
+    if _stagehand_patched:
+        return
+    with _patch_lock:
+        if _stagehand_patched:
+            return
+        import stagehand.main  # noqa: PLC0415
 
-stagehand.main.Stagehand._register_signal_handlers = _safe_register_signal_handlers
+        _original = stagehand.main.Stagehand._register_signal_handlers
 
+        def _safe_register(self: Any) -> None:
+            if threading.current_thread() is threading.main_thread():
+                _original(self)
 
-@contextmanager
-def _thread_safe_signal() -> Generator[None, None, None]:
-    """Suppress signal.signal() calls when not in the main thread."""
-    if threading.current_thread() is not threading.main_thread():
-        original = signal.signal
-        signal.signal = lambda *_: None  # type: ignore[assignment]
-        try:
-            yield
-        finally:
-            signal.signal = original
-    else:
-        yield
+        stagehand.main.Stagehand._register_signal_handlers = _safe_register
+        _stagehand_patched = True
 
 
 class BrowseWebTool(BaseTool):
@@ -116,6 +119,7 @@ class BrowseWebTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Navigate to a URL with a real browser and return extracted content."""
         url: str = (kwargs.get("url") or "").strip()
         instruction: str = (
             kwargs.get("instruction") or "Extract the main content of this page."
@@ -160,21 +164,35 @@ class BrowseWebTool(BaseTool):
                 session_id=session_id,
             )
 
-        client: Stagehand | None = None
+        # Lazy import — Stagehand is an optional heavy dependency.
+        # Importing here scopes any ImportError to this tool only, so other
+        # tools continue to register and work normally if Stagehand is absent.
         try:
-            with _thread_safe_signal():
-                client = Stagehand(
-                    api_key=api_key,
-                    project_id=project_id,
-                    model_name=_STAGEHAND_MODEL,
-                    model_api_key=model_api_key,
-                )
-                await client.init()
+            from stagehand import Stagehand  # noqa: PLC0415
+        except ImportError:
+            return ErrorResponse(
+                message="Web browsing is not available: Stagehand is not installed.",
+                error="not_configured",
+                session_id=session_id,
+            )
+
+        # Apply the signal handler patch now that we know stagehand is present.
+        _patch_stagehand_once()
+
+        client: Any | None = None
+        try:
+            client = Stagehand(
+                api_key=api_key,
+                project_id=project_id,
+                model_name=_STAGEHAND_MODEL,
+                model_api_key=model_api_key,
+            )
+            await client.init()
 
             page = client.page
             assert page is not None, "Stagehand page is not initialized"
-            await page.goto(url)
-            result = await page.extract(instruction)
+            await page.goto(url, timeoutMs=_GOTO_TIMEOUT_MS)
+            result = await page.extract(instruction, timeoutMs=_EXTRACT_TIMEOUT_MS)
 
             # Extract the text content from the Pydantic result model.
             raw = result.model_dump().get("extraction", "")
@@ -182,7 +200,9 @@ class BrowseWebTool(BaseTool):
 
             truncated = len(content) > _MAX_CONTENT_CHARS
             if truncated:
-                content = content[:_MAX_CONTENT_CHARS] + "\n\n[Content truncated]"
+                suffix = "\n\n[Content truncated]"
+                keep = max(0, _MAX_CONTENT_CHARS - len(suffix))
+                content = content[:keep] + suffix
 
             return BrowseWebResponse(
                 message=f"Browsed {url}",
@@ -192,10 +212,10 @@ class BrowseWebTool(BaseTool):
                 session_id=session_id,
             )
 
-        except Exception as e:
-            logger.warning("[browse_web] Failed for %s: %s", url, e)
+        except Exception:
+            logger.exception("[browse_web] Failed for %s", url)
             return ErrorResponse(
-                message=f"Failed to browse URL: {e}",
+                message="Failed to browse URL.",
                 error="browse_failed",
                 session_id=session_id,
             )
