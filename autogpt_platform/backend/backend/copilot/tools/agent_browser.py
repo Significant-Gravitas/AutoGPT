@@ -78,6 +78,7 @@ async def _run(
         session_name,
         *args,
     ]
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -87,6 +88,13 @@ async def _run(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return proc.returncode or 0, stdout.decode(), stderr.decode()
     except asyncio.TimeoutError:
+        # Kill the orphaned subprocess so it does not linger in the process table.
+        if proc is not None and proc.returncode is None:
+            proc.kill()
+            try:
+                await proc.communicate()
+            except Exception:
+                pass  # Best-effort reap; ignore errors during cleanup.
         return 1, "", f"Command timed out after {timeout}s."
     except FileNotFoundError:
         return (
@@ -103,10 +111,9 @@ async def _snapshot(session_name: str) -> str:
         return f"[snapshot failed: {stderr[:300]}]"
     text = stdout.strip()
     if len(text) > _MAX_SNAPSHOT_CHARS:
-        text = (
-            text[:_MAX_SNAPSHOT_CHARS]
-            + "\n\n[Snapshot truncated — use browser_act to navigate further]"
-        )
+        suffix = "\n\n[Snapshot truncated — use browser_act to navigate further]"
+        keep = max(0, _MAX_SNAPSHOT_CHARS - len(suffix))
+        text = text[:keep] + suffix
     return text
 
 
@@ -201,8 +208,12 @@ class BrowserNavigateTool(BaseTool):
                 session_id=session_name,
             )
 
-        # Wait for page to settle
-        await _run(session_name, "wait", "--load", wait_for)
+        # Wait for page to settle (best-effort: some SPAs never reach networkidle)
+        wait_rc, _, wait_err = await _run(session_name, "wait", "--load", wait_for)
+        if wait_rc != 0:
+            logger.warning(
+                "[browser_navigate] wait(%s) failed: %s", wait_for, wait_err[:300]
+            )
 
         # Get current title and URL
         _, title_out, _ = await _run(session_name, "get", "title")
@@ -393,8 +404,14 @@ class BrowserActTool(BaseTool):
                 session_id=session_name,
             )
 
-        # Allow the page to settle after interaction
-        await _run(session_name, "wait", "--load", "networkidle")
+        # Allow the page to settle after interaction (best-effort: SPAs may not idle)
+        settle_rc, _, settle_err = await _run(
+            session_name, "wait", "--load", "networkidle"
+        )
+        if settle_rc != 0:
+            logger.warning(
+                "[browser_act] post-action wait failed: %s", settle_err[:300]
+            )
 
         snapshot = await _snapshot(session_name)
         _, url_out, _ = await _run(session_name, "get", "url")
@@ -459,7 +476,11 @@ class BrowserScreenshotTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        annotate: bool = bool(kwargs.get("annotate", True))
+        raw_annotate = kwargs.get("annotate", True)
+        if isinstance(raw_annotate, str):
+            annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            annotate = bool(raw_annotate)
         filename: str = (kwargs.get("filename") or "screenshot.png").strip()
         session_name = session.session_id
 
@@ -487,7 +508,7 @@ class BrowserScreenshotTool(BaseTool):
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                pass  # Best-effort temp file cleanup; not critical if it fails.
 
         # Upload to workspace so the user can view it
         png_b64 = base64.b64encode(png_bytes).decode()

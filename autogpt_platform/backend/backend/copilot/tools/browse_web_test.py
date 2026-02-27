@@ -15,12 +15,14 @@ import pytest
 
 import backend.copilot.tools.browse_web as _browse_web_mod
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.browse_web import (
-    _MAX_CONTENT_CHARS,
-    BrowseWebTool,
-    _patch_stagehand_once,
-)
 from backend.copilot.tools.models import BrowseWebResponse, ErrorResponse, ResponseType
+
+# Convenience aliases — all resolved from the same module object so that tests
+# can reset module-level globals (e.g. _browse_web_mod._stagehand_patched = False)
+# without going through a separate from-import reference copy.
+BrowseWebTool = _browse_web_mod.BrowseWebTool
+_MAX_CONTENT_CHARS = _browse_web_mod._MAX_CONTENT_CHARS
+_patch_stagehand_once = _browse_web_mod._patch_stagehand_once
 
 # ---------------------------------------------------------------------------
 # Helpers

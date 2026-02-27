@@ -562,7 +562,9 @@ class TestBrowserScreenshotExecute:
             file_id="file-abc-123",
             name="test.png",
             path="/workspace/test.png",
+            mime_type="image/png",
             size_bytes=len(png_bytes),
+            download_url="workspace://file-abc-123#image/png",
             session_id="test-session-123",
         )
 
@@ -597,7 +599,7 @@ class TestBrowserScreenshotExecute:
             try:
                 os.unlink(path)
             except OSError:
-                pass
+                pass  # Best-effort test cleanup; not critical if temp file lingers.
 
         assert isinstance(result, BrowserScreenshotResponse)
         assert result.type == ResponseType.BROWSER_SCREENSHOT

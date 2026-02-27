@@ -15,6 +15,7 @@ import threading
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.util.request import validate_url
 
 from .base import BaseTool
 from .models import BrowseWebResponse, ErrorResponse, ToolResponseBase
@@ -133,9 +134,13 @@ class BrowseWebTool(BaseTool):
                 session_id=session_id,
             )
 
-        if not url.startswith(("http://", "https://")):
+        # Full SSRF guard: resolves all DNS IPs, blocks RFC-1918/loopback/link-local/IPv6
+        # (same guard used by HTTP blocks and browser_navigate).
+        try:
+            await validate_url(url, trusted_origins=[])
+        except ValueError as e:
             return ErrorResponse(
-                message="Only HTTP/HTTPS URLs are supported.",
+                message=str(e),
                 error="invalid_url",
                 session_id=session_id,
             )
