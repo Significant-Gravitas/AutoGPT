@@ -559,6 +559,11 @@ async def stream_chat_completion_sdk(
 
     session = await upsert_chat_session(session)
 
+    # Detect first turn (used for title generation and sampling trace)
+    is_first_turn = (
+        is_user_message and len([m for m in session.messages if m.role == "user"]) == 1
+    )
+
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
         user_messages = [m for m in session.messages if m.role == "user"]
@@ -718,12 +723,13 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-            lf_span = _LangfuseSDKSpan(
-                session_id=session_id,
-                user_id=user_id,
-                model=sdk_model,
-                input=message,
-            )
+            if is_first_turn:
+                lf_span = _LangfuseSDKSpan(
+                    session_id=session_id,
+                    user_id=user_id,
+                    model=sdk_model,
+                    input=message,
+                )
 
             assistant_response = ChatMessage(role="assistant", content="")
 
@@ -888,7 +894,10 @@ async def stream_chat_completion_sdk(
                                     session_id[:12],
                                     sdk_msg.result or "(no error message provided)",
                                 )
-                            lf_span.update_usage(sdk_msg.usage, sdk_msg.total_cost_usd)
+                            if lf_span is not None:
+                                lf_span.update_usage(
+                                    sdk_msg.usage, sdk_msg.total_cost_usd
+                                )
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
@@ -1057,7 +1066,8 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
-            lf_span.finish(output=assistant_response.content)
+            if lf_span is not None:
+                lf_span.finish(output=assistant_response.content)
 
             # --- Upload transcript for next-turn --resume ---
             # After async with the SDK task group has exited, so the Stop
