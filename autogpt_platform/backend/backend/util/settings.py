@@ -623,6 +623,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     aiml_api_key: str = Field(default="", description="'AI/ML API' key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
+    avian_api_key: str = Field(default="", description="Avian API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
