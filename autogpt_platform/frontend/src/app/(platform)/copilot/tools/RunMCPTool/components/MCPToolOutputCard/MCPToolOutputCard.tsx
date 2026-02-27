@@ -7,10 +7,10 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
-import type { MCPToolOutputResult } from "../../helpers";
+import type { MCPToolOutputResponse } from "../../helpers";
 
 interface Props {
-  output: MCPToolOutputResult;
+  output: MCPToolOutputResponse;
 }
 
 function formatResult(value: unknown): string {

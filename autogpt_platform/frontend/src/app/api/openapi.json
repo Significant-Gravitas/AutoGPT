@@ -9991,6 +9991,50 @@
         "title": "MCPToolResponse",
         "description": "A single MCP tool returned by discovery."
       },
+      "MCPToolsDiscoveredResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tools_discovered"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolResponse" },
+            "type": "array",
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tools"],
+        "title": "MCPToolsDiscoveredResponse",
+        "description": "Response when MCP tools are discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
       "MarketplaceListing": {
         "properties": {
           "id": { "type": "string", "title": "Id" },

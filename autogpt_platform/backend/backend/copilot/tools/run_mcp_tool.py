@@ -97,8 +97,17 @@ class RunMCPToolTool(BaseTool):
     ) -> ToolResponseBase:
         server_url: str = (kwargs.get("server_url") or "").strip()
         tool_name: str = (kwargs.get("tool_name") or "").strip()
-        tool_arguments: dict[str, Any] = kwargs.get("tool_arguments") or {}
+        raw_tool_arguments = kwargs.get("tool_arguments")
+        tool_arguments: dict[str, Any] = (
+            raw_tool_arguments if isinstance(raw_tool_arguments, dict) else {}
+        )
         session_id = session.session_id
+
+        if raw_tool_arguments is not None and not isinstance(raw_tool_arguments, dict):
+            return ErrorResponse(
+                message="tool_arguments must be a JSON object.",
+                session_id=session_id,
+            )
 
         if not server_url:
             return ErrorResponse(
@@ -307,8 +316,13 @@ class RunMCPToolTool(BaseTool):
 
 
 def _server_host(server_url: str) -> str:
-    """Extract the hostname from a server URL for display purposes."""
+    """Extract the hostname from a server URL for display purposes.
+
+    Uses ``parsed.hostname`` (never ``netloc``) to strip any embedded
+    username/password before surfacing the value in UI messages.
+    """
     try:
-        return urlparse(server_url).netloc or server_url
+        parsed = urlparse(server_url)
+        return parsed.hostname or server_url
     except Exception:
         return server_url
