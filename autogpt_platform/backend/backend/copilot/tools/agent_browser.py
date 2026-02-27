@@ -13,10 +13,11 @@ Why agent-browser instead of Stagehand/Browserbase:
   is one browser action; the LLM chains them naturally
 
 SSRF protection:
-  URLs are resolved before navigation and checked against private/reserved
-  address ranges (RFC 1918, loopback, link-local, metadata). DNS rebinding is
-  mitigated by the fact that these tools run inside the copilot pod which should
-  have network policy restricting egress to the internet only.
+  Uses the shared validate_url() from backend.util.request, which is the same
+  guard used by HTTP blocks and web_fetch. It resolves ALL DNS answers (not just
+  the first), blocks RFC 1918, loopback, link-local, 0.0.0.0/8, multicast,
+  and all relevant IPv6 ranges, and applies IDNA encoding to prevent Unicode
+  domain attacks.
 
 Requires:
   npm install -g agent-browser
@@ -25,15 +26,13 @@ Requires:
 
 import asyncio
 import base64
-import ipaddress
 import logging
 import os
-import socket
 import tempfile
-import urllib.parse
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.util.request import validate_url
 
 from .base import BaseTool
 from .models import (
@@ -50,41 +49,6 @@ logger = logging.getLogger(__name__)
 _CMD_TIMEOUT = 45
 # Accessibility tree can be very large; cap it to keep LLM context manageable.
 _MAX_SNAPSHOT_CHARS = 20_000
-
-
-# ---------------------------------------------------------------------------
-# SSRF guard
-# ---------------------------------------------------------------------------
-
-
-def _ssrf_check(url: str) -> str | None:
-    """Return an error string if the URL should be blocked, else None.
-
-    Resolves the hostname and rejects any URL whose IP falls in a private,
-    loopback, link-local, or otherwise reserved range.
-    """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        return "Only HTTP/HTTPS URLs are supported."
-    host = parsed.hostname
-    if not host:
-        return "Invalid URL: missing host."
-    try:
-        resolved = socket.gethostbyname(host)
-        addr = ipaddress.ip_address(resolved)
-        if (
-            addr.is_private
-            or addr.is_loopback
-            or addr.is_link_local
-            or addr.is_reserved
-            or addr.is_multicast
-        ):
-            return f"URL resolves to a blocked address ({resolved})."
-    except socket.gaierror:
-        return f"Cannot resolve hostname: {host}"
-    except ValueError:
-        pass  # host is a name, not an IP literal — already resolved above
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +165,11 @@ class BrowserNavigateTool(BaseTool):
                 session_id=session_name,
             )
 
-        err = _ssrf_check(url)
-        if err:
+        try:
+            await validate_url(url, trusted_origins=[])
+        except ValueError as e:
             return ErrorResponse(
-                message=err,
+                message=str(e),
                 error="blocked_url",
                 session_id=session_name,
             )

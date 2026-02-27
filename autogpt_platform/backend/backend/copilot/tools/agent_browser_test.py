@@ -10,12 +10,7 @@ import pytest
 
 from backend.copilot.model import ChatSession
 
-from .agent_browser import (
-    BrowserActTool,
-    BrowserNavigateTool,
-    BrowserScreenshotTool,
-    _ssrf_check,
-)
+from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .models import (
     BrowserActResponse,
     BrowserNavigateResponse,
@@ -38,53 +33,82 @@ def _run_result(rc: int = 0, stdout: str = "", stderr: str = "") -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# _ssrf_check
+# SSRF protection via shared validate_url (backend.util.request)
 # ---------------------------------------------------------------------------
 
+# Patch target: validate_url is imported directly into agent_browser's module scope.
+_VALIDATE_URL = "backend.copilot.tools.agent_browser.validate_url"
 
-class TestSsrfCheck:
-    def test_allows_public_url(self):
-        with patch("socket.gethostbyname", return_value="1.2.3.4"):
-            assert _ssrf_check("https://example.com/page") is None
 
-    def test_blocks_http_to_private(self):
-        with patch("socket.gethostbyname", return_value="192.168.1.1"):
-            assert _ssrf_check("http://internal.example.com") is not None
+class TestSsrfViaValidateUrl:
+    """Verify that browser_navigate uses validate_url for SSRF protection.
 
-    def test_blocks_loopback(self):
-        with patch("socket.gethostbyname", return_value="127.0.0.1"):
-            assert _ssrf_check("http://localhost") is not None
+    We mock validate_url itself (not the low-level socket) so these tests
+    exercise the integration point, not the internals of request.py
+    (which has its own thorough test suite in request_test.py).
+    """
 
-    def test_blocks_link_local(self):
-        with patch("socket.gethostbyname", return_value="169.254.169.254"):
-            # AWS metadata endpoint
-            assert _ssrf_check("http://169.254.169.254/latest/meta-data/") is not None
+    def setup_method(self):
+        self.tool = BrowserNavigateTool()
+        self.session = make_session()
 
-    def test_blocks_multicast(self):
-        with patch("socket.gethostbyname", return_value="224.0.0.1"):
-            assert _ssrf_check("https://multicast.example.com") is not None
+    @pytest.mark.asyncio
+    async def test_blocked_ip_returns_blocked_url_error(self):
+        """validate_url raises ValueError → tool returns blocked_url ErrorResponse."""
+        with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
+            mock_validate.side_effect = ValueError(
+                "Access to blocked IP 10.0.0.1 is not allowed."
+            )
+            result = await self.tool._execute(
+                user_id="user1", session=self.session, url="http://internal.corp"
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "blocked_url"
+        assert "10.0.0.1" in result.message
 
-    def test_blocks_non_http_scheme(self):
-        assert _ssrf_check("ftp://example.com") is not None
+    @pytest.mark.asyncio
+    async def test_invalid_scheme_returns_blocked_url_error(self):
+        with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
+            mock_validate.side_effect = ValueError("Scheme 'ftp' is not allowed.")
+            result = await self.tool._execute(
+                user_id="user1", session=self.session, url="ftp://example.com"
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "blocked_url"
 
-    def test_blocks_file_scheme(self):
-        assert _ssrf_check("file:///etc/passwd") is not None
+    @pytest.mark.asyncio
+    async def test_unresolvable_host_returns_blocked_url_error(self):
+        with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
+            mock_validate.side_effect = ValueError(
+                "Unable to resolve IP address for hostname bad.invalid"
+            )
+            result = await self.tool._execute(
+                user_id="user1", session=self.session, url="https://bad.invalid"
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "blocked_url"
 
-    def test_blocks_missing_host(self):
-        assert _ssrf_check("https://") is not None
-
-    def test_blocks_unresolvable_host(self):
-        import socket
-
-        with patch(
-            "socket.gethostbyname",
-            side_effect=socket.gaierror("Name or service not known"),
-        ):
-            assert _ssrf_check("https://nonexistent.invalid") is not None
-
-    def test_returns_none_for_valid_url(self):
-        with patch("socket.gethostbyname", return_value="93.184.216.34"):
-            assert _ssrf_check("https://www.example.com/path?q=1") is None
+    @pytest.mark.asyncio
+    async def test_validate_url_called_with_empty_trusted_origins(self):
+        """Confirms no trusted-origins bypass is granted — all URLs are validated."""
+        with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
+            mock_validate.return_value = (object(), False, ["1.2.3.4"])
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="",
+                ):
+                    await self.tool._execute(
+                        user_id="user1",
+                        session=self.session,
+                        url="https://example.com",
+                    )
+        mock_validate.assert_called_once_with("https://example.com", trusted_origins=[])
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +159,10 @@ class TestBrowserNavigateExecute:
 
     @pytest.mark.asyncio
     async def test_ssrf_blocked_url_returns_error(self):
-        with patch("socket.gethostbyname", return_value="10.0.0.1"):
+        with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
+            mock_validate.side_effect = ValueError(
+                "Access to blocked IP 10.0.0.1 is not allowed."
+            )
             result = await self.tool._execute(
                 user_id="user1", session=self.session, url="http://internal.corp"
             )
@@ -144,7 +171,11 @@ class TestBrowserNavigateExecute:
 
     @pytest.mark.asyncio
     async def test_navigation_failure_returns_error(self):
-        with patch("socket.gethostbyname", return_value="1.2.3.4"):
+        with patch(
+            _VALIDATE_URL,
+            new_callable=AsyncMock,
+            return_value=(object(), False, ["1.2.3.4"]),
+        ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
@@ -160,7 +191,11 @@ class TestBrowserNavigateExecute:
 
     @pytest.mark.asyncio
     async def test_successful_navigation(self):
-        with patch("socket.gethostbyname", return_value="1.2.3.4"):
+        with patch(
+            _VALIDATE_URL,
+            new_callable=AsyncMock,
+            return_value=(object(), False, ["1.2.3.4"]),
+        ):
             with patch(
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
@@ -199,7 +234,11 @@ class TestBrowserNavigateExecute:
             captured_calls.append((session_name, args))
             return _run_result(rc=0)
 
-        with patch("socket.gethostbyname", return_value="1.2.3.4"):
+        with patch(
+            _VALIDATE_URL,
+            new_callable=AsyncMock,
+            return_value=(object(), False, ["1.2.3.4"]),
+        ):
             with patch(
                 "backend.copilot.tools.agent_browser._run", side_effect=fake_run
             ):
