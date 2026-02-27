@@ -32,6 +32,7 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.workspace import get_or_create_workspace
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -891,6 +892,7 @@ async def add_graph_execution(
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        workspace = await get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
             # Execution identity
@@ -907,6 +909,8 @@ async def add_graph_execution(
             ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
+            # Workspace (enables workspace:// file resolution in blocks)
+            workspace_id=workspace.id,
         )
 
     try:

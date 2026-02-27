@@ -124,9 +124,21 @@ export function FileInput(props: Props) {
       return "File";
     }
 
-    // Handle string values (data URIs or file paths)
+    // Handle string values (workspace URIs, data URIs, or file paths)
     if (typeof val !== "string") {
       return "File";
+    }
+
+    if (val.startsWith("workspace://")) {
+      const fragment = val.split("#")[1];
+      if (fragment) {
+        const parts = fragment.split("/");
+        if (parts.length > 1) {
+          return `${parts[1].toUpperCase()} file`;
+        }
+        return "File";
+      }
+      return "Uploaded file";
     }
 
     if (val.startsWith("data:")) {

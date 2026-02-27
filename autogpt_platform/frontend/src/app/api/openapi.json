@@ -6497,6 +6497,48 @@
         }
       }
     },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload a file to the workspace",
+        "description": "Upload a file to the user's workspace for use in builder graph inputs.\n\nReturns a workspace:// URI that can be stored in graph node inputs\ninstead of embedding full file content as base64.",
+        "operationId": "postWorkspaceUpload a file to the workspace",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_a_file_to_the_workspace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUploadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],
@@ -7767,6 +7809,14 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
+      },
+      "Body_postWorkspaceUpload_a_file_to_the_workspace": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postWorkspaceUpload a file to the workspace"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -13966,6 +14016,17 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceUploadResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" }
+        },
+        "type": "object",
+        "required": ["file_uri", "file_name", "size", "content_type"],
+        "title": "WorkspaceUploadResponse"
       }
     },
     "securitySchemes": {
