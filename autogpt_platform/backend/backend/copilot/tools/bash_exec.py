@@ -86,7 +86,7 @@ class BashExecTool(BaseTool):
         session_id = session.session_id if session else None
 
         command: str = (kwargs.get("command") or "").strip()
-        timeout: int = kwargs.get("timeout", 30)
+        timeout: int = int(kwargs.get("timeout", 30))
 
         if not command:
             return ErrorResponse(

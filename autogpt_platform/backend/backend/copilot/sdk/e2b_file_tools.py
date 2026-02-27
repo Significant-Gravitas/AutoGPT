@@ -49,10 +49,17 @@ def _is_local_path(path: str) -> bool:
 
 
 def _resolve_remote(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``."""
-    if path.startswith(_E2B_WORKDIR):
-        return path
-    return os.path.join(_E2B_WORKDIR, path)
+    """Normalise *path* to an absolute sandbox path under ``/home/user``.
+
+    Raises :class:`ValueError` if the resolved path escapes the sandbox
+    boundary (e.g. via absolute paths like ``/etc/passwd`` or ``../``
+    traversal).
+    """
+    candidate = path if os.path.isabs(path) else os.path.join(_E2B_WORKDIR, path)
+    normalized = os.path.normpath(candidate)
+    if normalized != _E2B_WORKDIR and not normalized.startswith(_E2B_WORKDIR + "/"):
+        raise ValueError(f"Path must be within {_E2B_WORKDIR}: {path}")
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +103,10 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
-    remote = _resolve_remote(file_path)
+    try:
+        remote = _resolve_remote(file_path)
+    except ValueError as exc:
+        return _mcp_error(str(exc))
     try:
         content: str = await sandbox.files.read(remote, format="text")
     except Exception as exc:
@@ -123,7 +133,10 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
-    remote = _resolve_remote(file_path)
+    try:
+        remote = _resolve_remote(file_path)
+    except ValueError as exc:
+        return _mcp_error(str(exc))
     try:
         parent = os.path.dirname(remote)
         if parent and parent != _E2B_WORKDIR:
@@ -152,7 +165,10 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
-    remote = _resolve_remote(file_path)
+    try:
+        remote = _resolve_remote(file_path)
+    except ValueError as exc:
+        return _mcp_error(str(exc))
     try:
         content: str = await sandbox.files.read(remote, format="text")
     except Exception as exc:
@@ -193,7 +209,10 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
-    search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+    try:
+        search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+    except ValueError as exc:
+        return _mcp_error(str(exc))
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
         result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=10)
@@ -218,7 +237,10 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
-    search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+    try:
+        search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+    except ValueError as exc:
+        return _mcp_error(str(exc))
     parts = ["grep", "-rn", "--color=never"]
     if include:
         parts.extend(["--include", include])
