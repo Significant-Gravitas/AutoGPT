@@ -88,8 +88,8 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockFixture):
             "file_ids": [f"00000000-0000-0000-0000-{i:012d}" for i in range(20)],
         },
     )
-    # Should not be 422 — it gets past validation (likely 200 streaming response)
-    assert response.status_code != 422
+    # Should get past validation — 200 streaming response expected
+    assert response.status_code == 200
 
 
 # ---- UUID format filtering ----

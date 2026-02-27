@@ -401,7 +401,10 @@ async def stream_chat_post(
         },
     )
 
-    # Enrich message with file metadata if file_ids are provided
+    # Enrich message with file metadata if file_ids are provided.
+    # Also sanitise file_ids so only validated, workspace-scoped IDs are
+    # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
+    sanitized_file_ids: list[str] | None = None
     if request.file_ids and user_id:
         from prisma.models import UserWorkspaceFile
 
@@ -420,6 +423,8 @@ async def stream_chat_post(
                     "isDeleted": False,
                 }
             )
+            # Only keep IDs that actually exist in the user's workspace
+            sanitized_file_ids = [wf.id for wf in files] or None
             file_lines: list[str] = [
                 f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
                 for wf in files
@@ -483,7 +488,7 @@ async def stream_chat_post(
         turn_id=turn_id,
         is_user_message=request.is_user_message,
         context=request.context,
-        file_ids=request.file_ids,
+        file_ids=sanitized_file_ids,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

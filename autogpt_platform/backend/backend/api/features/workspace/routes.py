@@ -39,6 +39,7 @@ _ALLOWED_EXTENSIONS: set[str] = {
     ".odt",
     # Spreadsheets
     ".csv",
+    ".tsv",
     ".xls",
     ".xlsx",
     ".ods",
@@ -51,6 +52,7 @@ _ALLOWED_EXTENSIONS: set[str] = {
     ".svg",
     ".bmp",
     ".ico",
+    ".tiff",
     # Code / config
     ".json",
     ".xml",
@@ -63,6 +65,7 @@ _ALLOWED_EXTENSIONS: set[str] = {
     ".js",
     ".ts",
     ".html",
+    ".htm",
     ".css",
     ".md",
     ".sh",
@@ -81,6 +84,11 @@ _ALLOWED_EXTENSIONS: set[str] = {
     ".webm",
     ".mov",
     ".avi",
+    ".mkv",
+    ".flac",
+    ".aac",
+    ".m4a",
+    ".wma",
 }
 
 
@@ -254,7 +262,7 @@ async def upload_file(
     # Pre-write storage cap check (soft check — final enforcement is post-write)
     storage_limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
     current_usage = await get_workspace_total_size(workspace.id)
-    if current_usage + len(content) > storage_limit_bytes:
+    if storage_limit_bytes and current_usage + len(content) > storage_limit_bytes:
         used_percent = (current_usage / storage_limit_bytes) * 100
         raise fastapi.HTTPException(
             status_code=413,
@@ -267,8 +275,10 @@ async def upload_file(
         )
 
     # Warn at 80% usage
-    usage_ratio = (current_usage + len(content)) / storage_limit_bytes
-    if usage_ratio >= 0.8:
+    if (
+        storage_limit_bytes
+        and (usage_ratio := (current_usage + len(content)) / storage_limit_bytes) >= 0.8
+    ):
         logger.warning(
             f"User {user_id} workspace storage at {usage_ratio * 100:.1f}% "
             f"({current_usage + len(content)} / {storage_limit_bytes} bytes)"
@@ -284,7 +294,7 @@ async def upload_file(
     # Post-write storage check — eliminates TOCTOU race on the quota.
     # If a concurrent upload pushed us over the limit, undo this write.
     new_total = await get_workspace_total_size(workspace.id)
-    if new_total > storage_limit_bytes:
+    if storage_limit_bytes and new_total > storage_limit_bytes:
         await soft_delete_workspace_file(workspace_file.id, workspace.id)
         raise fastapi.HTTPException(
             status_code=413,

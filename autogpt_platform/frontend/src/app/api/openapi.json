@@ -12140,7 +12140,11 @@
           },
           "file_ids": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
               { "type": "null" }
             ],
             "title": "File Ids"
