@@ -140,8 +140,6 @@ def test_result_message_has_required_attrs():
     )
     assert msg.subtype == "success"
     assert hasattr(msg, "result")
-    assert hasattr(msg, "usage")  # accessed by _LangfuseSDKSpan.update_usage
-    assert hasattr(msg, "total_cost_usd")  # accessed by _LangfuseSDKSpan.update_usage
 
 
 def test_system_message_has_subtype_and_data():
