@@ -1,4 +1,3 @@
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
