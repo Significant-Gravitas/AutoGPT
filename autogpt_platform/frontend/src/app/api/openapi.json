@@ -986,7 +986,11 @@
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" }
+                    { "$ref": "#/components/schemas/DocPageResponse" },
+                    {
+                      "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
+                    },
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -9976,6 +9980,42 @@
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
+      "MCPToolInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description"],
+        "title": "MCPToolInfo",
+        "description": "Information about a single MCP tool discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
       "MCPToolResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -10004,7 +10044,7 @@
           },
           "server_url": { "type": "string", "title": "Server Url" },
           "tools": {
-            "items": { "$ref": "#/components/schemas/MCPToolResponse" },
+            "items": { "$ref": "#/components/schemas/MCPToolInfo" },
             "type": "array",
             "title": "Tools"
           }
@@ -10012,28 +10052,7 @@
         "type": "object",
         "required": ["message", "server_url", "tools"],
         "title": "MCPToolsDiscoveredResponse",
-        "description": "Response when MCP tools are discovered from a server."
-      },
-      "MCPToolOutputResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "mcp_tool_output"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "server_url": { "type": "string", "title": "Server Url" },
-          "tool_name": { "type": "string", "title": "Tool Name" },
-          "result": { "title": "Result" },
-          "success": { "type": "boolean", "title": "Success", "default": true }
-        },
-        "type": "object",
-        "required": ["message", "server_url", "tool_name"],
-        "title": "MCPToolOutputResponse",
-        "description": "Response after executing an MCP tool."
+        "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
       "MarketplaceListing": {
         "properties": {
