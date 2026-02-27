@@ -3,6 +3,7 @@ Workspace API routes for managing user file storage.
 """
 
 import logging
+import os
 import re
 from typing import Annotated
 from urllib.parse import quote
@@ -20,11 +21,67 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_total_size,
+    soft_delete_workspace_file,
 )
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import get_workspace_storage
+
+# Allowed file extensions for upload, grouped by category.
+_ALLOWED_EXTENSIONS: set[str] = {
+    # Documents
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".txt",
+    ".rtf",
+    ".odt",
+    # Spreadsheets
+    ".csv",
+    ".xls",
+    ".xlsx",
+    ".ods",
+    # Images
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".bmp",
+    ".ico",
+    # Code / config
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".py",
+    ".js",
+    ".ts",
+    ".html",
+    ".css",
+    ".md",
+    ".sh",
+    ".bat",
+    # Archives
+    ".zip",
+    ".tar",
+    ".gz",
+    ".7z",
+    ".rar",
+    # Audio / Video
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+}
 
 
 def _sanitize_filename_for_header(filename: str) -> str:
@@ -166,6 +223,17 @@ async def upload_file(
     """
     config = Config()
 
+    # Sanitize filename — strip any directory components
+    filename = os.path.basename(file.filename or "upload") or "upload"
+
+    # Validate file extension against allowlist
+    _, ext = os.path.splitext(filename)
+    if ext.lower() not in _ALLOWED_EXTENSIONS:
+        raise fastapi.HTTPException(
+            status_code=415,
+            detail=f"File type '{ext}' is not supported",
+        )
+
     # Read file content with early abort on size limit
     max_file_bytes = config.max_file_size_mb * 1024 * 1024
     chunks: list[bytes] = []
@@ -174,7 +242,7 @@ async def upload_file(
         total_size += len(chunk)
         if total_size > max_file_bytes:
             raise fastapi.HTTPException(
-                status_code=400,
+                status_code=413,
                 detail=f"File exceeds maximum size of {config.max_file_size_mb} MB",
             )
         chunks.append(chunk)
@@ -183,7 +251,7 @@ async def upload_file(
     # Get or create workspace
     workspace = await get_or_create_workspace(user_id)
 
-    # Check storage cap
+    # Pre-write storage cap check (soft check — final enforcement is post-write)
     storage_limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
     current_usage = await get_workspace_total_size(workspace.id)
     if current_usage + len(content) > storage_limit_bytes:
@@ -207,12 +275,25 @@ async def upload_file(
         )
 
     # Virus scan
-    filename = file.filename or "upload"
     await scan_content_safe(content, filename=filename)
 
     # Write file via WorkspaceManager
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     workspace_file = await manager.write_file(content, filename)
+
+    # Post-write storage check — eliminates TOCTOU race on the quota.
+    # If a concurrent upload pushed us over the limit, undo this write.
+    new_total = await get_workspace_total_size(workspace.id)
+    if new_total > storage_limit_bytes:
+        await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail={
+                "message": "Storage limit exceeded (concurrent upload)",
+                "used_bytes": new_total,
+                "limit_bytes": storage_limit_bytes,
+            },
+        )
 
     return UploadFileResponse(
         file_id=workspace_file.id,

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
@@ -9,7 +10,7 @@ from uuid import uuid4
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -51,6 +52,9 @@ from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
 
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +83,9 @@ class StreamChatRequest(BaseModel):
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
-    file_ids: list[str] | None = None  # Workspace file IDs attached to this message
+    file_ids: list[str] | None = Field(
+        default=None, max_length=20
+    )  # Workspace file IDs attached to this message
 
 
 class CreateSessionResponse(BaseModel):
@@ -397,25 +403,34 @@ async def stream_chat_post(
 
     # Enrich message with file metadata if file_ids are provided
     if request.file_ids and user_id:
-        from backend.data.workspace import get_or_create_workspace, get_workspace_file
+        from prisma.models import UserWorkspaceFile
 
-        workspace = await get_or_create_workspace(user_id)
-        file_lines: list[str] = []
-        for fid in request.file_ids:
-            wf = await get_workspace_file(fid, workspace.id)
-            if wf is None:
-                continue
-            size_kb = round(wf.size_bytes / 1024, 1)
-            file_lines.append(
-                f"- {wf.name} ({wf.mime_type}, {size_kb} KB), file_id={fid}"
+        from backend.data.workspace import get_or_create_workspace
+
+        # Filter to valid UUIDs only to prevent DB abuse
+        valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
+
+        if valid_ids:
+            workspace = await get_or_create_workspace(user_id)
+            # Batch query instead of N+1
+            files = await UserWorkspaceFile.prisma().find_many(
+                where={
+                    "id": {"in": valid_ids},
+                    "workspaceId": workspace.id,
+                    "isDeleted": False,
+                }
             )
-        if file_lines:
-            files_block = (
-                "\n\n[Attached files]\n"
-                + "\n".join(file_lines)
-                + "\nUse read_workspace_file with the file_id to access file contents."
-            )
-            request.message += files_block
+            file_lines: list[str] = [
+                f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
+                for wf in files
+            ]
+            if file_lines:
+                files_block = (
+                    "\n\n[Attached files]\n"
+                    + "\n".join(file_lines)
+                    + "\nUse read_workspace_file with the file_id to access file contents."
+                )
+                request.message += files_block
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't

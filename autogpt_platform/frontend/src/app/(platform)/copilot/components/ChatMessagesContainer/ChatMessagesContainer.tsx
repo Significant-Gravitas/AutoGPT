@@ -390,15 +390,13 @@ export const ChatMessagesContainer = ({
                       return null;
                   }
                 })}
-                {fileParts.length > 0 && (
-                  <MessageAttachments files={fileParts} />
-                )}
                 {isLastAssistant && showThinking && (
                   <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                     {thinkingPhrase}
                   </span>
                 )}
               </MessageContent>
+              {fileParts.length > 0 && <MessageAttachments files={fileParts} />}
             </Message>
           );
         })}

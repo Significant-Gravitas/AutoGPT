@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const headers: Record<string, string> = {};
-    if (token) {
+    if (token && token !== "no-token-found") {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
@@ -30,7 +30,6 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       return new NextResponse(errorText, {
         status: response.status,
-        headers: { "Content-Type": "application/json" },
       });
     }
 

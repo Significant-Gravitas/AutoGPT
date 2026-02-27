@@ -22,7 +22,7 @@ const FILE_CATEGORIES = [
     label: "Documents",
     icon: FileTextIcon,
     accept:
-      ".pdf,.doc,.docx,.txt,.rtf,.odt,.md,.csv,.json,.xml,.html,.htm,.yaml,.yml,.toml",
+      ".pdf,.doc,.docx,.txt,.rtf,.odt,.md,.json,.xml,.html,.htm,.yaml,.yml,.toml",
   },
   {
     label: "Spreadsheets",

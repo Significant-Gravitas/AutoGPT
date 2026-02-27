@@ -365,34 +365,39 @@ export function useCopilotPage() {
     files: File[],
     sid: string,
   ): Promise<UploadedFile[]> {
-    const results: UploadedFile[] = [];
-    for (const file of files) {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(
-        `/api/workspace/files/upload?session_id=${encodeURIComponent(sid)}`,
-        { method: "POST", body: formData },
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        console.error("File upload failed:", err);
-        toast({
-          title: "File upload failed",
-          description: file.name,
-          variant: "destructive",
-        });
-        continue;
-      }
-      const data = await res.json();
-      if (data.file_id) {
-        results.push({
+    const results = await Promise.allSettled(
+      files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(
+          `/api/workspace/files/upload?session_id=${encodeURIComponent(sid)}`,
+          { method: "POST", body: formData },
+        );
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("File upload failed:", err);
+          toast({
+            title: "File upload failed",
+            description: file.name,
+            variant: "destructive",
+          });
+          throw new Error(err);
+        }
+        const data = await res.json();
+        if (!data.file_id) throw new Error("No file_id returned");
+        return {
           file_id: data.file_id,
           name: data.name || file.name,
           mime_type: data.mime_type || "application/octet-stream",
-        });
-      }
-    }
-    return results;
+        } as UploadedFile;
+      }),
+    );
+    return results
+      .filter(
+        (r): r is PromiseFulfilledResult<UploadedFile> =>
+          r.status === "fulfilled",
+      )
+      .map((r) => r.value);
   }
 
   function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
@@ -407,6 +412,31 @@ export function useCopilotPage() {
   async function onSend(message: string, files?: File[]) {
     const trimmed = message.trim();
     if (!trimmed && (!files || files.length === 0)) return;
+
+    // Client-side file limits
+    if (files && files.length > 0) {
+      const MAX_FILES = 10;
+      const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+
+      if (files.length > MAX_FILES) {
+        toast({
+          title: "Too many files",
+          description: `You can attach up to ${MAX_FILES} files at once.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+      if (oversized.length > 0) {
+        toast({
+          title: "File too large",
+          description: `${oversized[0].name} exceeds the 100 MB limit.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
 
     if (sessionId) {
       if (files && files.length > 0) {
