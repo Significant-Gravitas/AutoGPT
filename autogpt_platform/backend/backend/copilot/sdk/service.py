@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -74,26 +75,31 @@ def _setup_langfuse_otel() -> None:
     if not _is_langfuse_configured():
         return
 
-    from backend.util.settings import Settings
+    try:
+        from backend.util.settings import Settings
 
-    settings = Settings()
-    pk = settings.secrets.langfuse_public_key
-    sk = settings.secrets.langfuse_secret_key
-    host = settings.secrets.langfuse_host or "https://cloud.langfuse.com"
+        settings = Settings()
+        pk = settings.secrets.langfuse_public_key
+        sk = settings.secrets.langfuse_secret_key
+        host = settings.secrets.langfuse_host
 
-    # OTEL exporter config — these are only set if not already present,
-    # so explicit env-var overrides always win.
-    creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-    os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
-    os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
-    os.environ.setdefault("LANGSMITH_TRACING", "true")
-    os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
-    os.environ.setdefault("OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}")
+        # OTEL exporter config — these are only set if not already present,
+        # so explicit env-var overrides always win.
+        creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
+        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
+        os.environ.setdefault("LANGSMITH_TRACING", "true")
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
+        os.environ.setdefault(
+            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
+        )
 
-    from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+        from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 
-    configure_claude_agent_sdk(tags=["sdk"])
-    logger.info("OTEL tracing configured for Claude Agent SDK → %s", host)
+        configure_claude_agent_sdk(tags=["sdk"])
+        logger.info("OTEL tracing configured for Claude Agent SDK → %s", host)
+    except Exception:
+        logger.debug("OTEL setup skipped — failed to configure", exc_info=True)
 
 
 _setup_langfuse_otel()
@@ -1119,7 +1125,10 @@ async def stream_chat_completion_sdk(
     finally:
         # --- Close OTEL context ---
         if _otel_ctx is not None:
-            _otel_ctx.__exit__(None, None, None)
+            try:
+                _otel_ctx.__exit__(*sys.exc_info())
+            except Exception:
+                logger.debug("OTEL context teardown failed", exc_info=True)
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

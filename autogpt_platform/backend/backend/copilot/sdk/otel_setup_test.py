@@ -115,38 +115,22 @@ class TestSetupLangfuseOtel:
                 elif "OTEL_EXPORTER_OTLP_ENDPOINT" in os.environ:
                     del os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
 
-    def test_default_langfuse_host_when_empty(self):
-        """Falls back to cloud.langfuse.com when langfuse_host is empty."""
-        mock_settings = MagicMock()
-        mock_settings.secrets.langfuse_public_key = "pk-test"
-        mock_settings.secrets.langfuse_secret_key = "sk-test"
-        mock_settings.secrets.langfuse_host = ""
-
+    def test_graceful_failure_on_exception(self):
+        """Setup should not raise even if internal code fails."""
         with (
             patch(
                 "backend.copilot.sdk.service._is_langfuse_configured",
                 return_value=True,
             ),
-            patch("backend.util.settings.Settings", return_value=mock_settings),
             patch(
-                "langsmith.integrations.claude_agent_sdk.configure_claude_agent_sdk",
-                return_value=True,
+                "backend.util.settings.Settings",
+                side_effect=RuntimeError("settings unavailable"),
             ),
         ):
             from backend.copilot.sdk.service import _setup_langfuse_otel
 
-            saved = os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
-            try:
-                _setup_langfuse_otel()
-                assert (
-                    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
-                    == "https://cloud.langfuse.com/api/public/otel"
-                )
-            finally:
-                if saved is not None:
-                    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = saved
-                elif "OTEL_EXPORTER_OTLP_ENDPOINT" in os.environ:
-                    del os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
+            # Should not raise — just logs and returns
+            _setup_langfuse_otel()
 
 
 class TestPropagateAttributesImport:
