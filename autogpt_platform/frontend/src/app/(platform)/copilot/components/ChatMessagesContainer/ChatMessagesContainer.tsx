@@ -10,6 +10,7 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useState } from "react";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
@@ -27,8 +28,55 @@ import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
-// Workspace media support
+// Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
+
+// Special message prefixes for text-based markers (set by backend)
+const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
+const COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]";
+
+type MarkerType = "error" | "system" | null;
+
+/**
+ * Parse special markers from message content (error, system).
+ *
+ * Detects markers added by the backend for special rendering:
+ * - `[COPILOT_ERROR] message` → ErrorCard
+ * - `[COPILOT_SYSTEM] message` → System info message
+ *
+ * Returns marker type, marker text, and cleaned text.
+ */
+function parseSpecialMarkers(text: string): {
+  markerType: MarkerType;
+  markerText: string;
+  cleanText: string;
+} {
+  // Check for error marker
+  const errorMatch = text.match(
+    new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
+  );
+  if (errorMatch) {
+    return {
+      markerType: "error",
+      markerText: errorMatch[1].trim(),
+      cleanText: text.replace(errorMatch[0], "").trim(),
+    };
+  }
+
+  // Check for system marker
+  const systemMatch = text.match(
+    new RegExp(`\\${COPILOT_SYSTEM_PREFIX}\\s*(.+?)$`, "s"),
+  );
+  if (systemMatch) {
+    return {
+      markerType: "system",
+      markerText: systemMatch[1].trim(),
+      cleanText: text.replace(systemMatch[0], "").trim(),
+    };
+  }
+
+  return { markerType: null, markerText: "", cleanText: text };
+}
 
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
@@ -56,11 +104,15 @@ function resolveWorkspaceUrls(text: string): string {
   // These are blocked by Streamdown's rehype-harden sanitizer because
   // "workspace://" is not in the allowed URL-scheme whitelist, which causes
   // "[blocked]" to appear next to the link text.
+  // Use an absolute URL so Streamdown's "Copy link" button copies the full
+  // URL (including host) rather than just the path.
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
       const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-      const url = `/api/proxy${apiPath}`;
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const url = `${origin}/api/proxy${apiPath}`;
       return `[${linkText || "Download file"}](${url})`;
     },
   );
@@ -147,24 +199,42 @@ export const ChatMessagesContainer = ({
 }: ChatMessagesContainerProps) => {
   const [thinkingPhrase, setThinkingPhrase] = useState(getRandomPhrase);
 
-  useEffect(() => {
-    if (status === "submitted") {
-      setThinkingPhrase(getRandomPhrase());
-    }
-  }, [status]);
-
   const lastMessage = messages[messages.length - 1];
-  const lastAssistantHasVisibleContent =
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.some(
-      (p) =>
-        (p.type === "text" && p.text.trim().length > 0) ||
-        p.type.startsWith("tool-"),
-    );
+
+  // Determine if something is visibly "in-flight" in the last assistant message:
+  // - Text is actively streaming (last part is non-empty text)
+  // - A tool call is pending (state is input-streaming or input-available)
+  const hasInflight = (() => {
+    if (lastMessage?.role !== "assistant") return false;
+    const parts = lastMessage.parts;
+    if (parts.length === 0) return false;
+
+    const lastPart = parts[parts.length - 1];
+
+    // Text is actively being written
+    if (lastPart.type === "text" && lastPart.text.trim().length > 0)
+      return true;
+
+    // A tool call is still pending (no output yet)
+    if (
+      lastPart.type.startsWith("tool-") &&
+      "state" in lastPart &&
+      (lastPart.state === "input-streaming" ||
+        lastPart.state === "input-available")
+    )
+      return true;
+
+    return false;
+  })();
 
   const showThinking =
-    status === "submitted" ||
-    (status === "streaming" && !lastAssistantHasVisibleContent);
+    status === "submitted" || (status === "streaming" && !hasInflight);
+
+  useEffect(() => {
+    if (showThinking) {
+      setThinkingPhrase(getRandomPhrase());
+    }
+  }, [showThinking]);
 
   return (
     <Conversation className="min-h-0 flex-1">
@@ -182,11 +252,6 @@ export const ChatMessagesContainer = ({
           const isLastAssistant =
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
-          const messageHasVisibleContent = message.parts.some(
-            (p) =>
-              (p.type === "text" && p.text.trim().length > 0) ||
-              p.type.startsWith("tool-"),
-          );
 
           return (
             <Message from={message.role} key={message.id}>
@@ -199,15 +264,41 @@ export const ChatMessagesContainer = ({
               >
                 {message.parts.map((part, i) => {
                   switch (part.type) {
-                    case "text":
+                    case "text": {
+                      // Check for special markers (error, system)
+                      const { markerType, markerText, cleanText } =
+                        parseSpecialMarkers(part.text);
+
+                      if (markerType === "error") {
+                        return (
+                          <ErrorCard
+                            key={`${message.id}-${i}`}
+                            responseError={{ message: markerText }}
+                            context="execution"
+                          />
+                        );
+                      }
+
+                      if (markerType === "system") {
+                        return (
+                          <div
+                            key={`${message.id}-${i}`}
+                            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+                          >
+                            {markerText}
+                          </div>
+                        );
+                      }
+
                       return (
                         <MessageResponse
                           key={`${message.id}-${i}`}
                           components={STREAMDOWN_COMPONENTS}
                         >
-                          {resolveWorkspaceUrls(part.text)}
+                          {resolveWorkspaceUrls(cleanText)}
                         </MessageResponse>
                       );
+                    }
                     case "tool-find_block":
                       return (
                         <FindBlocksTool
@@ -295,13 +386,11 @@ export const ChatMessagesContainer = ({
                       return null;
                   }
                 })}
-                {isLastAssistant &&
-                  !messageHasVisibleContent &&
-                  showThinking && (
-                    <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
-                      {thinkingPhrase}
-                    </span>
-                  )}
+                {isLastAssistant && showThinking && (
+                  <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
+                    {thinkingPhrase}
+                  </span>
+                )}
               </MessageContent>
             </Message>
           );
