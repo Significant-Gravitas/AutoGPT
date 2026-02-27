@@ -1,17 +1,23 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
 
+from langfuse import propagate_attributes
+from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
+from backend.util.settings import Settings
 
 from ..config import ChatConfig
 from ..model import (
@@ -31,7 +37,11 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from ..service import _build_system_prompt, _generate_session_title
+from ..service import (
+    _build_system_prompt,
+    _generate_session_title,
+    _is_langfuse_configured,
+)
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -54,6 +64,55 @@ from .transcript import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def _setup_langfuse_otel() -> None:
+    """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
+
+    This uses LangSmith's built-in Claude Agent SDK integration to monkey-patch
+    ``ClaudeSDKClient``, capturing every tool call and model turn as OTEL spans.
+    Spans are exported via OTLP to Langfuse (or any OTEL-compatible backend).
+
+    To route traces elsewhere, override ``OTEL_EXPORTER_OTLP_ENDPOINT`` and
+    ``OTEL_EXPORTER_OTLP_HEADERS`` environment variables — no code changes needed.
+    """
+    if not _is_langfuse_configured():
+        return
+
+    try:
+        settings = Settings()
+        pk = settings.secrets.langfuse_public_key
+        sk = settings.secrets.langfuse_secret_key
+        host = settings.secrets.langfuse_host
+
+        # OTEL exporter config — these are only set if not already present,
+        # so explicit env-var overrides always win.
+        creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
+        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
+        os.environ.setdefault("LANGSMITH_TRACING", "true")
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
+        os.environ.setdefault(
+            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
+        )
+
+        # Set the Langfuse environment via OTEL resource attributes so the
+        # Langfuse server maps it to the first-class environment field.
+        tracing_env = settings.secrets.langfuse_tracing_environment
+        os.environ.setdefault(
+            "OTEL_RESOURCE_ATTRIBUTES",
+            f"langfuse.environment={tracing_env}",
+        )
+
+        configure_claude_agent_sdk(tags=["sdk"])
+        logger.info(
+            "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
+        )
+    except Exception:
+        logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
+
+
+_setup_langfuse_otel()
 
 
 # Set to hold background tasks to prevent garbage collection
@@ -515,6 +574,9 @@ async def stream_chat_completion_sdk(
         )
         return
 
+    # OTEL context manager — initialized inside the try and cleaned up in finally.
+    _otel_ctx: Any = None
+
     # Make sure there is no more code between the lock acquitition and try-block.
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
@@ -633,6 +695,19 @@ async def stream_chat_completion_sdk(
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
 
+            # Propagate user_id/session_id as OTEL context attributes so the
+            # langsmith tracing integration attaches them to every span.  This
+            # is what Langfuse (or any OTEL backend) maps to its native
+            # user/session fields.
+            _otel_ctx = propagate_attributes(
+                user_id=user_id,
+                session_id=session_id,
+                trace_name="copilot-sdk",
+                tags=["sdk"],
+                metadata={"resume": str(use_resume)},
+            )
+            _otel_ctx.__enter__()
+
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
                 if not current_message and session.messages:
@@ -676,7 +751,7 @@ async def stream_chat_completion_sdk(
                 # Instead, wrap __anext__() in a Task and use asyncio.wait()
                 # with a timeout.  On timeout we emit a heartbeat but keep the
                 # Task alive so it can deliver the next message.
-                msg_iter = client.receive_messages().__aiter__()
+                msg_iter = client.receive_response().__aiter__()
                 pending_task: asyncio.Task[Any] | None = None
                 try:
                     while not stream_completed:
@@ -710,7 +785,7 @@ async def stream_chat_completion_sdk(
                             break
                         except Exception as stream_err:
                             # SDK sends {"type": "error"} which raises
-                            # Exception in receive_messages() — capture it
+                            # Exception in receive_response() — capture it
                             # so the session can still be saved and the
                             # frontend gets a clean finish.
                             logger.error(
@@ -1060,6 +1135,13 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
+        # --- Close OTEL context ---
+        if _otel_ctx is not None:
+            try:
+                _otel_ctx.__exit__(*sys.exc_info())
+            except Exception:
+                logger.warning("OTEL context teardown failed", exc_info=True)
+
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).
