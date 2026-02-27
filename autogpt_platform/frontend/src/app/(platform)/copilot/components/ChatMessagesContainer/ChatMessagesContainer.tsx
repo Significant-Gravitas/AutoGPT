@@ -400,7 +400,12 @@ export const ChatMessagesContainer = ({
                   </span>
                 )}
               </MessageContent>
-              {fileParts.length > 0 && <MessageAttachments files={fileParts} />}
+              {fileParts.length > 0 && (
+                <MessageAttachments
+                  files={fileParts}
+                  isUser={message.role === "user"}
+                />
+              )}
             </Message>
           );
         })}
