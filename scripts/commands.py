@@ -14,6 +14,7 @@ from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import browser_agent
+import learning
 
 cfg = Config()
 
@@ -133,6 +134,10 @@ def execute_command(command_name, arguments):
                 arguments.get("amount", "page"))
         elif command_name == "browser_get_text":
             return browser_agent.browser_get_text(arguments["selector"])
+        elif command_name == "learn":
+            return learning.learn(arguments["category"], arguments["detail"])
+        elif command_name == "recall_learnings":
+            return learning.recall_learnings()
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

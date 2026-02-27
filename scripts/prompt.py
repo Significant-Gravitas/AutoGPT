@@ -1,4 +1,5 @@
 from promptgenerator import PromptGenerator
+from learning import get_profile_summary
 
 
 def get_prompt():
@@ -17,6 +18,7 @@ def get_prompt():
     prompt_generator.add_constraint("If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.")
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint('Exclusively use the commands listed in double quotes e.g. "command name"')
+    prompt_generator.add_constraint('Every time you learn something about how the user works, what they prefer, corrections they make, or patterns you notice — immediately use the "learn" command to record it. Do not ask. Just write it down. Get smarter every session.')
 
     # Define the command list
     commands = [
@@ -46,6 +48,8 @@ def get_prompt():
         ("Browser Fill Form Field", "browser_fill", {"selector": "<css_selector_or_text_locator>", "value": "<value>"}),
         ("Browser Scroll Page", "browser_scroll", {"direction": "<up_or_down>", "amount": "<page_or_pixels>"}),
         ("Browser Get Element Text", "browser_get_text", {"selector": "<css_selector_or_text_locator>"}),
+        ("Learn About User (auto-record insight)", "learn", {"category": "<preferences|workflows|corrections|facts>", "detail": "<concise_insight>"}),
+        ("Recall All Learnings About User", "recall_learnings", {}),
         ("Do Nothing", "do_nothing", {}),
     ]
 
@@ -59,6 +63,7 @@ def get_prompt():
     prompt_generator.add_resource("GPT-3.5 powered Agents for delegation of simple tasks.")
     prompt_generator.add_resource("File output.")
     prompt_generator.add_resource("Headless browser automation for interacting with JavaScript-rendered web pages, filling forms, clicking buttons, and taking screenshots.")
+    prompt_generator.add_resource("Persistent user profile that remembers preferences, workflows, corrections, and facts across sessions.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation("Continuously review and analyze your actions to ensure you are performing to the best of your abilities.")
@@ -68,5 +73,11 @@ def get_prompt():
 
     # Generate the prompt string
     prompt_string = prompt_generator.generate_prompt_string()
+
+    # Inject any previously learned user insights so the agent
+    # starts each session already aware of what it knows
+    profile_summary = get_profile_summary()
+    if profile_summary:
+        prompt_string += f"\n\n{profile_summary}"
 
     return prompt_string
