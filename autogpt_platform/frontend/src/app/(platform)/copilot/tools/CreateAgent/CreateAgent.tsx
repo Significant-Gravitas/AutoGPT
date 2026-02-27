@@ -17,6 +17,10 @@ import { ClarificationQuestionsCard } from "./components/ClarificationQuestionsC
 import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { SuggestedGoalCard } from "./components/SuggestedGoalCard";
 import {
+  buildClarificationAnswersMessage,
+  normalizeClarifyingQuestions,
+} from "../clarifying-questions";
+import {
   AccordionIcon,
   formatMaybeJson,
   getAnimationText,
@@ -28,7 +32,6 @@ import {
   isSuggestedGoalOutput,
   ToolIcon,
   truncateText,
-  normalizeClarifyingQuestions,
   type CreateAgentToolOutput,
 } from "./helpers";
 
@@ -110,16 +113,7 @@ export function CreateAgentTool({ part }: Props) {
         ? (output.questions ?? [])
         : [];
 
-    const contextMessage = questions
-      .map((q) => {
-        const answer = answers[q.keyword] || "";
-        return `> ${q.question}\n\n${answer}`;
-      })
-      .join("\n\n");
-
-    onSend(
-      `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with creating the agent.`,
-    );
+    onSend(buildClarificationAnswersMessage(answers, questions, "create"));
   }
 
   return (
