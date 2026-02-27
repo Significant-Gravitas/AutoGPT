@@ -190,7 +190,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
-        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=10.0)
+        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=10)
     except Exception as exc:
         return _mcp_error(f"Glob failed: {exc}")
 
@@ -220,7 +220,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
     try:
-        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=15.0)
+        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=15)
     except Exception as exc:
         return _mcp_error(f"Grep failed: {exc}")
 

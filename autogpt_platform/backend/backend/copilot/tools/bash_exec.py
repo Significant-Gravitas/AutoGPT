@@ -143,7 +143,7 @@ class BashExecTool(BaseTool):
             result = await sandbox.commands.run(
                 f"bash -c {_shell_quote(command)}",
                 cwd=_E2B_WORKDIR,
-                timeout=float(timeout),
+                timeout=timeout,
                 envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
             )
             return BashExecResponse(

@@ -703,11 +703,13 @@ async def stream_chat_completion_sdk(
                         f"({len(session.messages)} messages in session)"
                     )
 
+            allowed = get_copilot_tool_names(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
-                "allowed_tools": get_copilot_tool_names(use_e2b=use_e2b),
-                "disallowed_tools": get_sdk_disallowed_tools(use_e2b=use_e2b),
+                "allowed_tools": allowed,
+                "disallowed_tools": disallowed,
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,

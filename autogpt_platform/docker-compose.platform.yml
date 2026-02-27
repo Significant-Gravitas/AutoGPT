@@ -162,7 +162,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: server
-    command: ["python", "-m", "backend.copilot.executor"]
+    command: ["python", "-u", "-m", "backend.copilot.executor"]
     develop:
       watch:
         - path: ./
@@ -182,6 +182,7 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      PYTHONUNBUFFERED: "1"
     ports:
       - "8008:8008"
     networks:
