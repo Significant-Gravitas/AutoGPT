@@ -44,24 +44,22 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Parse special markers from message content (error, system).
- *
- * Detects markers added by the backend for special rendering:
- * - `[__COPILOT_ERROR_f7a1__] message` → ErrorCard
- * - `[__COPILOT_SYSTEM_e3b0__] message` → System info message
- *
- * Returns marker type, marker text, and cleaned text.
- */
+// Pre-compiled marker regexes (avoids re-creating on every call / render)
+const ERROR_MARKER_RE = new RegExp(
+  `${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`,
+  "s",
+);
+const SYSTEM_MARKER_RE = new RegExp(
+  `${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`,
+  "s",
+);
+
 function parseSpecialMarkers(text: string): {
   markerType: MarkerType;
   markerText: string;
   cleanText: string;
 } {
-  // Check for error marker
-  const errorMatch = text.match(
-    new RegExp(`${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`, "s"),
-  );
+  const errorMatch = text.match(ERROR_MARKER_RE);
   if (errorMatch) {
     return {
       markerType: "error",
@@ -70,10 +68,7 @@ function parseSpecialMarkers(text: string): {
     };
   }
 
-  // Check for system marker
-  const systemMatch = text.match(
-    new RegExp(`${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`, "s"),
-  );
+  const systemMatch = text.match(SYSTEM_MARKER_RE);
   if (systemMatch) {
     return {
       markerType: "system",

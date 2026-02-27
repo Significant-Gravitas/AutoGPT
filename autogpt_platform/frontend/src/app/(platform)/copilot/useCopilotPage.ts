@@ -18,15 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
-const RECONNECT_MAX_DELAY_MS = 30_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
-
-/** Resolve the backend SSE base URL (no /api suffix). */
-function getBackendBaseUrl(): string {
-  // getAGPTServerApiUrl() returns e.g. "http://localhost:8006/api"
-  // We need "http://localhost:8006" for constructing the full SSE path
-  return environment.getAGPTServerApiUrl().replace(/\/api\/?$/, "");
-}
 
 /** Fetch a fresh JWT for direct backend requests (same pattern as WebSocket). */
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -154,7 +146,7 @@ export function useCopilotPage() {
     () =>
       sessionId
         ? new DefaultChatTransport({
-            api: `${getBackendBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+            api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
             prepareSendMessagesRequest: async ({ messages }) => {
               const last = messages[messages.length - 1];
               return {
@@ -170,7 +162,7 @@ export function useCopilotPage() {
               };
             },
             prepareReconnectToStreamRequest: async () => ({
-              api: `${getBackendBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+              api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
               headers: await getAuthHeaders(),
             }),
           })
@@ -178,17 +170,16 @@ export function useCopilotPage() {
     [sessionId],
   );
 
-  // Reconnect state — use a ref for the attempt counter so the closure
-  // inside handleReconnect always reads the latest value (avoids stale
-  // closure when multiple reconnect cycles fire in quick succession).
+  // Reconnect state — use refs for values read inside callbacks to avoid
+  // stale closures when multiple reconnect cycles fire in quick succession.
   const reconnectAttemptsRef = useRef(0);
+  const isReconnectScheduledRef = useRef(false);
   const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hasShownDisconnectToast = useRef(false);
 
-  // Consolidated reconnect logic
   function handleReconnect(sid: string) {
-    if (isReconnectScheduled || !sid) return;
+    if (isReconnectScheduledRef.current || !sid) return;
 
     const nextAttempt = reconnectAttemptsRef.current + 1;
     if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
@@ -200,6 +191,7 @@ export function useCopilotPage() {
       return;
     }
 
+    isReconnectScheduledRef.current = true;
     setIsReconnectScheduled(true);
     reconnectAttemptsRef.current = nextAttempt;
 
@@ -211,12 +203,10 @@ export function useCopilotPage() {
       });
     }
 
-    const delay = Math.min(
-      RECONNECT_BASE_DELAY_MS * 2 ** (nextAttempt - 1),
-      RECONNECT_MAX_DELAY_MS,
-    );
+    const delay = RECONNECT_BASE_DELAY_MS * 2 ** (nextAttempt - 1);
 
     reconnectTimerRef.current = setTimeout(() => {
+      isReconnectScheduledRef.current = false;
       setIsReconnectScheduled(false);
       resumeStream();
     }, delay);
@@ -332,10 +322,11 @@ export function useCopilotPage() {
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
     reconnectAttemptsRef.current = 0;
+    isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
-    prevStatusRef.current = status; // Reset to avoid cross-session state bleeding
-  }, [sessionId, status]);
+    hasResumedRef.current.clear();
+  }, [sessionId]);
 
   // Invalidate session cache when stream completes
   const prevStatusRef = useRef(status);
