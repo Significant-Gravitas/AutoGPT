@@ -1,3 +1,5 @@
+import type { MCPToolOutputResponse } from "@/app/api/__generated__/models/mCPToolOutputResponse";
+import type { MCPToolsDiscoveredResponse } from "@/app/api/__generated__/models/mCPToolsDiscoveredResponse";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
@@ -20,32 +22,10 @@ const RUN_MCP_TOOL_OUTPUT_TYPES = new Set<string>([
 ]);
 
 // ------------------------------------------------------------------ //
-//  Inline types (avoids waiting for OpenAPI codegen)
+//  Re-export generated types for use by RunMCPTool components
 // ------------------------------------------------------------------ //
 
-export interface MCPToolInfo {
-  name: string;
-  description: string;
-  input_schema: Record<string, unknown>;
-}
-
-export interface MCPToolsDiscoveredOutput {
-  type: typeof MCP_TOOLS_DISCOVERED;
-  message: string;
-  server_url: string;
-  tools: MCPToolInfo[];
-  session_id?: string | null;
-}
-
-export interface MCPToolOutputResult {
-  type: typeof MCP_TOOL_OUTPUT;
-  message: string;
-  server_url: string;
-  tool_name: string;
-  result: unknown;
-  success: boolean;
-  session_id?: string | null;
-}
+export type { MCPToolsDiscoveredResponse, MCPToolOutputResponse };
 
 export interface MCPErrorOutput {
   type: typeof ERROR;
@@ -55,8 +35,8 @@ export interface MCPErrorOutput {
 }
 
 export type RunMCPToolOutput =
-  | MCPToolsDiscoveredOutput
-  | MCPToolOutputResult
+  | MCPToolsDiscoveredResponse
+  | MCPToolOutputResponse
   | SetupRequirementsResponse
   | MCPErrorOutput;
 
@@ -66,13 +46,13 @@ export type RunMCPToolOutput =
 
 export function isDiscoveryOutput(
   output: RunMCPToolOutput,
-): output is MCPToolsDiscoveredOutput {
+): output is MCPToolsDiscoveredResponse {
   return output.type === MCP_TOOLS_DISCOVERED;
 }
 
 export function isMCPToolOutput(
   output: RunMCPToolOutput,
-): output is MCPToolOutputResult {
+): output is MCPToolOutputResponse {
   return output.type === MCP_TOOL_OUTPUT;
 }
 
@@ -116,8 +96,8 @@ function parseOutput(raw: unknown): RunMCPToolOutput | null {
     // Fallback structural checks
     if ("setup_info" in (raw as object))
       return raw as SetupRequirementsResponse;
-    if ("tool_name" in (raw as object)) return raw as MCPToolOutputResult;
-    if ("tools" in (raw as object)) return raw as MCPToolsDiscoveredOutput;
+    if ("tool_name" in (raw as object)) return raw as MCPToolOutputResponse;
+    if ("tools" in (raw as object)) return raw as MCPToolsDiscoveredResponse;
   }
   return null;
 }
