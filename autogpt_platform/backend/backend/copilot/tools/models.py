@@ -487,7 +487,7 @@ class MCPToolInfo(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any] = Field(default_factory=dict)
+    input_schema: dict[str, Any]
 
 
 class MCPToolsDiscoveredResponse(ToolResponseBase):

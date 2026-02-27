@@ -9991,7 +9991,7 @@
           }
         },
         "type": "object",
-        "required": ["name", "description"],
+        "required": ["name", "description", "input_schema"],
         "title": "MCPToolInfo",
         "description": "Information about a single MCP tool discovered from a server."
       },
