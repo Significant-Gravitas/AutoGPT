@@ -362,49 +362,48 @@ _READ_TOOL_SCHEMA = {
 
 
 # Create the MCP server configuration
-def create_copilot_mcp_server():
+def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    This can be passed to ClaudeAgentOptions.mcp_servers.
-
-    Note: The actual SDK MCP server creation depends on the claude-agent-sdk
-    package being available. This function returns the configuration that
-    can be used with the SDK.
+    When *use_e2b* is True, five additional MCP file tools are registered
+    that route directly to the E2B sandbox filesystem, and the caller should
+    disable the corresponding SDK built-in tools via
+    :func:`get_sdk_disallowed_tools`.
     """
-    try:
-        from claude_agent_sdk import create_sdk_mcp_server, tool
+    from claude_agent_sdk import create_sdk_mcp_server, tool
 
-        # Create decorated tool functions
-        sdk_tools = []
+    sdk_tools = []
 
-        for tool_name, base_tool in TOOL_REGISTRY.items():
-            handler = create_tool_handler(base_tool)
-            decorated = tool(
-                tool_name,
-                base_tool.description,
-                _build_input_schema(base_tool),
-            )(handler)
+    for tool_name, base_tool in TOOL_REGISTRY.items():
+        handler = create_tool_handler(base_tool)
+        decorated = tool(
+            tool_name,
+            base_tool.description,
+            _build_input_schema(base_tool),
+        )(handler)
+        sdk_tools.append(decorated)
+
+    # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
+    if use_e2b:
+        from .e2b_file_tools import E2B_FILE_TOOLS
+
+        for name, desc, schema, handler in E2B_FILE_TOOLS:
+            decorated = tool(name, desc, schema)(handler)
             sdk_tools.append(decorated)
 
-        # Add the Read tool so the SDK can read back oversized tool results
-        read_tool = tool(
-            _READ_TOOL_NAME,
-            _READ_TOOL_DESCRIPTION,
-            _READ_TOOL_SCHEMA,
-        )(_read_file_handler)
-        sdk_tools.append(read_tool)
+    # Read tool for SDK-truncated tool results (always needed).
+    read_tool = tool(
+        _READ_TOOL_NAME,
+        _READ_TOOL_DESCRIPTION,
+        _READ_TOOL_SCHEMA,
+    )(_read_file_handler)
+    sdk_tools.append(read_tool)
 
-        server = create_sdk_mcp_server(
-            name=MCP_SERVER_NAME,
-            version="1.0.0",
-            tools=sdk_tools,
-        )
-
-        return server
-
-    except ImportError:
-        # Let ImportError propagate so service.py handles the fallback
-        raise
+    return create_sdk_mcp_server(
+        name=MCP_SERVER_NAME,
+        version="1.0.0",
+        tools=sdk_tools,
+    )
 
 
 # SDK built-in tools allowed within the workspace directory.
@@ -414,16 +413,9 @@ def create_copilot_mcp_server():
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-_SDK_BUILTIN_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Task",
-    "WebSearch",
-    "TodoWrite",
-]
+_SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
+_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
@@ -470,11 +462,39 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
-# List of tool names for allowed_tools configuration
-# Include MCP tools, the MCP Read tool for oversized results,
-# and SDK built-in file tools for workspace operations.
+# Static tool name list for the non-E2B case (backward compatibility).
 COPILOT_TOOL_NAMES = [
     *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
     *_SDK_BUILTIN_TOOLS,
 ]
+
+
+def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
+    """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
+
+    When *use_e2b* is True the SDK built-in file tools are replaced by MCP
+    equivalents that route to the E2B sandbox.
+    """
+    if not use_e2b:
+        return list(COPILOT_TOOL_NAMES)
+
+    from .e2b_file_tools import E2B_FILE_TOOL_NAMES
+
+    return [
+        *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+        f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
+        *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
+        *_SDK_BUILTIN_ALWAYS,
+    ]
+
+
+def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
+    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`.
+
+    When *use_e2b* is True the SDK built-in file tools are also disabled
+    because MCP equivalents provide direct sandbox access.
+    """
+    if not use_e2b:
+        return list(SDK_DISALLOWED_TOOLS)
+    return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]

@@ -37,9 +37,9 @@ from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
-    COPILOT_TOOL_NAMES,
-    SDK_DISALLOWED_TOOLS,
     create_copilot_mcp_server,
+    get_copilot_tool_names,
+    get_sdk_disallowed_tools,
     set_execution_context,
     wait_for_stash,
 )
@@ -87,9 +87,47 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
-def _build_sdk_tool_supplement(cwd: str) -> str:
-    """Build the SDK tool supplement with the actual working directory injected."""
-    return f"""
+def _build_sdk_tool_supplement(cwd: str, *, use_e2b: bool = False) -> str:
+    """Build the SDK tool supplement with the actual working directory injected.
+
+    When *use_e2b* is True the supplement describes the cloud sandbox
+    filesystem shared by all file tools and ``bash_exec``.
+    """
+    if use_e2b:
+        return _E2B_TOOL_SUPPLEMENT
+    return _LOCAL_TOOL_SUPPLEMENT.format(cwd=cwd)
+
+
+_SHARED_TOOL_NOTES = """\
+
+### Sharing files with the user
+After saving a file to the persistent workspace with `write_workspace_file`,
+share it with the user by embedding the `download_url` from the response in
+your message as a Markdown link or image:
+
+- **Any file** — shows as a clickable download link:
+  `[report.csv](workspace://file_id#text/csv)`
+- **Image** — renders inline in chat:
+  `![chart](workspace://file_id#image/png)`
+- **Video** — renders inline in chat with player controls:
+  `![recording](workspace://file_id#video/mp4)`
+
+The `download_url` field in the `write_workspace_file` response is already
+in the correct format — paste it directly after the `(` in the Markdown.
+
+### Long-running tools
+Long-running tools (create_agent, edit_agent, etc.) are handled
+asynchronously.  You will receive an immediate response; the actual result
+is delivered to the user via a background stream.
+
+### Sub-agent tasks
+- When using the Task tool, NEVER set `run_in_background` to true.
+  All tasks must run in the foreground.
+"""
+
+
+_LOCAL_TOOL_SUPPLEMENT = (
+    """
 
 ## Tool notes
 
@@ -131,31 +169,57 @@ When you create or modify important files (code, configs, outputs), you MUST:
 1. Save them using `write_workspace_file` so they persist
 2. At the start of a new turn, call `list_workspace_files` to see what files
    are available from previous turns
-
-### Sharing files with the user
-After saving a file to the persistent workspace with `write_workspace_file`,
-share it with the user by embedding the `download_url` from the response in
-your message as a Markdown link or image:
-
-- **Any file** — shows as a clickable download link:
-  `[report.csv](workspace://file_id#text/csv)`
-- **Image** — renders inline in chat:
-  `![chart](workspace://file_id#image/png)`
-- **Video** — renders inline in chat with player controls:
-  `![recording](workspace://file_id#video/mp4)`
-
-The `download_url` field in the `write_workspace_file` response is already
-in the correct format — paste it directly after the `(` in the Markdown.
-
-### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
-
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
 """
+    + _SHARED_TOOL_NOTES
+)
+
+
+_E2B_TOOL_SUPPLEMENT = (
+    """
+
+## Tool notes
+
+### Shell commands
+- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
+  for shell commands — it runs in a cloud sandbox with full internet access.
+
+### Working directory
+- Your working directory is: `/home/user` (cloud sandbox)
+- All file tools (`read_file`, `write_file`, `edit_file`, `glob`, `grep`)
+  AND `bash_exec` operate on the **same cloud sandbox filesystem**.
+- Files created by `bash_exec` are immediately visible to `read_file` and
+  vice-versa — they share one filesystem.
+- Use relative paths (resolved from `/home/user`) or absolute paths.
+
+### Two storage systems — CRITICAL to understand
+
+1. **Cloud sandbox** (`/home/user`):
+   - Shared by all file tools AND `bash_exec` — same filesystem
+   - Files **persist across turns** within the current session
+   - Full Linux environment with internet access
+   - Lost when the session expires (12 h inactivity)
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across sessions indefinitely**
+   - Use `write_workspace_file` to save important files permanently
+   - Use `read_workspace_file` to retrieve previously saved files
+   - Use `list_workspace_files` to see what files you've saved before
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from
+     all sessions
+
+### Moving files between sandbox and persistent storage
+- **Sandbox → Persistent**: Use `write_workspace_file` with `source_path`
+  to copy from the sandbox to permanent storage
+- **Persistent → Sandbox**: Use `read_workspace_file` with `save_to_path`
+  to download into the sandbox for processing
+
+### File persistence workflow
+Important files that must survive beyond this session should be saved with
+`write_workspace_file`.  Sandbox files persist across turns but are lost
+when the session expires.
+"""
+    + _SHARED_TOOL_NOTES
+)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -534,21 +598,11 @@ async def stream_chat_completion_sdk(
                 code="sdk_cwd_error",
             )
             return
-        system_prompt, _ = await _build_system_prompt(
-            user_id, has_conversation_history=has_history
-        )
-        system_prompt += _build_sdk_tool_supplement(sdk_cwd)
-
-        yield StreamStart(messageId=message_id, sessionId=session_id)
-
         # Set up E2B sandbox for persistent cloud execution when configured.
-        # bash_exec routes commands to sandbox.commands.run() on E2B.
-        # SDK file tools (Read/Write/Edit) operate on local sdk_cwd, which
-        # is synced with the sandbox's /home/user via E2B's HTTP files API:
-        #   turn start → sync_from_sandbox (download sandbox → local)
-        #   turn end   → sync_to_sandbox   (upload local → sandbox)
+        # When active, MCP file tools route directly to the sandbox filesystem
+        # so bash_exec and file tools share the same /home/user directory.
         if config.use_e2b_sandbox and config.e2b_api_key:
-            from ..tools.e2b_sandbox import get_or_create_sandbox, sync_from_sandbox
+            from ..tools.e2b_sandbox import get_or_create_sandbox
 
             try:
                 e2b_sandbox = await get_or_create_sandbox(
@@ -557,9 +611,6 @@ async def stream_chat_completion_sdk(
                     template=config.e2b_sandbox_template,
                     timeout=config.e2b_sandbox_timeout,
                 )
-                # Populate local workspace with files from the sandbox so the
-                # SDK file tools see the latest state from previous turns.
-                await sync_from_sandbox(e2b_sandbox, sdk_cwd)
             except Exception as e2b_err:
                 logger.error(
                     "[E2B] [%s] Setup failed: %s",
@@ -568,6 +619,15 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 e2b_sandbox = None
+
+        use_e2b = e2b_sandbox is not None
+
+        system_prompt, _ = await _build_system_prompt(
+            user_id, has_conversation_history=has_history
+        )
+        system_prompt += _build_sdk_tool_supplement(sdk_cwd, use_e2b=use_e2b)
+
+        yield StreamStart(messageId=message_id, sessionId=session_id)
 
         set_execution_context(user_id, session, sandbox=e2b_sandbox)
         try:
@@ -582,7 +642,7 @@ async def stream_chat_completion_sdk(
                     "or ANTHROPIC_API_KEY for direct Anthropic access."
                 )
 
-            mcp_server = create_copilot_mcp_server()
+            mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
             sdk_model = _resolve_sdk_model()
 
@@ -646,8 +706,8 @@ async def stream_chat_completion_sdk(
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
-                "allowed_tools": COPILOT_TOOL_NAMES,
-                "disallowed_tools": SDK_DISALLOWED_TOOLS,
+                "allowed_tools": get_copilot_tool_names(use_e2b=use_e2b),
+                "disallowed_tools": get_sdk_disallowed_tools(use_e2b=use_e2b),
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
@@ -1139,21 +1199,6 @@ async def stream_chat_completion_sdk(
             except Exception as upload_err:
                 logger.error(
                     f"[SDK] Transcript upload failed in finally: {upload_err}",
-                    exc_info=True,
-                )
-
-        # Upload any files written by SDK tools to the sandbox so they
-        # persist across turns and are visible to bash_exec next turn.
-        if e2b_sandbox is not None and sdk_cwd:
-            from ..tools.e2b_sandbox import sync_to_sandbox
-
-            try:
-                await sync_to_sandbox(e2b_sandbox, sdk_cwd)
-            except Exception as sync_err:
-                logger.error(
-                    "[E2B] [%s] sync_to_sandbox failed: %s",
-                    session_id[:12],
-                    sync_err,
                     exc_info=True,
                 )
 

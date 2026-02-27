@@ -20,7 +20,7 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 
-def _resolve_write_content(
+async def _resolve_write_content(
     content_text: str | None,
     content_b64: str | None,
     source_path: str | None,
@@ -30,6 +30,9 @@ def _resolve_write_content(
 
     Returns the raw bytes on success, or an ``ErrorResponse`` on validation
     failure (wrong number of sources, invalid path, file not found, etc.).
+
+    When an E2B sandbox is active, ``source_path`` reads from the sandbox
+    filesystem instead of the local ephemeral directory.
     """
     # Normalise empty strings to None so counting and dispatch stay in sync.
     if content_text is not None and content_text == "":
@@ -54,24 +57,7 @@ def _resolve_write_content(
         )
 
     if source_path is not None:
-        validated = _validate_ephemeral_path(
-            source_path, param_name="source_path", session_id=session_id
-        )
-        if isinstance(validated, ErrorResponse):
-            return validated
-        try:
-            with open(validated, "rb") as f:
-                return f.read()
-        except FileNotFoundError:
-            return ErrorResponse(
-                message=f"Source file not found: {source_path}",
-                session_id=session_id,
-            )
-        except Exception as e:
-            return ErrorResponse(
-                message=f"Failed to read source file: {e}",
-                session_id=session_id,
-            )
+        return await _read_source_path(source_path, session_id)
 
     if content_b64 is not None:
         try:
@@ -89,6 +75,47 @@ def _resolve_write_content(
 
     assert content_text is not None
     return content_text.encode("utf-8")
+
+
+async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
+    """Read *source_path* from E2B sandbox or local ephemeral directory."""
+    from backend.copilot.sdk.tool_adapter import get_current_sandbox
+
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        remote = (
+            source_path
+            if source_path.startswith("/home/user")
+            else os.path.join("/home/user", source_path)
+        )
+        try:
+            data = await sandbox.files.read(remote, format="bytes")
+            return bytes(data)
+        except Exception as exc:
+            return ErrorResponse(
+                message=f"Source file not found on sandbox: {source_path} ({exc})",
+                session_id=session_id,
+            )
+
+    # Local fallback: validate path stays within ephemeral directory.
+    validated = _validate_ephemeral_path(
+        source_path, param_name="source_path", session_id=session_id
+    )
+    if isinstance(validated, ErrorResponse):
+        return validated
+    try:
+        with open(validated, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ErrorResponse(
+            message=f"Source file not found: {source_path}",
+            session_id=session_id,
+        )
+    except Exception as e:
+        return ErrorResponse(
+            message=f"Failed to read source file: {e}",
+            session_id=session_id,
+        )
 
 
 def _validate_ephemeral_path(
@@ -429,8 +456,11 @@ class ReadWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path", session_id=session_id
             )
 
-        # Validate and resolve save_to_path (use sanitized real path).
-        if save_to_path:
+        # Validate and resolve save_to_path.
+        from backend.copilot.sdk.tool_adapter import get_current_sandbox
+
+        sandbox = get_current_sandbox()
+        if save_to_path and sandbox is None:
             validated_save = _validate_ephemeral_path(
                 save_to_path, param_name="save_to_path", session_id=session_id
             )
@@ -449,11 +479,21 @@ class ReadWorkspaceFileTool(BaseTool):
             cached_content: bytes | None = None
             if save_to_path:
                 cached_content = await manager.read_file_by_id(target_file_id)
-                dir_path = os.path.dirname(save_to_path)
-                if dir_path:
-                    os.makedirs(dir_path, exist_ok=True)
-                with open(save_to_path, "wb") as f:
-                    f.write(cached_content)
+                if sandbox is not None:
+                    # Write to E2B sandbox filesystem.
+                    remote = (
+                        save_to_path
+                        if save_to_path.startswith("/home/user")
+                        else os.path.join("/home/user", save_to_path)
+                    )
+                    await sandbox.files.write(remote, cached_content)
+                    save_to_path = remote
+                else:
+                    dir_path = os.path.dirname(save_to_path)
+                    if dir_path:
+                        os.makedirs(dir_path, exist_ok=True)
+                    with open(save_to_path, "wb") as f:
+                        f.write(cached_content)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
@@ -629,7 +669,7 @@ class WriteWorkspaceFileTool(BaseTool):
         content_text: str | None = kwargs.get("content")
         content_b64: str | None = kwargs.get("content_base64")
 
-        resolved = _resolve_write_content(
+        resolved = await _resolve_write_content(
             content_text,
             content_b64,
             source_path_arg,
