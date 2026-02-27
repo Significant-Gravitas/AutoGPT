@@ -36,4 +36,5 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Telegram bots, agent folders, and a rebuilt builder](changelog/february-11-february-26-2026.md)
   * [Voice input, persistent files, and a smarter AI](changelog/january-29-february-11-2026.md)
