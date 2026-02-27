@@ -102,67 +102,68 @@ class TestValidateEphemeralPath:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestResolveWriteContent:
-    def test_no_sources_returns_error(self):
+    async def test_no_sources_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content(None, None, None, "s1")
+        result = await _resolve_write_content(None, None, None, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_multiple_sources_returns_error(self):
+    async def test_multiple_sources_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content("text", "b64data", None, "s1")
+        result = await _resolve_write_content("text", "b64data", None, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_plain_text_content(self):
-        result = _resolve_write_content("hello world", None, None, "s1")
+    async def test_plain_text_content(self):
+        result = await _resolve_write_content("hello world", None, None, "s1")
         assert result == b"hello world"
 
-    def test_base64_content(self):
+    async def test_base64_content(self):
         raw = b"binary data"
         b64 = base64.b64encode(raw).decode()
-        result = _resolve_write_content(None, b64, None, "s1")
+        result = await _resolve_write_content(None, b64, None, "s1")
         assert result == raw
 
-    def test_invalid_base64_returns_error(self):
+    async def test_invalid_base64_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content(None, "not-valid-b64!!!", None, "s1")
+        result = await _resolve_write_content(None, "not-valid-b64!!!", None, "s1")
         assert isinstance(result, ErrorResponse)
         assert "base64" in result.message.lower()
 
-    def test_source_path(self, ephemeral_dir):
+    async def test_source_path(self, ephemeral_dir):
         target = ephemeral_dir / "input.txt"
         target.write_bytes(b"file content")
-        result = _resolve_write_content(None, None, str(target), "s1")
+        result = await _resolve_write_content(None, None, str(target), "s1")
         assert result == b"file content"
 
-    def test_source_path_not_found(self, ephemeral_dir):
+    async def test_source_path_not_found(self, ephemeral_dir):
         from backend.copilot.tools.models import ErrorResponse
 
         missing = str(ephemeral_dir / "nope.txt")
-        result = _resolve_write_content(None, None, missing, "s1")
+        result = await _resolve_write_content(None, None, missing, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_source_path_outside_ephemeral(self, ephemeral_dir, tmp_path):
+    async def test_source_path_outside_ephemeral(self, ephemeral_dir, tmp_path):
         from backend.copilot.tools.models import ErrorResponse
 
         outside = tmp_path / "outside.txt"
         outside.write_text("nope")
-        result = _resolve_write_content(None, None, str(outside), "s1")
+        result = await _resolve_write_content(None, None, str(outside), "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_empty_string_sources_treated_as_none(self):
+    async def test_empty_string_sources_treated_as_none(self):
         from backend.copilot.tools.models import ErrorResponse
 
         # All empty strings → same as no sources
-        result = _resolve_write_content("", "", "", "s1")
+        result = await _resolve_write_content("", "", "", "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_empty_string_source_path_with_text(self):
+    async def test_empty_string_source_path_with_text(self):
         # source_path="" should be normalised to None, so only content counts
-        result = _resolve_write_content("hello", "", "", "s1")
+        result = await _resolve_write_content("hello", "", "", "s1")
         assert result == b"hello"
 
 
