@@ -152,14 +152,14 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_url, e)
+            logger.warning("MCP HTTP error for %s: %s", _server_host(server_url), e)
             return ErrorResponse(
                 message=f"MCP server returned HTTP {e.status_code}: {e}",
                 session_id=session_id,
             )
 
         except MCPClientError as e:
-            logger.warning("MCP client error for %s: %s", server_url, e)
+            logger.warning("MCP client error for %s: %s", _server_host(server_url), e)
             return ErrorResponse(
                 message=str(e),
                 session_id=session_id,
@@ -167,7 +167,9 @@ class RunMCPToolTool(BaseTool):
 
         except Exception:
             logger.error(
-                "Unexpected error calling MCP server %s", server_url, exc_info=True
+                "Unexpected error calling MCP server %s",
+                _server_host(server_url),
+                exc_info=True,
             )
             return ErrorResponse(
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
