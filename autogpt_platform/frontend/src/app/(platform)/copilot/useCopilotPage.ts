@@ -177,6 +177,9 @@ export function useCopilotPage() {
   const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hasShownDisconnectToast = useRef(false);
+  // Set when the user explicitly clicks stop — prevents onError from
+  // triggering a reconnect cycle for the resulting AbortError.
+  const isUserStoppingRef = useRef(false);
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
@@ -258,7 +261,9 @@ export function useCopilotPage() {
         return;
       }
 
-      // Only reconnect on network errors (not HTTP errors)
+      // Only reconnect on network errors (not HTTP errors), and never
+      // reconnect when the user explicitly stopped the stream.
+      if (isUserStoppingRef.current) return;
       const isNetworkError =
         error.name === "TypeError" || error.name === "AbortError";
       if (isNetworkError) {
@@ -277,6 +282,7 @@ export function useCopilotPage() {
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
   // the cancel API to actually stop the executor and wait for confirmation.
   async function stop() {
+    isUserStoppingRef.current = true;
     sdkStop();
     setMessages((prev) => resolveInProgressTools(prev, "cancelled"));
 
@@ -325,6 +331,7 @@ export function useCopilotPage() {
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
+    isUserStoppingRef.current = false;
     hasResumedRef.current.clear();
   }, [sessionId]);
 
@@ -382,6 +389,8 @@ export function useCopilotPage() {
   async function onSend(message: string) {
     const trimmed = message.trim();
     if (!trimmed) return;
+
+    isUserStoppingRef.current = false;
 
     if (sessionId) {
       sendMessage({ text: trimmed });
@@ -452,7 +461,7 @@ export function useCopilotPage() {
     sessionId,
     messages,
     status,
-    error: isReconnecting ? undefined : error,
+    error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     stop,
     isReconnecting,
     isLoadingSession,

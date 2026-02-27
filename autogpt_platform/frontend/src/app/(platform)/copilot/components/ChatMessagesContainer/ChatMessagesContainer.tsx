@@ -272,6 +272,21 @@ export const ChatMessagesContainer = ({
                         parseSpecialMarkers(part.text);
 
                       if (markerType === "error") {
+                        const lowerMarker = markerText.toLowerCase();
+                        const isCancellation =
+                          lowerMarker.includes("cancel") ||
+                          lowerMarker.includes("abort") ||
+                          lowerMarker === "operation cancelled";
+                        if (isCancellation) {
+                          return (
+                            <div
+                              key={`${message.id}-${i}`}
+                              className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+                            >
+                              You stopped this chat
+                            </div>
+                          );
+                        }
                         return (
                           <ErrorCard
                             key={`${message.id}-${i}`}
