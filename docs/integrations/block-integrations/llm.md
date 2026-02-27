@@ -117,7 +117,11 @@ The block sends the entire conversation history to the chosen LLM, including sys
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Creating an interactive chatbot that can maintain context over multiple exchanges, such as a customer service assistant or a language learning companion.
+**Customer Support Chatbot:** Build an interactive support assistant that maintains conversation context across multiple exchanges to resolve user issues.
+
+**Language Learning Companion:** Create a conversational tutor that adapts responses based on the learner's proficiency level and previous interactions.
+
+**Interview Preparation Coach:** Simulate realistic interview conversations where the AI asks follow-up questions based on the candidate's prior answers.
 <!-- END MANUAL -->
 
 ---
@@ -274,7 +278,11 @@ The block formulates a prompt based on the given focus or source data, sends it 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Automatically generating a list of key points or action items from a long meeting transcript or summarizing the main topics discussed in a series of documents.
+**Meeting Notes Extraction:** Automatically generate a list of key action items and decisions from a long meeting transcript.
+
+**Document Topic Summarization:** Produce a structured list of main topics discussed across a series of related documents.
+
+**Content Outline Generation:** Create a list of section headings and key points from raw research notes to scaffold a report.
 <!-- END MANUAL -->
 
 ---
@@ -444,7 +452,11 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Extracting specific information from unstructured text, such as generating a product description with predefined fields (name, features, price) from a lengthy product review.
+**Product Data Extraction:** Parse unstructured product reviews to generate structured descriptions with predefined fields like name, features, and price.
+
+**Resume Parsing:** Extract candidate details (name, experience, skills) from free-form resumes into a consistent structured format.
+
+**Invoice Processing:** Pull line items, totals, and vendor information from scanned invoice text into structured JSON for accounting systems.
 <!-- END MANUAL -->
 
 ---
@@ -481,7 +493,11 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Generating creative writing, such as short stories or poetry, based on a given theme or starting sentence.
+**Creative Story Generation:** Produce short stories or narrative content based on a given theme, genre, or starting sentence.
+
+**Marketing Copy Creation:** Generate product descriptions, ad copy, or social media posts from a brief set of product attributes.
+
+**Email Drafting:** Compose professional email responses or outreach messages based on a few bullet points of context.
 <!-- END MANUAL -->
 
 ---
@@ -518,7 +534,11 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Summarizing lengthy research papers or articles to quickly grasp the main points and key findings.
+**Research Paper Digests:** Summarize lengthy academic papers to quickly surface main arguments, methods, and key findings.
+
+**News Article Briefings:** Condense long-form news articles into concise summaries for a daily briefing dashboard.
+
+**Legal Document Review:** Generate high-level summaries of contracts or legal filings to identify key terms and obligations.
 <!-- END MANUAL -->
 
 ---
