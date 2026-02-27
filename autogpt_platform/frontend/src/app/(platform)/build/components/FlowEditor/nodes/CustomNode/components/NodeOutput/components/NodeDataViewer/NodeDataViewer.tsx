@@ -188,11 +188,11 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       {execution.outputItems.length > 0 ? (
                         execution.outputItems.map((item, index) => (
                           <div key={item.key} className="group">
-                              <OutputItem
-                                value={item.value}
-                                metadata={item.metadata}
-                                renderer={item.renderer}
-                              />
+                            <OutputItem
+                              value={item.value}
+                              metadata={item.metadata}
+                              renderer={item.renderer}
+                            />
                             <div className="mt-2 flex gap-3">
                               <Button
                                 variant="secondary"
