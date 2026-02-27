@@ -19,6 +19,8 @@ interface Props {
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   isUploadingFiles?: boolean;
+  droppedFiles?: File[];
+  onDroppedFilesConsumed?: () => void;
 }
 
 export function EmptySession({
@@ -26,6 +28,8 @@ export function EmptySession({
   isCreatingSession,
   onSend,
   isUploadingFiles,
+  droppedFiles,
+  onDroppedFilesConsumed,
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
@@ -79,6 +83,8 @@ export function EmptySession({
                 isUploadingFiles={isUploadingFiles}
                 placeholder={inputPlaceholder}
                 className="w-full"
+                droppedFiles={droppedFiles}
+                onDroppedFilesConsumed={onDroppedFilesConsumed}
               />
             </motion.div>
           </div>

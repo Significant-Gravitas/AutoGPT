@@ -6,7 +6,7 @@ import {
   MicrophoneIcon,
   StopIcon,
 } from "@phosphor-icons/react";
-import { ChangeEvent, useCallback, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { FileChips } from "./components/FileChips";
 import { RecordingIndicator } from "./components/RecordingIndicator";
@@ -22,6 +22,10 @@ export interface Props {
   placeholder?: string;
   className?: string;
   inputId?: string;
+  /** Files dropped onto the chat window by the parent. */
+  droppedFiles?: File[];
+  /** Called after droppedFiles have been merged into internal state. */
+  onDroppedFilesConsumed?: () => void;
 }
 
 export function ChatInput({
@@ -33,8 +37,18 @@ export function ChatInput({
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
+  droppedFiles,
+  onDroppedFilesConsumed,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
+
+  // Merge files dropped onto the chat window into internal state.
+  useEffect(() => {
+    if (droppedFiles && droppedFiles.length > 0) {
+      setFiles((prev) => [...prev, ...droppedFiles]);
+      onDroppedFilesConsumed?.();
+    }
+  }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasFiles = files.length > 0;
   const isBusy = disabled || isStreaming || isUploadingFiles;

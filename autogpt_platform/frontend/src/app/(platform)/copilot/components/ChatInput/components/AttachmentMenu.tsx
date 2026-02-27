@@ -46,6 +46,11 @@ const FILE_CATEGORIES = [
   },
 ] as const;
 
+/** Set of all allowed file extensions (e.g. ".pdf", ".png") derived from FILE_CATEGORIES. */
+export const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(
+  FILE_CATEGORIES.flatMap((c) => c.accept.split(",")),
+);
+
 interface Props {
   onFilesSelected: (files: File[]) => void;
   disabled?: boolean;

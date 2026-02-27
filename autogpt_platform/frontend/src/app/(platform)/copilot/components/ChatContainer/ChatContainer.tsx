@@ -22,6 +22,10 @@ export interface ChatContainerProps {
   onStop: () => void;
   isUploadingFiles?: boolean;
   headerSlot?: ReactNode;
+  /** Files dropped onto the chat window. */
+  droppedFiles?: File[];
+  /** Called after droppedFiles have been consumed by ChatInput. */
+  onDroppedFilesConsumed?: () => void;
 }
 export const ChatContainer = ({
   messages,
@@ -37,6 +41,8 @@ export const ChatContainer = ({
   onStop,
   isUploadingFiles,
   headerSlot,
+  droppedFiles,
+  onDroppedFilesConsumed,
 }: ChatContainerProps) => {
   const isBusy =
     status === "streaming" ||
@@ -74,6 +80,8 @@ export const ChatContainer = ({
                   isUploadingFiles={isUploadingFiles}
                   onStop={onStop}
                   placeholder="What else can I help with?"
+                  droppedFiles={droppedFiles}
+                  onDroppedFilesConsumed={onDroppedFilesConsumed}
                 />
               </motion.div>
             </div>
@@ -84,6 +92,8 @@ export const ChatContainer = ({
               onCreateSession={onCreateSession}
               onSend={onSend}
               isUploadingFiles={isUploadingFiles}
+              droppedFiles={droppedFiles}
+              onDroppedFilesConsumed={onDroppedFilesConsumed}
             />
           )}
         </div>
