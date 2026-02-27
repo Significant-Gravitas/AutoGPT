@@ -5,21 +5,27 @@ Provides access to user's integration credentials.
 """
 
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Path, Security
 from prisma.enums import APIKeyPermission
+from pydantic import SecretStr
+from starlette.status import HTTP_201_CREATED
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.model import APIKeyCredentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from .models import (
-    Credential,
+    CredentialCreateRequest,
+    CredentialDeleteResponse,
+    CredentialInfo,
+    CredentialListResponse,
     CredentialRequirement,
     CredentialRequirementsResponse,
-    CredentialsListResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,13 +42,13 @@ creds_manager = IntegrationCredentialsManager()
 @integrations_router.get(
     path="/credentials",
     summary="List all credentials",
-    response_model=CredentialsListResponse,
+    response_model=CredentialListResponse,
 )
 async def list_credentials(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> CredentialsListResponse:
+) -> CredentialListResponse:
     """
     List all integration credentials for the authenticated user.
 
@@ -51,22 +57,22 @@ async def list_credentials(
     """
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
 
-    return CredentialsListResponse(
-        credentials=[Credential.from_internal(c) for c in credentials]
+    return CredentialListResponse(
+        credentials=[CredentialInfo.from_internal(c) for c in credentials]
     )
 
 
 @integrations_router.get(
     path="/credentials/{provider}",
     summary="List credentials by provider",
-    response_model=CredentialsListResponse,
+    response_model=CredentialListResponse,
 )
 async def list_credentials_by_provider(
     provider: str = Path(description="Provider name (e.g., 'github', 'google')"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> CredentialsListResponse:
+) -> CredentialListResponse:
     """
     List integration credentials for a specific provider.
     """
@@ -75,8 +81,8 @@ async def list_credentials_by_provider(
     # Filter by provider
     filtered = [c for c in all_credentials if c.provider.lower() == provider.lower()]
 
-    return CredentialsListResponse(
-        credentials=[Credential.from_internal(c) for c in filtered]
+    return CredentialListResponse(
+        credentials=[CredentialInfo.from_internal(c) for c in filtered]
     )
 
 
@@ -126,7 +132,7 @@ async def list_graph_credential_requirements(
         for provider in providers:
             # Find matching credentials
             matching = [
-                Credential.from_internal(c)
+                CredentialInfo.from_internal(c)
                 for c in all_credentials
                 if c.provider.lower() == provider.lower()
             ]
@@ -199,7 +205,7 @@ async def list_library_agent_credential_requirements(
         for provider in providers:
             # Find matching credentials
             matching = [
-                Credential.from_internal(c)
+                CredentialInfo.from_internal(c)
                 for c in all_credentials
                 if c.provider.lower() == provider.lower()
             ]
@@ -213,3 +219,65 @@ async def list_library_agent_credential_requirements(
             )
 
     return CredentialRequirementsResponse(requirements=requirements)
+
+
+# ============================================================================
+# Endpoints - Credential Management
+# ============================================================================
+
+
+@integrations_router.post(
+    path="/credentials",
+    summary="Create an API key credential",
+    status_code=HTTP_201_CREATED,
+)
+async def create_credential(
+    request: CredentialCreateRequest,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
+    ),
+) -> CredentialInfo:
+    """
+    Create a new API key credential.
+
+    Only API key credentials can be created via the external API.
+    OAuth credentials must be created via the OAuth flow in the web UI.
+    """
+    credentials = APIKeyCredentials(
+        id=str(uuid4()),
+        provider=request.provider,
+        title=request.title,
+        api_key=SecretStr(request.api_key),
+    )
+
+    await creds_manager.create(auth.user_id, credentials)
+    return CredentialInfo.from_internal(credentials)
+
+
+@integrations_router.delete(
+    path="/credentials/{credential_id}",
+    summary="Delete a credential",
+)
+async def delete_credential(
+    credential_id: str = Path(description="Credential ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
+    ),
+) -> CredentialDeleteResponse:
+    """
+    Delete an integration credential.
+
+    This permanently removes the credential. Any agents using this
+    credential will fail on their next execution.
+    """
+    # Verify the credential exists
+    existing = await creds_manager.store.get_creds_by_id(
+        user_id=auth.user_id, credentials_id=credential_id
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404, detail=f"Credential #{credential_id} not found"
+        )
+
+    await creds_manager.delete(auth.user_id, credential_id)
+    return CredentialDeleteResponse()

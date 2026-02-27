@@ -19,9 +19,16 @@ import backend.blocks._base as block_types
 if TYPE_CHECKING:
     from backend.api.features.executions.review.model import PendingHumanReviewModel
     from backend.api.features.library.model import LibraryAgent as _LibraryAgent
+    from backend.api.features.library.model import (
+        LibraryAgentPreset as _LibraryAgentPreset,
+    )
+    from backend.api.features.library.model import LibraryFolder as _LibraryFolder
+    from backend.api.features.library.model import (
+        LibraryFolderTree as _LibraryFolderTree,
+    )
+    from backend.api.features.store.model import Creator, CreatorDetails
+    from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.api.features.store.model import (
-        Creator,
-        CreatorDetails,
         StoreAgent,
         StoreAgentDetails,
         StoreSubmission,
@@ -128,7 +135,7 @@ class CreatableGraph(BaseModel):
 
 
 class GraphMeta(BaseModel):
-    """Graph metadata (summary information)."""
+    """Existing agent graph metadata (summary information)."""
 
     id: str
     version: int
@@ -150,7 +157,7 @@ class GraphMeta(BaseModel):
 
 
 class Graph(GraphMeta):
-    """Full graph details including nodes and links."""
+    """Existing agent graph details, including nodes and links."""
 
     nodes: list[GraphNode]
     links: list[GraphLink]
@@ -213,19 +220,19 @@ class GraphSettings(BaseModel):
         return settings
 
 
-class SetActiveVersionRequest(BaseModel):
+class GraphSetActiveVersionRequest(BaseModel):
     """Request to set the active graph version."""
 
     active_graph_version: int = Field(description="Version number to set as active")
 
 
-class GraphsListResponse(PaginatedResponse):
+class GraphListResponse(PaginatedResponse):
     """Response for listing graphs."""
 
     graphs: list[GraphMeta]
 
 
-class DeleteGraphResponse(BaseModel):
+class GraphDeleteResponse(BaseModel):
     """Response for deleting a graph."""
 
     version_count: int = Field(description="Number of versions deleted")
@@ -306,8 +313,8 @@ class BlockContributorInfo(BaseModel):
 # ============================================================================
 
 
-class Schedule(BaseModel):
-    """An execution schedule for a graph."""
+class AgentRunSchedule(BaseModel):
+    """An execution schedule for an agent."""
 
     id: str
     name: str
@@ -339,7 +346,7 @@ class Schedule(BaseModel):
         )
 
 
-class CreateScheduleRequest(BaseModel):
+class AgentRunScheduleCreateRequest(BaseModel):
     """Request to create a schedule."""
 
     name: str = Field(description="Display name for the schedule")
@@ -362,10 +369,10 @@ class CreateScheduleRequest(BaseModel):
     )
 
 
-class SchedulesListResponse(PaginatedResponse):
-    """Response for listing schedules."""
+class AgentRunScheduleListResponse(PaginatedResponse):
+    """Response for listing agent run schedules."""
 
-    schedules: list[Schedule]
+    schedules: list[AgentRunSchedule]
 
 
 # ============================================================================
@@ -411,13 +418,23 @@ class LibraryAgent(BaseModel):
         )
 
 
-class LibraryAgentsResponse(PaginatedResponse):
+class LibraryAgentListResponse(PaginatedResponse):
     """Response for listing library agents."""
 
     agents: list[LibraryAgent]
 
 
-class ExecuteAgentRequest(BaseModel):
+class LibraryAgentUpdateRequest(BaseModel):
+    """Request to update a library agent."""
+
+    auto_update_version: Optional[bool] = None
+    graph_version: Optional[int] = None
+    is_favorite: Optional[bool] = None
+    is_archived: Optional[bool] = None
+    folder_id: Optional[str] = None
+
+
+class AgentRunRequest(BaseModel):
     """Request to execute an agent."""
 
     inputs: dict[str, Any] = Field(
@@ -425,6 +442,187 @@ class ExecuteAgentRequest(BaseModel):
     )
     credentials_inputs: dict[str, Any] = Field(
         default_factory=dict, description="Credentials for the agent"
+    )
+
+
+# ============================================================================
+# Library Folder Models
+# ============================================================================
+
+
+class LibraryFolder(BaseModel):
+    """A folder for organizing library agents."""
+
+    id: str
+    name: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    parent_id: Optional[str] = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_internal(cls, f: _LibraryFolder) -> Self:
+        return cls(
+            id=f.id,
+            name=f.name,
+            icon=f.icon,
+            color=f.color,
+            parent_id=f.parent_id,
+            agent_count=f.agent_count,
+            subfolder_count=f.subfolder_count,
+            created_at=f.created_at,
+            updated_at=f.updated_at,
+        )
+
+
+class LibraryFolderTree(BaseModel):
+    """Recursive folder tree node."""
+
+    id: str
+    name: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    children: list["LibraryFolderTree"] = Field(default_factory=list)
+
+    @classmethod
+    def from_internal(cls, f: _LibraryFolderTree) -> Self:
+        return cls(
+            id=f.id,
+            name=f.name,
+            icon=f.icon,
+            color=f.color,
+            agent_count=f.agent_count,
+            subfolder_count=f.subfolder_count,
+            children=[LibraryFolderTree.from_internal(c) for c in f.children],
+        )
+
+
+class LibraryFolderListResponse(BaseModel):
+    """Response for listing folders."""
+
+    folders: list[LibraryFolder]
+
+
+class LibraryFolderTreeResponse(BaseModel):
+    """Response for folder tree."""
+
+    tree: list[LibraryFolderTree]
+
+
+class LibraryFolderCreateRequest(BaseModel):
+    """Request to create a folder."""
+
+    name: str = Field(min_length=1, max_length=100)
+    icon: Optional[str] = None
+    color: Optional[str] = Field(
+        default=None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color (#RRGGBB)"
+    )
+    parent_id: Optional[str] = None
+
+
+class LibraryFolderUpdateRequest(BaseModel):
+    """Request to update a folder."""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    icon: Optional[str] = None
+    color: Optional[str] = None
+
+
+class LibraryFolderMoveRequest(BaseModel):
+    """Request to move a folder."""
+
+    target_parent_id: Optional[str] = Field(
+        default=None, description="Target parent folder ID (null = root)"
+    )
+
+
+# ============================================================================
+# Preset Models
+# ============================================================================
+
+
+class AgentPreset(BaseModel):
+    """A saved preset configuration for running an agent."""
+
+    id: str
+    graph_id: str
+    graph_version: int
+    name: str
+    description: str
+    is_active: bool
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_internal(cls, p: _LibraryAgentPreset) -> Self:
+        return cls(
+            id=p.id,
+            graph_id=p.graph_id,
+            graph_version=p.graph_version,
+            name=p.name,
+            description=p.description,
+            is_active=p.is_active,
+            inputs=p.inputs,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+
+
+class AgentPresetListResponse(PaginatedResponse):
+    """Response for listing presets."""
+
+    presets: list[AgentPreset]
+
+
+class AgentPresetCreateRequest(BaseModel):
+    """Request to create a preset."""
+
+    graph_id: str = Field(description="Graph ID")
+    graph_version: int = Field(description="Graph version")
+    name: str = Field(description="Preset name")
+    description: str = Field(default="", description="Preset description")
+    inputs: dict[str, Any] = Field(default_factory=dict, description="Input values")
+    credentials: dict[str, Any] = Field(
+        default_factory=dict, description="Credential references"
+    )
+    is_active: bool = Field(default=True, description="Whether the preset is active")
+
+
+class AgentPresetUpdateRequest(BaseModel):
+    """Request to update a preset."""
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    inputs: Optional[dict[str, Any]] = None
+    credentials: Optional[dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class AgentTriggerSetupRequest(BaseModel):
+    """Request to set up a webhook-triggered preset."""
+
+    name: str = Field(description="Preset name")
+    description: str = Field(default="", description="Preset description")
+    graph_id: str = Field(description="Graph ID")
+    graph_version: int = Field(description="Graph version")
+    trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
+    agent_credentials: dict[str, Any] = Field(
+        default_factory=dict, description="Credential references"
+    )
+
+
+class AgentPresetRunRequest(BaseModel):
+    """Request to run an agent preset with optional overrides."""
+
+    inputs: dict[str, Any] = Field(default_factory=dict, description="Input overrides")
+    credentials_inputs: dict[str, Any] = Field(
+        default_factory=dict, description="Credential overrides"
     )
 
 
@@ -438,9 +636,7 @@ RunStatus: TypeAlias = Literal[
 ]
 
 
-class Run(BaseModel):
-    """An execution run."""
-
+class AgentGraphRun(BaseModel):
     id: str
     graph_id: str
     graph_version: int
@@ -454,7 +650,6 @@ class Run(BaseModel):
 
     @classmethod
     def from_internal(cls, exec: GraphExecutionMeta) -> Self:
-        """Convert internal execution to v2 API Run model."""
         return cls(
             id=exec.id,
             graph_id=exec.graph_id,
@@ -469,8 +664,47 @@ class Run(BaseModel):
         )
 
 
-class NodeExecution(BaseModel):
-    """Result of a single node execution within a run."""
+class AgentGraphRunDetails(AgentGraphRun):
+    """Detailed information about a run including outputs and node executions."""
+
+    outputs: Optional[dict[str, list[Any]]] = None
+    node_executions: Optional[list[AgentNodeExecution]] = Field(
+        description="Individual node execution results; "
+        "may be omitted in case of permission restrictions"
+    )
+
+    @classmethod
+    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, exec: GraphExecutionWithNodes
+    ) -> Self:
+        return cls(
+            id=exec.id,
+            graph_id=exec.graph_id,
+            graph_version=exec.graph_version,
+            status=exec.status.value,
+            started_at=exec.started_at,
+            ended_at=exec.ended_at,
+            inputs=exec.inputs,
+            outputs=exec.outputs,
+            cost=exec.stats.cost if exec.stats else 0,
+            duration=exec.stats.duration if exec.stats else 0,
+            node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
+            node_executions=[
+                AgentNodeExecution(
+                    node_id=node.node_id,
+                    status=node.status.value,
+                    input_data=node.input_data,
+                    output_data=node.output_data,
+                    started_at=node.start_time,
+                    ended_at=node.end_time,
+                )
+                for node in exec.node_executions
+            ],
+        )
+
+
+class AgentNodeExecution(BaseModel):
+    """Result of a single node execution within an agent run."""
 
     node_id: str
     status: RunStatus
@@ -485,50 +719,17 @@ class NodeExecution(BaseModel):
     ended_at: datetime | None = None
 
 
-class RunDetails(Run):
-    """Detailed information about a run including outputs and node executions."""
+class AgentRunListResponse(PaginatedResponse):
+    """Response for listing agent runs."""
 
-    outputs: Optional[dict[str, list[Any]]] = None
-    node_executions: Optional[list[NodeExecution]] = Field(
-        description="Individual node execution results; "
-        "may be omitted in case of permission restrictions"
-    )
-
-    @classmethod
-    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
-        cls, exec: GraphExecutionWithNodes
-    ) -> Self:
-        """Convert internal execution with nodes to v2 API RunDetails model."""
-        return cls(
-            id=exec.id,
-            graph_id=exec.graph_id,
-            graph_version=exec.graph_version,
-            status=exec.status.value,
-            started_at=exec.started_at,
-            ended_at=exec.ended_at,
-            inputs=exec.inputs,
-            outputs=exec.outputs,
-            cost=exec.stats.cost if exec.stats else 0,
-            duration=exec.stats.duration if exec.stats else 0,
-            node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
-            node_executions=[
-                NodeExecution(
-                    node_id=node.node_id,
-                    status=node.status.value,
-                    input_data=node.input_data,
-                    output_data=node.output_data,
-                    started_at=node.start_time,
-                    ended_at=node.end_time,
-                )
-                for node in exec.node_executions
-            ],
-        )
+    runs: list[AgentGraphRun]
 
 
-class RunsListResponse(PaginatedResponse):
-    """Response for listing runs."""
+class AgentRunShareResponse(BaseModel):
+    """Response after enabling sharing for an agent run."""
 
-    runs: list[Run]
+    share_url: str = Field(description="Public URL for the shared run")
+    share_token: str = Field(description="Unique share token")
 
 
 # ============================================================================
@@ -536,10 +737,11 @@ class RunsListResponse(PaginatedResponse):
 # ============================================================================
 
 
-class PendingReview(BaseModel):
-    """A pending human-in-the-loop review."""
+RunReviewStatus: TypeAlias = Literal["WAITING", "APPROVED", "REJECTED"]
 
-    Status = Literal["WAITING", "APPROVED", "REJECTED"]
+
+class PendingRunReview(BaseModel):
+    """A pending human-in-the-loop review for an agent run."""
 
     id: str  # node_exec_id
     run_id: str
@@ -552,7 +754,7 @@ class PendingReview(BaseModel):
     editable: bool = Field(
         default=True, description="Whether the reviewer can edit the data"
     )
-    status: Status
+    status: RunReviewStatus
     created_at: datetime
 
     @classmethod
@@ -570,13 +772,13 @@ class PendingReview(BaseModel):
         )
 
 
-class PendingReviewsResponse(PaginatedResponse):
-    """Response for listing pending reviews."""
+class PendingRunReviewsResponse(PaginatedResponse):
+    """Response for listing pending run reviews."""
 
-    reviews: list[PendingReview]
+    reviews: list[PendingRunReview]
 
 
-class ReviewDecision(BaseModel):
+class RunReviewDecision(BaseModel):
     """Decision for a single review item."""
 
     node_exec_id: str = Field(description="Node execution ID (review ID)")
@@ -589,15 +791,15 @@ class ReviewDecision(BaseModel):
     )
 
 
-class SubmitReviewsRequest(BaseModel):
+class RunReviewsSubmitRequest(BaseModel):
     """Request to submit review responses for all pending reviews of an execution."""
 
-    reviews: list[ReviewDecision] = Field(
+    reviews: list[RunReviewDecision] = Field(
         description="All review decisions for the execution"
     )
 
 
-class SubmitReviewsResponse(BaseModel):
+class RunReviewsSubmitResponse(BaseModel):
     """Response after submitting reviews."""
 
     run_id: str
@@ -616,14 +818,15 @@ class CreditBalance(BaseModel):
     balance: int = Field(description="Current credit balance")
 
 
+TransactionType: TypeAlias = Literal["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"]
+
+
 class CreditTransaction(BaseModel):
     """A credit transaction."""
 
-    Type = Literal["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"]
-
     transaction_key: str
     amount: int = Field(description="Transaction amount (positive or negative)")
-    type: Type
+    type: TransactionType
     transaction_time: datetime
     running_balance: Optional[int] = Field(
         default=None, description="Balance after this transaction"
@@ -653,7 +856,7 @@ class CreditTransactionsResponse(PaginatedResponse):
 # ============================================================================
 
 
-class Credential(BaseModel):
+class CredentialInfo(BaseModel):
     """A user's credential for an integration."""
 
     id: str
@@ -678,27 +881,43 @@ class Credential(BaseModel):
         )
 
 
-class CredentialsListResponse(BaseModel):
+class CredentialListResponse(BaseModel):
     """Response for listing credentials."""
 
-    credentials: list[Credential]
+    credentials: list[CredentialInfo]
+
+
+class CredentialCreateRequest(BaseModel):
+    """Request to create an API key credential."""
+
+    provider: str = Field(description="Provider name (e.g., 'github', 'openai')")
+    title: Optional[str] = Field(
+        default=None, description="User-friendly name for this credential"
+    )
+    api_key: str = Field(description="API key value")
+
+
+class CredentialDeleteResponse(BaseModel):
+    """Response after deleting a credential."""
+
+    deleted: bool = True
 
 
 class CredentialRequirement(BaseModel):
-    """A credential requirement for a graph or agent."""
+    """A credential requirement for an agent (graph)."""
 
     provider: str = Field(description="Required provider name")
     required_scopes: list[str] = Field(
         default_factory=list, description="Required scopes"
     )
-    matching_credentials: list[Credential] = Field(
+    matching_credentials: list[CredentialInfo] = Field(
         default_factory=list,
         description="User's credentials that match this requirement",
     )
 
 
 class CredentialRequirementsResponse(BaseModel):
-    """Response for listing credential requirements."""
+    """Response for listing credential requirements for an agent (graph)."""
 
     requirements: list[CredentialRequirement]
 
@@ -734,7 +953,7 @@ class MarketplaceAgent(BaseModel):
     creator_avatar: str
     runs: int = Field(default=0, description="Number of times this agent has been run")
     rating: float = Field(default=0.0, description="Average rating")
-    image_url: str = Field(default="")
+    image_url: str = ""
 
     @classmethod
     def from_internal(cls, agent: StoreAgent) -> Self:
@@ -751,29 +970,25 @@ class MarketplaceAgent(BaseModel):
         )
 
 
-class MarketplaceAgentDetails(BaseModel):
+class MarketplaceAgentDetails(MarketplaceAgent):
     """Detailed information about a marketplace agent."""
 
     store_listing_version_id: str
-    slug: str
-    name: str
-    description: str
-    sub_heading: str
-    instructions: Optional[str] = None
-    creator: str
-    creator_avatar: str
-    categories: list[str] = Field(default_factory=list)
-    runs: int = Field(default=0)
-    rating: float = Field(default=0.0)
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: str = Field(default="")
-    versions: list[str] = Field(default_factory=list, description="Available versions")
-    agent_graph_versions: list[str] = Field(default_factory=list)
+    instructions: Optional[str]
+    categories: list[str]
+    image_urls: list[str]
+    video_url: str = ""
+    versions: list[str] = Field(
+        description="Available store listing versions (sequential; != graph version)",
+    )
     agent_graph_id: str
+    agent_graph_versions: list[str]
     last_updated: datetime
 
     @classmethod
-    def from_internal(cls, agent: StoreAgentDetails) -> Self:
+    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, agent: StoreAgentDetails
+    ) -> Self:
         return cls(
             store_listing_version_id=agent.store_listing_version_id,
             slug=agent.slug,
@@ -786,6 +1001,7 @@ class MarketplaceAgentDetails(BaseModel):
             categories=agent.categories,
             runs=agent.runs,
             rating=agent.rating,
+            image_url=agent.agent_image[0] if agent.agent_image else "",
             image_urls=agent.agent_image,
             video_url=agent.agent_video,
             versions=agent.versions,
@@ -795,7 +1011,7 @@ class MarketplaceAgentDetails(BaseModel):
         )
 
 
-class MarketplaceAgentsResponse(PaginatedResponse):
+class MarketplaceAgentListResponse(PaginatedResponse):
     """Response for listing marketplace agents."""
 
     agents: list[MarketplaceAgent]
@@ -828,6 +1044,7 @@ class MarketplaceCreator(BaseModel):
 
 
 class MarketplaceCreatorDetails(BaseModel):
+    # FIXME: extend MarketplaceCreator
     """Detailed information about a marketplace creator."""
 
     name: str
@@ -859,10 +1076,14 @@ class MarketplaceCreatorsResponse(PaginatedResponse):
     creators: list[MarketplaceCreator]
 
 
-class MarketplaceSubmission(BaseModel):
-    """A marketplace submission."""
+SubmissionStatus: TypeAlias = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"]
+SearchContentType: TypeAlias = Literal[
+    "STORE_AGENT", "BLOCK", "INTEGRATION", "DOCUMENTATION", "LIBRARY_AGENT"
+]
 
-    Status = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"]
+
+class MarketplaceAgentSubmission(BaseModel):
+    """A marketplace submission."""
 
     graph_id: str
     graph_version: int
@@ -873,7 +1094,7 @@ class MarketplaceSubmission(BaseModel):
     instructions: Optional[str] = None
     image_urls: list[str] = Field(default_factory=list)
     date_submitted: datetime
-    status: Status
+    status: SubmissionStatus
     runs: int = Field(default=0)
     rating: float = Field(default=0.0)
     store_listing_version_id: Optional[str] = None
@@ -907,7 +1128,7 @@ class MarketplaceSubmission(BaseModel):
         )
 
 
-class CreateSubmissionRequest(BaseModel):
+class MarketplaceAgentSubmissionCreateRequest(BaseModel):
     """Request to create a marketplace submission."""
 
     graph_id: str = Field(description="ID of the graph to submit")
@@ -921,7 +1142,81 @@ class CreateSubmissionRequest(BaseModel):
     categories: list[str] = Field(default_factory=list)
 
 
-class SubmissionsListResponse(PaginatedResponse):
+class MarketplaceAgentSubmissionsListResponse(PaginatedResponse):
     """Response for listing submissions."""
 
-    submissions: list[MarketplaceSubmission]
+    submissions: list[MarketplaceAgentSubmission]
+
+
+class MarketplaceAgentSubmissionEditRequest(BaseModel):
+    """Request to edit a marketplace submission."""
+
+    name: str = Field(description="Agent display name")
+    sub_heading: str = Field(default="", description="Short tagline")
+    description: str = Field(default="", description="Full description")
+    image_urls: list[str] = Field(default_factory=list, description="Image URLs")
+    video_url: Optional[str] = Field(default=None, description="Demo video URL")
+    agent_output_demo_url: Optional[str] = Field(
+        default=None, description="Agent output demo URL"
+    )
+    categories: list[str] = Field(default_factory=list, description="Categories")
+    changes_summary: Optional[str] = Field(
+        default="Update submission", description="Summary of changes"
+    )
+    recommended_schedule_cron: Optional[str] = Field(
+        default=None, description="Recommended cron schedule"
+    )
+    instructions: Optional[str] = Field(default=None, description="Usage instructions")
+
+
+class MarketplaceMediaUploadResponse(BaseModel):
+    """Response after uploading media."""
+
+    url: str = Field(description="Public URL of the uploaded media")
+
+
+class MarketplaceUserProfile(BaseModel):
+    """User's marketplace profile."""
+
+    name: str
+    username: str
+    description: str
+    links: list[str]
+    avatar_url: Optional[str] = None
+
+    @classmethod
+    def from_internal(cls, profile: _ProfileDetails) -> Self:
+        return cls(
+            name=profile.name,
+            username=profile.username,
+            description=profile.description,
+            links=profile.links,
+            avatar_url=profile.avatar_url,
+        )
+
+
+class MarketplaceUserProfileUpdateRequest(BaseModel):
+    """Request to update marketplace profile."""
+
+    name: str = Field(description="Display name")
+    username: str = Field(description="Unique username")
+    description: str = Field(default="", description="Bio/description")
+    links: list[str] = Field(default_factory=list, description="Profile links")
+    avatar_url: str = Field(default="", description="Avatar image URL")
+
+
+class MarketplaceSearchResult(BaseModel):
+    """A single search result from marketplace search."""
+
+    content_type: SearchContentType
+    content_id: str
+    searchable_text: str
+    metadata: Optional[dict] = None
+    updated_at: Optional[datetime] = None
+    combined_score: Optional[float] = None
+
+
+class MarketplaceSearchResponse(PaginatedResponse):
+    """Response for marketplace search."""
+
+    results: list[MarketplaceSearchResult]

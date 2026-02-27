@@ -1149,10 +1149,12 @@ enum APIKeyPermission {
   RUN_AGENT // Can run agents from library
   READ_RUN // Can list and get run details
   WRITE_RUN // Can stop and delete runs
+  SHARE_RUN // Can share/unshare execution runs
   READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
   WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
   READ_CREDITS // Can get credit balance and transactions
   UPLOAD_FILES // Can upload files for agent input
+  DOWNLOAD_FILES // Can download files from workspace
 }
 
 model APIKey {

@@ -46,6 +46,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
+    published: Optional[bool] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
@@ -59,6 +60,8 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
+        published: Allows filtering by marketplace publish status;
+            `True` -> only published agents, `False` -> only unpublished agents.
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
@@ -116,6 +119,20 @@ async def list_library_agents(
                 }
             },
         ]
+
+    # Filter by marketplace publish status
+    if published is not None:
+        active_listing_filter: prisma.types.StoreListingWhereInput = {
+            "isDeleted": False,
+            "Versions": {"some": {"isAvailable": True}},
+        }
+        where_clause["AgentGraph"] = {
+            "is": {
+                "StoreListings": {
+                    "some" if published else "none": active_listing_filter,
+                }
+            }
+        }
 
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 

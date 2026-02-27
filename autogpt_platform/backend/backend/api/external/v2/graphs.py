@@ -7,10 +7,11 @@ Provides endpoints for managing agent graphs (CRUD operations).
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
 
 from backend.api.external.middleware import require_permission
+from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -20,13 +21,15 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
+    BlockInfo,
     CreatableGraph,
-    DeleteGraphResponse,
     Graph,
+    GraphDeleteResponse,
+    GraphListResponse,
     GraphMeta,
+    GraphSetActiveVersionRequest,
     GraphSettings,
-    GraphsListResponse,
-    SetActiveVersionRequest,
+    LibraryAgent,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,6 @@ graphs_router = APIRouter()
 @graphs_router.get(
     path="",
     summary="List user's graphs",
-    response_model=GraphsListResponse,
 )
 async def list_graphs(
     auth: APIAuthorizationInfo = Security(
@@ -50,7 +52,7 @@ async def list_graphs(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
-) -> GraphsListResponse:
+) -> GraphListResponse:
     """
     List all graphs owned by the authenticated user.
 
@@ -62,11 +64,11 @@ async def list_graphs(
         page_size=page_size,
         filter_by="active",
     )
-    return GraphsListResponse(
+    return GraphListResponse(
         graphs=[GraphMeta.from_internal(g) for g in graphs],
-        total_count=pagination_info.total_items,
         page=pagination_info.current_page,
         page_size=pagination_info.page_size,
+        total_count=pagination_info.total_items,
         total_pages=pagination_info.total_pages,
     )
 
@@ -74,7 +76,6 @@ async def list_graphs(
 @graphs_router.get(
     path="/{graph_id}",
     summary="Get graph details",
-    response_model=Graph,
 )
 async def get_graph(
     graph_id: str,
@@ -106,7 +107,6 @@ async def get_graph(
 @graphs_router.post(
     path="",
     summary="Create a new graph",
-    response_model=Graph,
 )
 async def create_graph(
     create_graph: CreatableGraph,
@@ -138,7 +138,6 @@ async def create_graph(
 @graphs_router.put(
     path="/{graph_id}",
     summary="Update graph (creates new version)",
-    response_model=Graph,
 )
 async def update_graph(
     graph_id: str,
@@ -200,14 +199,13 @@ async def update_graph(
 @graphs_router.delete(
     path="/{graph_id}",
     summary="Delete graph permanently",
-    response_model=DeleteGraphResponse,
 )
 async def delete_graph(
     graph_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
-) -> DeleteGraphResponse:
+) -> GraphDeleteResponse:
     """
     Permanently delete a graph and all its versions.
 
@@ -220,13 +218,12 @@ async def delete_graph(
         await on_graph_deactivate(active_version, user_id=auth.user_id)
 
     version_count = await graph_db.delete_graph(graph_id, user_id=auth.user_id)
-    return DeleteGraphResponse(version_count=version_count)
+    return GraphDeleteResponse(version_count=version_count)
 
 
 @graphs_router.get(
     path="/{graph_id}/versions",
     summary="List all graph versions",
-    response_model=list[Graph],
 )
 async def list_graph_versions(
     graph_id: str,
@@ -251,7 +248,7 @@ async def list_graph_versions(
 )
 async def set_active_version(
     graph_id: str,
-    request_body: SetActiveVersionRequest,
+    request_body: GraphSetActiveVersionRequest,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
@@ -326,3 +323,71 @@ async def update_graph_settings(
     return GraphSettings(
         human_in_the_loop_safe_mode=updated_agent.settings.human_in_the_loop_safe_mode
     )
+
+
+@graphs_router.get(
+    path="/{graph_id}/library-agent",
+    summary="Get library agent by graph ID",
+)
+async def get_library_agent_by_graph(
+    graph_id: str,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_LIBRARY)
+    ),
+) -> LibraryAgent:
+    """
+    Get the library agent associated with a specific graph.
+
+    Returns the user's library entry for this graph, if it exists.
+    """
+    agent = await library_db.get_library_agent_by_graph_id(
+        graph_id=graph_id,
+        user_id=auth.user_id,
+    )
+    if not agent:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No library agent found for graph #{graph_id}",
+        )
+    return LibraryAgent.from_internal(agent)
+
+
+@graphs_router.get(
+    path="/{graph_id}/blocks",
+    summary="List blocks used by a graph",
+)
+async def list_graph_blocks(
+    graph_id: str = Path(description="Graph ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_GRAPH)
+    ),
+) -> list[BlockInfo]:
+    """
+    List the unique blocks used by a graph.
+
+    Returns metadata for each distinct block type referenced in the graph's nodes.
+    """
+    from backend.blocks import get_block
+
+    graph = await graph_db.get_graph(
+        graph_id,
+        version=None,
+        user_id=auth.user_id,
+        include_subgraphs=True,
+    )
+    if not graph:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+    seen_block_ids: set[str] = set()
+    blocks: list[BlockInfo] = []
+
+    for node in graph.nodes:
+        if node.block_id in seen_block_ids:
+            continue
+        seen_block_ids.add(node.block_id)
+
+        block = get_block(node.block_id)
+        if block and not block.disabled:
+            blocks.append(BlockInfo.from_internal(block))
+
+    return blocks

@@ -17,7 +17,11 @@ from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from .models import CreateScheduleRequest, Schedule, SchedulesListResponse
+from .models import (
+    AgentRunSchedule,
+    AgentRunScheduleCreateRequest,
+    AgentRunScheduleListResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,6 @@ schedules_router = APIRouter()
 @schedules_router.get(
     path="",
     summary="List all user schedules",
-    response_model=SchedulesListResponse,
 )
 async def list_all_schedules(
     auth: APIAuthorizationInfo = Security(
@@ -45,14 +48,14 @@ async def list_all_schedules(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
-) -> SchedulesListResponse:
+) -> AgentRunScheduleListResponse:
     """
     List all schedules for the authenticated user across all graphs.
     """
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=auth.user_id
     )
-    converted = [Schedule.from_internal(s) for s in schedules]
+    converted = [AgentRunSchedule.from_internal(s) for s in schedules]
 
     # Manual pagination (scheduler doesn't support pagination natively)
     total_count = len(converted)
@@ -61,11 +64,11 @@ async def list_all_schedules(
     end = start + page_size
     paginated = converted[start:end]
 
-    return SchedulesListResponse(
+    return AgentRunScheduleListResponse(
         schedules=paginated,
-        total_count=total_count,
         page=page,
         page_size=page_size,
+        total_count=total_count,
         total_pages=total_pages,
     )
 
@@ -107,14 +110,13 @@ graph_schedules_router = APIRouter()
 @graph_schedules_router.get(
     path="/{graph_id}/schedules",
     summary="List schedules for a graph",
-    response_model=list[Schedule],
 )
 async def list_graph_schedules(
     graph_id: str = Path(description="Graph ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_SCHEDULE)
     ),
-) -> list[Schedule]:
+) -> list[AgentRunSchedule]:
     """
     List all schedules for a specific graph.
     """
@@ -122,21 +124,20 @@ async def list_graph_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
     )
-    return [Schedule.from_internal(s) for s in schedules]
+    return [AgentRunSchedule.from_internal(s) for s in schedules]
 
 
 @graph_schedules_router.post(
     path="/{graph_id}/schedules",
     summary="Create a schedule for a graph",
-    response_model=Schedule,
 )
 async def create_graph_schedule(
-    request: CreateScheduleRequest,
+    request: AgentRunScheduleCreateRequest,
     graph_id: str = Path(description="Graph ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_SCHEDULE)
     ),
-) -> Schedule:
+) -> AgentRunSchedule:
     """
     Create a new execution schedule for a graph.
 
@@ -172,4 +173,4 @@ async def create_graph_schedule(
         user_timezone=user_timezone,
     )
 
-    return Schedule.from_internal(result)
+    return AgentRunSchedule.from_internal(result)
