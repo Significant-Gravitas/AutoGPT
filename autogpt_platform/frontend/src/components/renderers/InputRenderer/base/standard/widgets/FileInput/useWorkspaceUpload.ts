@@ -1,24 +1,34 @@
-import { useMutation } from "@tanstack/react-query";
 import {
-  uploadWorkspaceFile,
-  deleteWorkspaceFile,
-  parseWorkspaceFileID,
-} from "@/services/workspace-upload";
+  usePostWorkspaceUploadAFileToTheWorkspace,
+  useDeleteWorkspaceDeleteAWorkspaceFile,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
+
+function parseWorkspaceFileID(uri: string): string | null {
+  if (!uri.startsWith("workspace://")) return null;
+  const rest = uri.slice("workspace://".length);
+  const hashIndex = rest.indexOf("#");
+  return hashIndex === -1 ? rest : rest.slice(0, hashIndex);
+}
 
 export function useWorkspaceUpload() {
-  const { mutateAsync: uploadFile } = useMutation({
-    mutationFn: uploadWorkspaceFile,
-  });
+  const { mutateAsync: uploadMutation } =
+    usePostWorkspaceUploadAFileToTheWorkspace();
 
-  const { mutate: deleteFile } = useMutation({
-    mutationFn: deleteWorkspaceFile,
-  });
+  const { mutate: deleteMutation } = useDeleteWorkspaceDeleteAWorkspaceFile();
+
+  async function handleUploadFile(file: File) {
+    const response = await uploadMutation({ data: { file } });
+    if (response.status !== 200) {
+      throw new Error("Upload failed");
+    }
+    return response.data;
+  }
 
   function handleDeleteFile(fileURI: string) {
     const fileID = parseWorkspaceFileID(fileURI);
     if (!fileID) return;
-    deleteFile(fileID);
+    deleteMutation({ fileId: fileID });
   }
 
-  return { handleUploadFile: uploadFile, handleDeleteFile };
+  return { handleUploadFile, handleDeleteFile };
 }

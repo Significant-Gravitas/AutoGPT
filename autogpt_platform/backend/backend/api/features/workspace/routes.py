@@ -194,7 +194,7 @@ async def upload_workspace_file(
     )
 
     return WorkspaceUploadResponse(
-        file_uri=f"workspace://{workspace_file.id}",
+        file_uri=f"workspace://{workspace_file.id}#{workspace_file.mime_type}",
         file_name=workspace_file.name,
         size=workspace_file.size_bytes,
         content_type=workspace_file.mime_type,

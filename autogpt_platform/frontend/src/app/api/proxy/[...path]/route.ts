@@ -255,7 +255,6 @@ async function handler(
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {
