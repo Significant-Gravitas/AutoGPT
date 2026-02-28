@@ -48,26 +48,9 @@ def _resolve_remote(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-# Maximum response size in characters.  The Claude Agent SDK has a 10 MB JSON
-# buffer; keeping tool output well under that avoids stream crashes.  200 KB
-# leaves plenty of room for the JSON envelope + other messages.
-_MAX_RESPONSE_CHARS = 200_000
-
-
-def _maybe_truncate(text: str) -> str:
-    """Middle-out truncate *text* if it exceeds ``_MAX_RESPONSE_CHARS``.
-
-    Reuses :func:`backend.util.truncate._truncate_string_middle` for the
-    actual truncation logic.
-    """
-    from backend.util.truncate import _truncate_string_middle
-
-    return _truncate_string_middle(text, _MAX_RESPONSE_CHARS)
-
-
 def _mcp_ok(text: str) -> dict[str, Any]:
     return {
-        "content": [{"type": "text", "text": _maybe_truncate(text)}],
+        "content": [{"type": "text", "text": text}],
         "isError": False,
     }
 

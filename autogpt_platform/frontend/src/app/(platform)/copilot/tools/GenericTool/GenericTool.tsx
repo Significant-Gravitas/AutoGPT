@@ -428,6 +428,12 @@ function getBashAccordionData(
     description: truncate(command, 80),
     content: (
       <div className="space-y-2">
+        {command && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <ContentCodeBlock>{command}</ContentCodeBlock>
+          </div>
+        )}
         {stdout && (
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
@@ -495,6 +501,7 @@ function getWebAccordionData(
 }
 
 function getFileAccordionData(
+  category: ToolCategory,
   input: unknown,
   output: Record<string, unknown>,
 ): AccordionData {
@@ -537,6 +544,27 @@ function getFileAccordionData(
     displayContent = extractMcpText(output);
   }
 
+  // For write/edit operations, show the written content from the input
+  // when the output is just a success message (e.g. "Successfully wrote to ...").
+  const inputContent = getStringField(
+    inp as Record<string, unknown>,
+    "content",
+  );
+  const isWriteOp = category === "file-write" || category === "edit";
+  const outputIsJustStatus =
+    displayContent != null && /^(Successfully |Edited )/.test(displayContent);
+  const writtenContent = isWriteOp && inputContent ? inputContent : null;
+
+  // For edit operations, show old_string → new_string from input
+  const oldString = getStringField(
+    inp as Record<string, unknown>,
+    "old_string",
+  );
+  const newString =
+    category === "edit"
+      ? getStringField(inp as Record<string, unknown>, "new_string")
+      : null;
+
   // For Glob/list results, try to show file list
   // Files can be either strings (from Glob) or objects (from list_workspace_files)
   const files = Array.isArray(output.files) ? output.files : null;
@@ -571,15 +599,30 @@ function getFileAccordionData(
   }
 
   return {
-    title: message ?? "File output",
+    title:
+      message ??
+      (isWriteOp ? `Wrote ${truncate(filePath, 60)}` : "File output"),
     description: truncate(filePath, 80),
     content: (
       <div className="space-y-2">
-        {displayContent && (
+        {isWriteOp && oldString && newString != null ? (
+          <>
+            <div>
+              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <ContentCodeBlock>{oldString}</ContentCodeBlock>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <ContentCodeBlock>{newString}</ContentCodeBlock>
+            </div>
+          </>
+        ) : writtenContent && outputIsJustStatus ? (
+          <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
+        ) : displayContent ? (
           <ContentCodeBlock>{displayContent}</ContentCodeBlock>
-        )}
+        ) : null}
         {fileListText && <ContentCodeBlock>{fileListText}</ContentCodeBlock>}
-        {!displayContent && !fileListText && message && (
+        {!displayContent && !fileListText && !writtenContent && message && (
           <ContentMessage>{message}</ContentMessage>
         )}
       </div>
@@ -701,7 +744,7 @@ function getAccordionData(
     case "file-list":
     case "search":
     case "edit":
-      return getFileAccordionData(input, output);
+      return getFileAccordionData(category, input, output);
     case "todo":
       return getTodoAccordionData(input);
     default:

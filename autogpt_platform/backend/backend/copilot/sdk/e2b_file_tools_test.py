@@ -7,12 +7,7 @@ import os
 
 import pytest
 
-from .e2b_file_tools import (
-    _MAX_RESPONSE_CHARS,
-    _maybe_truncate,
-    _read_local,
-    _resolve_remote,
-)
+from .e2b_file_tools import _read_local, _resolve_remote
 from .tool_adapter import _current_project_dir
 
 _SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
@@ -156,37 +151,3 @@ class TestReadLocal:
         """Without _current_project_dir set, all paths are blocked."""
         result = _read_local("/tmp/anything.txt", offset=0, limit=10)
         assert result["isError"] is True
-
-
-# ---------------------------------------------------------------------------
-# _maybe_truncate — middle-out truncation for large responses
-# ---------------------------------------------------------------------------
-
-
-class TestMaybeTruncate:
-    def test_short_text_unchanged(self):
-        text = "hello world"
-        assert _maybe_truncate(text) == text
-
-    def test_exact_limit_unchanged(self):
-        text = "x" * _MAX_RESPONSE_CHARS
-        assert _maybe_truncate(text) == text
-
-    def test_over_limit_truncated(self):
-        text = "x" * (_MAX_RESPONSE_CHARS + 1000)
-        result = _maybe_truncate(text)
-        assert len(result) < len(text)
-        assert "omitted" in result
-
-    def test_head_and_tail_preserved(self):
-        head = "HEAD_MARKER_" + "a" * 50_000
-        tail = "b" * 50_000 + "_TAIL_MARKER"
-        middle = "m" * (_MAX_RESPONSE_CHARS + 50_000)
-        text = head + middle + tail
-        result = _maybe_truncate(text)
-        assert result.startswith("HEAD_MARKER_")
-        assert result.endswith("_TAIL_MARKER")
-        assert "omitted" in result
-
-    def test_empty_string(self):
-        assert _maybe_truncate("") == ""

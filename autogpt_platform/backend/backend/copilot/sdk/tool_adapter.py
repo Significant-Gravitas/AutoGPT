@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
+from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Restricted to ~/.claude/projects/ and further validated to require "tool-results"
 # in the path — prevents reading settings, credentials, or other sensitive files.
 _SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+
+# Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
+_MCP_MAX_CHARS = 500_000
 
 # Context variable holding the encoded project directory name for the current
 # session (e.g. "-private-tmp-copilot-<uuid>").  Set by set_execution_context()
@@ -47,12 +51,11 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<current-session>/tool-results/``
-      (the CLI writes oversized tool results here)
+    - Files under ``~/.claude/projects/<encoded-cwd>/`` — the SDK's
+      project directory for this session (tool-results, transcripts, etc.)
 
-    The tool-results check is scoped to the **current session's** project
-    directory (derived from *sdk_cwd*) so sessions cannot read each other's
-    data.
+    Both checks are scoped to the **current session** so sessions cannot
+    read each other's data.
     """
     if not path:
         return False
@@ -70,12 +73,12 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
         if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
             return True
 
-    # Allow access to the current session's tool-results directory only
+    # Allow access within the current session's CLI project directory
+    # (~/.claude/projects/<encoded-cwd>/).
     encoded = _current_project_dir.get("")
     if encoded:
         session_project = os.path.join(_SDK_PROJECTS_DIR, encoded)
-        tool_results = os.path.join(session_project, "tool-results")
-        if resolved.startswith(tool_results + os.sep) or resolved == tool_results:
+        if resolved == session_project or resolved.startswith(session_project + os.sep):
             return True
 
     return False
@@ -256,17 +259,7 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
-    # Stash the full output before the SDK potentially truncates it.
-    pending = _pending_tool_outputs.get(None)
-    if pending is not None:
-        pending.setdefault(base_tool.name, []).append(text)
-
-    # Guard against blowing the SDK's 10 MB JSON buffer.
-    from .e2b_file_tools import _maybe_truncate
-
-    content_blocks: list[dict[str, str]] = [
-        {"type": "text", "text": _maybe_truncate(text)}
-    ]
+    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
 
     # If the tool result contains inline image data, add an MCP image block
     # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
@@ -385,11 +378,8 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         content = "".join(selected)
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        # Guard against blowing the SDK's 10 MB JSON buffer.
-        from .e2b_file_tools import _maybe_truncate
-
         return {
-            "content": [{"type": "text", "text": _maybe_truncate(content)}],
+            "content": [{"type": "text", "text": content}],
             "isError": False,
         }
     except FileNotFoundError:
@@ -430,6 +420,19 @@ _READ_TOOL_SCHEMA = {
 
 
 # Create the MCP server configuration
+def _text_from_mcp_result(result: dict[str, Any]) -> str:
+    """Extract concatenated text from an MCP response's content blocks."""
+    content = result.get("content", [])
+    if isinstance(content, list):
+        parts = [
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        return "".join(parts)
+    return ""
+
+
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -440,6 +443,30 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     """
     from claude_agent_sdk import create_sdk_mcp_server, tool
 
+    def _truncating(fn, tool_name: str):
+        """Wrap a tool handler so its response is truncated to stay under the
+        SDK's 10 MB JSON buffer, and stash the (truncated) output for the
+        response adapter before the SDK can apply its own head-truncation.
+
+        Applied once to every registered tool."""
+
+        async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            result = await fn(args)
+            truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Stash the text so the response adapter can forward our
+            # middle-out truncated version to the frontend instead of the
+            # SDK's head-truncated version (for outputs >~100 KB the SDK
+            # persists to tool-results/ with a 2 KB head-only preview).
+            if not truncated.get("isError"):
+                text = _text_from_mcp_result(truncated)
+                if text:
+                    stash_pending_tool_output(tool_name, text)
+
+            return truncated
+
+        return wrapper
+
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
@@ -448,7 +475,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             tool_name,
             base_tool.description,
             _build_input_schema(base_tool),
-        )(handler)
+        )(_truncating(handler, tool_name))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
@@ -456,7 +483,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         from .e2b_file_tools import E2B_FILE_TOOLS
 
         for name, desc, schema, handler in E2B_FILE_TOOLS:
-            decorated = tool(name, desc, schema)(handler)
+            decorated = tool(name, desc, schema)(_truncating(handler, name))
             sdk_tools.append(decorated)
 
     # Read tool for SDK-truncated tool results (always needed).
@@ -464,7 +491,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         _READ_TOOL_NAME,
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_SCHEMA,
-    )(_read_file_handler)
+    )(_truncating(_read_file_handler, _READ_TOOL_NAME))
     sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(
