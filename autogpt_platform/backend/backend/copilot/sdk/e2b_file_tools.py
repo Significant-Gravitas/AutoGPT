@@ -17,6 +17,8 @@ import os
 import shlex
 from typing import Any, Callable
 
+from .tool_adapter import get_current_sandbox, is_allowed_local_path
+
 logger = logging.getLogger(__name__)
 
 _E2B_WORKDIR = "/home/user"
@@ -72,13 +74,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     if not file_path:
         return _mcp_error("file_path is required")
 
-    from .tool_adapter import is_allowed_local_path
-
     # SDK-internal paths (tool-results, ephemeral working dir) stay on the host.
     if is_allowed_local_path(file_path):
         return _read_local(file_path, offset, limit)
-
-    from .tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is None:
@@ -107,8 +105,6 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
     if not file_path:
         return _mcp_error("file_path is required")
-
-    from .tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is None:
@@ -139,8 +135,6 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp_error("file_path is required")
     if not old_string:
         return _mcp_error("old_string is required")
-
-    from .tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is None:
@@ -184,8 +178,6 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     if not pattern:
         return _mcp_error("pattern is required")
 
-    from .tool_adapter import get_current_sandbox
-
     sandbox = get_current_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
@@ -211,8 +203,6 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     if not pattern:
         return _mcp_error("pattern is required")
-
-    from .tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is None:

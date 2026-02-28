@@ -193,25 +193,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Run with: docker compose --profile e2b-test run --rm e2b_integration_test
-  # Requires E2B_API_KEY set in backend/.env (CHAT_USE_E2B_SANDBOX not required).
-  e2b_integration_test:
-    build:
-      context: ../
-      dockerfile: autogpt_platform/backend/Dockerfile
-      target: server
-    command: ["python", "test_e2b_integration.py"]
-    profiles:
-      - e2b-test
-    depends_on:
-      redis:
-        condition: service_healthy
-    <<: *backend-env-files
-    environment:
-      <<: *backend-env
-    networks:
-      - app-network
-
   websocket_server:
     build:
       context: ../
