@@ -16,7 +16,7 @@ export function FileChips({ files, onRemove, isUploading }: Props) {
   if (files.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 px-3 pb-2 pt-1">
+    <div className="flex w-full flex-wrap gap-2 px-3 pb-2 pt-1">
       {files.map((file, index) => (
         <span
           key={`${file.name}-${file.size}-${index}`}
