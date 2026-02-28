@@ -113,6 +113,23 @@ async def test_ssrf_blocked_url_returns_error():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_credential_bearing_url_returns_error():
+    """URLs with embedded user:pass@ must be rejected before any network call."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+    response = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        server_url="https://user:secret@mcp.example.com/mcp",
+    )
+    assert isinstance(response, ErrorResponse)
+    assert (
+        "credential" in response.message.lower()
+        or "do not include" in response.message.lower()
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_non_dict_tool_arguments_returns_error():
     """tool_arguments must be a JSON object — strings/arrays are rejected early."""
     tool = RunMCPToolTool()
