@@ -106,6 +106,7 @@
     "react-icons": "5.5.0",
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
+    "react-resizable-panels": "4.6.5",
     "react-shepherd": "6.1.9",
     "react-window": "2.2.0",
     "recharts": "3.3.0",
