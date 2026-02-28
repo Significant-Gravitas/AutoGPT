@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import Future
 from typing import Mapping, Optional, cast
 
@@ -994,7 +994,7 @@ class ExecutionOutputEntry(BaseModel):
 
 class NodeExecutionProgress:
     def __init__(self):
-        self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
+        self.output: dict[str, deque[ExecutionOutputEntry]] = defaultdict(deque)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
 
@@ -1015,7 +1015,7 @@ class NodeExecutionProgress:
 
         with self._lock:
             if next_output := self.output[exec_id]:
-                return next_output.pop(0)
+                return next_output.popleft()
 
         return None
 

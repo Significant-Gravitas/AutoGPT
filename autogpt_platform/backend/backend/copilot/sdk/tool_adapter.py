@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import uuid
+from collections import deque
 from contextvars import ContextVar
 from typing import Any
 
@@ -36,7 +37,7 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
-_pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
+_pending_tool_outputs: ContextVar[dict[str, deque[str]]] = ContextVar(
     "pending_tool_outputs",
     default=None,  # type: ignore[arg-type]
 )
@@ -97,7 +98,7 @@ def pop_pending_tool_output(tool_name: str) -> str | None:
     if not queue:
         pending.pop(tool_name, None)
         return None
-    value = queue.pop(0)
+    value = queue.popleft()
     if not queue:
         del pending[tool_name]
     return value
@@ -123,7 +124,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
             text = json.dumps(output)
         except (TypeError, ValueError):
             text = str(output)
-    pending.setdefault(tool_name, []).append(text)
+    pending.setdefault(tool_name, deque()).append(text)
     # Signal any waiters that new output is available.
     event = _stash_event.get(None)
     if event is not None:
