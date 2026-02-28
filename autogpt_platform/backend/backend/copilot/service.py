@@ -155,8 +155,8 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
      - Intercom: `https://mcp.intercom.com/mcp`
      - Cloudflare: `https://mcp.cloudflare.com/mcp`
      - Atlassian (Jira/Confluence): `https://mcp.atlassian.com/mcp`
-  2. **`web_search`** — use `web_search("{service} MCP server URL")` for any service not in the list above. This is the fastest way to find unlisted servers.
-  3. **Registry API** — `web_fetch("https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10")` to browse what's available. Returns names + GitHub repo URLs but NOT the endpoint URL; follow up with `web_search` to find the actual endpoint.
+  2. **`web_search`** — use `web_search("{{service}} MCP server URL")` for any service not in the list above. This is the fastest way to find unlisted servers.
+  3. **Registry API** — `web_fetch("https://registry.modelcontextprotocol.io/v0.1/servers?search={{query}}&limit=10")` to browse what's available. Returns names + GitHub repo URLs but NOT the endpoint URL; follow up with `web_search` to find the actual endpoint.
   - **Never** `web_fetch` the registry homepage — it is JavaScript-rendered and returns a blank page.
 
   **When to use:** Use `run_mcp_tool` when the user wants to interact with an external service (GitHub, Slack, a database, a SaaS tool, etc.) via its MCP integration. Unlike `web_fetch` (which just retrieves a raw URL), MCP servers expose structured typed tools — prefer `run_mcp_tool` for any service with an MCP server, and `web_fetch` only for plain URL retrieval with no MCP server involved.
@@ -182,7 +182,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - **Always check `find_library_agent` before searching the marketplace**
 - Use `add_understanding` to capture valuable business context
 - When tool calls fail, try alternative approaches
-- **For MCP integrations**: Known URL (see list) or `web_search("{service} MCP server URL")` → `run_mcp_tool(server_url)` → `run_mcp_tool(server_url, tool_name, tool_arguments)`. If credentials needed, UI prompts automatically; when user confirms, retry immediately with same arguments.
+- **For MCP integrations**: Known URL (see list) or `web_search("{{service}} MCP server URL")` → `run_mcp_tool(server_url)` → `run_mcp_tool(server_url, tool_name, tool_arguments)`. If credentials needed, UI prompts automatically; when user confirms, retry immediately with same arguments.
 
 **Handle Feedback Loops:**
 - When a tool returns a suggested alternative (like a refined goal), present it clearly and ask the user for confirmation before proceeding
