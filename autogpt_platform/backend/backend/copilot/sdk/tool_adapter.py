@@ -261,7 +261,12 @@ async def _execute_tool_sync(
     if pending is not None:
         pending.setdefault(base_tool.name, []).append(text)
 
-    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
+    # Guard against blowing the SDK's 10 MB JSON buffer.
+    from .e2b_file_tools import _maybe_truncate
+
+    content_blocks: list[dict[str, str]] = [
+        {"type": "text", "text": _maybe_truncate(text)}
+    ]
 
     # If the tool result contains inline image data, add an MCP image block
     # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
@@ -380,7 +385,13 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         content = "".join(selected)
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return {"content": [{"type": "text", "text": content}], "isError": False}
+        # Guard against blowing the SDK's 10 MB JSON buffer.
+        from .e2b_file_tools import _maybe_truncate
+
+        return {
+            "content": [{"type": "text", "text": _maybe_truncate(content)}],
+            "isError": False,
+        }
     except FileNotFoundError:
         return {
             "content": [{"type": "text", "text": f"File not found: {file_path}"}],
