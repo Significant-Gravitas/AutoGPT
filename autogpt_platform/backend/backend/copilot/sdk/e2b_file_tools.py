@@ -273,8 +273,10 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
     try:
         with open(real) as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))
-        content = "".join(selected)
-        return _mcp_ok(content)
+        numbered = "".join(
+            f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+        )
+        return _mcp_ok(numbered)
     except FileNotFoundError:
         return _mcp_error(f"File not found: {file_path}")
     except Exception as exc:

@@ -1,11 +1,10 @@
 """End-to-end integration test for the E2B sandbox lifecycle.
 
-Tests the full turn lifecycle:
+Tests the direct-to-sandbox architecture:
   1. get_or_create_sandbox  — create / reconnect via Redis
-  2. sync_from_sandbox       — download E2B /home/user → local dir
-  3. bash_exec on E2B        — write a file via sandbox.commands.run()
-  4. sync_to_sandbox         — upload local dir → E2B /home/user
-  5. Cross-turn persistence  — reconnect to the same sandbox and verify files
+  2. bash_exec on E2B        — write files via sandbox.commands.run()
+  3. E2B files API           — read/write files via sandbox.files
+  4. Cross-turn persistence  — reconnect to the same sandbox and verify files
 
 Run via docker-compose:
   docker compose --profile e2b-test -f docker-compose.platform.yml run --rm e2b_integration_test
@@ -16,41 +15,27 @@ Or directly (requires E2B_API_KEY and REDIS_HOST env vars):
 
 import asyncio
 import os
-import shutil
 import sys
-import tempfile
 import uuid
 
 
 async def main(e2b_api_key: str) -> None:
-    from backend.copilot.tools.e2b_sandbox import (
-        get_or_create_sandbox,
-        sync_from_sandbox,
-        sync_to_sandbox,
-    )
+    from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
 
     # Use a UUID-based session_id to avoid Redis key collisions across reruns
     session_id = f"test-e2b-{uuid.uuid4().hex[:12]}"
-    local_dir = tempfile.mkdtemp(prefix="e2b-test-")
-    local_dir2: str | None = None
     sbx = None
-    print(f"session_id={session_id}  local_dir={local_dir}")
+    print(f"session_id={session_id}")
 
     try:
         # ------------------------------------------------------------------
-        # Turn 1: create sandbox, write a file via bash, sync back down
+        # Turn 1: create sandbox, write files via bash + files API
         # ------------------------------------------------------------------
         print("\n[Turn 1] Creating sandbox...")
         sbx = await get_or_create_sandbox(
             session_id, api_key=e2b_api_key, template="base", timeout=300
         )
         print(f"  sandbox_id={sbx.sandbox_id}")
-
-        print("[Turn 1] sync_from_sandbox (should be empty)...")
-        await sync_from_sandbox(sbx, local_dir)
-        files_after_sync = [f for f in os.listdir(local_dir) if not f.startswith(".")]
-        print(f"  local files after sync_from: {files_after_sync}")
-        assert files_after_sync == [], f"Expected empty, got {files_after_sync}"
 
         print("[Turn 1] bash_exec — write file on E2B...")
         result = await sbx.commands.run(
@@ -59,25 +44,25 @@ async def main(e2b_api_key: str) -> None:
         )
         assert result.exit_code == 0, f"bash failed: {result.stderr}"
 
-        print("[Turn 1] Write a file locally (simulates SDK Write tool)...")
-        with open(os.path.join(local_dir, "sdk_written.txt"), "w") as f:
-            f.write("written by SDK tool in turn 1\n")
+        print("[Turn 1] files API — write file directly...")
+        await sbx.files.write("/home/user/api_written.txt", "written via files API\n")
 
-        print("[Turn 1] sync_to_sandbox — upload local → E2B...")
-        await sync_to_sandbox(sbx, local_dir)
+        # Verify bash-written file via files API
+        content = await sbx.files.read("/home/user/turn1.txt", format="text")
+        assert content.strip() == "hello from turn 1", f"Unexpected: {content!r}"
+        print("  PASS: bash-written file readable via files API")
 
-        # Verify SDK-written file is now on E2B
-        check = await sbx.commands.run("cat /home/user/sdk_written.txt")
+        # Verify API-written file via bash
+        check = await sbx.commands.run("cat /home/user/api_written.txt")
         assert (
-            check.stdout.strip() == "written by SDK tool in turn 1"
+            check.stdout.strip() == "written via files API"
         ), f"Unexpected: {check.stdout!r}"
-        print("  PASS: SDK-written file visible on E2B")
+        print("  PASS: API-written file visible via bash")
 
         # ------------------------------------------------------------------
-        # Turn 2: reconnect (same sandbox_id via Redis), sync down, verify
+        # Turn 2: reconnect (same sandbox_id via Redis), verify persistence
         # ------------------------------------------------------------------
         print("\n[Turn 2] Reconnecting to sandbox via Redis...")
-        local_dir2 = tempfile.mkdtemp(prefix="e2b-test-turn2-")
         sbx2 = await get_or_create_sandbox(
             session_id, api_key=e2b_api_key, template="base", timeout=300
         )
@@ -86,24 +71,17 @@ async def main(e2b_api_key: str) -> None:
         ), f"Expected same sandbox, got {sbx2.sandbox_id} != {sbx.sandbox_id}"
         print(f"  reconnected to same sandbox_id={sbx2.sandbox_id}")
 
-        print("[Turn 2] sync_from_sandbox — download sandbox → local_dir2...")
-        await sync_from_sandbox(sbx2, local_dir2)
-
-        def read(path: str) -> str:
-            with open(path) as f:
-                return f.read().strip()
-
-        assert (
-            read(os.path.join(local_dir2, "turn1.txt")) == "hello from turn 1"
-        ), "turn1.txt not synced correctly"
-        assert (
-            read(os.path.join(local_dir2, "subdir", "nested.txt")) == "nested"
-        ), "subdir/nested.txt not synced"
-        assert (
-            read(os.path.join(local_dir2, "sdk_written.txt"))
-            == "written by SDK tool in turn 1"
-        ), "sdk_written.txt not synced"
-        print("  PASS: all files from turn 1 visible in turn 2 local dir")
+        # Verify all files persist across turns
+        for path, expected in [
+            ("/home/user/turn1.txt", "hello from turn 1"),
+            ("/home/user/subdir/nested.txt", "nested"),
+            ("/home/user/api_written.txt", "written via files API"),
+        ]:
+            content = await sbx2.files.read(path, format="text")
+            assert (
+                content.strip() == expected
+            ), f"{path}: expected {expected!r}, got {content!r}"
+        print("  PASS: all files from turn 1 persist in turn 2")
 
         print("\n=== ALL TESTS PASSED ===")
 
@@ -111,15 +89,12 @@ async def main(e2b_api_key: str) -> None:
         # ------------------------------------------------------------------
         # Cleanup — always runs even if an assertion fails
         # ------------------------------------------------------------------
-        print("\n[Cleanup] Killing sandbox and removing temp dirs...")
+        print("\n[Cleanup] Killing sandbox...")
         if sbx is not None:
             try:
                 await sbx.kill()
             except Exception as kill_err:
                 print(f"  warning: sandbox kill failed: {kill_err}", file=sys.stderr)
-        shutil.rmtree(local_dir, ignore_errors=True)
-        if local_dir2 is not None:
-            shutil.rmtree(local_dir2, ignore_errors=True)
         print("  done")
 
 

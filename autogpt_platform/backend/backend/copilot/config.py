@@ -97,8 +97,8 @@ class ChatConfig(BaseSettings):
     use_e2b_sandbox: bool = Field(
         default=False,
         description="Use E2B cloud sandboxes for persistent bash/python execution. "
-        "When enabled, bash_exec routes commands to E2B and the session workspace "
-        "is mounted via sshfs so SDK file tools share the same filesystem.",
+        "When enabled, bash_exec routes commands to E2B and SDK file tools "
+        "operate directly on the sandbox via E2B's filesystem API.",
     )
     e2b_api_key: str | None = Field(
         default=None,
