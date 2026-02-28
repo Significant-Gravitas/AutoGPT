@@ -4,6 +4,7 @@ import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { customMutator } from "@/app/api/mutators/custom-mutator";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { openOAuthPopup } from "@/lib/oauth-popup";
@@ -110,15 +111,35 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     }
   }
 
-  function handleManualToken() {
-    if (!manualToken.trim()) return;
-    // Send the token as a message so the agent can pass it along.
-    // The backend's _execute will use it on the next run_mcp_tool call.
-    onSend(
-      retryInstruction
-        ? `${retryInstruction} Use this API token: ${manualToken.trim()}`
-        : `I've provided an API token for ${host}: ${manualToken.trim()}. Please retry run_mcp_tool with the same server_url.`,
-    );
+  async function handleManualToken() {
+    const token = manualToken.trim();
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await customMutator<{
+        data: unknown;
+        status: number;
+        headers: Headers;
+      }>("/v2/mcp/token", {
+        method: "POST",
+        body: JSON.stringify({ server_url: serverUrl, token }),
+      });
+      if (res.status !== 200) throw new Error("Failed to store token");
+      setConnected(true);
+      onSend(
+        retryInstruction ??
+          "I've connected the MCP server credentials. Please retry.",
+      );
+    } catch (e: unknown) {
+      const err = e as Record<string, unknown>;
+      setError(
+        (typeof err?.message === "string" ? err.message : null) ||
+          "Failed to save token. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (connected) {

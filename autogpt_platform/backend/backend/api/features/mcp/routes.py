@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import fastapi
 from autogpt_libs.auth import get_user_id
 from fastapi import Security
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
@@ -372,6 +372,70 @@ async def mcp_oauth_callback(
         scopes=credentials.scopes,
         username=credentials.username,
         host=credentials.metadata.get("mcp_server_url"),
+    )
+
+
+# ======================== Bearer Token ======================== #
+
+
+class MCPStoreTokenRequest(BaseModel):
+    """Request to store a bearer token for an MCP server that doesn't support OAuth."""
+
+    server_url: str = Field(
+        description="MCP server URL the token authenticates against"
+    )
+    token: str = Field(description="Bearer token / API key for the MCP server")
+
+
+@router.post(
+    "/token",
+    summary="Store a bearer token for an MCP server",
+)
+async def mcp_store_token(
+    request: MCPStoreTokenRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> CredentialsMetaResponse:
+    """
+    Store a manually provided bearer token as an MCP credential.
+
+    Used by the Copilot MCPSetupCard when the server doesn't support the MCP
+    OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
+    ``run_mcp_tool`` calls will automatically pick up the token via
+    ``_auto_lookup_credential``.
+    """
+    hostname = urlparse(request.server_url).hostname or request.server_url
+
+    # Remove any old token credential for this server first
+    try:
+        old_creds = await creds_manager.store.get_creds_by_provider(
+            user_id, ProviderName.MCP.value
+        )
+        for old in old_creds:
+            if (
+                isinstance(old, OAuth2Credentials)
+                and (old.metadata or {}).get("mcp_server_url") == request.server_url
+            ):
+                await creds_manager.store.delete_creds_by_id(user_id, old.id)
+    except Exception:
+        logger.debug("Could not clean up old MCP token credential", exc_info=True)
+
+    credentials = OAuth2Credentials(
+        provider=ProviderName.MCP.value,
+        title=f"MCP: {hostname}",
+        access_token=SecretStr(request.token),
+        scopes=[],
+        metadata={"mcp_server_url": request.server_url},
+    )
+    await creds_manager.create(user_id, credentials)
+
+    return CredentialsMetaResponse(
+        id=credentials.id,
+        provider=credentials.provider,
+        type=credentials.type,
+        title=credentials.title,
+        scopes=credentials.scopes,
+        username=credentials.username,
+        host=request.server_url,
     )
 
 
