@@ -4,7 +4,7 @@ import prisma.enums
 import prisma.models
 import pytest
 
-import backend.api.features.store.exceptions
+import backend.util.exceptions
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
 
@@ -218,7 +218,7 @@ async def test_add_agent_to_library_not_found(mocker):
     )
 
     # Call function and verify exception
-    with pytest.raises(backend.api.features.store.exceptions.AgentNotFoundError):
+    with pytest.raises(backend.util.exceptions.NotFoundError):
         await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mock called correctly

@@ -27,6 +27,103 @@ repos:
         exclude: pnpm-lock\.yaml$
         stages: [pre-push]
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.2
+    hooks:
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Backend
+        alias: ruff-lint-platform-backend
+        files: ^autogpt_platform/backend/
+        args: [--fix]
+
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+        args: [--fix]
+
+      - id: ruff-format
+        name: Format (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+
+  - repo: local
+    # isort needs the context of which packages are installed to function, so we
+    # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
+    hooks:
+      - id: isort
+        name: Lint (isort) - AutoGPT Platform - Backend
+        alias: isort-platform-backend
+        entry: poetry -P autogpt_platform/backend run isort -p backend
+        files: ^autogpt_platform/backend/
+        types: [file, python]
+        language: system
+
+      - id: isort
+        name: Lint (isort) - Classic - AutoGPT
+        alias: isort-classic-autogpt
+        entry: poetry -P classic/original_autogpt run isort -p autogpt
+        files: ^classic/original_autogpt/
+        types: [file, python]
+        language: system
+
+      - id: isort
+        name: Lint (isort) - Classic - Forge
+        alias: isort-classic-forge
+        entry: poetry -P classic/forge run isort -p forge
+        files: ^classic/forge/
+        types: [file, python]
+        language: system
+
+      - id: isort
+        name: Lint (isort) - Classic - Benchmark
+        alias: isort-classic-benchmark
+        entry: poetry -P classic/benchmark run isort -p agbenchmark
+        files: ^classic/benchmark/
+        types: [file, python]
+        language: system
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    # Black has sensible defaults, doesn't need package context, and ignores
+    # everything in .gitignore, so it works fine without any config or arguments.
+    hooks:
+      - id: black
+        name: Format (Black)
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    # To have flake8 load the config of the individual subprojects, we have to call
+    # them separately.
+    hooks:
+      - id: flake8
+        name: Lint (Flake8) - Classic - AutoGPT
+        alias: flake8-classic-autogpt
+        files: ^classic/original_autogpt/(autogpt|scripts|tests)/
+        args: [--config=classic/original_autogpt/.flake8]
+
+      - id: flake8
+        name: Lint (Flake8) - Classic - Forge
+        alias: flake8-classic-forge
+        files: ^classic/forge/(forge|tests)/
+        args: [--config=classic/forge/.flake8]
+
+      - id: flake8
+        name: Lint (Flake8) - Classic - Benchmark
+        alias: flake8-classic-benchmark
+        files: ^classic/benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
+        args: [--config=classic/benchmark/.flake8]
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Format (Prettier) - AutoGPT Platform - Frontend
+        alias: format-platform-frontend
+        entry: bash -c 'cd autogpt_platform/frontend && npx prettier --write $(echo "$@" | sed "s|autogpt_platform/frontend/||g")' --
+        files: ^autogpt_platform/frontend/
+        types: [file]
+        language: system
+
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.
     # It's also a good idea to check that poetry.lock is consistent with pyproject.toml.
@@ -164,7 +261,7 @@ repos:
         entry: >
           bash -c '
           cd autogpt_platform/backend
-          && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
+          && poetry run export-api-schema --api internal --output ../frontend/src/app/api/openapi.json
           && cd ../frontend
           && pnpm prettier --write ./src/app/api/openapi.json
           '
@@ -189,103 +286,6 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit, post-checkout]
-
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.2
-    hooks:
-      - id: ruff
-        name: Lint (Ruff) - AutoGPT Platform - Backend
-        alias: ruff-lint-platform-backend
-        files: ^autogpt_platform/backend/
-        args: [--fix]
-
-      - id: ruff
-        name: Lint (Ruff) - AutoGPT Platform - Libs
-        alias: ruff-lint-platform-libs
-        files: ^autogpt_platform/autogpt_libs/
-        args: [--fix]
-
-      - id: ruff-format
-        name: Format (Ruff) - AutoGPT Platform - Libs
-        alias: ruff-lint-platform-libs
-        files: ^autogpt_platform/autogpt_libs/
-
-  - repo: local
-    # isort needs the context of which packages are installed to function, so we
-    # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
-    hooks:
-      - id: isort
-        name: Lint (isort) - AutoGPT Platform - Backend
-        alias: isort-platform-backend
-        entry: poetry -P autogpt_platform/backend run isort -p backend
-        files: ^autogpt_platform/backend/
-        types: [file, python]
-        language: system
-
-      - id: isort
-        name: Lint (isort) - Classic - AutoGPT
-        alias: isort-classic-autogpt
-        entry: poetry -P classic/original_autogpt run isort -p autogpt
-        files: ^classic/original_autogpt/
-        types: [file, python]
-        language: system
-
-      - id: isort
-        name: Lint (isort) - Classic - Forge
-        alias: isort-classic-forge
-        entry: poetry -P classic/forge run isort -p forge
-        files: ^classic/forge/
-        types: [file, python]
-        language: system
-
-      - id: isort
-        name: Lint (isort) - Classic - Benchmark
-        alias: isort-classic-benchmark
-        entry: poetry -P classic/benchmark run isort -p agbenchmark
-        files: ^classic/benchmark/
-        types: [file, python]
-        language: system
-
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    # Black has sensible defaults, doesn't need package context, and ignores
-    # everything in .gitignore, so it works fine without any config or arguments.
-    hooks:
-      - id: black
-        name: Format (Black)
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.0.0
-    # To have flake8 load the config of the individual subprojects, we have to call
-    # them separately.
-    hooks:
-      - id: flake8
-        name: Lint (Flake8) - Classic - AutoGPT
-        alias: flake8-classic-autogpt
-        files: ^classic/original_autogpt/(autogpt|scripts|tests)/
-        args: [--config=classic/original_autogpt/.flake8]
-
-      - id: flake8
-        name: Lint (Flake8) - Classic - Forge
-        alias: flake8-classic-forge
-        files: ^classic/forge/(forge|tests)/
-        args: [--config=classic/forge/.flake8]
-
-      - id: flake8
-        name: Lint (Flake8) - Classic - Benchmark
-        alias: flake8-classic-benchmark
-        files: ^classic/benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
-        args: [--config=classic/benchmark/.flake8]
-
-  - repo: local
-    hooks:
-      - id: prettier
-        name: Format (Prettier) - AutoGPT Platform - Frontend
-        alias: format-platform-frontend
-        entry: bash -c 'cd autogpt_platform/frontend && npx prettier --write $(echo "$@" | sed "s|autogpt_platform/frontend/||g")' --
-        files: ^autogpt_platform/frontend/
-        types: [file]
-        language: system
 
   - repo: local
     # To have watertight type checking, we check *all* the files in an affected

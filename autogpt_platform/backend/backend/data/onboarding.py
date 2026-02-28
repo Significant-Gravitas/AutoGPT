@@ -397,7 +397,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     storeAgents = await prisma.models.StoreAgent.prisma().find_many(
         where={
             "is_available": True,
-            "useForOnboarding": True,
+            "use_for_onboarding": True,
         },
         order=[
             {"featured": "desc"},
@@ -407,7 +407,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         take=100,
     )
 
-    # If not enough agents found, relax the useForOnboarding filter
+    # If not enough agents found, relax the use_for_onboarding filter
     if len(storeAgents) < 2:
         storeAgents = await prisma.models.StoreAgent.prisma().find_many(
             where=prisma.types.StoreAgentWhereInput(**where_clause),
@@ -446,8 +446,8 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
-            agentGraphVersions=agent.agentGraphVersions,
-            agentGraphId=agent.agentGraphId,
+            graph_versions=agent.agentGraphVersions,
+            graph_id=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
         for agent in recommended_agents

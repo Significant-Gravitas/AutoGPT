@@ -23,11 +23,11 @@
     "1.0.0",
     "1.1.0"
   ],
-  "agentGraphVersions": [
+  "graph_id": "test-graph-id",
+  "graph_versions": [
     "1",
     "2"
   ],
-  "agentGraphId": "test-graph-id",
   "last_updated": "2023-01-01T00:00:00",
   "recommended_schedule_cron": null,
   "active_version_id": null,

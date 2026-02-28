@@ -62,8 +62,8 @@ class StoreAgentDetails(pydantic.BaseModel):
     runs: int
     rating: float
     versions: list[str]
-    agentGraphVersions: list[str]
-    agentGraphId: str
+    graph_id: str
+    graph_versions: list[str]
     last_updated: datetime.datetime
     recommended_schedule_cron: str | None = None
 
@@ -150,7 +150,6 @@ class StoreListingWithVersions(pydantic.BaseModel):
     listing_id: str
     slug: str
     agent_id: str
-    agent_version: int
     active_version_id: str | None = None
     has_approved_version: bool = False
     creator_email: str | None = None

@@ -1,0 +1,161 @@
+"""
+V2 External API - Schedules Endpoints
+
+Provides endpoints for managing execution schedules.
+"""
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Path, Query, Security
+from prisma.enums import APIKeyPermission
+
+from backend.api.external.middleware import require_permission
+from backend.data import graph as graph_db
+from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.user import get_user_by_id
+from backend.util.clients import get_scheduler_client
+from backend.util.timezone_utils import get_user_timezone_or_utc
+
+from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import (
+    AgentRunSchedule,
+    AgentRunScheduleCreateRequest,
+    AgentRunScheduleListResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+schedules_router = APIRouter()
+
+
+# ============================================================================
+# Endpoints
+# ============================================================================
+
+
+@schedules_router.get(
+    path="",
+    summary="List agent run schedules",
+)
+async def list_all_schedules(
+    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_SCHEDULE)
+    ),
+    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        default=DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description=f"Items per page (max {MAX_PAGE_SIZE})",
+    ),
+) -> AgentRunScheduleListResponse:
+    """
+    List schedules for the authenticated user.
+
+    Optionally filter by graph ID.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=auth.user_id,
+        graph_id=graph_id,
+    )
+    converted = [AgentRunSchedule.from_internal(s) for s in schedules]
+
+    # Manual pagination (scheduler doesn't support pagination natively)
+    total_count = len(converted)
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated = converted[start:end]
+
+    return AgentRunScheduleListResponse(
+        schedules=paginated,
+        page=page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+    )
+
+
+@schedules_router.delete(
+    path="/{schedule_id}",
+    summary="Delete a schedule",
+)
+async def delete_schedule(
+    schedule_id: str = Path(description="Schedule ID to delete"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_SCHEDULE)
+    ),
+) -> None:
+    """
+    Delete an execution schedule.
+    """
+    try:
+        await get_scheduler_client().delete_schedule(
+            schedule_id=schedule_id,
+            user_id=auth.user_id,
+        )
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=404, detail=f"Schedule #{schedule_id} not found"
+            )
+        raise
+
+
+# ============================================================================
+# Graph-specific Schedule Endpoints (nested under /graphs)
+# These are included in the graphs router via include_router
+# ============================================================================
+
+graph_schedules_router = APIRouter()
+
+
+@graph_schedules_router.post(
+    path="/{graph_id}/schedules",
+    summary="Create a schedule for a graph",
+)
+async def create_graph_schedule(
+    request: AgentRunScheduleCreateRequest,
+    graph_id: str = Path(description="Graph ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_SCHEDULE)
+    ),
+) -> AgentRunSchedule:
+    """
+    Create a new execution schedule for a graph.
+
+    The schedule will execute the graph at times matching the cron expression,
+    using the provided input data.
+    """
+    graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=request.graph_version,
+        user_id=auth.user_id,
+    )
+    if not graph:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Graph #{graph_id} v{request.graph_version} not found.",
+        )
+
+    # Determine timezone
+    if request.timezone:
+        user_timezone = request.timezone
+    else:
+        user = await get_user_by_id(auth.user_id)
+        user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+
+    result = await get_scheduler_client().add_execution_schedule(
+        user_id=auth.user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        name=request.name,
+        cron=request.cron,
+        input_data=request.input_data,
+        input_credentials=request.credentials_inputs,
+        user_timezone=user_timezone,
+    )
+
+    return AgentRunSchedule.from_internal(result)

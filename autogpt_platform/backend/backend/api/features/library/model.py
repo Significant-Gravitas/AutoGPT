@@ -220,8 +220,6 @@ class LibraryAgent(pydantic.BaseModel):
     def from_db(
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
-        store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -306,19 +304,26 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        marketplace_listing_data = None
-        if store_listing and store_listing.ActiveVersion and profile:
-            creator_data = MarketplaceListingCreator(
-                name=profile.name,
-                id=profile.id,
-                slug=profile.username,
-            )
-            marketplace_listing_data = MarketplaceListing(
+        store_listing = agent.AgentGraph.StoreListing if agent.AgentGraph else None
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
                 id=store_listing.id,
-                name=store_listing.ActiveVersion.name,
+                name=active_listing.name,
                 slug=store_listing.slug,
-                creator=creator_data,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
             )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
 
         return LibraryAgent(
             id=agent.id,
@@ -355,7 +360,7 @@ class LibraryAgent(pydantic.BaseModel):
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=_parse_settings(agent.settings),
-            marketplace_listing=marketplace_listing_data,
+            marketplace_listing=marketplace_listing_info,
         )
 
 

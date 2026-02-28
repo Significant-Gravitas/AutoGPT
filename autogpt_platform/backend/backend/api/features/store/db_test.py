@@ -26,7 +26,7 @@ async def test_get_store_agents(mocker):
     mock_agents = [
         prisma.models.StoreAgent(
             listing_id="test-id",
-            storeListingVersionId="version123",
+            listing_version_id="version123",
             slug="test-agent",
             agent_name="Test Agent",
             agent_video=None,
@@ -40,11 +40,11 @@ async def test_get_store_agents(mocker):
             runs=10,
             rating=4.5,
             versions=["1.0"],
-            agentGraphVersions=["1"],
-            agentGraphId="test-graph-id",
+            graph_id="test-graph-id",
+            graph_versions=["1"],
             updated_at=datetime.now(),
             is_available=False,
-            useForOnboarding=False,
+            use_for_onboarding=False,
         )
     ]
 
@@ -71,7 +71,7 @@ async def test_get_store_agent_details(mocker):
     # Mock data
     mock_agent = prisma.models.StoreAgent(
         listing_id="test-id",
-        storeListingVersionId="version123",
+        listing_version_id="version123",
         slug="test-agent",
         agent_name="Test Agent",
         agent_video="video.mp4",
@@ -85,17 +85,17 @@ async def test_get_store_agent_details(mocker):
         runs=10,
         rating=4.5,
         versions=["1.0"],
-        agentGraphVersions=["1"],
-        agentGraphId="test-graph-id",
+        graph_id="test-graph-id",
+        graph_versions=["1"],
         updated_at=datetime.now(),
         is_available=False,
-        useForOnboarding=False,
+        use_for_onboarding=False,
     )
 
     # Mock active version agent (what we want to return for active version)
     mock_active_agent = prisma.models.StoreAgent(
         listing_id="test-id",
-        storeListingVersionId="active-version-id",
+        listing_version_id="active-version-id",
         slug="test-agent",
         agent_name="Test Agent Active",
         agent_video="active_video.mp4",
@@ -109,11 +109,11 @@ async def test_get_store_agent_details(mocker):
         runs=15,
         rating=4.8,
         versions=["1.0", "2.0"],
-        agentGraphVersions=["1", "2"],
-        agentGraphId="test-graph-id-active",
+        graph_id="test-graph-id-active",
+        graph_versions=["1", "2"],
         updated_at=datetime.now(),
         is_available=True,
-        useForOnboarding=False,
+        use_for_onboarding=False,
     )
 
     # Create a mock StoreListing result
@@ -129,7 +129,7 @@ async def test_get_store_agent_details(mocker):
     # Set up side_effect to return different results for different calls
     def mock_find_first_side_effect(*args, **kwargs):
         where_clause = kwargs.get("where", {})
-        if "storeListingVersionId" in where_clause:
+        if "listing_version_id" in where_clause:
             # Second call for active version
             return mock_active_agent
         else:
@@ -174,7 +174,7 @@ async def test_get_store_agent_details(mocker):
     assert calls[0] == mocker.call(
         where={"creator_username": "creator", "slug": "test-agent"}
     )
-    assert calls[1] == mocker.call(where={"storeListingVersionId": "active-version-id"})
+    assert calls[1] == mocker.call(where={"listing_version_id": "active-version-id"})
 
     mock_store_listing_db.return_value.find_first.assert_called_once()
 
@@ -235,7 +235,6 @@ async def test_create_store_submission(mocker):
         hasApprovedVersion=False,
         slug="test-agent",
         agentGraphId="agent-id",
-        agentGraphVersion=1,
         owningUserId="user-id",
         Versions=[
             prisma.models.StoreListingVersion(
