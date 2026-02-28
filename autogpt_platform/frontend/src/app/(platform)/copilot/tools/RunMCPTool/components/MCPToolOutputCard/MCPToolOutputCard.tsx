@@ -13,6 +13,22 @@ interface Props {
   output: MCPToolOutputResponse;
 }
 
+interface ImageResult {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
+function isImageResult(value: unknown): value is ImageResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>).type === "image" &&
+    typeof (value as Record<string, unknown>).data === "string" &&
+    typeof (value as Record<string, unknown>).mimeType === "string"
+  );
+}
+
 function formatResult(value: unknown): string {
   if (value === null || value === undefined) return "(no result)";
   if (typeof value === "string") return value;
@@ -24,11 +40,15 @@ function formatResult(value: unknown): string {
 }
 
 export function MCPToolOutputCard({ output }: Props) {
-  const resultText = formatResult(output.result);
+  const result = output.result;
+
+  const isImage = isImageResult(result);
+  const resultText = isImage ? "" : formatResult(result);
   const isJson =
-    output.result !== null &&
-    output.result !== undefined &&
-    typeof output.result !== "string";
+    !isImage &&
+    result !== null &&
+    result !== undefined &&
+    typeof result !== "string";
 
   return (
     <ContentGrid>
@@ -38,10 +58,20 @@ export function MCPToolOutputCard({ output }: Props) {
         <ContentCardTitle className="text-xs">
           {output.tool_name}
         </ContentCardTitle>
-        {isJson ? (
-          <ContentCodeBlock className="mt-2">{resultText}</ContentCodeBlock>
+
+        {isImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`data:${result.mimeType};base64,${result.data}`}
+            alt={`Result from ${output.tool_name}`}
+            className="mt-2 max-w-full rounded"
+          />
+        ) : isJson ? (
+          <ContentCodeBlock className="mt-2 max-h-96 overflow-y-auto">
+            {resultText}
+          </ContentCodeBlock>
         ) : (
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-zinc-800">
+          <p className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-zinc-800">
             {resultText}
           </p>
         )}

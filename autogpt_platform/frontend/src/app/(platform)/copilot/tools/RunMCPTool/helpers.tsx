@@ -1,25 +1,12 @@
+"use client";
+
 import type { MCPToolOutputResponse } from "@/app/api/__generated__/models/mCPToolOutputResponse";
 import type { MCPToolsDiscoveredResponse } from "@/app/api/__generated__/models/mCPToolsDiscoveredResponse";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
-
-// ------------------------------------------------------------------ //
-//  Response type literals
-// ------------------------------------------------------------------ //
-
-const MCP_TOOLS_DISCOVERED = "mcp_tools_discovered";
-const MCP_TOOL_OUTPUT = "mcp_tool_output";
-const SETUP_REQUIREMENTS = "setup_requirements";
-const ERROR = "error";
-
-const RUN_MCP_TOOL_OUTPUT_TYPES = new Set<string>([
-  MCP_TOOLS_DISCOVERED,
-  MCP_TOOL_OUTPUT,
-  SETUP_REQUIREMENTS,
-  ERROR,
-]);
 
 // ------------------------------------------------------------------ //
 //  Re-export generated types for use by RunMCPTool components
@@ -28,7 +15,7 @@ const RUN_MCP_TOOL_OUTPUT_TYPES = new Set<string>([
 export type { MCPToolsDiscoveredResponse, MCPToolOutputResponse };
 
 export interface MCPErrorOutput {
-  type: typeof ERROR;
+  type: typeof ResponseType.error;
   message: string;
   error?: string | null;
   session_id?: string | null;
@@ -47,36 +34,40 @@ export type RunMCPToolOutput =
 export function isDiscoveryOutput(
   output: RunMCPToolOutput,
 ): output is MCPToolsDiscoveredResponse {
-  return output.type === MCP_TOOLS_DISCOVERED;
+  return output.type === ResponseType.mcp_tools_discovered;
 }
 
 export function isMCPToolOutput(
   output: RunMCPToolOutput,
 ): output is MCPToolOutputResponse {
-  return output.type === MCP_TOOL_OUTPUT;
+  return output.type === ResponseType.mcp_tool_output;
 }
 
 export function isSetupRequirementsOutput(
   output: RunMCPToolOutput,
 ): output is SetupRequirementsResponse {
   return (
-    output.type === SETUP_REQUIREMENTS ||
+    output.type === ResponseType.setup_requirements ||
     ("setup_info" in output && typeof output.setup_info === "object")
   );
 }
 
+/** Returns true only when the response type is explicitly "error". */
 export function isErrorOutput(
   output: RunMCPToolOutput,
 ): output is MCPErrorOutput {
-  return (
-    output.type === ERROR || ("error" in output && !("setup_info" in output))
-  );
+  return output.type === ResponseType.error;
 }
 
 // ------------------------------------------------------------------ //
 //  Output parsing
 // ------------------------------------------------------------------ //
 
+/**
+ * Parse a raw server payload into a typed RunMCPToolOutput.
+ * Accepts both objects (already parsed) and JSON strings.
+ * Returns null for anything that doesn't look like a known response shape.
+ */
 function parseOutput(raw: unknown): RunMCPToolOutput | null {
   if (!raw) return null;
   if (typeof raw === "string") {
@@ -90,10 +81,13 @@ function parseOutput(raw: unknown): RunMCPToolOutput | null {
   }
   if (typeof raw === "object") {
     const type = (raw as { type?: unknown }).type;
-    if (typeof type === "string" && RUN_MCP_TOOL_OUTPUT_TYPES.has(type)) {
+    if (
+      typeof type === "string" &&
+      (Object.values(ResponseType) as string[]).includes(type)
+    ) {
       return raw as RunMCPToolOutput;
     }
-    // Fallback structural checks
+    // Fallback structural checks for legacy / no-type payloads
     if ("setup_info" in (raw as object))
       return raw as SetupRequirementsResponse;
     if ("tool_name" in (raw as object)) return raw as MCPToolOutputResponse;
@@ -102,6 +96,10 @@ function parseOutput(raw: unknown): RunMCPToolOutput | null {
   return null;
 }
 
+/**
+ * Extract and parse the `output` field from a tool UI part.
+ * Returns null when the output is absent or unrecognised.
+ */
 export function getRunMCPToolOutput(part: unknown): RunMCPToolOutput | null {
   if (!part || typeof part !== "object") return null;
   return parseOutput((part as { output?: unknown }).output);
@@ -124,6 +122,10 @@ export function serverHost(url: string): string {
   }
 }
 
+/**
+ * Return the human-readable status line shown next to the MCP tool spinner.
+ * Transitions through: connecting → discovering / calling → result summary.
+ */
 export function getAnimationText(part: {
   state: ToolUIPart["state"];
   input?: unknown;

@@ -312,6 +312,156 @@ async def test_execute_tool_parses_json_result():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_execute_tool_image_content():
+    """Image content items are returned as {type, data, mimeType} dicts."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result(
+                [{"type": "image", "data": "abc123==", "mimeType": "image/png"}]
+            )
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="screenshot",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, MCPToolOutputResponse)
+    assert response.result == {
+        "type": "image",
+        "data": "abc123==",
+        "mimeType": "image/png",
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_execute_tool_resource_content():
+    """Resource content items are unwrapped to their resource payload."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result(
+                [
+                    {
+                        "type": "resource",
+                        "resource": {"uri": "file:///tmp/out.txt", "text": "hello"},
+                    }
+                ]
+            )
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="read_file",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, MCPToolOutputResponse)
+    assert response.result == {"uri": "file:///tmp/out.txt", "text": "hello"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_execute_tool_multi_item_content():
+    """Multiple content items are returned as a list."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result(
+                [
+                    {"type": "text", "text": "part one"},
+                    {"type": "text", "text": "part two"},
+                ]
+            )
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="multi",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, MCPToolOutputResponse)
+    assert response.result == ["part one", "part two"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_execute_tool_empty_content_returns_none():
+    """Empty content list results in result=None."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result([])
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="ping",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, MCPToolOutputResponse)
+    assert response.result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_execute_tool_returns_error_on_tool_failure():
     """When the MCP tool returns is_error=True, an ErrorResponse is returned."""
     tool = RunMCPToolTool()
