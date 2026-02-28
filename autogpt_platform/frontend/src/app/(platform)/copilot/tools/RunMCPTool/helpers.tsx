@@ -112,6 +112,7 @@ export function getRunMCPToolOutput(part: unknown): RunMCPToolOutput | null {
 export interface RunMCPToolInput {
   server_url?: string;
   tool_name?: string;
+  tool_arguments?: Record<string, unknown>;
 }
 
 export function serverHost(url: string): string {
@@ -120,6 +121,33 @@ export function serverHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Return a short preview of the most meaningful argument value, e.g. `"my query"`.
+ * Checks common "query" key names first, then falls back to the first string value.
+ * Returns an empty string when no suitable argument is found.
+ */
+function getArgPreview(args: Record<string, unknown> | undefined): string {
+  if (!args) return "";
+  const queryKeys = [
+    "query",
+    "q",
+    "search",
+    "text",
+    "content",
+    "message",
+    "input",
+    "prompt",
+  ];
+  for (const key of queryKeys) {
+    if (typeof args[key] === "string" && (args[key] as string).length > 0)
+      return `"${args[key]}"`;
+  }
+  for (const val of Object.values(args)) {
+    if (typeof val === "string" && val.length > 0) return `"${val}"`;
+  }
+  return "";
 }
 
 /**
@@ -137,10 +165,11 @@ export function getAnimationText(part: {
 
   switch (part.state) {
     case "input-streaming":
-    case "input-available":
-      return toolName
-        ? `Calling ${toolName}${host ? ` on ${host}` : ""}`
-        : `Discovering MCP tools${host ? ` on ${host}` : ""}`;
+    case "input-available": {
+      if (!toolName) return `Discovering MCP tools${host ? ` on ${host}` : ""}`;
+      const argPreview = getArgPreview(input?.tool_arguments);
+      return `Calling ${toolName}${argPreview ? `(${argPreview})` : ""}${host ? ` on ${host}` : ""}`;
+    }
     case "output-available": {
       const output = getRunMCPToolOutput(part);
       if (!output) return "Connecting to MCP server";

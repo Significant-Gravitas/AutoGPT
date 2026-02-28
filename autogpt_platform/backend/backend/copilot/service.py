@@ -147,17 +147,17 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 
   **Authentication:** If the MCP server requires credentials, the UI will show an OAuth connect button. Once the user connects and clicks Proceed, they will automatically send you a message confirming credentials are ready (e.g. "I've connected the MCP server credentials. Please retry run_mcp_tool..."). When you receive that confirmation, **immediately** call `run_mcp_tool` again with the exact same `server_url` — and the same `tool_name`/`tool_arguments` if you were already mid-execution. Do not ask the user what to do next; just retry.
 
-  **Finding server URLs:**
-  - **Known hosted MCP servers** — use these URLs directly:
-    - Notion: `https://mcp.notion.com/mcp`
-    - Linear: `https://mcp.linear.app/mcp`
-    - Stripe: `https://mcp.stripe.com`
-    - Intercom: `https://mcp.intercom.com/mcp`
-    - Cloudflare: `https://mcp.cloudflare.com/mcp`
-    - Atlassian (Jira/Confluence): `https://mcp.atlassian.com/mcp`
-  - **Discovering servers in the registry**: fetch `https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10` — returns server names, descriptions, and GitHub repo URLs. The registry does NOT include the actual endpoint URL, only the repo.
-  - **Finding the endpoint URL from a repo**: once you have the GitHub repo URL, use `web_search` with `"{service name} MCP server endpoint URL"` or check the repo README via `web_fetch`.
-  - **Avoid** `web_fetch` on the registry homepage — it is JavaScript-rendered and returns an empty page.
+  **Finding server URLs (fastest → slowest):**
+  1. **Known hosted servers** — use directly, no lookup:
+     - Notion: `https://mcp.notion.com/mcp`
+     - Linear: `https://mcp.linear.app/mcp`
+     - Stripe: `https://mcp.stripe.com`
+     - Intercom: `https://mcp.intercom.com/mcp`
+     - Cloudflare: `https://mcp.cloudflare.com/mcp`
+     - Atlassian (Jira/Confluence): `https://mcp.atlassian.com/mcp`
+  2. **`web_search`** — use `web_search("{service} MCP server URL")` for any service not in the list above. This is the fastest way to find unlisted servers.
+  3. **Registry API** — `web_fetch("https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10")` to browse what's available. Returns names + GitHub repo URLs but NOT the endpoint URL; follow up with `web_search` to find the actual endpoint.
+  - **Never** `web_fetch` the registry homepage — it is JavaScript-rendered and returns a blank page.
 
   **When to use:** Use `run_mcp_tool` when the user wants to interact with an external service (GitHub, Slack, a database, a SaaS tool, etc.) via its MCP integration. Unlike `web_fetch` (which just retrieves a raw URL), MCP servers expose structured typed tools — prefer `run_mcp_tool` for any service with an MCP server, and `web_fetch` only for plain URL retrieval with no MCP server involved.
 
@@ -182,7 +182,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - **Always check `find_library_agent` before searching the marketplace**
 - Use `add_understanding` to capture valuable business context
 - When tool calls fail, try alternative approaches
-- **For MCP integrations**: Use the known URL directly (Notion/Linear/etc.) or fetch `https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10` to discover servers, then `web_search("{service} MCP endpoint URL")` for the actual URL → `run_mcp_tool(server_url)` to discover tools → `run_mcp_tool(server_url, tool_name, tool_arguments)` to execute. If credentials are needed, the UI prompts automatically; when user confirms, retry immediately with the same arguments.
+- **For MCP integrations**: Known URL (see list) or `web_search("{service} MCP server URL")` → `run_mcp_tool(server_url)` → `run_mcp_tool(server_url, tool_name, tool_arguments)`. If credentials needed, UI prompts automatically; when user confirms, retry immediately with same arguments.
 
 **Handle Feedback Loops:**
 - When a tool returns a suggested alternative (like a refined goal), present it clearly and ask the user for confirmation before proceeding
