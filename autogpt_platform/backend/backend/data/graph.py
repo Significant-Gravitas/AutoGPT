@@ -63,21 +63,6 @@ class GraphSettings(BaseModel):
         bool, BeforeValidator(lambda v: v if v is not None else False)
     ] = False
 
-    @classmethod
-    def from_graph(
-        cls,
-        # graph: "GraphModel",  # FIXME: wire up this param
-        hitl_safe_mode: bool | None = None,
-        sensitive_action_safe_mode: bool = False,
-    ) -> "GraphSettings":
-        # Default to True if not explicitly set
-        if hitl_safe_mode is None:
-            hitl_safe_mode = True
-        return cls(
-            human_in_the_loop_safe_mode=hitl_safe_mode,
-            sensitive_action_safe_mode=sensitive_action_safe_mode,
-        )
-
 
 class Link(BaseDbModel):
     source_id: str

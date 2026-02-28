@@ -438,9 +438,8 @@ async def create_library_agent(
                             }
                         },
                         settings=SafeJson(
-                            GraphSettings.from_graph(
-                                # graph_entry,
-                                hitl_safe_mode=hitl_safe_mode,
+                            GraphSettings(
+                                human_in_the_loop_safe_mode=hitl_safe_mode,
                                 sensitive_action_safe_mode=sensitive_action_safe_mode,
                             ).model_dump()
                         ),
@@ -570,8 +569,8 @@ async def update_graph_in_library(
     if not library_agent:
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
-    library_agent = await update_library_agent_version_and_settings(
-        user_id, created_graph
+    library_agent = await update_agent_version_in_library(
+        user_id, created_graph.id, created_graph.version
     )
 
     if created_graph.is_active:
@@ -585,28 +584,6 @@ async def update_graph_in_library(
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
     return created_graph, library_agent
-
-
-async def update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
-) -> library_model.LibraryAgent:
-    """Update library agent to point to new graph version and sync settings."""
-    library_agent = await update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
-    )
-    # FIXME: GraphSettings.from_graph(graph) is currently no-op, so this does nothing ⬇️
-    # updated_settings = GraphSettings.from_graph(
-    #     graph=agent_graph,
-    #     hitl_safe_mode=library_agent.settings.human_in_the_loop_safe_mode,
-    #     sensitive_action_safe_mode=library_agent.settings.sensitive_action_safe_mode,
-    # )
-    # if updated_settings != library_agent.settings:
-    #     library_agent = await update_library_agent(
-    #         library_agent_id=library_agent.id,
-    #         user_id=user_id,
-    #         settings=updated_settings,
-    #     )
-    return library_agent
 
 
 async def update_library_agent(
@@ -866,7 +843,7 @@ async def add_store_agent_to_library(
             },
             "isCreatedByUser": False,
             "useGraphIsActiveVersion": False,
-            "settings": SafeJson(GraphSettings.from_graph().model_dump()),
+            "settings": SafeJson(GraphSettings().model_dump()),
         },
         include=library_agent_include(
             user_id, include_nodes=False, include_executions=False

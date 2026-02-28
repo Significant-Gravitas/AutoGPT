@@ -861,8 +861,8 @@ async def update_graph(
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
-        await library_db.update_library_agent_version_and_settings(
-            user_id, new_graph_version
+        await library_db.update_agent_version_in_library(
+            user_id, new_graph_version.id, new_graph_version.version
         )
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
@@ -915,8 +915,8 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_library_agent_version_and_settings(
-        user_id, new_active_graph
+    await library_db.update_agent_version_in_library(
+        user_id, new_active_graph.id, new_active_graph.version
     )
 
     if current_active_graph and current_active_graph.version != new_active_version:
