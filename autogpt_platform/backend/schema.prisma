@@ -281,7 +281,7 @@ model AgentGraph {
 
   Presets              AgentPreset[]
   LibraryAgents        LibraryAgent[]
-  StoreListings        StoreListing[]
+  StoreListing         StoreListing?         @relation(fields: [id], references: [agentGraphId], onDelete: NoAction)
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
@@ -814,10 +814,8 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  // Only 1 of user or group can be set.
-  // The user this profile belongs to, if any.
-  userId String?
-  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   name        String
   username    String @unique
@@ -830,6 +828,7 @@ model Profile {
   isFeatured Boolean @default(false)
 
   LibraryAgents LibraryAgent[]
+  StoreListings StoreListing[]
 
   @@index([userId])
 }
@@ -861,7 +860,7 @@ view Creator {
 
 view StoreAgent {
   listing_id            String   @id
-  storeListingVersionId String
+  listing_version_id    String
   updated_at            DateTime
 
   slug              String
@@ -879,10 +878,12 @@ view StoreAgent {
   runs               Int
   rating             Float
   versions           String[]
-  agentGraphVersions String[]
-  agentGraphId       String
+  graph_id           String
+  graph_versions     String[]
   is_available       Boolean  @default(true)
-  useForOnboarding   Boolean  @default(false)
+  use_for_onboarding Boolean  @default(false)
+
+  recommended_schedule_cron String?
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -979,22 +980,19 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId      String
-  agentGraphVersion Int
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentGraphId String       @unique
+  AgentGraph   AgentGraph[]
 
-  owningUserId String
-  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+  owningUserId   String
+  OwningUser     User    @relation(fields: [owningUserId], references: [id])
+  CreatorProfile Profile @relation(fields: [owningUserId], references: [userId], map: "StoreListing_owner_Profile_fkey", onDelete: Cascade)
 
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
 
-  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
-  @@unique([agentGraphId])
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
-  @@index([agentGraphId, agentGraphVersion])
 }
 
 model StoreListingVersion {
@@ -1089,16 +1087,16 @@ model UnifiedContentEmbedding {
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
   searchableText String // Combined text for search and fallback
-  search         Unsupported("tsvector")? @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
+  search         Unsupported("tsvector")?    @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
   metadata       Json                        @default("{}") // Content-specific metadata
+  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
+  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 
   @@unique([contentType, contentId, userId], map: "UnifiedContentEmbedding_contentType_contentId_userId_key")
   @@index([contentType])
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
-  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 }
 
 model StoreListingReview {

@@ -42,8 +42,8 @@ export function AgentVersionChangelog({
 
   // Create version info from available graph versions
   const storeData = okData(storeAgentData) as StoreAgentDetails | undefined;
-  const agentVersions: VersionInfo[] = storeData?.agentGraphVersions
-    ? storeData.agentGraphVersions
+  const agentVersions: VersionInfo[] = storeData?.graph_versions
+    ? storeData.graph_versions
         .map((versionStr: string) => parseInt(versionStr, 10))
         .sort((a: number, b: number) => b - a) // Sort descending (newest first)
         .map((version: number) => ({

@@ -11658,12 +11658,12 @@
             "type": "array",
             "title": "Versions"
           },
-          "agentGraphVersions": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_versions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Agentgraphversions"
+            "title": "Graph Versions"
           },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -11709,8 +11709,8 @@
           "runs",
           "rating",
           "versions",
-          "agentGraphVersions",
-          "agentGraphId",
+          "graph_id",
+          "graph_versions",
           "last_updated"
         ],
         "title": "StoreAgentDetails"
@@ -11733,7 +11733,6 @@
           "listing_id": { "type": "string", "title": "Listing Id" },
           "slug": { "type": "string", "title": "Slug" },
           "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
           "active_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Active Version Id"
@@ -11761,7 +11760,7 @@
           }
         },
         "type": "object",
-        "required": ["listing_id", "slug", "agent_id", "agent_version"],
+        "required": ["listing_id", "slug", "agent_id"],
         "title": "StoreListingWithVersions",
         "description": "A store listing with its version history"
       },

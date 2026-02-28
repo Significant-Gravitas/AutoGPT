@@ -66,7 +66,7 @@ class GraphSettings(BaseModel):
     @classmethod
     def from_graph(
         cls,
-        graph: "GraphModel",
+        # graph: "GraphModel",  # FIXME: wire up this param
         hitl_safe_mode: bool | None = None,
         sensitive_action_safe_mode: bool = False,
     ) -> "GraphSettings":

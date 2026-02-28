@@ -1005,8 +1005,8 @@ class MarketplaceAgentDetails(MarketplaceAgent):
             image_urls=agent.agent_image,
             video_url=agent.agent_video,
             versions=agent.versions,
-            agent_graph_versions=agent.agentGraphVersions,
-            agent_graph_id=agent.agentGraphId,
+            agent_graph_id=agent.graph_id,
+            agent_graph_versions=agent.graph_versions,
             last_updated=agent.last_updated,
         )
 

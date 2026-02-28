@@ -24,7 +24,7 @@ from backend.data.notifications import (
     NotificationEventModel,
 )
 from backend.notifications.notifications import queue_notification_async
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
@@ -112,7 +112,7 @@ async def get_store_agents(
                             description=agent["description"],
                             runs=agent["runs"],
                             rating=agent["rating"],
-                            agent_graph_id=agent.get("agentGraphId", ""),
+                            agent_graph_id=agent.get("graph_id", ""),
                         )
                         store_agents.append(store_agent)
                     except Exception as e:
@@ -171,7 +171,7 @@ async def get_store_agents(
                         description=agent.description,
                         runs=agent.runs,
                         rating=agent.rating,
-                        agent_graph_id=agent.agentGraphId,
+                        agent_graph_id=agent.graph_id,
                     )
                     # Add to the list only if creation was successful
                     store_agents.append(store_agent)
@@ -229,66 +229,15 @@ async def get_store_agent_details(
 
         if not agent:
             logger.warning(f"Agent not found: {username}/{agent_name}")
-            raise store_exceptions.AgentNotFoundError(
-                f"Agent {username}/{agent_name} not found"
-            )
-
-        profile = await prisma.models.Profile.prisma().find_first(
-            where={"username": username}
-        )
-        user_id = profile.userId if profile else None
-
-        # Retrieve StoreListing to get active_version_id and has_approved_version
-        store_listing = await prisma.models.StoreListing.prisma().find_first(
-            where=prisma.types.StoreListingWhereInput(
-                slug=agent_name,
-                owningUserId=user_id or "",
-            ),
-            include={"ActiveVersion": True},
-        )
-
-        active_version_id = store_listing.activeVersionId if store_listing else None
-        has_approved_version = (
-            store_listing.hasApprovedVersion if store_listing else False
-        )
-
-        if active_version_id:
-            agent_by_active = await prisma.models.StoreAgent.prisma().find_first(
-                where={"storeListingVersionId": active_version_id}
-            )
-            if agent_by_active:
-                agent = agent_by_active
-        elif store_listing:
-            latest_approved = (
-                await prisma.models.StoreListingVersion.prisma().find_first(
-                    where={
-                        "storeListingId": store_listing.id,
-                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                    },
-                    order=[{"version": "desc"}],
-                )
-            )
-            if latest_approved:
-                agent_latest = await prisma.models.StoreAgent.prisma().find_first(
-                    where={"storeListingVersionId": latest_approved.id}
-                )
-                if agent_latest:
-                    agent = agent_latest
-
-        if store_listing and store_listing.ActiveVersion:
-            recommended_schedule_cron = (
-                store_listing.ActiveVersion.recommendedScheduleCron
-            )
-        else:
-            recommended_schedule_cron = None
+            raise NotFoundError(f"Agent {username}/{agent_name} not found")
 
         # Fetch changelog data if requested
         changelog_data = None
-        if include_changelog and store_listing:
+        if include_changelog:
             changelog_versions = (
                 await prisma.models.StoreListingVersion.prisma().find_many(
                     where={
-                        "storeListingId": store_listing.id,
+                        "storeListingId": agent.listing_id,
                         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
                     },
                     order=[{"version": "desc"}],
@@ -305,7 +254,7 @@ async def get_store_agent_details(
 
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return store_model.StoreAgentDetails(
-            store_listing_version_id=agent.storeListingVersionId,
+            store_listing_version_id=agent.listing_version_id,
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
@@ -319,15 +268,15 @@ async def get_store_agent_details(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
-            agentGraphVersions=agent.agentGraphVersions,
-            agentGraphId=agent.agentGraphId,
+            active_version_id=agent.listing_version_id,  # StoreAgent view is based on active version
+            graph_id=agent.graph_id,
+            graph_versions=agent.graph_versions,
             last_updated=agent.updated_at,
-            active_version_id=active_version_id,
-            has_approved_version=has_approved_version,
-            recommended_schedule_cron=recommended_schedule_cron,
+            has_approved_version=True,  # already filtered by StoreAgent view
+            recommended_schedule_cron=agent.recommended_schedule_cron,
             changelog=changelog_data,
         )
-    except store_exceptions.AgentNotFoundError:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
@@ -385,18 +334,16 @@ async def get_store_agent_by_version_id(
 
     try:
         agent = await prisma.models.StoreAgent.prisma().find_first(
-            where={"storeListingVersionId": store_listing_version_id}
+            where={"listing_version_id": store_listing_version_id}
         )
 
         if not agent:
             logger.warning(f"Agent not found: {store_listing_version_id}")
-            raise store_exceptions.AgentNotFoundError(
-                f"Agent {store_listing_version_id} not found"
-            )
+            raise NotFoundError(f"Agent {store_listing_version_id} not found")
 
         logger.debug(f"Found agent details for {store_listing_version_id}")
         return store_model.StoreAgentDetails(
-            store_listing_version_id=agent.storeListingVersionId,
+            store_listing_version_id=agent.listing_version_id,
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
@@ -410,11 +357,11 @@ async def get_store_agent_by_version_id(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
-            agentGraphVersions=agent.agentGraphVersions,
-            agentGraphId=agent.agentGraphId,
+            graph_id=agent.graph_id,
+            graph_versions=agent.graph_versions,
             last_updated=agent.updated_at,
         )
-    except store_exceptions.AgentNotFoundError:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
@@ -752,11 +699,11 @@ async def create_store_submission(
             )
             # Provide more user-friendly error message when agent_id is empty
             if not agent_id or agent_id.strip() == "":
-                raise store_exceptions.AgentNotFoundError(
+                raise NotFoundError(
                     "No agent selected. Please select an agent before submitting to the store."
                 )
             else:
-                raise store_exceptions.AgentNotFoundError(
+                raise NotFoundError(
                     f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
                 )
 
@@ -792,7 +739,6 @@ async def create_store_submission(
         data = prisma.types.StoreListingCreateInput(
             slug=slug,
             agentGraphId=agent_id,
-            agentGraphVersion=agent_version,
             owningUserId=user_id,
             createdAt=datetime.now(tz=timezone.utc),
             Versions={
@@ -862,7 +808,7 @@ async def create_store_submission(
                 f"Unique constraint violated (not slug): {error_str}"
             ) from exc
     except (
-        store_exceptions.AgentNotFoundError,
+        NotFoundError,
         store_exceptions.ListingExistsError,
     ):
         raise
@@ -996,7 +942,7 @@ async def edit_store_submission(
     except (
         store_exceptions.SubmissionNotFoundError,
         store_exceptions.UnauthorizedError,
-        store_exceptions.AgentNotFoundError,
+        NotFoundError,
         store_exceptions.ListingExistsError,
         store_exceptions.InvalidOperationError,
     ):
@@ -1066,7 +1012,7 @@ async def create_store_version(
         )
 
         if not agent:
-            raise store_exceptions.AgentNotFoundError(
+            raise NotFoundError(
                 f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
 
@@ -1317,8 +1263,8 @@ async def get_my_agents(
             "userId": user_id,
             "AgentGraph": {
                 "is": {
-                    "StoreListings": {
-                        "none": {
+                    "StoreListing": {
+                        "is_not": {
                             "isDeleted": False,
                             "Versions": {
                                 "some": {
@@ -1424,7 +1370,6 @@ async def _approve_sub_agent(
             data=prisma.types.StoreListingCreateInput(
                 slug=f"sub-agent-{sub_graph.id[:8]}",
                 agentGraphId=sub_graph.id,
-                agentGraphVersion=sub_graph.version,
                 owningUserId=main_agent_user_id,
                 hasApprovedVersion=True,
                 Versions={
@@ -1665,7 +1610,7 @@ async def review_store_submission(
                 if is_approved:
                     store_agent = (
                         await prisma.models.StoreAgent.prisma().find_first_or_raise(
-                            where={"storeListingVersionId": submission.id}
+                            where={"listing_version_id": submission.id}
                         )
                     )
 
@@ -1896,7 +1841,6 @@ async def get_admin_listings_with_versions(
                 listing_id=listing.id,
                 slug=listing.slug,
                 agent_id=listing.agentGraphId,
-                agent_version=listing.agentGraphVersion,
                 active_version_id=listing.activeVersionId,
                 has_approved_version=listing.hasApprovedVersion,
                 creator_email=creator_email,
