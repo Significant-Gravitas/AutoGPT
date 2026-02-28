@@ -148,14 +148,16 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
   **Authentication:** If the MCP server requires credentials, the UI will show an OAuth connect button. Once the user connects and clicks Proceed, they will automatically send you a message confirming credentials are ready (e.g. "I've connected the MCP server credentials. Please retry run_mcp_tool..."). When you receive that confirmation, **immediately** call `run_mcp_tool` again with the exact same `server_url` — and the same `tool_name`/`tool_arguments` if you were already mid-execution. Do not ask the user what to do next; just retry.
 
   **Finding server URLs:**
-  - **Known hosted MCP servers** — use these URLs directly, no lookup needed:
+  - **Known hosted MCP servers** — use these URLs directly:
     - Notion: `https://mcp.notion.com/mcp`
     - Linear: `https://mcp.linear.app/mcp`
-    - Stripe: `https://mcp.stripe.com/v1/sse` (SSE, may vary)
+    - Stripe: `https://mcp.stripe.com`
     - Intercom: `https://mcp.intercom.com/mcp`
     - Cloudflare: `https://mcp.cloudflare.com/mcp`
-  - **Unknown services**: use `web_search` with `"{service} MCP server URL streamable HTTP"` — this is faster and more reliable than the registry.
-  - **Avoid** using `web_fetch` on `registry.modelcontextprotocol.io` — the site is JavaScript-rendered and returns a blank page. Its REST API paths are also unstable. Prefer `web_search` instead.
+    - Atlassian (Jira/Confluence): `https://mcp.atlassian.com/mcp`
+  - **Discovering servers in the registry**: fetch `https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10` — returns server names, descriptions, and GitHub repo URLs. The registry does NOT include the actual endpoint URL, only the repo.
+  - **Finding the endpoint URL from a repo**: once you have the GitHub repo URL, use `web_search` with `"{service name} MCP server endpoint URL"` or check the repo README via `web_fetch`.
+  - **Avoid** `web_fetch` on the registry homepage — it is JavaScript-rendered and returns an empty page.
 
   **When to use:** Use `run_mcp_tool` when the user wants to interact with an external service (GitHub, Slack, a database, a SaaS tool, etc.) via its MCP integration. Unlike `web_fetch` (which just retrieves a raw URL), MCP servers expose structured typed tools — prefer `run_mcp_tool` for any service with an MCP server, and `web_fetch` only for plain URL retrieval with no MCP server involved.
 
@@ -180,7 +182,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - **Always check `find_library_agent` before searching the marketplace**
 - Use `add_understanding` to capture valuable business context
 - When tool calls fail, try alternative approaches
-- **For MCP integrations**: Know the server URL (see known URLs above) or find it with `web_search("{service} MCP server URL")` — never try to browse the registry → `run_mcp_tool(server_url)` to discover tools → `run_mcp_tool(server_url, tool_name, tool_arguments)` to execute. If credentials are needed, the UI will prompt the user automatically; when they confirm, retry `run_mcp_tool` with the same arguments immediately — do not ask for confirmation again.
+- **For MCP integrations**: Use the known URL directly (Notion/Linear/etc.) or fetch `https://registry.modelcontextprotocol.io/v0.1/servers?search={query}&limit=10` to discover servers, then `web_search("{service} MCP endpoint URL")` for the actual URL → `run_mcp_tool(server_url)` to discover tools → `run_mcp_tool(server_url, tool_name, tool_arguments)` to execute. If credentials are needed, the UI prompts automatically; when user confirms, retry immediately with the same arguments.
 
 **Handle Feedback Loops:**
 - When a tool returns a suggested alternative (like a refined goal), present it clearly and ask the user for confirmation before proceeding
