@@ -149,7 +149,13 @@ async def _save_to_path(
         remote = _resolve_sandbox_path(path, session_id, "save_to_path")
         if isinstance(remote, ErrorResponse):
             return remote
-        await sandbox.files.write(remote, content)
+        try:
+            await sandbox.files.write(remote, content)
+        except Exception as exc:
+            return ErrorResponse(
+                message=f"Failed to write to sandbox: {path} ({exc})",
+                session_id=session_id,
+            )
         return remote
 
     validated = _validate_ephemeral_path(
