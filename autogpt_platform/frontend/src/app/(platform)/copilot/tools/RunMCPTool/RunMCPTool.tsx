@@ -4,7 +4,7 @@ import { PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { SetupRequirementsCard } from "../RunBlock/components/SetupRequirementsCard/SetupRequirementsCard";
+import { MCPSetupCard } from "./components/MCPSetupCard/MCPSetupCard";
 import { MCPToolOutputCard } from "./components/MCPToolOutputCard/MCPToolOutputCard";
 import {
   ToolIcon,
@@ -77,15 +77,12 @@ export function RunMCPToolComponent({ part }: Props) {
         </div>
       )}
 
-      {/* Credential setup — same card as used in RunBlock / graph builder */}
+      {/* Credential setup — MCP-specific OAuth flow */}
       {setupRequirementsOutput && (
-        <div className="mt-2">
-          <SetupRequirementsCard
-            output={setupRequirementsOutput}
-            credentialsLabel="MCP server credentials"
-            retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
-          />
-        </div>
+        <MCPSetupCard
+          output={setupRequirementsOutput}
+          retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+        />
       )}
 
       {/* Tool execution result */}

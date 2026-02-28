@@ -135,10 +135,15 @@ class RunMCPToolTool(BaseTool):
         try:
             await validate_url(server_url, trusted_origins=[])
         except ValueError as e:
-            return ErrorResponse(
-                message=f"Invalid or blocked server URL: {e}",
-                session_id=session_id,
-            )
+            msg = str(e)
+            if "Unable to resolve" in msg or "No IP addresses" in msg:
+                user_msg = (
+                    f"Hostname not found: {_server_host(server_url)}. "
+                    "Please check the URL — the domain may not exist."
+                )
+            else:
+                user_msg = f"Blocked server URL: {msg}"
+            return ErrorResponse(message=user_msg, session_id=session_id)
 
         # Fast DB lookup — no network call
         creds = await MCPToolBlock._auto_lookup_credential(user_id, server_url)
