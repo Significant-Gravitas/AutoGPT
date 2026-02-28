@@ -413,8 +413,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-_SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+# Read stays in _SDK_BUILTIN_ALWAYS (never disabled) because:
+#   1. Background sub-agents (Task with run_in_background) write output to
+#      files that the model accesses via Read.
+#   2. The model may read SDK working-directory files (transcripts, etc.).
+_SDK_BUILTIN_FILE_TOOLS = ["Write", "Edit", "Glob", "Grep"]
+_SDK_BUILTIN_ALWAYS = ["Read", "Task", "WebSearch", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.

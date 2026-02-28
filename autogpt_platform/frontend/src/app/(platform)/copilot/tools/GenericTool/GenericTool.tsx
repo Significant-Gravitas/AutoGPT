@@ -66,18 +66,23 @@ function getToolCategory(toolName: string): ToolCategory {
     case "WebFetch":
       return "web";
     case "read_workspace_file":
+    case "read_file":
     case "Read":
       return "file-read";
     case "write_workspace_file":
+    case "write_file":
     case "Write":
       return "file-write";
     case "delete_workspace_file":
       return "file-delete";
     case "list_workspace_files":
+    case "glob":
     case "Glob":
       return "file-list";
+    case "grep":
     case "Grep":
       return "search";
+    case "edit_file":
     case "Edit":
       return "edit";
     case "TodoWrite":
@@ -185,12 +190,14 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "WebSearch":
       return typeof inp.query === "string" ? inp.query : null;
     case "read_workspace_file":
+    case "read_file":
     case "Read":
       return (
         (typeof inp.file_path === "string" ? inp.file_path : null) ??
         (typeof inp.path === "string" ? inp.path : null)
       );
     case "write_workspace_file":
+    case "write_file":
     case "Write":
       return (
         (typeof inp.file_path === "string" ? inp.file_path : null) ??
@@ -198,10 +205,13 @@ function getInputSummary(toolName: string, input: unknown): string | null {
       );
     case "delete_workspace_file":
       return typeof inp.file_path === "string" ? inp.file_path : null;
+    case "glob":
     case "Glob":
       return typeof inp.pattern === "string" ? inp.pattern : null;
+    case "grep":
     case "Grep":
       return typeof inp.pattern === "string" ? inp.pattern : null;
+    case "edit_file":
     case "Edit":
       return typeof inp.file_path === "string" ? inp.file_path : null;
     case "TodoWrite": {
@@ -738,20 +748,18 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Only show loading text when NOT showing accordion */}
-      {!showAccordion && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <ToolIcon
-            category={category}
-            isStreaming={isStreaming}
-            isError={isError}
-          />
-          <MorphingTextAnimation
-            text={text}
-            className={isError ? "text-red-500" : undefined}
-          />
-        </div>
-      )}
+      {/* Status line: always visible so the user sees what tool ran */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          category={category}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
 
       {showAccordion && accordionData ? (
         <ToolAccordion

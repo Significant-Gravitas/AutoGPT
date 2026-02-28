@@ -2,9 +2,10 @@
 
 When E2B is active, these tools replace the SDK built-in Read/Write/Edit/
 Glob/Grep so that all file operations share the same ``/home/user``
-filesystem as ``bash_exec``.  SDK-internal local paths (e.g.
-``~/.claude/projects/…/tool-results/``) are transparently read from the
-host filesystem instead.
+filesystem as ``bash_exec``.
+
+SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
+by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
 from __future__ import annotations
@@ -22,30 +23,8 @@ _E2B_WORKDIR = "/home/user"
 
 
 # ---------------------------------------------------------------------------
-# Path routing
+# Path helpers
 # ---------------------------------------------------------------------------
-
-
-_ALLOWED_LOCAL_ROOTS = (
-    os.path.realpath(os.path.expanduser("~/.claude")),
-    "/tmp/copilot-",  # SDK ephemeral cwd prefix (matched by startswith)
-)
-
-
-def _is_local_path(path: str) -> bool:
-    """Return True when *path* refers to an allowed SDK-internal host path.
-
-    Only paths under ``~/.claude/`` (tool-results, transcripts) and
-    ``/tmp/copilot-*/`` (SDK ephemeral cwd) are allowed locally.
-    Everything else is treated as a sandbox path.
-    """
-    if not path:
-        return False
-    real = os.path.realpath(os.path.expanduser(path))
-    return any(
-        real == root or real.startswith(root + os.sep) or real.startswith(root)
-        for root in _ALLOWED_LOCAL_ROOTS
-    )
 
 
 def _resolve_remote(path: str) -> str:
@@ -92,10 +71,6 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
 
     if not file_path:
         return _mcp_error("file_path is required")
-
-    # SDK-internal paths (tool-results, transcripts, …) stay local.
-    if _is_local_path(file_path):
-        return _read_local(file_path, offset, limit)
 
     from .tool_adapter import get_current_sandbox
 
@@ -254,33 +229,6 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     output = (result.stdout or "").strip()
     return _mcp_ok(output if output else "No matches found.")
-
-
-# ---------------------------------------------------------------------------
-# Local read (for SDK-internal paths)
-# ---------------------------------------------------------------------------
-
-
-def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
-    """Read a file from the host filesystem (SDK-internal paths only)."""
-    expanded = os.path.expanduser(file_path)
-    real = os.path.realpath(expanded)
-    if not any(
-        real == root or real.startswith(root + os.sep) or real.startswith(root)
-        for root in _ALLOWED_LOCAL_ROOTS
-    ):
-        return _mcp_error(f"Local path not allowed: {file_path}")
-    try:
-        with open(real) as fh:
-            selected = list(itertools.islice(fh, offset, offset + limit))
-        numbered = "".join(
-            f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
-        )
-        return _mcp_ok(numbered)
-    except FileNotFoundError:
-        return _mcp_error(f"File not found: {file_path}")
-    except Exception as exc:
-        return _mcp_error(f"Error reading {file_path}: {exc}")
 
 
 # ---------------------------------------------------------------------------
