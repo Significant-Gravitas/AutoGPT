@@ -25,7 +25,7 @@ from backend.data.redis_client import get_redis_async
 logger = logging.getLogger(__name__)
 
 _SANDBOX_REDIS_PREFIX = "copilot:e2b:sandbox:"
-_E2B_WORKDIR = "/home/user"
+E2B_WORKDIR = "/home/user"
 _CREATING = "__creating__"
 _CREATION_LOCK_TTL = 60
 _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait

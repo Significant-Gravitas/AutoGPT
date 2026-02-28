@@ -5,18 +5,28 @@ import base64
 import json
 import logging
 import os
+import shutil
 import sys
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
 
+import openai
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    ResultMessage,
+    ToolUseBlock,
+)
 from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
+from backend.util.prompt import compress_context
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
@@ -343,8 +353,6 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
-    import shutil
-
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
@@ -376,8 +384,6 @@ async def _compress_conversation_history(
     if len(messages) < 2:
         return messages
 
-    from backend.util.prompt import compress_context
-
     # Convert ChatMessages to dicts for compress_context
     messages_dict = []
     for msg in messages:
@@ -391,8 +397,6 @@ async def _compress_conversation_history(
         messages_dict.append(msg_dict)
 
     try:
-        import openai
-
         async with openai.AsyncOpenAI(
             api_key=config.api_key, base_url=config.base_url, timeout=30.0
         ) as client:
@@ -685,8 +689,6 @@ async def stream_chat_completion_sdk(
 
         set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
         try:
-            from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-
             # Fail fast when no API credentials are available at all
             sdk_env = _build_sdk_env()
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -908,12 +910,6 @@ async def stream_chat_completion_sdk(
                         # AssistantMessages (each containing only
                         # ToolUseBlocks), we must NOT wait/flush — the prior
                         # tools are still executing concurrently.
-                        from claude_agent_sdk import (
-                            AssistantMessage,
-                            ResultMessage,
-                            ToolUseBlock,
-                        )
-
                         is_parallel_continuation = isinstance(
                             sdk_msg, AssistantMessage
                         ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)

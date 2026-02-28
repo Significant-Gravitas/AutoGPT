@@ -8,6 +8,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 from backend.copilot.tools.sandbox import make_session_path
 from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
@@ -80,16 +81,16 @@ async def _resolve_write_content(
 def _resolve_sandbox_path(
     path: str, session_id: str | None, param_name: str
 ) -> str | ErrorResponse:
-    """Normalize *path* to an absolute sandbox path under ``/home/user``.
+    """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
 
     Returns an :class:`ErrorResponse` if the resolved path escapes the
-    ``/home/user`` boundary (e.g. via ``/etc/passwd`` or ``../`` traversal).
+    sandbox boundary (e.g. via ``/etc/passwd`` or ``../`` traversal).
     """
-    candidate = path if os.path.isabs(path) else os.path.join("/home/user", path)
+    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
-    if normalized != "/home/user" and not normalized.startswith("/home/user/"):
+    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
         return ErrorResponse(
-            message=f"{param_name} must be within /home/user",
+            message=f"{param_name} must be within {E2B_WORKDIR}",
             session_id=session_id,
         )
     return normalized

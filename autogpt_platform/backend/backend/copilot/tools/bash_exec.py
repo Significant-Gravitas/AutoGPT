@@ -23,13 +23,11 @@ from e2b.exceptions import TimeoutException
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
+from .e2b_sandbox import E2B_WORKDIR
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
-
-# Working directory inside E2B sandboxes (must match _E2B_WORKDIR in e2b_sandbox.py).
-_E2B_WORKDIR = "/home/user"
 
 
 class BashExecTool(BaseTool):
@@ -142,7 +140,7 @@ class BashExecTool(BaseTool):
         try:
             result = await sandbox.commands.run(
                 f"bash -c {_shell_quote(command)}",
-                cwd=_E2B_WORKDIR,
+                cwd=E2B_WORKDIR,
                 timeout=timeout,
                 envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
             )

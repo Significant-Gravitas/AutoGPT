@@ -17,9 +17,9 @@ import os
 import shlex
 from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
+from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 
-_E2B_WORKDIR = "/home/user"
+logger = logging.getLogger(__name__)
 
 
 # Lazy imports to break circular dependency with tool_adapter.
@@ -42,10 +42,10 @@ def _resolve_remote(path: str) -> str:
 
     Raises :class:`ValueError` if the resolved path escapes the sandbox.
     """
-    candidate = path if os.path.isabs(path) else os.path.join(_E2B_WORKDIR, path)
+    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
-    if normalized != _E2B_WORKDIR and not normalized.startswith(_E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {_E2B_WORKDIR}: {path}")
+    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
+        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
     return normalized
 
 
@@ -116,7 +116,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         parent = os.path.dirname(remote)
-        if parent and parent != _E2B_WORKDIR:
+        if parent and parent != E2B_WORKDIR:
             await sandbox.files.make_dir(parent)
         await sandbox.files.write(remote, content)
     except Exception as exc:
@@ -181,13 +181,13 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
-        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=10)
+        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=10)
     except Exception as exc:
         return _mcp(f"Glob failed: {exc}", error=True)
 
@@ -208,7 +208,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else _E2B_WORKDIR
+        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -219,7 +219,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
     try:
-        result = await sandbox.commands.run(cmd, cwd=_E2B_WORKDIR, timeout=15)
+        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=15)
     except Exception as exc:
         return _mcp(f"Grep failed: {exc}", error=True)
 

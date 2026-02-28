@@ -14,6 +14,8 @@ import uuid
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
+from claude_agent_sdk import create_sdk_mcp_server, tool
+
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
@@ -443,7 +445,6 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     disable the corresponding SDK built-in tools via
     :func:`get_sdk_disallowed_tools`.
     """
-    from claude_agent_sdk import create_sdk_mcp_server, tool
 
     def _truncating(fn, tool_name: str):
         """Wrap a tool handler so its response is truncated to stay under the
