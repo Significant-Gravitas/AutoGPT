@@ -248,6 +248,43 @@ describe("getAnimationText", () => {
     expect(text).toContain("mcp.example.com");
   });
 
+  it("includes query argument preview when tool_arguments has a query key", () => {
+    const text = getAnimationText({
+      state: "input-available",
+      input: {
+        server_url: "https://mcp.example.com/mcp",
+        tool_name: "search",
+        tool_arguments: { query: "my search term" },
+      },
+    });
+    expect(text).toContain(`"my search term"`);
+    expect(text).toContain("search");
+  });
+
+  it("falls back to first string value when no known query key is present", () => {
+    const text = getAnimationText({
+      state: "input-available",
+      input: {
+        server_url: "https://mcp.example.com/mcp",
+        tool_name: "get_page",
+        tool_arguments: { page_id: "abc123" },
+      },
+    });
+    expect(text).toContain(`"abc123"`);
+  });
+
+  it("shows no arg preview when tool_arguments is empty", () => {
+    const text = getAnimationText({
+      state: "input-available",
+      input: {
+        server_url: "https://mcp.example.com/mcp",
+        tool_name: "list_users",
+        tool_arguments: {},
+      },
+    });
+    expect(text).toBe("Calling list_users on mcp.example.com");
+  });
+
   it("shows ran text on output-available for tool output", () => {
     const text = getAnimationText({
       state: "output-available",
