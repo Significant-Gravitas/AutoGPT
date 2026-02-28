@@ -19,6 +19,8 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
@@ -480,8 +482,6 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
     if use_e2b:
-        from .e2b_file_tools import E2B_FILE_TOOLS
-
         for name, desc, schema, handler in E2B_FILE_TOOLS:
             decorated = tool(name, desc, schema)(_truncating(handler, name))
             sdk_tools.append(decorated)
@@ -575,8 +575,6 @@ def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
     """
     if not use_e2b:
         return list(COPILOT_TOOL_NAMES)
-
-    from .e2b_file_tools import E2B_FILE_TOOL_NAMES
 
     return [
         *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],

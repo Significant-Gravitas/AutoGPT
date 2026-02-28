@@ -15,16 +15,16 @@ limits.  Requires bubblewrap to be installed (Linux only).
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from e2b import AsyncSandbox
+from e2b.exceptions import TimeoutException
 
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
-
-if TYPE_CHECKING:
-    from e2b import AsyncSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ class BashExecTool(BaseTool):
 
     async def _execute_on_e2b(
         self,
-        sandbox: "AsyncSandbox",
+        sandbox: AsyncSandbox,
         command: str,
         timeout: int,
         session_id: str | None,
@@ -155,9 +155,6 @@ class BashExecTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as exc:
-            # Distinguish timeout from other errors using E2B's typed exception
-            from e2b.exceptions import TimeoutException
-
             if isinstance(exc, TimeoutException):
                 return BashExecResponse(
                     message="Execution timed out",

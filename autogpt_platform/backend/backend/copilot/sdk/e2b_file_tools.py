@@ -17,9 +17,22 @@ import os
 import shlex
 from typing import Any, Callable
 
-from .tool_adapter import get_current_sandbox, is_allowed_local_path
-
 logger = logging.getLogger(__name__)
+
+
+def _get_sandbox():  # type: ignore[return]
+    """Lazy import to break circular dependency with tool_adapter."""
+    from .tool_adapter import get_current_sandbox  # noqa: E402
+
+    return get_current_sandbox()
+
+
+def _is_allowed_local(path: str) -> bool:
+    """Lazy import to break circular dependency with tool_adapter."""
+    from .tool_adapter import is_allowed_local_path  # noqa: E402
+
+    return is_allowed_local_path(path)
+
 
 _E2B_WORKDIR = "/home/user"
 
@@ -78,10 +91,10 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp_error("file_path is required")
 
     # SDK-internal paths (tool-results, ephemeral working dir) stay on the host.
-    if is_allowed_local_path(file_path):
+    if _is_allowed_local(file_path):
         return _read_local(file_path, offset, limit)
 
-    sandbox = get_current_sandbox()
+    sandbox = _get_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
@@ -109,7 +122,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     if not file_path:
         return _mcp_error("file_path is required")
 
-    sandbox = get_current_sandbox()
+    sandbox = _get_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
@@ -139,7 +152,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     if not old_string:
         return _mcp_error("old_string is required")
 
-    sandbox = get_current_sandbox()
+    sandbox = _get_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
@@ -181,7 +194,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     if not pattern:
         return _mcp_error("pattern is required")
 
-    sandbox = get_current_sandbox()
+    sandbox = _get_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
@@ -207,7 +220,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if not pattern:
         return _mcp_error("pattern is required")
 
-    sandbox = get_current_sandbox()
+    sandbox = _get_sandbox()
     if sandbox is None:
         return _mcp_error("No E2B sandbox available")
 
@@ -239,10 +252,10 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
     """Read from the host filesystem.
 
     Defence-in-depth: validates the path with
-    :func:`~tool_adapter.is_allowed_local_path` even though the caller
+    :func:`_is_allowed_local` even though the caller
     is expected to have checked already.
     """
-    if not is_allowed_local_path(file_path):
+    if not _is_allowed_local(file_path):
         return _mcp_error(f"Path not allowed: {file_path}")
     expanded = os.path.realpath(os.path.expanduser(file_path))
     try:
