@@ -133,7 +133,8 @@ def test_read_tool_results_allowed():
         _current_project_dir.reset(token)
 
 
-def test_read_claude_projects_without_tool_results_denied():
+def test_read_claude_projects_session_dir_allowed():
+    """Files within the current session's project dir are allowed."""
     from .tool_adapter import _current_project_dir
 
     home = os.path.expanduser("~")
@@ -141,7 +142,7 @@ def test_read_claude_projects_without_tool_results_denied():
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
         result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert _is_denied(result)
+        assert not _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 

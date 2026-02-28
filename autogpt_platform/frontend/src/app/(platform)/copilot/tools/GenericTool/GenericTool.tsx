@@ -544,25 +544,18 @@ function getFileAccordionData(
     displayContent = extractMcpText(output);
   }
 
-  // For write/edit operations, show the written content from the input
-  // when the output is just a success message (e.g. "Successfully wrote to ...").
-  const inputContent = getStringField(
-    inp as Record<string, unknown>,
-    "content",
-  );
-  const isWriteOp = category === "file-write" || category === "edit";
-  const outputIsJustStatus =
-    displayContent != null && /^(Successfully |Edited )/.test(displayContent);
-  const writtenContent = isWriteOp && inputContent ? inputContent : null;
-
-  // For edit operations, show old_string → new_string from input
-  const oldString = getStringField(
-    inp as Record<string, unknown>,
-    "old_string",
-  );
+  // For edit: show old/new diff; for write: show written content if output is just a status
+  const oldString =
+    category === "edit"
+      ? getStringField(inp as Record<string, unknown>, "old_string")
+      : null;
   const newString =
     category === "edit"
       ? getStringField(inp as Record<string, unknown>, "new_string")
+      : null;
+  const writtenContent =
+    category === "file-write"
+      ? getStringField(inp as Record<string, unknown>, "content")
       : null;
 
   // For Glob/list results, try to show file list
@@ -598,14 +591,16 @@ function getFileAccordionData(
     fileListText = fileLines.join("\n");
   }
 
+  const isWriteOrEdit = category === "file-write" || category === "edit";
+
   return {
     title:
       message ??
-      (isWriteOp ? `Wrote ${truncate(filePath, 60)}` : "File output"),
+      (isWriteOrEdit ? `Wrote ${truncate(filePath, 60)}` : "File output"),
     description: truncate(filePath, 80),
     content: (
       <div className="space-y-2">
-        {isWriteOp && oldString && newString != null ? (
+        {oldString && newString != null ? (
           <>
             <div>
               <p className="mb-1 text-xs font-medium text-red-400">removed</p>
@@ -616,7 +611,7 @@ function getFileAccordionData(
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
           </>
-        ) : writtenContent && outputIsJustStatus ? (
+        ) : writtenContent ? (
           <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
         ) : displayContent ? (
           <ContentCodeBlock>{displayContent}</ContentCodeBlock>

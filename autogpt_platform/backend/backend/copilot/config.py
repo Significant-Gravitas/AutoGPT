@@ -95,7 +95,7 @@ class ChatConfig(BaseSettings):
 
     # E2B Sandbox Configuration
     use_e2b_sandbox: bool = Field(
-        default=False,
+        default=True,
         description="Use E2B cloud sandboxes for persistent bash/python execution. "
         "When enabled, bash_exec routes commands to E2B and SDK file tools "
         "operate directly on the sandbox via E2B's filesystem API.",
@@ -126,7 +126,7 @@ class ChatConfig(BaseSettings):
         env_val = os.getenv("CHAT_USE_E2B_SANDBOX", "").lower()
         if env_val:
             return env_val in ("true", "1", "yes", "on")
-        return False if v is None else v
+        return True if v is None else v
 
     @field_validator("e2b_api_key", mode="before")
     @classmethod

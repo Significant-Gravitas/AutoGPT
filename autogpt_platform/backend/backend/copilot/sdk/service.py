@@ -42,6 +42,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
+from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
@@ -146,17 +147,6 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
-def _build_sdk_tool_supplement(cwd: str, *, use_e2b: bool = False) -> str:
-    """Build the SDK tool supplement with the actual working directory injected.
-
-    When *use_e2b* is True the supplement describes the cloud sandbox
-    filesystem shared by all file tools and ``bash_exec``.
-    """
-    if use_e2b:
-        return _E2B_TOOL_SUPPLEMENT
-    return _LOCAL_TOOL_SUPPLEMENT.format(cwd=cwd)
-
-
 _SHARED_TOOL_NOTES = """\
 
 ### Sharing files with the user
@@ -664,8 +654,6 @@ async def stream_chat_completion_sdk(
         # When active, MCP file tools route directly to the sandbox filesystem
         # so bash_exec and file tools share the same /home/user directory.
         if config.use_e2b_sandbox and config.e2b_api_key:
-            from ..tools.e2b_sandbox import get_or_create_sandbox
-
             try:
                 e2b_sandbox = await get_or_create_sandbox(
                     session_id,
@@ -687,7 +675,11 @@ async def stream_chat_completion_sdk(
         system_prompt, _ = await _build_system_prompt(
             user_id, has_conversation_history=has_history
         )
-        system_prompt += _build_sdk_tool_supplement(sdk_cwd, use_e2b=use_e2b)
+        system_prompt += (
+            _E2B_TOOL_SUPPLEMENT
+            if use_e2b
+            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 

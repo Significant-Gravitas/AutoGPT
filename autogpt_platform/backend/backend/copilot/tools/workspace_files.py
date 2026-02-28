@@ -134,6 +134,36 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
         )
 
 
+async def _save_to_path(
+    path: str, content: bytes, session_id: str
+) -> str | ErrorResponse:
+    """Write *content* to *path* on E2B sandbox or local ephemeral directory.
+
+    Returns the resolved path on success, or an ``ErrorResponse`` on failure.
+    """
+    from backend.copilot.sdk.tool_adapter import get_current_sandbox
+
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        remote = _resolve_sandbox_path(path, session_id, "save_to_path")
+        if isinstance(remote, ErrorResponse):
+            return remote
+        await sandbox.files.write(remote, content)
+        return remote
+
+    validated = _validate_ephemeral_path(
+        path, param_name="save_to_path", session_id=session_id
+    )
+    if isinstance(validated, ErrorResponse):
+        return validated
+    dir_path = os.path.dirname(validated)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+    with open(validated, "wb") as f:
+        f.write(content)
+    return validated
+
+
 def _validate_ephemeral_path(
     path: str, *, param_name: str, session_id: str
 ) -> ErrorResponse | str:
@@ -472,18 +502,6 @@ class ReadWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path", session_id=session_id
             )
 
-        # Validate and resolve save_to_path.
-        from backend.copilot.sdk.tool_adapter import get_current_sandbox
-
-        sandbox = get_current_sandbox()
-        if save_to_path and sandbox is None:
-            validated_save = _validate_ephemeral_path(
-                save_to_path, param_name="save_to_path", session_id=session_id
-            )
-            if isinstance(validated_save, ErrorResponse):
-                return validated_save
-            save_to_path = validated_save
-
         try:
             manager = await _get_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
@@ -495,21 +513,10 @@ class ReadWorkspaceFileTool(BaseTool):
             cached_content: bytes | None = None
             if save_to_path:
                 cached_content = await manager.read_file_by_id(target_file_id)
-                if sandbox is not None:
-                    # Write to E2B sandbox filesystem.
-                    remote = _resolve_sandbox_path(
-                        save_to_path, session_id, "save_to_path"
-                    )
-                    if isinstance(remote, ErrorResponse):
-                        return remote
-                    await sandbox.files.write(remote, cached_content)
-                    save_to_path = remote
-                else:
-                    dir_path = os.path.dirname(save_to_path)
-                    if dir_path:
-                        os.makedirs(dir_path, exist_ok=True)
-                    with open(save_to_path, "wb") as f:
-                        f.write(cached_content)
+                result = await _save_to_path(save_to_path, cached_content, session_id)
+                if isinstance(result, ErrorResponse):
+                    return result
+                save_to_path = result
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
