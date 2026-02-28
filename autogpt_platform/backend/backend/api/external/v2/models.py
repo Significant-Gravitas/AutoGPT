@@ -737,13 +737,13 @@ class AgentRunShareResponse(BaseModel):
 # ============================================================================
 
 
-RunReviewStatus: TypeAlias = Literal["WAITING", "APPROVED", "REJECTED"]
+AgentRunReviewStatus: TypeAlias = Literal["WAITING", "APPROVED", "REJECTED"]
 
 
-class PendingRunReview(BaseModel):
-    """A pending human-in-the-loop review for an agent run."""
+class AgentRunReview(BaseModel):
+    """A human-in-the-loop review for an agent run."""
 
-    id: str  # node_exec_id
+    node_exec_id: str  # primary key for reviews
     run_id: str
     graph_id: str
     graph_version: int
@@ -754,13 +754,13 @@ class PendingRunReview(BaseModel):
     editable: bool = Field(
         default=True, description="Whether the reviewer can edit the data"
     )
-    status: RunReviewStatus
+    status: AgentRunReviewStatus
     created_at: datetime
 
     @classmethod
     def from_internal(cls, review: PendingHumanReviewModel) -> Self:
         return cls(
-            id=review.node_exec_id,
+            node_exec_id=review.node_exec_id,
             run_id=review.graph_exec_id,
             graph_id=review.graph_id,
             graph_version=review.graph_version,
@@ -772,13 +772,13 @@ class PendingRunReview(BaseModel):
         )
 
 
-class PendingRunReviewsResponse(PaginatedResponse):
-    """Response for listing pending run reviews."""
+class AgentRunReviewsResponse(PaginatedResponse):
+    """Response for listing run reviews."""
 
-    reviews: list[PendingRunReview]
+    reviews: list[AgentRunReview]
 
 
-class RunReviewDecision(BaseModel):
+class AgentRunReviewDecision(BaseModel):
     """Decision for a single review item."""
 
     node_exec_id: str = Field(description="Node execution ID (review ID)")
@@ -791,15 +791,15 @@ class RunReviewDecision(BaseModel):
     )
 
 
-class RunReviewsSubmitRequest(BaseModel):
+class AgentRunReviewsSubmitRequest(BaseModel):
     """Request to submit review responses for all pending reviews of an execution."""
 
-    reviews: list[RunReviewDecision] = Field(
+    reviews: list[AgentRunReviewDecision] = Field(
         description="All review decisions for the execution"
     )
 
 
-class RunReviewsSubmitResponse(BaseModel):
+class AgentRunReviewsSubmitResponse(BaseModel):
     """Response after submitting reviews."""
 
     run_id: str

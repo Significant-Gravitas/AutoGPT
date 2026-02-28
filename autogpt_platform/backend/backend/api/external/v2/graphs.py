@@ -5,6 +5,7 @@ Provides endpoints for managing agent graphs (CRUD operations).
 """
 
 import logging
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
@@ -84,7 +85,7 @@ async def get_graph(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
-    version: int | None = Query(
+    version: Optional[int] = Query(
         default=None,
         description="Specific version to retrieve (default: active version)",
     ),

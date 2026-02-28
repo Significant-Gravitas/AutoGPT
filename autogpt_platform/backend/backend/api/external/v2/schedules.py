@@ -5,6 +5,7 @@ Provides endpoints for managing execution schedules.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
@@ -35,9 +36,10 @@ schedules_router = APIRouter()
 
 @schedules_router.get(
     path="",
-    summary="List all user schedules",
+    summary="List agent run schedules",
 )
 async def list_all_schedules(
+    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_SCHEDULE)
     ),
@@ -50,10 +52,13 @@ async def list_all_schedules(
     ),
 ) -> AgentRunScheduleListResponse:
     """
-    List all schedules for the authenticated user across all graphs.
+    List schedules for the authenticated user.
+
+    Optionally filter by graph ID.
     """
     schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=auth.user_id
+        user_id=auth.user_id,
+        graph_id=graph_id,
     )
     converted = [AgentRunSchedule.from_internal(s) for s in schedules]
 
@@ -105,26 +110,6 @@ async def delete_schedule(
 # ============================================================================
 
 graph_schedules_router = APIRouter()
-
-
-@graph_schedules_router.get(
-    path="/{graph_id}/schedules",
-    summary="List schedules for a graph",
-)
-async def list_graph_schedules(
-    graph_id: str = Path(description="Graph ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_SCHEDULE)
-    ),
-) -> list[AgentRunSchedule]:
-    """
-    List all schedules for a specific graph.
-    """
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=auth.user_id,
-        graph_id=graph_id,
-    )
-    return [AgentRunSchedule.from_internal(s) for s in schedules]
 
 
 @graph_schedules_router.post(

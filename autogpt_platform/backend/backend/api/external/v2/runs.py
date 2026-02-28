@@ -7,6 +7,7 @@ Provides access to execution runs and human-in-the-loop reviews.
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
@@ -25,11 +26,11 @@ from .models import (
     AgentGraphRun,
     AgentGraphRunDetails,
     AgentRunListResponse,
+    AgentRunReview,
+    AgentRunReviewsResponse,
+    AgentRunReviewsSubmitRequest,
+    AgentRunReviewsSubmitResponse,
     AgentRunShareResponse,
-    PendingRunReview,
-    PendingRunReviewsResponse,
-    RunReviewsSubmitRequest,
-    RunReviewsSubmitResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,10 @@ runs_router = APIRouter()
 
 @runs_router.get(
     path="",
-    summary="List all runs",
+    summary="List agent runs",
 )
 async def list_runs(
+    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN)
     ),
@@ -60,12 +62,13 @@ async def list_runs(
     ),
 ) -> AgentRunListResponse:
     """
-    List all execution runs for the authenticated user.
+    List agent runs for the authenticated user.
 
-    Returns runs across all agents, sorted by most recent first.
+    Optionally filter by graph ID.
     """
     result = await execution_db.get_graph_executions_paginated(
         user_id=auth.user_id,
+        graph_id=graph_id,
         page=page,
         page_size=page_size,
     )
@@ -252,9 +255,13 @@ async def disable_sharing(
 
 @runs_router.get(
     path="/reviews",
-    summary="List all pending reviews",
+    summary="List human-in-the-loop reviews for agent runs",
 )
-async def list_pending_reviews(
+async def list_reviews(
+    run_id: Optional[str] = Query(default=None, description="Filter by run ID"),
+    status: Optional[ReviewStatus] = Query(
+        description="Filter by review status",
+    ),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN_REVIEW)
     ),
@@ -265,69 +272,45 @@ async def list_pending_reviews(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
-) -> PendingRunReviewsResponse:
+) -> AgentRunReviewsResponse:
     """
-    List all pending human-in-the-loop reviews.
+    List human-in-the-loop reviews.
 
-    These are blocks that require human approval or input before the
-    agent can continue execution.
+    Defaults to pending (WAITING) reviews. Use `status` to filter by
+    review status and `run_id` to scope to a specific run.
     """
-    reviews = await review_db.get_pending_reviews_for_user(
+    reviews, pagination = await review_db.get_reviews(
         user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
-    )
-
-    # Note: get_pending_reviews_for_user returns list directly, not a paginated result
-    # We compute pagination info based on results
-    total_count = len(reviews)
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    return PendingRunReviewsResponse(
-        reviews=[PendingRunReview.from_internal(r) for r in reviews],
-        page=page,
-        page_size=page_size,
-        total_count=total_count,
-        total_pages=total_pages,
-    )
-
-
-@runs_router.get(
-    path="/{run_id}/reviews",
-    summary="List reviews for a run",
-)
-async def list_run_reviews(
-    run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN_REVIEW)
-    ),
-) -> list[PendingRunReview]:
-    """
-    List all human-in-the-loop reviews for a specific run.
-    """
-    reviews = await review_db.get_pending_reviews_for_execution(
         graph_exec_id=run_id,
-        user_id=auth.user_id,
+        status=status,
+        page=page,
+        page_size=page_size,
     )
 
-    return [PendingRunReview.from_internal(r) for r in reviews]
+    return AgentRunReviewsResponse(
+        reviews=[AgentRunReview.from_internal(r) for r in reviews],
+        page=pagination.current_page,
+        page_size=pagination.page_size,
+        total_count=pagination.total_items,
+        total_pages=pagination.total_pages,
+    )
 
 
 @runs_router.post(
     path="/{run_id}/reviews",
-    summary="Submit review responses for a run",
+    summary="Submit a human-in-the-loop review for an agent run",
 )
 async def submit_reviews(
-    request: RunReviewsSubmitRequest,
+    request: AgentRunReviewsSubmitRequest,
     run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),
-) -> RunReviewsSubmitResponse:
+) -> AgentRunReviewsSubmitResponse:
     """
-    Submit responses to all pending human-in-the-loop reviews for a run.
+    Submit responses to all pending human-in-the-loop reviews for an agent run.
 
-    All pending reviews for the execution must be included. Approving
+    All pending reviews for the run must be included. Approving
     a review will allow the agent to continue; rejecting will terminate
     execution at that point.
     """
@@ -342,24 +325,20 @@ async def submit_reviews(
             decision.message,
         )
 
-    try:
-        results = await review_db.process_all_reviews_for_execution(
-            user_id=auth.user_id,
-            review_decisions=review_decisions,
-        )
+    results = await review_db.process_all_reviews_for_execution(
+        user_id=auth.user_id,
+        review_decisions=review_decisions,
+    )
 
-        approved_count = sum(
-            1 for r in results.values() if r.status == ReviewStatus.APPROVED
-        )
-        rejected_count = sum(
-            1 for r in results.values() if r.status == ReviewStatus.REJECTED
-        )
+    approved_count = sum(
+        1 for r in results.values() if r.status == ReviewStatus.APPROVED
+    )
+    rejected_count = sum(
+        1 for r in results.values() if r.status == ReviewStatus.REJECTED
+    )
 
-        return RunReviewsSubmitResponse(
-            run_id=run_id,
-            approved_count=approved_count,
-            rejected_count=rejected_count,
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return AgentRunReviewsSubmitResponse(
+        run_id=run_id,
+        approved_count=approved_count,
+        rejected_count=rejected_count,
+    )

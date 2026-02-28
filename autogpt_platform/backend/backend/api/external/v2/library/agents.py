@@ -5,6 +5,7 @@ Provides access to the user's agent library and agent execution.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
@@ -12,7 +13,6 @@ from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
-from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
@@ -22,7 +22,6 @@ from ..common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
-    AgentRunListResponse,
     AgentRunRequest,
     CredentialRequirementsResponse,
     LibraryAgent,
@@ -49,10 +48,13 @@ async def list_library_agents(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
-    published: bool | None = Query(
+    published: Optional[bool] = Query(
         default=None,
-        description="Filter by marketplace publish status: "
-        "true = published, false = unpublished, omit = all",
+        description="Filter by marketplace publish status",
+    ),
+    favorite: Optional[bool] = Query(
+        default=None,
+        description="Filter by `isFavorite` attribute",
     ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
@@ -66,48 +68,13 @@ async def list_library_agents(
     List agents in the user's library.
 
     The library contains agents the user has created or added from the marketplace.
-    Use the `published` filter to show only agents that are/aren't listed on the
-    marketplace.
     """
     result = await library_db.list_library_agents(
         user_id=auth.user_id,
         page=page,
         page_size=page_size,
         published=published,
-    )
-
-    return LibraryAgentListResponse(
-        agents=[LibraryAgent.from_internal(a) for a in result.agents],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
-        total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
-    )
-
-
-@agents_router.get(
-    path="/agents/favorites",
-    summary="List favorite agents",
-)
-async def list_favorite_agents(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-) -> LibraryAgentListResponse:
-    """
-    List favorite agents in the user's library.
-    """
-    result = await library_db.list_favorite_library_agents(
-        user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
+        favorite=favorite,
     )
 
     return LibraryAgentListResponse(
@@ -277,51 +244,6 @@ async def execute_agent(
     except Exception as e:
         logger.error(f"Failed to execute agent: {e}")
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@agents_router.get(
-    path="/agents/{agent_id}/runs",
-    summary="List runs for an agent",
-)
-async def list_agent_runs(
-    agent_id: str = Path(description="Library agent ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-) -> AgentRunListResponse:
-    """
-    List execution runs for a specific agent.
-    """
-    # Get the library agent to find the graph ID
-    try:
-        library_agent = await library_db.get_library_agent(
-            id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
-
-    result = await execution_db.get_graph_executions_paginated(
-        graph_id=library_agent.graph_id,
-        user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
-    )
-
-    return AgentRunListResponse(
-        runs=[AgentGraphRun.from_internal(e) for e in result.executions],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
-        total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
-    )
 
 
 @agents_router.get(

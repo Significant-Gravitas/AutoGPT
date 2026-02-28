@@ -47,6 +47,7 @@ async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
     published: Optional[bool] = None,
+    favorite: Optional[bool] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
@@ -135,6 +136,10 @@ async def list_library_agents(
                 )
             }
         }
+
+    # Filter by favorite status
+    if favorite is not None:
+        where_clause["isFavorite"] = favorite
 
     order_by: prisma.types.LibraryAgentOrderByInput | None = None
 
