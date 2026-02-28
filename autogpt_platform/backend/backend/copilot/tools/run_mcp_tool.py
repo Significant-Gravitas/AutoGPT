@@ -115,6 +115,16 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
+        _parsed = urlparse(server_url)
+        if _parsed.username or _parsed.password:
+            return ErrorResponse(
+                message=(
+                    "Do not include credentials in server_url. "
+                    "Use the MCP credential setup flow instead."
+                ),
+                session_id=session_id,
+            )
+
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
