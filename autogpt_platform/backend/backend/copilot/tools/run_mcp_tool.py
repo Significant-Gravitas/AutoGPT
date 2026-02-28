@@ -289,7 +289,7 @@ class RunMCPToolTool(BaseTool):
             logger.error(
                 "No credential requirements found for MCP server %s — "
                 "MCPToolBlock may not have credentials configured",
-                server_url,
+                _server_host(server_url),
             )
             return ErrorResponse(
                 message=(
