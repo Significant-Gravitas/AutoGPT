@@ -160,7 +160,14 @@ async def get_or_create_sandbox(
                             await redis.expire(redis_key, timeout)
                             return sandbox
                     except Exception:
-                        pass  # fall through to create
+                        pass
+            # Cannot acquire lock and cannot connect — another request owns
+            # the creation slot.  Raise rather than creating a duplicate
+            # sandbox without a lock.
+            raise RuntimeError(
+                f"Could not acquire E2B sandbox creation lock for session "
+                f"{session_id[:12]}; another request is creating the sandbox."
+            )
 
     # ──────────────────────────────────────────────────────────────────────
     # Step 3: Create a new sandbox and register it
