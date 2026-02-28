@@ -6,7 +6,9 @@ This module defines the FastAPI application for the v2 external API.
 
 from fastapi import FastAPI
 
+from backend.api.external.middleware import add_auth_responses_to_openapi
 from backend.api.middleware.security import SecurityHeadersMiddleware
+from backend.api.utils.openapi import sort_openapi
 
 from .routes import v2_router
 
@@ -80,3 +82,8 @@ v2_app = FastAPI(
 
 v2_app.add_middleware(SecurityHeadersMiddleware)
 v2_app.include_router(v2_router)
+
+# Add 401 responses to authenticated endpoints in OpenAPI spec
+add_auth_responses_to_openapi(v2_app)
+# Sort OpenAPI schema to eliminate diff on refactors
+sort_openapi(v2_app)

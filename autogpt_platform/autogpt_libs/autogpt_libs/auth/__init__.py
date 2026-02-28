@@ -5,7 +5,7 @@ from .dependencies import (
     requires_admin_user,
     requires_user,
 )
-from .helpers import add_auth_responses_to_openapi
+from .jwt_utils import add_auth_responses_to_openapi
 from .models import User
 
 __all__ = [

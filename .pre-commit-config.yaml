@@ -261,7 +261,7 @@ repos:
         entry: >
           bash -c '
           cd autogpt_platform/backend
-          && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
+          && poetry run export-api-schema --api internal --output ../frontend/src/app/api/openapi.json
           && cd ../frontend
           && pnpm prettier --write ./src/app/api/openapi.json
           '
