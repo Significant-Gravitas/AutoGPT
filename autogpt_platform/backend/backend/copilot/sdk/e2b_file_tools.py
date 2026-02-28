@@ -235,9 +235,12 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
     """Read from the host filesystem.
 
-    Caller must have already verified the path with
-    :func:`~tool_adapter.is_allowed_local_path`.
+    Defence-in-depth: validates the path with
+    :func:`~tool_adapter.is_allowed_local_path` even though the caller
+    is expected to have checked already.
     """
+    if not is_allowed_local_path(file_path):
+        return _mcp_error(f"Path not allowed: {file_path}")
     expanded = os.path.realpath(os.path.expanduser(file_path))
     try:
         with open(expanded) as fh:
