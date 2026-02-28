@@ -691,7 +691,7 @@ async def stream_chat_completion_sdk(
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        set_execution_context(user_id, session, sandbox=e2b_sandbox)
+        set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
         try:
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 

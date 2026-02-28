@@ -431,13 +431,13 @@ function getBashAccordionData(
         {stdout && (
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
-            <ContentCodeBlock>{truncate(stdout, 2000)}</ContentCodeBlock>
+            <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
-            <ContentCodeBlock>{truncate(stderr, 1000)}</ContentCodeBlock>
+            <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
         {!stdout && !stderr && message && (
@@ -485,13 +485,11 @@ function getWebAccordionData(
         : "Search results",
     description: truncate(url, 80),
     content: content ? (
-      <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
+      <ContentCodeBlock>{content}</ContentCodeBlock>
     ) : message ? (
       <ContentMessage>{message}</ContentMessage>
     ) : Object.keys(output).length > 0 ? (
-      <ContentCodeBlock>
-        {truncate(JSON.stringify(output, null, 2), 2000)}
-      </ContentCodeBlock>
+      <ContentCodeBlock>{JSON.stringify(output, null, 2)}</ContentCodeBlock>
     ) : null,
   };
 }
@@ -578,11 +576,9 @@ function getFileAccordionData(
     content: (
       <div className="space-y-2">
         {displayContent && (
-          <ContentCodeBlock>{truncate(displayContent, 2000)}</ContentCodeBlock>
+          <ContentCodeBlock>{displayContent}</ContentCodeBlock>
         )}
-        {fileListText && (
-          <ContentCodeBlock>{truncate(fileListText, 2000)}</ContentCodeBlock>
-        )}
+        {fileListText && <ContentCodeBlock>{fileListText}</ContentCodeBlock>}
         {!displayContent && !fileListText && message && (
           <ContentMessage>{message}</ContentMessage>
         )}
@@ -685,9 +681,7 @@ function getDefaultAccordionData(
   return {
     title: "Output",
     description: message ?? undefined,
-    content: (
-      <ContentCodeBlock>{truncate(displayContent, 2000)}</ContentCodeBlock>
-    ),
+    content: <ContentCodeBlock>{displayContent}</ContentCodeBlock>,
   };
 }
 

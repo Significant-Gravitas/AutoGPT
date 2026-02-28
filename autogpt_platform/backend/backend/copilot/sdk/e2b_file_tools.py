@@ -72,6 +72,12 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     if not file_path:
         return _mcp_error("file_path is required")
 
+    from .tool_adapter import is_allowed_local_path
+
+    # SDK-internal paths (tool-results, ephemeral working dir) stay on the host.
+    if is_allowed_local_path(file_path):
+        return _read_local(file_path, offset, limit)
+
     from .tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
@@ -229,6 +235,31 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     output = (result.stdout or "").strip()
     return _mcp_ok(output if output else "No matches found.")
+
+
+# ---------------------------------------------------------------------------
+# Local read (for SDK-internal paths)
+# ---------------------------------------------------------------------------
+
+
+def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
+    """Read from the host filesystem.
+
+    Caller must have already verified the path with
+    :func:`~tool_adapter.is_allowed_local_path`.
+    """
+    expanded = os.path.realpath(os.path.expanduser(file_path))
+    try:
+        with open(expanded) as fh:
+            selected = list(itertools.islice(fh, offset, offset + limit))
+        numbered = "".join(
+            f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+        )
+        return _mcp_ok(numbered)
+    except FileNotFoundError:
+        return _mcp_error(f"File not found: {file_path}")
+    except Exception as exc:
+        return _mcp_error(f"Error reading {file_path}: {exc}")
 
 
 # ---------------------------------------------------------------------------
