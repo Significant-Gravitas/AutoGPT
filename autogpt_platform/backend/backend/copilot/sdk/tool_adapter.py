@@ -186,7 +186,7 @@ async def _execute_tool_sync(
     # Stash the full output before the SDK potentially truncates it.
     pending = _pending_tool_outputs.get(None)
     if pending is not None:
-        pending.setdefault(base_tool.name, []).append(text)
+        pending.setdefault(base_tool.name, deque()).append(text)
 
     content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
 
