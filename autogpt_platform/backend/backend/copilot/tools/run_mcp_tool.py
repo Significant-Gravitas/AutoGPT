@@ -192,6 +192,12 @@ class RunMCPToolTool(BaseTool):
         server_url: str,
         session_id: str,
     ) -> MCPToolsDiscoveredResponse:
+        """List available tools from an already-initialized MCPClient.
+
+        Called when the agent invokes run_mcp_tool with only server_url (no
+        tool_name). Returns MCPToolsDiscoveredResponse so the agent can
+        inspect tool schemas and choose one to execute in a follow-up call.
+        """
         tools = await client.list_tools()
         tool_infos = [
             MCPToolInfo(
@@ -220,6 +226,15 @@ class RunMCPToolTool(BaseTool):
         tool_arguments: dict[str, Any],
         session_id: str,
     ) -> MCPToolOutputResponse | ErrorResponse:
+        """Execute a specific tool on an already-initialized MCPClient.
+
+        Parses the MCP content response into a plain Python value:
+        - text items: parsed as JSON when possible, kept as str otherwise
+        - image items: kept as {type, data, mimeType} dict for frontend rendering
+        - resource items: unwrapped to their resource payload dict
+        Single-item responses are unwrapped from the list; multiple items are
+        returned as a list; empty content returns None.
+        """
         result = await client.call_tool(tool_name, tool_arguments)
 
         if result.is_error:
