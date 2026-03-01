@@ -31,6 +31,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.exceptions import RateLimitError
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
@@ -601,6 +602,66 @@ def get_parallel_tool_calls_param(
     if llm_model.startswith("o") or parallel_tool_calls is None:
         return openai.omit
     return parallel_tool_calls
+
+
+def is_rate_limit_error(error: Exception) -> tuple[bool, str | None, int | None]:
+    """
+    Check if an exception is a rate limit error from any LLM provider.
+
+    Returns:
+        Tuple of (is_rate_limit, provider_name, retry_after_seconds)
+    """
+    error_str = str(error).lower()
+    error_code = getattr(error, "status_code", None) or getattr(error, "code", None)
+
+    if error_code == 429:
+        retry_after = None
+        if hasattr(error, "response") and error.response:
+            retry_after_val = error.response.headers.get("retry-after")
+            if retry_after_val:
+                try:
+                    retry_after = int(retry_after_val)
+                except ValueError:
+                    retry_after = None
+        if retry_after is None:
+            retry_after = getattr(error, "retry_after", None)
+        return True, None, retry_after
+
+    rate_limit_indicators = [
+        "rate limit",
+        "rate_limit",
+        "ratelimit",
+        "quota exceeded",
+        "quota_exceeded",
+        "too many requests",
+        "exceeded your current quota",
+        "insufficient_quota",
+        "429",
+    ]
+
+    for indicator in rate_limit_indicators:
+        if indicator in error_str:
+            return True, None, None
+
+    return False, None, None
+
+
+def create_rate_limit_error_message(provider: str | None, retry_after: int | None) -> str:
+    """Create a user-friendly error message for rate limit errors."""
+    provider_str = f" from {provider}" if provider else ""
+
+    base_message = (
+        f"Rate limit or quota exceeded{provider_str}. "
+        "This typically means:\n"
+        "1. You've exceeded your API quota - check your plan and billing details\n"
+        "2. You're making too many requests - try again later\n"
+        "3. Your API key may have usage limits - verify your API key settings"
+    )
+
+    if retry_after:
+        base_message += f"\n\nRetry after: {retry_after} seconds"
+
+    return base_message
 
 
 async def llm_call(
@@ -1281,6 +1342,19 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     return
             except Exception as e:
                 logger.exception(f"Error calling LLM: {e}")
+
+                # Check if this is a rate limit error - don't retry, raise immediately
+                is_rate_limit, provider, retry_after = is_rate_limit_error(e)
+                if is_rate_limit:
+                    error_message = create_rate_limit_error_message(provider, retry_after)
+                    raise RateLimitError(
+                        message=error_message,
+                        block_name=self.__class__.__name__,
+                        block_id=self.id,
+                        provider=provider,
+                        retry_after=retry_after,
+                    ) from e
+
                 if (
                     "maximum context length" in str(e).lower()
                     or "token limit" in str(e).lower()
