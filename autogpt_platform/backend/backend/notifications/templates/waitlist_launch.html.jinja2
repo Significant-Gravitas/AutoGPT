@@ -1,0 +1,59 @@
+{# Waitlist Launch Notification Email Template #}
+{#
+  Template variables:
+  data.agent_name: the name of the launched agent
+  data.waitlist_name: the name of the waitlist the user joined
+  data.store_url: URL to view the agent in the store
+  data.launched_at: when the agent was launched
+
+  Subject: {{ data.agent_name }} is now available!
+#}
+
+{% block content %}
+<h1 style="color: #7c3aed; font-size: 32px; font-weight: 700; margin: 0 0 24px 0; text-align: center;">
+  The wait is over!
+</h1>
+
+<p style="color: #586069; font-size: 18px; text-align: center; margin: 0 0 24px 0;">
+  <strong>'{{ data.agent_name }}'</strong> is now live in the AutoGPT Store!
+</p>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="background: #f3e8ff; border: 1px solid #d8b4fe; border-radius: 8px; padding: 20px; margin: 0;">
+  <h3 style="color: #6b21a8; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    You're one of the first to know!
+  </h3>
+  <p style="color: #6b21a8; margin: 0; font-size: 16px; line-height: 1.5;">
+    You signed up for the <strong>{{ data.waitlist_name }}</strong> waitlist, and we're excited to let you know that this agent is now ready for you to use.
+  </p>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="text-align: center; margin: 24px 0;">
+  <a href="{{ data.store_url }}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: white; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;">
+    Get {{ data.agent_name }} Now
+  </a>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<div style="background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 0;">
+  <h3 style="color: #0c5460; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+    What can you do now?
+  </h3>
+  <ul style="color: #0c5460; margin: 0; padding-left: 18px; font-size: 16px; line-height: 1.6;">
+    <li>Visit the store to learn more about what this agent can do</li>
+    <li>Install and start using the agent right away</li>
+    <li>Share it with others who might find it useful</li>
+  </ul>
+</div>
+
+<div style="height: 32px; background: transparent;"></div>
+
+<p style="color: #6a737d; font-size: 14px; text-align: center; margin: 24px 0;">
+  Thank you for helping us prioritize what to build! Your interest made this happen.
+</p>
+
+{% endblock %}

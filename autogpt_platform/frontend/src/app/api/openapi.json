@@ -5650,6 +5650,301 @@
         }
       }
     },
+    "/api/store/admin/waitlist": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "List All Waitlists",
+        "description": "Get all waitlists with admin details (admin only).\n\nReturns:\n    WaitlistAdminListResponse with all waitlists",
+        "operationId": "getV2List all waitlists",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistAdminListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Create Waitlist",
+        "description": "Create a new waitlist (admin only).\n\nArgs:\n    request: Waitlist creation details\n    user_id: Authenticated admin user creating the waitlist\n\nReturns:\n    WaitlistAdminResponse with the created waitlist details",
+        "operationId": "postV2Create waitlist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WaitlistCreateRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/admin/waitlist/{waitlist_id}": {
+      "delete": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Delete Waitlist",
+        "description": "Soft delete a waitlist (admin only).\n\nArgs:\n    waitlist_id: ID of the waitlist to delete\n\nReturns:\n    Success message",
+        "operationId": "deleteV2Delete waitlist",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Get Waitlist Details",
+        "description": "Get a single waitlist with admin details (admin only).\n\nArgs:\n    waitlist_id: ID of the waitlist to retrieve\n\nReturns:\n    WaitlistAdminResponse with waitlist details",
+        "operationId": "getV2Get waitlist details",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Update Waitlist",
+        "description": "Update a waitlist (admin only).\n\nArgs:\n    waitlist_id: ID of the waitlist to update\n    request: Fields to update\n\nReturns:\n    WaitlistAdminResponse with updated waitlist details",
+        "operationId": "putV2Update waitlist",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WaitlistUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/waitlist/{waitlist_id}/link": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Link Waitlist to Store Listing",
+        "description": "Link a waitlist to a store listing (admin only).\n\nWhen the linked store listing is approved/published, waitlist users\nwill be automatically notified.\n\nArgs:\n    waitlist_id: ID of the waitlist\n    store_listing_id: ID of the store listing to link\n\nReturns:\n    WaitlistAdminResponse with updated waitlist details",
+        "operationId": "postV2Link waitlist to store listing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Link_waitlist_to_store_listing"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistAdminResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/waitlist/{waitlist_id}/signups": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "waitlist"],
+        "summary": "Get Waitlist Signups",
+        "description": "Get all signups for a waitlist (admin only).\n\nArgs:\n    waitlist_id: ID of the waitlist\n\nReturns:\n    WaitlistSignupListResponse with all signups",
+        "operationId": "getV2Get waitlist signups",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistSignupListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/agents": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -6485,6 +6780,101 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/waitlist": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get the agent waitlist",
+        "description": "Get all active waitlists for public display.",
+        "operationId": "getV2Get the agent waitlist",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreWaitlistsAllResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/waitlist/my-memberships": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Get waitlist IDs the current user has joined",
+        "description": "Returns list of waitlist IDs the authenticated user has joined.",
+        "operationId": "getV2Get waitlist ids the current user has joined",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv2Get Waitlist Ids The Current User Has Joined"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/waitlist/{waitlist_id}/join": {
+      "post": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Add self to the agent waitlist",
+        "description": "Add the current user to the agent waitlist.",
+        "operationId": "postV2Add self to the agent waitlist",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist to join",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist to join"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Add_self_to_the_agent_waitlist"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreWaitlistEntry" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -7742,6 +8132,17 @@
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
+      "Body_postV2Add_self_to_the_agent_waitlist": {
+        "properties": {
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email",
+            "description": "Email address for unauthenticated users"
+          }
+        },
+        "type": "object",
+        "title": "Body_postV2Add self to the agent waitlist"
+      },
       "Body_postV2Execute_a_preset": {
         "properties": {
           "inputs": {
@@ -7759,6 +8160,18 @@
         },
         "type": "object",
         "title": "Body_postV2Execute a preset"
+      },
+      "Body_postV2Link_waitlist_to_store_listing": {
+        "properties": {
+          "store_listing_id": {
+            "type": "string",
+            "title": "Store Listing Id",
+            "description": "The ID of the store listing"
+          }
+        },
+        "type": "object",
+        "required": ["store_listing_id"],
+        "title": "Body_postV2Link waitlist to store listing"
       },
       "Body_postV2Upload_submission_media": {
         "properties": {
@@ -10330,7 +10743,8 @@
           "REFUND_REQUEST",
           "REFUND_PROCESSED",
           "AGENT_APPROVED",
-          "AGENT_REJECTED"
+          "AGENT_REJECTED",
+          "WAITLIST_LAUNCH"
         ],
         "title": "NotificationType"
       },
@@ -12021,6 +12435,57 @@
         "type": "object",
         "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
+      },
+      "StoreWaitlistEntry": {
+        "properties": {
+          "waitlistId": { "type": "string", "title": "Waitlistid" },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "subHeading": { "type": "string", "title": "Subheading" },
+          "videoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Videourl"
+          },
+          "agentOutputDemoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agentoutputdemourl"
+          },
+          "imageUrls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Imageurls"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "waitlistId",
+          "slug",
+          "name",
+          "subHeading",
+          "imageUrls",
+          "description",
+          "categories"
+        ],
+        "title": "StoreWaitlistEntry",
+        "description": "Public waitlist entry - no PII fields exposed."
+      },
+      "StoreWaitlistsAllResponse": {
+        "properties": {
+          "listings": {
+            "items": { "$ref": "#/components/schemas/StoreWaitlistEntry" },
+            "type": "array",
+            "title": "Listings"
+          }
+        },
+        "type": "object",
+        "required": ["listings"],
+        "title": "StoreWaitlistsAllResponse"
       },
       "StreamChatRequest": {
         "properties": {
@@ -13923,6 +14388,203 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "WaitlistAdminListResponse": {
+        "properties": {
+          "waitlists": {
+            "items": { "$ref": "#/components/schemas/WaitlistAdminResponse" },
+            "type": "array",
+            "title": "Waitlists"
+          },
+          "totalCount": { "type": "integer", "title": "Totalcount" }
+        },
+        "type": "object",
+        "required": ["waitlists", "totalCount"],
+        "title": "WaitlistAdminListResponse",
+        "description": "Response model for listing all waitlists (admin view)."
+      },
+      "WaitlistAdminResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "createdAt": { "type": "string", "title": "Createdat" },
+          "updatedAt": { "type": "string", "title": "Updatedat" },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "subHeading": { "type": "string", "title": "Subheading" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "imageUrls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Imageurls"
+          },
+          "videoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Videourl"
+          },
+          "agentOutputDemoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agentoutputdemourl"
+          },
+          "status": { "$ref": "#/components/schemas/WaitlistExternalStatus" },
+          "votes": { "type": "integer", "title": "Votes" },
+          "signupCount": { "type": "integer", "title": "Signupcount" },
+          "storeListingId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Storelistingid"
+          },
+          "owningUserId": { "type": "string", "title": "Owninguserid" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "slug",
+          "name",
+          "subHeading",
+          "description",
+          "categories",
+          "imageUrls",
+          "status",
+          "votes",
+          "signupCount",
+          "owningUserId"
+        ],
+        "title": "WaitlistAdminResponse",
+        "description": "Admin response model with full waitlist details including internal data."
+      },
+      "WaitlistCreateRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "subHeading": { "type": "string", "title": "Subheading" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          },
+          "imageUrls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Imageurls",
+            "default": []
+          },
+          "videoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Videourl"
+          },
+          "agentOutputDemoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agentoutputdemourl"
+          }
+        },
+        "type": "object",
+        "required": ["name", "slug", "subHeading", "description"],
+        "title": "WaitlistCreateRequest",
+        "description": "Request model for creating a new waitlist."
+      },
+      "WaitlistExternalStatus": {
+        "type": "string",
+        "enum": ["DONE", "NOT_STARTED", "CANCELED", "WORK_IN_PROGRESS"],
+        "title": "WaitlistExternalStatus"
+      },
+      "WaitlistSignup": {
+        "properties": {
+          "type": { "type": "string", "title": "Type" },
+          "userId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Userid"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": ["type"],
+        "title": "WaitlistSignup",
+        "description": "Individual signup entry for a waitlist."
+      },
+      "WaitlistSignupListResponse": {
+        "properties": {
+          "waitlistId": { "type": "string", "title": "Waitlistid" },
+          "signups": {
+            "items": { "$ref": "#/components/schemas/WaitlistSignup" },
+            "type": "array",
+            "title": "Signups"
+          },
+          "totalCount": { "type": "integer", "title": "Totalcount" }
+        },
+        "type": "object",
+        "required": ["waitlistId", "signups", "totalCount"],
+        "title": "WaitlistSignupListResponse",
+        "description": "Response model for listing waitlist signups."
+      },
+      "WaitlistUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Slug"
+          },
+          "subHeading": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Subheading"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "categories": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Categories"
+          },
+          "imageUrls": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Imageurls"
+          },
+          "videoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Videourl"
+          },
+          "agentOutputDemoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agentoutputdemourl"
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/WaitlistExternalStatus" },
+              { "type": "null" }
+            ]
+          },
+          "storeListingId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Storelistingid"
+          }
+        },
+        "type": "object",
+        "title": "WaitlistUpdateRequest",
+        "description": "Request model for updating a waitlist."
       },
       "Webhook": {
         "properties": {

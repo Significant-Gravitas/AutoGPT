@@ -71,6 +71,10 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+
+  // Waitlist relations
+  waitlistEntries       WaitlistEntry[]
+  joinedWaitlists       WaitlistEntry[] @relation("joinedWaitlists")
 }
 
 enum OnboardingStep {
@@ -345,6 +349,7 @@ enum NotificationType {
   REFUND_PROCESSED
   AGENT_APPROVED
   AGENT_REJECTED
+  WAITLIST_LAUNCH
 }
 
 model NotificationEvent {
@@ -987,7 +992,8 @@ model StoreListing {
   OwningUser   User   @relation(fields: [owningUserId], references: [id])
 
   // Relations
-  Versions StoreListingVersion[] @relation("ListingVersions")
+  Versions        StoreListingVersion[] @relation("ListingVersions")
+  waitlistEntries WaitlistEntry[]
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentGraphId])
@@ -1117,6 +1123,47 @@ model StoreListingReview {
 
   @@unique([storeListingVersionId, reviewByUserId])
   @@index([reviewByUserId])
+}
+
+enum WaitlistExternalStatus {
+  DONE
+  NOT_STARTED
+  CANCELED
+  WORK_IN_PROGRESS
+}
+
+model WaitlistEntry {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  storeListingId String?
+  StoreListing   StoreListing? @relation(fields: [storeListingId], references: [id], onDelete: SetNull)
+
+  owningUserId String
+  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+
+  slug   String
+  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+
+  // Content fields
+  name               String
+  subHeading         String
+  videoUrl           String?
+  agentOutputDemoUrl String?
+  imageUrls          String[]
+  description        String
+  categories         String[]
+
+  //Waitlist specific fields
+  status                 WaitlistExternalStatus @default(NOT_STARTED)
+  votes                  Int                    @default(0) // Hide from frontend api
+  joinedUsers            User[]                 @relation("joinedWaitlists")
+  // NOTE: DO NOT DOUBLE SEND TO THESE USERS, IF THEY HAVE SIGNED UP SINCE THEY MAY HAVE ALREADY RECEIVED AN EMAIL
+  // DOUBLE CHECK WHEN SENDING THAT THEY ARE NOT IN THE JOINED USERS LIST ALSO
+  unaffiliatedEmailUsers String[]               @default([])
+
+  isDeleted Boolean @default(false)
 }
 
 enum SubmissionStatus {
