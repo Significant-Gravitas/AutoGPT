@@ -129,7 +129,10 @@ _alive_sessions: set[str] = set()
 
 # Per-session locks to prevent concurrent _ensure_session calls from
 # triggering duplicate _restore_browser_state for the same session.
+# Protected by _session_locks_mutex to ensure setdefault/pop are not
+# interleaved across await boundaries.
 _session_locks: dict[str, asyncio.Lock] = {}
+_session_locks_mutex = asyncio.Lock()
 
 # Workspace filename for persisted browser state (auto-scoped to session).
 _STATE_FILENAME = "_browser_state.json"
@@ -275,7 +278,8 @@ async def _ensure_session(
     """Ensure the local browser daemon has state. Restore from cloud if needed."""
     if session_name in _alive_sessions:
         return
-    lock = _session_locks.setdefault(session_name, asyncio.Lock())
+    async with _session_locks_mutex:
+        lock = _session_locks.setdefault(session_name, asyncio.Lock())
     async with lock:
         # Double-check after acquiring lock — another coroutine may have restored.
         if session_name in _alive_sessions:
@@ -293,7 +297,8 @@ async def close_browser_session(session_name: str) -> None:
     Best-effort: errors are logged but never raised.
     """
     _alive_sessions.discard(session_name)
-    _session_locks.pop(session_name, None)
+    async with _session_locks_mutex:
+        _session_locks.pop(session_name, None)
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
