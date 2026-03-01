@@ -1,4 +1,5 @@
-import type { UIMessage, UIDataTypes, UITools } from "ai";
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
 interface SessionChatMessage {
   role: string;
@@ -36,6 +37,48 @@ function coerceSessionChatMessages(
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
+}
+
+/**
+ * Parse the `[Attached files]` block appended by the backend and return
+ * the cleaned text plus reconstructed FileUIPart objects.
+ *
+ * Backend format:
+ * ```
+ * \n\n[Attached files]
+ * - name.jpg (image/jpeg, 191.0 KB), file_id=<uuid>
+ * Use read_workspace_file with the file_id to access file contents.
+ * ```
+ */
+const ATTACHED_FILES_RE =
+  /\n?\n?\[Attached files\]\n([\s\S]*?)Use read_workspace_file with the file_id to access file contents\./;
+const FILE_LINE_RE = /^- (.+?) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
+
+function extractFileParts(content: string): {
+  cleanText: string;
+  fileParts: FileUIPart[];
+} {
+  const match = content.match(ATTACHED_FILES_RE);
+  if (!match) return { cleanText: content, fileParts: [] };
+
+  const cleanText = content.replace(match[0], "").trim();
+  const lines = match[1].trim().split("\n");
+  const fileParts: FileUIPart[] = [];
+
+  for (const line of lines) {
+    const m = line.trim().match(FILE_LINE_RE);
+    if (!m) continue;
+    const [, filename, mimeType, fileId] = m;
+    const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+    fileParts.push({
+      type: "file",
+      filename,
+      mediaType: mimeType,
+      url: `/api/proxy${apiPath}`,
+    });
+  }
+
+  return { cleanText, fileParts };
 }
 
 function safeJsonParse(value: string): unknown {
@@ -79,7 +122,17 @@ export function convertChatSessionMessagesToUiMessages(
     const parts: UIMessage<unknown, UIDataTypes, UITools>["parts"] = [];
 
     if (typeof msg.content === "string" && msg.content.trim()) {
-      parts.push({ type: "text", text: msg.content, state: "done" });
+      if (msg.role === "user") {
+        const { cleanText, fileParts } = extractFileParts(msg.content);
+        if (cleanText) {
+          parts.push({ type: "text", text: cleanText, state: "done" });
+        }
+        for (const fp of fileParts) {
+          parts.push(fp);
+        }
+      } else {
+        parts.push({ type: "text", text: msg.content, state: "done" });
+      }
     }
 
     if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {

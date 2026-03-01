@@ -3,12 +3,15 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 interface Args {
   onSend: (message: string) => void;
   disabled?: boolean;
+  /** Allow sending when text is empty (e.g. when files are attached). */
+  canSendEmpty?: boolean;
   inputId?: string;
 }
 
 export function useChatInput({
   onSend,
   disabled = false,
+  canSendEmpty = false,
   inputId = "chat-input",
 }: Args) {
   const [value, setValue] = useState("");
@@ -32,7 +35,7 @@ export function useChatInput({
   );
 
   async function handleSend() {
-    if (disabled || isSending || !value.trim()) return;
+    if (disabled || isSending || (!value.trim() && !canSendEmpty)) return;
 
     setIsSending(true);
     try {

@@ -11,8 +11,9 @@ import {
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useState } from "react";
+import { MessageAttachments } from "./components/MessageAttachments";
 import { CreateAgentTool } from "../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../tools/EditAgent/EditAgent";
 import {
@@ -253,6 +254,10 @@ export const ChatMessagesContainer = ({
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
 
+          const fileParts = message.parts.filter(
+            (p): p is FileUIPart => p.type === "file",
+          );
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -264,6 +269,9 @@ export const ChatMessagesContainer = ({
               >
                 {message.parts.map((part, i) => {
                   switch (part.type) {
+                    case "file":
+                      // Rendered as a group below text parts
+                      return null;
                     case "text": {
                       // Check for special markers (error, system)
                       const { markerType, markerText, cleanText } =
@@ -392,6 +400,12 @@ export const ChatMessagesContainer = ({
                   </span>
                 )}
               </MessageContent>
+              {fileParts.length > 0 && (
+                <MessageAttachments
+                  files={fileParts}
+                  isUser={message.role === "user"}
+                />
+              )}
             </Message>
           );
         })}

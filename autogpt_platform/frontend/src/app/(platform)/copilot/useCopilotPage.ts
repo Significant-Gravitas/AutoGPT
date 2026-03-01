@@ -11,7 +11,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import type { UIMessage } from "ai";
+import type { FileUIPart, UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "./useChatSession";
 
@@ -47,9 +47,16 @@ function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   });
 }
 
+interface UploadedFile {
+  file_id: string;
+  name: string;
+  mime_type: string;
+}
+
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<{
     id: string;
@@ -97,6 +104,8 @@ export function useCopilotPage() {
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
+  const pendingFilesRef = useRef<File[]>([]);
+
   const transport = useMemo(
     () =>
       sessionId
@@ -104,6 +113,15 @@ export function useCopilotPage() {
             api: `/api/chat/sessions/${sessionId}/stream`,
             prepareSendMessagesRequest: ({ messages }) => {
               const last = messages[messages.length - 1];
+              // Extract file_ids from FileUIPart entries on the message
+              const fileIds = last.parts
+                ?.filter((p): p is FileUIPart => p.type === "file")
+                .map((p) => {
+                  // URL is like /api/proxy/api/workspace/files/{id}/download
+                  const match = p.url.match(/\/workspace\/files\/([^/]+)\//);
+                  return match?.[1];
+                })
+                .filter(Boolean) as string[] | undefined;
               return {
                 body: {
                   message: (
@@ -112,6 +130,7 @@ export function useCopilotPage() {
                   ).join(""),
                   is_user_message: last.role === "user",
                   context: null,
+                  file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
                 },
               };
             },
@@ -314,20 +333,138 @@ export function useCopilotPage() {
   useEffect(() => {
     if (!sessionId || !pendingMessage) return;
     const msg = pendingMessage;
+    const files = pendingFilesRef.current;
     setPendingMessage(null);
-    sendMessage({ text: msg });
+    pendingFilesRef.current = [];
+
+    if (files.length > 0) {
+      setIsUploadingFiles(true);
+      void uploadFiles(files, sessionId)
+        .then((uploaded) => {
+          if (uploaded.length === 0) {
+            toast({
+              title: "File upload failed",
+              description: "Could not upload any files. Please try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+          const fileParts = buildFileParts(uploaded);
+          sendMessage({
+            text: msg,
+            files: fileParts.length > 0 ? fileParts : undefined,
+          });
+        })
+        .finally(() => setIsUploadingFiles(false));
+    } else {
+      sendMessage({ text: msg });
+    }
   }, [sessionId, pendingMessage, sendMessage]);
 
-  async function onSend(message: string) {
+  async function uploadFiles(
+    files: File[],
+    sid: string,
+  ): Promise<UploadedFile[]> {
+    const results = await Promise.allSettled(
+      files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(
+          `/api/workspace/files/upload?session_id=${encodeURIComponent(sid)}`,
+          { method: "POST", body: formData },
+        );
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("File upload failed:", err);
+          toast({
+            title: "File upload failed",
+            description: file.name,
+            variant: "destructive",
+          });
+          throw new Error(err);
+        }
+        const data = await res.json();
+        if (!data.file_id) throw new Error("No file_id returned");
+        return {
+          file_id: data.file_id,
+          name: data.name || file.name,
+          mime_type: data.mime_type || "application/octet-stream",
+        } as UploadedFile;
+      }),
+    );
+    return results
+      .filter(
+        (r): r is PromiseFulfilledResult<UploadedFile> =>
+          r.status === "fulfilled",
+      )
+      .map((r) => r.value);
+  }
+
+  function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
+    return uploaded.map((f) => ({
+      type: "file" as const,
+      mediaType: f.mime_type,
+      filename: f.name,
+      url: `/api/proxy/api/workspace/files/${f.file_id}/download`,
+    }));
+  }
+
+  async function onSend(message: string, files?: File[]) {
     const trimmed = message.trim();
-    if (!trimmed) return;
+    if (!trimmed && (!files || files.length === 0)) return;
+
+    // Client-side file limits
+    if (files && files.length > 0) {
+      const MAX_FILES = 10;
+      const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+
+      if (files.length > MAX_FILES) {
+        toast({
+          title: "Too many files",
+          description: `You can attach up to ${MAX_FILES} files at once.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+      if (oversized.length > 0) {
+        toast({
+          title: "File too large",
+          description: `${oversized[0].name} exceeds the 100 MB limit.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
 
     if (sessionId) {
-      sendMessage({ text: trimmed });
+      if (files && files.length > 0) {
+        setIsUploadingFiles(true);
+        try {
+          const uploaded = await uploadFiles(files, sessionId);
+          if (uploaded.length === 0) {
+            // All uploads failed — abort send so chips revert to editable
+            throw new Error("All file uploads failed");
+          }
+          const fileParts = buildFileParts(uploaded);
+          sendMessage({
+            text: trimmed || "(attached files)",
+            files: fileParts.length > 0 ? fileParts : undefined,
+          });
+        } finally {
+          setIsUploadingFiles(false);
+        }
+      } else {
+        sendMessage({ text: trimmed });
+      }
       return;
     }
 
-    setPendingMessage(trimmed);
+    setPendingMessage(trimmed || "(attached files)");
+    if (files && files.length > 0) {
+      pendingFilesRef.current = files;
+    }
     await createSession();
   }
 
@@ -397,6 +534,7 @@ export function useCopilotPage() {
     isLoadingSession,
     isSessionError,
     isCreatingSession,
+    isUploadingFiles,
     isUserLoading,
     isLoggedIn,
     createSession,

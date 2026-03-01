@@ -9,38 +9,66 @@ import {
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
-import { ChangeEvent } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
+import { AttachmentMenu } from "./components/AttachmentMenu";
+import { FileChips } from "./components/FileChips";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
 export interface Props {
-  onSend: (message: string) => void | Promise<void>;
+  onSend: (message: string, files?: File[]) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
+  isUploadingFiles?: boolean;
   onStop?: () => void;
   placeholder?: string;
   className?: string;
   inputId?: string;
+  /** Files dropped onto the chat window by the parent. */
+  droppedFiles?: File[];
+  /** Called after droppedFiles have been merged into internal state. */
+  onDroppedFilesConsumed?: () => void;
 }
 
 export function ChatInput({
   onSend,
   disabled = false,
   isStreaming = false,
+  isUploadingFiles = false,
   onStop,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
+  droppedFiles,
+  onDroppedFilesConsumed,
 }: Props) {
+  const [files, setFiles] = useState<File[]>([]);
+
+  // Merge files dropped onto the chat window into internal state.
+  useEffect(() => {
+    if (droppedFiles && droppedFiles.length > 0) {
+      setFiles((prev) => [...prev, ...droppedFiles]);
+      onDroppedFilesConsumed?.();
+    }
+  }, [droppedFiles, onDroppedFilesConsumed]);
+
+  const hasFiles = files.length > 0;
+  const isBusy = disabled || isStreaming || isUploadingFiles;
+
   const {
     value,
     setValue,
     handleSubmit,
     handleChange: baseHandleChange,
   } = useChatInput({
-    onSend,
-    disabled: disabled || isStreaming,
+    onSend: async (message: string) => {
+      await onSend(message, hasFiles ? files : undefined);
+      // Only clear files after successful send (onSend throws on failure)
+      setFiles([]);
+    },
+    disabled: isBusy,
+    canSendEmpty: hasFiles,
     inputId,
   });
 
@@ -55,7 +83,7 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: disabled || isStreaming,
+    disabled: isBusy,
     isStreaming,
     value,
     inputId,
@@ -67,7 +95,18 @@ export function ChatInput({
   }
 
   const canSend =
-    !disabled && !!value.trim() && !isRecording && !isTranscribing;
+    !disabled &&
+    (!!value.trim() || hasFiles) &&
+    !isRecording &&
+    !isTranscribing;
+
+  function handleFilesSelected(newFiles: File[]) {
+    setFiles((prev) => [...prev, ...newFiles]);
+  }
+
+  function handleRemoveFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
@@ -78,6 +117,11 @@ export function ChatInput({
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        <FileChips
+          files={files}
+          onRemove={handleRemoveFile}
+          isUploading={isUploadingFiles}
+        />
         <PromptInputBody className="relative block w-full">
           <PromptInputTextarea
             id={inputId}
@@ -104,6 +148,10 @@ export function ChatInput({
 
         <PromptInputFooter>
           <PromptInputTools>
+            <AttachmentMenu
+              onFilesSelected={handleFilesSelected}
+              disabled={isBusy}
+            />
             {showMicButton && (
               <PromptInputButton
                 aria-label={isRecording ? "Stop recording" : "Start recording"}
