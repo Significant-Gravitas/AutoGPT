@@ -10029,11 +10029,11 @@
           },
           "token": {
             "type": "string",
-            "format": "password",
-            "writeOnly": true,
             "minLength": 1,
+            "format": "password",
             "title": "Token",
-            "description": "Bearer token / API key for the MCP server"
+            "description": "Bearer token / API key for the MCP server",
+            "writeOnly": true
           }
         },
         "type": "object",
