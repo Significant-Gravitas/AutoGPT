@@ -100,12 +100,14 @@ function hasValidListPage<TKey extends string>(
 
 function hasValidPaginationInfo(
   page: unknown,
-): page is { data: { pagination: Pagination; [key: string]: any } } {
+): page is { status: 200; data: { pagination: Pagination; [key: string]: any } } {
   return (
     typeof page === "object" &&
     page !== null &&
+    "status" in page &&
+    (page as { status: unknown }).status === 200 &&
     "data" in page &&
-    typeof page.data === "object" &&
+    typeof (page as { data: unknown }).data === "object" &&
     page.data !== null &&
     "pagination" in page.data &&
     typeof page.data.pagination === "object" &&
