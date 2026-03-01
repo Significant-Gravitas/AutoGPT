@@ -1,4 +1,3 @@
-```json
 {
   "pythonVersion": "3.10",
   "pythonPlatform": "Linux",
@@ -8,4 +7,3 @@
   "include": ["backend"],
   "exclude": ["**/node_modules", "**/__pycache__", "**/.*"]
 }
-```
