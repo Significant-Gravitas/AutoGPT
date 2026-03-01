@@ -285,6 +285,32 @@ describe("getAnimationText", () => {
     expect(text).toBe("Calling list_users on mcp.example.com");
   });
 
+  it("truncates long argument previews to 60 chars with ellipsis", () => {
+    const longQuery = "a".repeat(80);
+    const text = getAnimationText({
+      state: "input-available",
+      input: {
+        server_url: "https://mcp.example.com/mcp",
+        tool_name: "search",
+        tool_arguments: { query: longQuery },
+      },
+    });
+    expect(text).toContain('…"');
+    expect(text).not.toContain(longQuery);
+  });
+
+  it("escapes quotes and backslashes in argument preview", () => {
+    const text = getAnimationText({
+      state: "input-available",
+      input: {
+        server_url: "https://mcp.example.com/mcp",
+        tool_name: "search",
+        tool_arguments: { query: 'say "hello"' },
+      },
+    });
+    expect(text).toContain('\\"hello\\"');
+  });
+
   it("shows ran text on output-available for tool output", () => {
     const text = getAnimationText({
       state: "output-available",

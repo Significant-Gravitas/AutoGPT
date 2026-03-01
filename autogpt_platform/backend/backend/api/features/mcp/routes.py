@@ -384,7 +384,7 @@ class MCPStoreTokenRequest(BaseModel):
     server_url: str = Field(
         description="MCP server URL the token authenticates against"
     )
-    token: str = Field(description="Bearer token / API key for the MCP server")
+    token: SecretStr = Field(description="Bearer token / API key for the MCP server")
 
 
 @router.post(
@@ -403,30 +403,42 @@ async def mcp_store_token(
     ``run_mcp_tool`` calls will automatically pick up the token via
     ``_auto_lookup_credential``.
     """
+    token = request.token.get_secret_value().strip()
+    if not token:
+        raise fastapi.HTTPException(status_code=422, detail="Token must not be blank.")
+
     hostname = urlparse(request.server_url).hostname or request.server_url
 
-    # Remove any old token credential for this server first
+    # Collect IDs of old credentials to clean up after successful create.
+    old_cred_ids: list[str] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        for old in old_creds:
-            if (
-                isinstance(old, OAuth2Credentials)
-                and (old.metadata or {}).get("mcp_server_url") == request.server_url
-            ):
-                await creds_manager.store.delete_creds_by_id(user_id, old.id)
+        old_cred_ids = [
+            old.id
+            for old in old_creds
+            if isinstance(old, OAuth2Credentials)
+            and (old.metadata or {}).get("mcp_server_url") == request.server_url
+        ]
     except Exception:
-        logger.debug("Could not clean up old MCP token credential", exc_info=True)
+        logger.debug("Could not query old MCP token credentials", exc_info=True)
 
     credentials = OAuth2Credentials(
         provider=ProviderName.MCP.value,
         title=f"MCP: {hostname}",
-        access_token=SecretStr(request.token),
+        access_token=SecretStr(token),
         scopes=[],
         metadata={"mcp_server_url": request.server_url},
     )
     await creds_manager.create(user_id, credentials)
+
+    # Only delete old credentials after the new one is safely stored.
+    for old_id in old_cred_ids:
+        try:
+            await creds_manager.store.delete_creds_by_id(user_id, old_id)
+        except Exception:
+            logger.debug("Could not clean up old MCP token credential", exc_info=True)
 
     return CredentialsMetaResponse(
         id=credentials.id,

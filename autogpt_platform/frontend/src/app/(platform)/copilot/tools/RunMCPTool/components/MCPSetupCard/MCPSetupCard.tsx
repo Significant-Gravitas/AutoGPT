@@ -9,7 +9,7 @@ import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/s
 import { Button } from "@/components/atoms/Button/Button";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { serverHost } from "../../helpers";
@@ -46,6 +46,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [manualToken, setManualToken] = useState("");
   const [connected, setConnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
+
+  // Abort any in-progress OAuth popup when the component unmounts.
+  useEffect(() => () => oauthAbortRef.current?.(), []);
 
   async function handleConnect() {
     setError(null);
@@ -170,6 +173,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div className="mt-3 flex gap-2">
             <input
               type="password"
+              aria-label={`API token for ${host}`}
               placeholder="Paste API token"
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}

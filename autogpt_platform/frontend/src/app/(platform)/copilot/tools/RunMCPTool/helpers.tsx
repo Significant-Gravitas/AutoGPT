@@ -128,6 +128,14 @@ export function serverHost(url: string): string {
  * Checks common "query" key names first, then falls back to the first string value.
  * Returns an empty string when no suitable argument is found.
  */
+const ARG_PREVIEW_MAX = 60;
+
+function truncateArgPreview(value: string): string {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  if (escaped.length <= ARG_PREVIEW_MAX) return `"${escaped}"`;
+  return `"${escaped.slice(0, ARG_PREVIEW_MAX)}…"`;
+}
+
 function getArgPreview(args: Record<string, unknown> | undefined): string {
   if (!args) return "";
   const queryKeys = [
@@ -142,10 +150,11 @@ function getArgPreview(args: Record<string, unknown> | undefined): string {
   ];
   for (const key of queryKeys) {
     if (typeof args[key] === "string" && (args[key] as string).length > 0)
-      return `"${args[key]}"`;
+      return truncateArgPreview(args[key] as string);
   }
   for (const val of Object.values(args)) {
-    if (typeof val === "string" && val.length > 0) return `"${val}"`;
+    if (typeof val === "string" && val.length > 0)
+      return truncateArgPreview(val);
   }
   return "";
 }
