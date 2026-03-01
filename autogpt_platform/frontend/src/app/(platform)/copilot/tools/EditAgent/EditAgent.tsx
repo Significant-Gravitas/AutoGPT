@@ -14,8 +14,11 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import {
+  buildClarificationAnswersMessage,
+  normalizeClarifyingQuestions,
+} from "../clarifying-questions";
 import { ClarificationQuestionsCard } from "../CreateAgent/components/ClarificationQuestionsCard";
-import { normalizeClarifyingQuestions } from "../CreateAgent/helpers";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -99,16 +102,7 @@ export function EditAgentTool({ part }: Props) {
         ? (output.questions ?? [])
         : [];
 
-    const contextMessage = questions
-      .map((q) => {
-        const answer = answers[q.keyword] || "";
-        return `> ${q.question}\n\n${answer}`;
-      })
-      .join("\n\n");
-
-    onSend(
-      `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with editing the agent.`,
-    );
+    onSend(buildClarificationAnswersMessage(answers, questions, "edit"));
   }
 
   return (

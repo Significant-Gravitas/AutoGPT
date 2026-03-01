@@ -723,6 +723,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
     )
+    langfuse_tracing_environment: str = Field(
+        default="local", description="Tracing environment tag (local/dev/production)"
+    )
 
     # PostHog analytics
     posthog_api_key: str = Field(default="", description="PostHog API key")

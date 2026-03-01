@@ -178,9 +178,13 @@ async def test_block_credit_reset(server: SpinTestServer):
         assert month2_balance == 1100  # Balance persists, no reset
 
         # Now test the refill behavior when balance is low
-        # Set balance below refill threshold
+        # Set balance below refill threshold and backdate updatedAt to month2 so
+        # the month3 refill check sees a different (month2 → month3) transition.
+        # Without the explicit updatedAt, Prisma sets it to real-world NOW which
+        # may share the same calendar month as the mocked month3, suppressing refill.
         await UserBalance.prisma().update(
-            where={"userId": DEFAULT_USER_ID}, data={"balance": 400}
+            where={"userId": DEFAULT_USER_ID},
+            data={"balance": 400, "updatedAt": month2},
         )
 
         # Create a month 2 transaction to update the last transaction time
