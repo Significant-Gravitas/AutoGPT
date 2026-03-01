@@ -10029,6 +10029,9 @@
           },
           "token": {
             "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "minLength": 1,
             "title": "Token",
             "description": "Bearer token / API key for the MCP server"
           }

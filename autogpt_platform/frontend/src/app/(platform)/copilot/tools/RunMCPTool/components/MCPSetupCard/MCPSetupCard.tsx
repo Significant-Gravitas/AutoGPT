@@ -59,7 +59,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
         server_url: serverUrl,
       });
-      if (loginRes.status !== 200) throw loginRes.data;
+      if (loginRes.status !== 200) {
+        const d =
+          loginRes.data && typeof loginRes.data === "object"
+            ? loginRes.data
+            : {};
+        throw { status: loginRes.status, ...d };
+      }
       const { login_url, state_token } = loginRes.data as {
         login_url: string;
         state_token: string;
@@ -81,7 +87,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           code: result.code,
           state_token,
         });
-        if (cbRes.status !== 200) throw cbRes.data;
+        if (cbRes.status !== 200) {
+          const d =
+            cbRes.data && typeof cbRes.data === "object" ? cbRes.data : {};
+          throw { status: cbRes.status, ...d };
+        }
       }
 
       setConnected(true);
@@ -167,7 +177,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           {loading ? "Connecting…" : `Connect to ${host}`}
         </Button>
 
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {error && (
+          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         {showManualToken && (
           <div className="mt-3 flex gap-2">
@@ -177,14 +191,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               placeholder="Paste API token"
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleManualToken()}
+              onKeyDown={(e) =>
+                e.key === "Enter" && !loading && handleManualToken()
+              }
               className="flex-1 rounded border px-2 py-1 text-sm"
             />
             <Button
               variant="secondary"
               size="small"
               onClick={handleManualToken}
-              disabled={!manualToken.trim()}
+              disabled={loading || !manualToken.trim()}
             >
               Use Token
             </Button>
