@@ -97,6 +97,16 @@ async def get_or_create_sandbox(
         # Try to claim creation lock again after waiting.
         claimed = await redis.set(redis_key, _CREATING, nx=True, ex=_CREATION_LOCK_TTL)
         if not claimed:
+            # Another process may have created a sandbox — try to use it.
+            raw = await redis.get(redis_key)
+            if raw:
+                sandbox_id = raw if isinstance(raw, str) else raw.decode()
+                if sandbox_id != _CREATING:
+                    sandbox = await _try_reconnect(
+                        sandbox_id, api_key, redis_key, timeout
+                    )
+                    if sandbox:
+                        return sandbox
             raise RuntimeError(
                 f"Could not acquire E2B creation lock for session {session_id[:12]}"
             )
