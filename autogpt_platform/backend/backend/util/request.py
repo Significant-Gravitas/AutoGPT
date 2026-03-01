@@ -219,8 +219,11 @@ def parse_url(url: str) -> URL:
     """Canonicalizes and parses a URL string."""
     url = url.strip("/ ").replace("\\", "/")
 
-    # Ensure scheme is present for proper parsing
-    if not re.match(r"[a-z0-9+.\-]+://", url):
+    # Ensure scheme is present for proper parsing.
+    # Use a character class without nested repetition to avoid ReDoS (CodeQL
+    # py/polynomial-redos).  RFC 3986 §3.1 scheme = ALPHA *( ALPHA / DIGIT /
+    # "+" / "-" / "." ), so we require the scheme to start with a letter.
+    if not re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*://", url):
         url = f"http://{url}"
 
     return urlparse(url)
