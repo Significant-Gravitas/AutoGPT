@@ -14,7 +14,7 @@ from .agent_generator import (
     graph_to_json,
     save_agent_to_library,
 )
-from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
+from .agent_generator.pipeline import fix_validate_and_save
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -135,82 +135,14 @@ class CustomizeAgentTool(BaseTool):
 
         agent_json.setdefault("is_active", True)
 
-        # Auto-fix
-        try:
-            blocks = get_blocks_as_dicts()
-            fixer = AgentFixer()
-            agent_json = await fixer.apply_all_fixes(agent_json, blocks)
-            fixes = fixer.get_fixes_applied()
-            if fixes:
-                logger.info(f"Applied {len(fixes)} auto-fixes to customized agent")
-        except Exception as e:
-            logger.warning(f"Auto-fix failed: {e}")
-
-        # Validate
-        try:
-            blocks = get_blocks_as_dicts()
-            validator = AgentValidator()
-            is_valid, _ = validator.validate(agent_json, blocks)
-            if not is_valid:
-                errors = validator.errors
-                return ErrorResponse(
-                    message=(
-                        f"The customized agent has {len(errors)} validation error(s):\n"
-                        + "\n".join(f"- {e}" for e in errors[:5])
-                    ),
-                    error="validation_failed",
-                    details={"errors": errors},
-                    session_id=session_id,
-                )
-        except Exception as e:
-            logger.warning(f"Validation failed: {e}")
-
-        agent_name = agent_json.get("name", "Customized Agent")
-        agent_description = agent_json.get("description", "")
-        node_count = len(agent_json.get("nodes", []))
-        link_count = len(agent_json.get("links", []))
-
-        if not save:
-            return AgentPreviewResponse(
-                message=(
-                    f"Customized agent '{agent_name}' with {node_count} blocks is ready. "
-                    f"Call customize_agent with save=true to save."
-                ),
-                agent_json=agent_json,
-                agent_name=agent_name,
-                description=agent_description,
-                node_count=node_count,
-                link_count=link_count,
-                session_id=session_id,
-            )
-
-        if not user_id:
-            return ErrorResponse(
-                message="You must be logged in to save agents.",
-                error="auth_required",
-                session_id=session_id,
-            )
-
-        try:
-            created_graph, library_agent = await save_agent_to_library(
-                agent_json, user_id, is_update=False
-            )
-            return AgentSavedResponse(
-                message=f"Customized agent '{created_graph.name}' has been saved!",
-                agent_id=created_graph.id,
-                agent_name=created_graph.name,
-                library_agent_id=library_agent.id,
-                library_agent_link=f"/library/agents/{library_agent.id}",
-                agent_page_link=f"/build?flowID={created_graph.id}",
-                session_id=session_id,
-            )
-        except Exception as e:
-            return ErrorResponse(
-                message=f"Failed to save: {str(e)}",
-                error="save_failed",
-                details={"exception": str(e)},
-                session_id=session_id,
-            )
+        return await fix_validate_and_save(
+            agent_json,
+            user_id=user_id,
+            session_id=session_id,
+            save=save,
+            is_update=False,
+            default_name="Customized Agent",
+        )
 
     async def _execute_external(
         self,
@@ -401,9 +333,11 @@ class CustomizeAgentTool(BaseTool):
                 agent_page_link=f"/build?flowID={created_graph.id}",
                 session_id=session_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to save customized agent: {e}")
             return ErrorResponse(
-                message="Failed to save the customized agent.",
+                message=f"Failed to save the customized agent: {str(e)}",
                 error="save_failed",
+                details={"exception": str(e)},
                 session_id=session_id,
             )

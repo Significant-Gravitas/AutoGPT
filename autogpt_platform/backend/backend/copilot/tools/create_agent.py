@@ -14,7 +14,7 @@ from .agent_generator import (
     get_user_message_for_error,
     save_agent_to_library,
 )
-from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
+from .agent_generator.pipeline import fix_validate_and_save
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -141,84 +141,14 @@ class CreateAgentTool(BaseTool):
         if "is_active" not in agent_json:
             agent_json["is_active"] = True
 
-        # Auto-fix common issues
-        try:
-            blocks = get_blocks_as_dicts()
-            fixer = AgentFixer()
-            agent_json = await fixer.apply_all_fixes(agent_json, blocks)
-            fixes = fixer.get_fixes_applied()
-            if fixes:
-                logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
-        except Exception as e:
-            logger.warning(f"Auto-fix failed, proceeding with original: {e}")
-
-        # Validate
-        try:
-            blocks = get_blocks_as_dicts()
-            validator = AgentValidator()
-            is_valid, _ = validator.validate(agent_json, blocks)
-            if not is_valid:
-                errors = validator.errors
-                logger.warning(f"Agent JSON has {len(errors)} validation errors")
-                return ErrorResponse(
-                    message=(
-                        f"The agent JSON has {len(errors)} validation error(s) "
-                        f"that could not be auto-fixed:\n"
-                        + "\n".join(f"- {e}" for e in errors[:5])
-                    ),
-                    error="validation_failed",
-                    details={"errors": errors},
-                    session_id=session_id,
-                )
-        except Exception as e:
-            logger.warning(f"Validation failed, proceeding anyway: {e}")
-
-        agent_name = agent_json.get("name", "Generated Agent")
-        agent_description = agent_json.get("description", "")
-        node_count = len(agent_json.get("nodes", []))
-        link_count = len(agent_json.get("links", []))
-
-        if not save:
-            return AgentPreviewResponse(
-                message=(
-                    f"Agent '{agent_name}' with {node_count} blocks is ready. "
-                    f"Call create_agent with save=true to save it."
-                ),
-                agent_json=agent_json,
-                agent_name=agent_name,
-                description=agent_description,
-                node_count=node_count,
-                link_count=link_count,
-                session_id=session_id,
-            )
-
-        if not user_id:
-            return ErrorResponse(
-                message="You must be logged in to save agents.",
-                error="auth_required",
-                session_id=session_id,
-            )
-
-        try:
-            created_graph, library_agent = await save_agent_to_library(
-                agent_json, user_id
-            )
-            return AgentSavedResponse(
-                message=f"Agent '{created_graph.name}' has been saved to your library!",
-                agent_id=created_graph.id,
-                agent_name=created_graph.name,
-                library_agent_id=library_agent.id,
-                library_agent_link=f"/library/agents/{library_agent.id}",
-                agent_page_link=f"/build?flowID={created_graph.id}",
-                session_id=session_id,
-            )
-        except Exception as e:
-            return ErrorResponse(
-                message=f"Failed to save the agent: {str(e)}",
-                error="save_failed",
-                details={"exception": str(e)},
-                session_id=session_id,
-            )
+        return await fix_validate_and_save(
+            agent_json,
+            user_id=user_id,
+            session_id=session_id,
+            save=save,
+            is_update=False,
+            default_name="Generated Agent",
+        )
 
     async def _execute_external(
         self,

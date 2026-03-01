@@ -259,7 +259,10 @@ def recommend_blocks_for_goal(
     # Sort non-basic blocks by score descending
     scored.sort(key=lambda pair: pair[0], reverse=True)
 
-    # Build result: basic blocks first, then top scored blocks
+    # Build result: basic blocks first (capped), then top scored blocks
+    if len(basic_blocks) >= max_blocks:
+        return basic_blocks[:max_blocks]
+
     basic_ids = {b["id"] for b in basic_blocks}
     result = list(basic_blocks)
 

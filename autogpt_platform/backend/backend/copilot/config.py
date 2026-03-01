@@ -138,6 +138,15 @@ class ChatConfig(BaseSettings):
                 v = "https://openrouter.ai/api/v1"
         return v
 
+    @field_validator("agent_generator_use_local", mode="before")
+    @classmethod
+    def get_agent_generator_use_local(cls, v):
+        """Get agent_generator_use_local from environment if not provided."""
+        env_val = os.getenv("CHAT_AGENT_GENERATOR_USE_LOCAL", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return True if v is None else v
+
     @field_validator("use_claude_agent_sdk", mode="before")
     @classmethod
     def get_use_claude_agent_sdk(cls, v):

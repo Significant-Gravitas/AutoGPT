@@ -10,6 +10,7 @@ from backend.copilot.tools.models import AgentPreviewResponse, ErrorResponse
 from ._test_data import make_session
 
 _TEST_USER_ID = "test-user-customize-agent"
+_PIPELINE = "backend.copilot.tools.agent_generator.pipeline"
 
 
 @pytest.fixture
@@ -76,18 +77,9 @@ async def test_local_mode_preview(tool, session):
     mock_validator.errors = []
 
     with (
-        patch(
-            "backend.copilot.tools.customize_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentFixer",
-            return_value=mock_fixer,
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
     ):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
@@ -126,18 +118,9 @@ async def test_local_mode_validation_failure(tool, session):
     mock_validator.errors = ["Block 'bad-block' not found"]
 
     with (
-        patch(
-            "backend.copilot.tools.customize_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentFixer",
-            return_value=mock_fixer,
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
     ):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
@@ -175,18 +158,9 @@ async def test_local_mode_no_auth_returns_error(tool, session):
     mock_validator.errors = []
 
     with (
-        patch(
-            "backend.copilot.tools.customize_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentFixer",
-            return_value=mock_fixer,
-        ),
-        patch(
-            "backend.copilot.tools.customize_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
     ):
         result = await tool._execute(
             user_id=None,
