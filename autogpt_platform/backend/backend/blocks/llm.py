@@ -41,6 +41,7 @@ fmt = TextFormatter(autoescape=False)
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
+    ProviderName.AVIAN,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
@@ -170,6 +171,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
     LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
     LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
+    # Avian models
+    AVIAN_DEEPSEEK_V3_2 = "deepseek/deepseek-v3.2"
+    AVIAN_KIMI_K2_5 = "moonshotai/kimi-k2.5"
+    AVIAN_GLM_5 = "z-ai/glm-5"
+    AVIAN_MINIMAX_M2_5 = "minimax/minimax-m2.5"
     # v0 by Vercel models
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
@@ -494,6 +500,19 @@ MODEL_METADATA = {
     ),
     LlmModel.LLAMA_API_LLAMA3_3_70B: ModelMetadata(
         "llama_api", 128000, 4028, "Llama 3.3 70B Instruct", "Llama API", "Meta", 1
+    ),
+    # https://avian.io/models — Avian models
+    LlmModel.AVIAN_DEEPSEEK_V3_2: ModelMetadata(
+        "avian", 164000, 65000, "DeepSeek V3.2", "Avian", "DeepSeek", 1
+    ),
+    LlmModel.AVIAN_KIMI_K2_5: ModelMetadata(
+        "avian", 262000, 262000, "Kimi K2.5", "Avian", "Moonshot AI", 1
+    ),
+    LlmModel.AVIAN_GLM_5: ModelMetadata(
+        "avian", 205000, 131000, "GLM-5", "Avian", "Zhipu AI", 1
+    ),
+    LlmModel.AVIAN_MINIMAX_M2_5: ModelMetadata(
+        "avian", 196000, 131000, "MiniMax M2.5", "Avian", "MiniMax", 1
     ),
     # v0 by Vercel models
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
@@ -953,6 +972,45 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
+        )
+    elif provider == "avian":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url="https://api.avian.io/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response_format = None
+        if force_json_output:
+            response_format = {"type": "json_object"}
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
+        )
+
+        if not response.choices:
+            raise ValueError(f"Avian API error: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)

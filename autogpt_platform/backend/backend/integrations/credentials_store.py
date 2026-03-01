@@ -94,6 +94,13 @@ anthropic_credentials = APIKeyCredentials(
     title="Use Credits for Anthropic",
     expires_at=None,
 )
+avian_credentials = APIKeyCredentials(
+    id="a3b7c9d1-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+    provider="avian",
+    api_key=SecretStr(settings.secrets.avian_api_key),
+    title="Use Credits for Avian",
+    expires_at=None,
+)
 groq_credentials = APIKeyCredentials(
     id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
     provider="groq",
@@ -261,6 +268,7 @@ DEFAULT_CREDENTIALS = [
     openai_credentials,
     aiml_api_credentials,
     anthropic_credentials,
+    avian_credentials,
     groq_credentials,
     did_credentials,
     jina_credentials,
@@ -355,6 +363,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(aiml_api_credentials)
         if settings.secrets.anthropic_api_key:
             all_credentials.append(anthropic_credentials)
+        if settings.secrets.avian_api_key:
+            all_credentials.append(avian_credentials)
         if settings.secrets.did_api_key:
             all_credentials.append(did_credentials)
         if settings.secrets.jina_api_key:
