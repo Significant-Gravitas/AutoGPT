@@ -185,10 +185,11 @@ async def _save_browser_state(
 
 async def _restore_browser_state(
     session_name: str, user_id: str, session: ChatSession
-) -> None:
+) -> bool:
     """Restore browser state from workspace storage into a fresh daemon.
 
     Best-effort: errors are logged but never propagate to the tool response.
+    Returns True on success (or no state to restore), False on failure.
     """
     try:
         from .workspace_files import _get_manager  # noqa: PLC0415
@@ -197,7 +198,7 @@ async def _restore_browser_state(
 
         file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
         if file_info is None:
-            return  # No saved state — first call or never saved
+            return True  # No saved state — first call or never saved
 
         state_bytes = await manager.read_file(_STATE_FILENAME)
         state = json.loads(state_bytes.decode("utf-8"))
@@ -215,7 +216,7 @@ async def _restore_browser_state(
                     url,
                     stderr[:200],
                 )
-                return
+                return False
             await _run(session_name, "wait", "--load", "load", timeout=15)
 
         # Restore cookies (one at a time — CLI limitation)
@@ -261,12 +262,15 @@ async def _restore_browser_state(
                     key,
                     stderr[:100],
                 )
+
+        return True
     except Exception:
         logger.warning(
             "[browser] Failed to restore browser state for session %s",
             session_name,
             exc_info=True,
         )
+        return False
 
 
 async def _ensure_session(
@@ -283,8 +287,8 @@ async def _ensure_session(
         if await _has_local_session(session_name):
             _alive_sessions.add(session_name)
             return
-        await _restore_browser_state(session_name, user_id, session)
-        _alive_sessions.add(session_name)
+        if await _restore_browser_state(session_name, user_id, session):
+            _alive_sessions.add(session_name)
 
 
 async def _close_browser_session(session_name: str) -> None:

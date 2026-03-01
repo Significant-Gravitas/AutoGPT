@@ -988,8 +988,9 @@ class TestRestoreBrowserState:
 
         with patch("backend.copilot.tools.agent_browser._run", side_effect=fake_run):
             with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
-                await _restore_browser_state("restore-sess", "user1", session)
+                result = await _restore_browser_state("restore-sess", "user1", session)
 
+        assert result is True
         # First call: open URL
         assert captured_cmds[0] == (
             "restore-sess",
@@ -1031,7 +1032,7 @@ class TestRestoreBrowserState:
         assert len(storage_cmds) == 2
 
     @pytest.mark.asyncio
-    async def test_no_saved_state_returns_early(self):
+    async def test_no_saved_state_returns_true(self):
         session = make_session("fresh-sess")
         mock_mgr = _make_mock_manager()
         mock_mgr.get_file_info_by_path.return_value = None
@@ -1041,20 +1042,22 @@ class TestRestoreBrowserState:
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
             ) as mock_run:
-                await _restore_browser_state("fresh-sess", "user1", session)
+                result = await _restore_browser_state("fresh-sess", "user1", session)
 
+        assert result is True
         mock_run.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_error_is_swallowed(self):
+    async def test_error_returns_false(self):
         session = make_session("err-sess")
         with patch(
             _GET_MANAGER,
             new_callable=AsyncMock,
             side_effect=RuntimeError("db down"),
         ):
-            # Should not raise
-            await _restore_browser_state("err-sess", "user1", session)
+            result = await _restore_browser_state("err-sess", "user1", session)
+
+        assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -1105,11 +1108,32 @@ class TestEnsureSession:
             with patch(
                 "backend.copilot.tools.agent_browser._restore_browser_state",
                 new_callable=AsyncMock,
+                return_value=True,
             ) as mock_restore:
                 await _ensure_session("dead-sess", "user1", session)
 
         mock_restore.assert_called_once_with("dead-sess", "user1", session)
         assert "dead-sess" in _mod._alive_sessions
+
+    @pytest.mark.asyncio
+    async def test_no_cache_when_restore_fails(self):
+        """Failed restore should not cache the session as alive."""
+        from . import agent_browser as _mod
+
+        session = make_session("fail-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._has_local_session",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            with patch(
+                "backend.copilot.tools.agent_browser._restore_browser_state",
+                new_callable=AsyncMock,
+                return_value=False,
+            ):
+                await _ensure_session("fail-sess", "user1", session)
+
+        assert "fail-sess" not in _mod._alive_sessions
 
     @pytest.mark.asyncio
     async def test_concurrent_calls_restore_once(self):
@@ -1123,6 +1147,7 @@ class TestEnsureSession:
             with patch(
                 "backend.copilot.tools.agent_browser._restore_browser_state",
                 new_callable=AsyncMock,
+                return_value=True,
             ) as mock_restore:
                 await asyncio.gather(
                     _ensure_session("race-sess", "user1", session),
