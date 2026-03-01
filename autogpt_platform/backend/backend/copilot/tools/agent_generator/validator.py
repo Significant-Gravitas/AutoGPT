@@ -161,9 +161,9 @@ class AgentValidator:
             node_id = node.get("id")
 
             linked_inputs = set(
-                link["sink_name"]
+                link.get("sink_name")
                 for link in agent.get("links", [])
-                if link.get("sink_id") == node_id
+                if link.get("sink_id") == node_id and link.get("sink_name")
             )
 
             for req_input in required_inputs:
@@ -195,20 +195,32 @@ class AgentValidator:
         valid = True
 
         for link in agent.get("links", []):
+            source_id = link.get("source_id")
+            sink_id = link.get("sink_id")
+            source_name = link.get("source_name")
+            sink_name = link.get("sink_name")
+
+            if not all(
+                isinstance(v, str) and v
+                for v in (source_id, sink_id, source_name, sink_name)
+            ):
+                self.add_error(
+                    f"Link '{link.get('id', 'Unknown')}' is missing required "
+                    f"fields (source_id/sink_id/source_name/sink_name)."
+                )
+                valid = False
+                continue
+
             source_node = next(
                 (
                     node
                     for node in agent.get("nodes", [])
-                    if node["id"] == link["source_id"]
+                    if node.get("id") == source_id
                 ),
                 None,
             )
             sink_node = next(
-                (
-                    node
-                    for node in agent.get("nodes", [])
-                    if node["id"] == link["sink_id"]
-                ),
+                (node for node in agent.get("nodes", []) if node.get("id") == sink_id),
                 None,
             )
 
@@ -245,8 +257,8 @@ class AgentValidator:
                 else:
                     return schema.get(name, {}).get("type")
 
-            source_type = get_defined_property_type(source_outputs, link["source_name"])
-            sink_type = get_defined_property_type(sink_inputs, link["sink_name"])
+            source_type = get_defined_property_type(source_outputs, source_name)
+            sink_type = get_defined_property_type(sink_inputs, sink_name)
 
             def are_types_compatible(src: str, sink: str) -> bool:
                 if {src, sink} <= {"integer", "number"}:
@@ -290,7 +302,11 @@ class AgentValidator:
         }
 
         for link in agent.get("links", []):
-            sink_name = link["sink_name"]
+            sink_name = link.get("sink_name", "")
+            sink_id = link.get("sink_id")
+
+            if not sink_name or not sink_id:
+                continue
 
             if "_#_" in sink_name:
                 parent, child = sink_name.split("_#_", 1)
@@ -299,7 +315,7 @@ class AgentValidator:
                     (
                         node
                         for node in agent.get("nodes", [])
-                        if node["id"] == link["sink_id"]
+                        if node.get("id") == sink_id
                     ),
                     None,
                 )
@@ -314,7 +330,7 @@ class AgentValidator:
                     block_name = block_names.get(block_id, "Unknown Block")
                     self.add_error(
                         f"Invalid nested sink link '{sink_name}' for "
-                        f"node '{link['sink_id']}' (block "
+                        f"node '{sink_id}' (block "
                         f"'{block_name}' - {block_id}): Parent property "
                         f"'{parent}' does not exist in the block's "
                         f"input schema."
@@ -682,12 +698,11 @@ class AgentValidator:
                     # This is a non-default hardcoded value without a link
                     self.add_error(
                         f"AgentExecutorBlock node '{node_id}' has "
-                        f"hardcoded input '{input_name}' = "
-                        f"{repr(value)[:50]}. Sub-agent inputs should "
-                        f"be connected via links using '{input_name}' "
-                        f"as sink_name, not hardcoded in "
-                        f"input_default.inputs. Create a link from the "
-                        f"appropriate source node."
+                        f"hardcoded input '{input_name}'. Sub-agent "
+                        f"inputs should be connected via links using "
+                        f"'{input_name}' as sink_name, not hardcoded "
+                        f"in input_default.inputs. Create a link from "
+                        f"the appropriate source node."
                     )
                     valid = False
 

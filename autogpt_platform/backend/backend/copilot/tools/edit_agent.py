@@ -120,7 +120,7 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        if agent_json and isinstance(agent_json, dict):
+        if isinstance(agent_json, dict):
             return await self._execute_local(
                 user_id, session_id, agent_id, agent_json, kwargs
             )
@@ -148,9 +148,15 @@ class EditAgentTool(BaseTool):
 
         # Preserve original agent's ID
         current_agent = await get_agent_as_json(agent_id, user_id)
-        if current_agent:
-            agent_json.setdefault("id", current_agent.get("id", agent_id))
-            agent_json.setdefault("version", current_agent.get("version", 1))
+        if current_agent is None:
+            return ErrorResponse(
+                message=f"Could not find agent with ID '{agent_id}' in your library.",
+                error="agent_not_found",
+                session_id=session_id,
+            )
+
+        agent_json.setdefault("id", current_agent.get("id", agent_id))
+        agent_json.setdefault("version", current_agent.get("version", 1))
         agent_json.setdefault("is_active", True)
 
         return await fix_validate_and_save(

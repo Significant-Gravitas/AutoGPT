@@ -110,7 +110,7 @@ class CreateAgentTool(BaseTool):
         agent_json = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
-        if agent_json and isinstance(agent_json, dict):
+        if isinstance(agent_json, dict):
             return await self._execute_local(user_id, session_id, agent_json, kwargs)
         return await self._execute_external(user_id, session_id, kwargs)
 
