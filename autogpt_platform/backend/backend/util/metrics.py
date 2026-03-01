@@ -1,8 +1,9 @@
 import logging
 from enum import Enum
+from typing import Literal
 
 import sentry_sdk
-from pydantic import SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
@@ -49,6 +50,31 @@ def sentry_init():
 def sentry_capture_error(error: BaseException):
     sentry_sdk.capture_exception(error)
     sentry_sdk.flush()
+
+
+class AllQuietAlert(BaseModel):
+    severity: Literal["warning"] | Literal["critical"] | Literal["minor"]
+    status: Literal["resolved"] | Literal["open"]
+    title: str | None = None
+    description: str | None = None
+    correlation_id: str | None = None
+    channel: str | None = None  # Discord channel (platform or product)
+    extra_attributes: dict[str, str] = Field(default_factory=dict)
+    environment: str = (
+        f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}"
+    )
+
+
+async def send_allquiet_alert(alert: AllQuietAlert):
+    hook_url = settings.secrets.allquiet_webhook_url
+
+    if not hook_url:
+        logging.warning("AllQuiet webhook URL not configured")
+        return
+
+    from backend.util.request import Requests
+
+    await Requests().post(hook_url, json=alert.model_dump())
 
 
 async def discord_send_alert(

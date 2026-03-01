@@ -1426,8 +1426,23 @@ class ExecutionProcessor:
                 f"[View User Details]({base_url}/admin/spending?search={user_email})"
             )
 
-            get_notification_manager_client().discord_system_alert(
-                alert_message, DiscordChannel.PRODUCT
+            # Send both Discord and AllQuiet alerts
+            correlation_id = f"insufficient_funds_{user_id}"
+
+            get_notification_manager_client().system_alert(
+                content=alert_message,
+                channel=DiscordChannel.PRODUCT,
+                correlation_id=correlation_id,
+                severity="critical",
+                status="open",
+                extra_attributes={
+                    "user_id": user_id,
+                    "user_email": user_email or "unknown",
+                    "balance": f"${e.balance / 100:.2f}",
+                    "attempted_cost": f"${abs(e.amount) / 100:.2f}",
+                    "shortfall": f"${abs(shortfall) / 100:.2f}",
+                    "agent_name": metadata.name if metadata else "Unknown",
+                },
             )
         except Exception as alert_error:
             logger.error(
@@ -1474,8 +1489,22 @@ class ExecutionProcessor:
                     f"Transaction cost: ${transaction_cost / 100:.2f}\n"
                     f"[View User Details]({base_url}/admin/spending?search={user_email})"
                 )
-                get_notification_manager_client().discord_system_alert(
-                    alert_message, DiscordChannel.PRODUCT
+                # Send both Discord and AllQuiet alerts
+                correlation_id = f"low_balance_{user_id}"
+
+                get_notification_manager_client().system_alert(
+                    content=alert_message,
+                    channel=DiscordChannel.PRODUCT,
+                    correlation_id=correlation_id,
+                    severity="warning",
+                    status="open",
+                    extra_attributes={
+                        "user_id": user_id,
+                        "user_email": user_email or "unknown",
+                        "current_balance": f"${current_balance / 100:.2f}",
+                        "transaction_cost": f"${transaction_cost / 100:.2f}",
+                        "threshold": f"${LOW_BALANCE_THRESHOLD / 100:.2f}",
+                    },
                 )
             except Exception as e:
                 logger.error(f"Failed to send low balance Discord alert: {e}")
