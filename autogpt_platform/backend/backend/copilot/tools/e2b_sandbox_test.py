@@ -254,3 +254,19 @@ class TestKillSandbox:
 
         assert result is True
         sb.kill.assert_awaited_once()
+
+    def test_kill_timeout_returns_false(self):
+        """Returns False when E2B API calls exceed the 10s timeout."""
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.wait_for",
+                new_callable=AsyncMock,
+                side_effect=asyncio.TimeoutError,
+            ),
+        ):
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+        redis.delete.assert_awaited_once_with(_KEY)
