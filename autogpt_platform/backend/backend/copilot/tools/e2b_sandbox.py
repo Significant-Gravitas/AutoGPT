@@ -148,8 +148,12 @@ async def kill_sandbox(session_id: str, api_key: str) -> bool:
         return False
 
     try:
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-        await sandbox.kill()
+
+        async def _connect_and_kill():
+            sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+            await sandbox.kill()
+
+        await asyncio.wait_for(_connect_and_kill(), timeout=10)
         logger.info(
             "[E2B] Killed sandbox %.12s for session %.12s",
             sandbox_id,

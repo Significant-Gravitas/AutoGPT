@@ -239,3 +239,18 @@ class TestKillSandbox:
 
         assert result is False
         redis.delete.assert_awaited_once_with(_KEY)
+
+    def test_kill_with_bytes_redis_value(self):
+        """Redis may return bytes — kill_sandbox should decode correctly."""
+        sb = _mock_sandbox()
+        sb.kill = AsyncMock()
+        redis = _mock_redis(get_val=b"sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is True
+        sb.kill.assert_awaited_once()

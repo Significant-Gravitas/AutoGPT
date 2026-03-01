@@ -246,7 +246,9 @@ async def delete_session(
         try:
             await kill_sandbox(session_id, config.e2b_api_key)
         except Exception:
-            logger.warning("Failed to kill E2B sandbox for session %s", session_id[:12])
+            logger.warning(
+                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
+            )
 
     return Response(status_code=204)
 
