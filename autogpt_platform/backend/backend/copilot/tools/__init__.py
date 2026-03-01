@@ -11,7 +11,6 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .browse_web import BrowseWebTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
@@ -52,8 +51,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_doc_page": GetDocPageTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
-    # Browser-based browsing for JS-rendered pages (Stagehand + Browserbase)
-    "browse_web": BrowseWebTool(),
     # Agent-browser multi-step automation (navigate, act, screenshot)
     "browser_navigate": BrowserNavigateTool(),
     "browser_act": BrowserActTool(),
@@ -80,9 +77,8 @@ def get_available_tools() -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
     Called per-request so that env-var or binary availability is evaluated
-    fresh each time (e.g. browse_web is excluded when STAGEHAND_API_KEY is
-    absent; browser_* tools are excluded when agent-browser CLI is not
-    installed).
+    fresh each time (e.g. browser_* tools are excluded when agent-browser
+    CLI is not installed).
     """
     return [
         tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available

@@ -3,7 +3,6 @@
 Uses the agent-browser CLI (https://github.com/vercel-labs/agent-browser)
 which runs a local Chromium instance managed by a persistent daemon.
 
-Why agent-browser instead of Stagehand/Browserbase:
 - Runs locally — no cloud account required
 - Full interaction support: click, fill, scroll, login flows, multi-step
 - Session persistence via --session-name: cookies/auth carry across tool calls
@@ -338,8 +337,6 @@ class BrowserNavigateTool(BaseTool):
             "Session persists — cookies and login state carry over between calls. "
             "Use this (with browser_act) for multi-step interaction: login flows, "
             "form filling, button clicks, or anything requiring page interaction. "
-            "For one-shot content extraction from JS pages with no interaction needed, "
-            "prefer browse_web (if available) — it's simpler and faster. "
             "For plain static pages, prefer web_fetch — no browser overhead. "
             "For authenticated pages: navigate to the login page first, use browser_act "
             "to fill credentials and submit, then navigate to the target page. "

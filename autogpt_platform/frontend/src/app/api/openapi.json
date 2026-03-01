@@ -11167,7 +11167,6 @@
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
-          "browse_web",
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
