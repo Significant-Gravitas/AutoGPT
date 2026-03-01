@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { FilterChip } from "@/components/atoms/FilterChip/FilterChip";
 import { useFilterChips } from "./useFilterChips";
 
 interface FilterChipsProps {
@@ -9,8 +9,6 @@ interface FilterChipsProps {
   multiSelect?: boolean;
 }
 
-// Some flaws in its logic
-// FRONTEND-TODO : This needs to be fixed
 export const FilterChips = ({
   badges,
   onFilterChange,
@@ -22,18 +20,20 @@ export const FilterChips = ({
   });
 
   return (
-    <div className="flex h-auto min-h-8 flex-wrap items-center justify-center gap-3 lg:min-h-14 lg:justify-start lg:gap-5">
+    <div
+      className="flex h-auto min-h-8 flex-wrap items-center justify-center gap-3 lg:min-h-14 lg:justify-start lg:gap-5"
+      role="group"
+      aria-label="Filter options"
+    >
       {badges.map((badge) => (
-        <Badge
+        <FilterChip
           key={badge}
-          variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
-          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-black/50 px-3 py-1 dark:border-white/50 lg:mb-3 lg:gap-2.5 lg:px-6 lg:py-2"
+          label={badge}
+          selected={selectedFilters.includes(badge)}
           onClick={() => handleBadgeClick(badge)}
-        >
-          <div className="text-sm font-light tracking-tight text-[#474747] dark:text-[#e0e0e0] lg:text-xl lg:font-medium lg:leading-9">
-            {badge}
-          </div>
-        </Badge>
+          size="lg"
+          className="mb-2 lg:mb-3"
+        />
       ))}
     </div>
   );
