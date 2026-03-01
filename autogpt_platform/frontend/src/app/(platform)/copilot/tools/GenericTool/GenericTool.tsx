@@ -12,6 +12,7 @@ import {
   GlobeIcon,
   ListChecksIcon,
   MagnifyingGlassIcon,
+  MonitorIcon,
   PencilSimpleIcon,
   TerminalIcon,
   TrashIcon,
@@ -48,6 +49,7 @@ function formatToolName(name: string): string {
 type ToolCategory =
   | "bash"
   | "web"
+  | "browser"
   | "file-read"
   | "file-write"
   | "file-delete"
@@ -65,6 +67,10 @@ function getToolCategory(toolName: string): ToolCategory {
     case "WebSearch":
     case "WebFetch":
       return "web";
+    case "browser_navigate":
+    case "browser_act":
+    case "browser_screenshot":
+      return "browser";
     case "read_workspace_file":
     case "Read":
       return "file-read";
@@ -115,6 +121,8 @@ function ToolIcon({
       return <TerminalIcon size={14} weight="regular" className={iconClass} />;
     case "web":
       return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+    case "browser":
+      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
     case "file-read":
       return <FileIcon size={14} weight="regular" className={iconClass} />;
     case "file-write":
@@ -150,6 +158,8 @@ function AccordionIcon({ category }: { category: ToolCategory }) {
       return <TerminalIcon size={32} weight="light" />;
     case "web":
       return <GlobeIcon size={32} weight="light" />;
+    case "browser":
+      return <MonitorIcon size={32} weight="light" />;
     case "file-read":
     case "file-write":
       return <FileIcon size={32} weight="light" />;
@@ -184,6 +194,16 @@ function getInputSummary(toolName: string, input: unknown): string | null {
       return typeof inp.url === "string" ? inp.url : null;
     case "WebSearch":
       return typeof inp.query === "string" ? inp.query : null;
+    case "browser_navigate":
+      return typeof inp.url === "string" ? inp.url : null;
+    case "browser_act":
+      return typeof inp.action === "string"
+        ? inp.target
+          ? `${inp.action} ${inp.target}`
+          : (inp.action as string)
+        : null;
+    case "browser_screenshot":
+      return null;
     case "read_workspace_file":
     case "Read":
       return (
@@ -249,6 +269,11 @@ function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
           return shortSummary
             ? `Fetching ${shortSummary}`
             : "Fetching web content…";
+        case "browser":
+          if (toolName === "browser_screenshot") return "Taking screenshot…";
+          return shortSummary
+            ? `Browsing ${shortSummary}`
+            : "Interacting with browser…";
         case "file-read":
           return shortSummary ? `Reading ${shortSummary}` : "Reading file…";
         case "file-write":
@@ -287,6 +312,11 @@ function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
           return shortSummary
             ? `Fetched ${shortSummary}`
             : "Fetched web content";
+        case "browser":
+          if (toolName === "browser_screenshot") return "Screenshot captured";
+          return shortSummary
+            ? `Browsed ${shortSummary}`
+            : "Browser action completed";
         case "file-read":
           return shortSummary ? `Read ${shortSummary}` : "File read completed";
         case "file-write":
@@ -313,6 +343,8 @@ function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
           return "Command failed";
         case "web":
           return toolName === "WebSearch" ? "Search failed" : "Fetch failed";
+        case "browser":
+          return "Browser action failed";
         default:
           return `${formatToolName(toolName)} failed`;
       }
@@ -482,6 +514,44 @@ function getWebAccordionData(
       <ContentCodeBlock>
         {truncate(JSON.stringify(output, null, 2), 2000)}
       </ContentCodeBlock>
+    ) : null,
+  };
+}
+
+function getBrowserAccordionData(
+  toolName: string,
+  input: unknown,
+  output: Record<string, unknown>,
+): AccordionData {
+  const message = getStringField(output, "message");
+  const snapshot = getStringField(output, "snapshot");
+
+  // Screenshot tool: show the file_id so the user knows it was saved
+  if (toolName === "browser_screenshot") {
+    const fileId = getStringField(output, "file_id");
+    const filename = getStringField(output, "filename");
+    return {
+      title: filename ? `Screenshot: ${filename}` : "Screenshot captured",
+      description: fileId ? `file_id: ${fileId}` : undefined,
+      content: message ? <ContentMessage>{message}</ContentMessage> : null,
+    };
+  }
+
+  // Navigate / act tools: show snapshot if available
+  const title =
+    toolName === "browser_navigate"
+      ? (getStringField(output, "title") ?? "Page loaded")
+      : (message ?? "Action completed");
+
+  const url = getStringField(output, "url", "current_url");
+
+  return {
+    title,
+    description: url ? truncate(url, 80) : undefined,
+    content: snapshot ? (
+      <ContentCodeBlock>{truncate(snapshot, 3000)}</ContentCodeBlock>
+    ) : message ? (
+      <ContentMessage>{message}</ContentMessage>
     ) : null,
   };
 }
@@ -683,6 +753,7 @@ function getDefaultAccordionData(
 
 function getAccordionData(
   category: ToolCategory,
+  toolName: string,
   input: unknown,
   output: Record<string, unknown>,
 ): AccordionData {
@@ -691,6 +762,8 @@ function getAccordionData(
       return getBashAccordionData(input, output);
     case "web":
       return getWebAccordionData(input, output);
+    case "browser":
+      return getBrowserAccordionData(toolName, input, output);
     case "file-read":
     case "file-write":
     case "file-delete":
@@ -733,7 +806,7 @@ export function GenericTool({ part }: Props) {
 
   const showAccordion = hasOutput || hasError || hasTodoInput;
   const accordionData = showAccordion
-    ? getAccordionData(category, part.input, output ?? {})
+    ? getAccordionData(category, toolName, part.input, output ?? {})
     : null;
 
   return (
