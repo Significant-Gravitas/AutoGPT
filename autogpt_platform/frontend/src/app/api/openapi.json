@@ -4657,6 +4657,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/mcp/token": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Store a bearer token for an MCP server",
+        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "operationId": "postV2Store a bearer token for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPStoreTokenRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -9979,6 +10019,24 @@
         "required": ["login_url", "state_token"],
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPStoreTokenRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "MCP server URL the token authenticates against"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Bearer token / API key for the MCP server"
+          }
+        },
+        "type": "object",
+        "required": ["server_url", "token"],
+        "title": "MCPStoreTokenRequest",
+        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
       },
       "MCPToolInfo": {
         "properties": {
