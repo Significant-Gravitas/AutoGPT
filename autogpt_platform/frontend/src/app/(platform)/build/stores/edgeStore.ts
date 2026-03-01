@@ -7,6 +7,7 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
 import { useHistoryStore } from "./historyStore";
 import { useNodeStore } from "./nodeStore";
+import { filterValidEdges, filterValidLinks } from "./linkValidations";
 
 type EdgeStore = {
   edges: CustomEdge[];
@@ -120,12 +121,47 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
   isOutputConnected: (nodeId, handle) =>
     get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),
 
-  getBackendLinks: () => get().edges.map(customEdgeToLink),
+  getBackendLinks: () => {
+    const nodeIds = new Set(useNodeStore.getState().nodes.map((n) => n.id));
+    const validEdges = filterValidEdges(get().edges, nodeIds);
+    return validEdges.map(customEdgeToLink);
+  },
 
   addLinks: (links) => {
-    links.forEach((link) => {
-      get().addEdge(linkToCustomEdge(link));
-    });
+    const nodeIds = new Set(useNodeStore.getState().nodes.map((n) => n.id));
+    const validLinks = filterValidLinks(links, nodeIds);
+
+    // Convert validated links to edges, avoiding individual addEdge calls
+    // which would push to history for each edge (causing history pollution)
+    const newEdges: CustomEdge[] = [];
+    const existingEdges = get().edges;
+
+    for (const link of validLinks) {
+      const edge = linkToCustomEdge(link);
+
+      // Skip if edge already exists
+      const exists = existingEdges.some(
+        (e) =>
+          e.source === edge.source &&
+          e.target === edge.target &&
+          e.sourceHandle === edge.sourceHandle &&
+          e.targetHandle === edge.targetHandle,
+      );
+      if (!exists) {
+        newEdges.push(edge);
+      }
+    }
+
+    if (newEdges.length > 0) {
+      // Bulk add all edges at once, pushing to history only once
+      const prevState = {
+        nodes: useNodeStore.getState().nodes,
+        edges: existingEdges,
+      };
+
+      set((state) => ({ edges: [...state.edges, ...newEdges] }));
+      useHistoryStore.getState().pushState(prevState);
+    }
   },
 
   getAllHandleIdsOfANode: (nodeId) =>
