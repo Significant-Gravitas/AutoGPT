@@ -74,7 +74,49 @@ TEXT_EXTENSIONS = {
     ".tex",
     ".csv",
     ".log",
+    ".svg",  # SVG is XML-based text
 }
+
+# Binary file extensions we explicitly support extracting
+BINARY_EXTENSIONS = {
+    # Images
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    # Documents
+    ".pdf",
+    # Archives
+    ".zip",
+    ".tar",
+    ".gz",
+    ".7z",
+    # Audio
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".flac",
+    # Video
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    # Fonts
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+}
+
+# Maximum file size for binary extraction (50MB)
+# Prevents OOM from accidentally extracting huge files
+MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
 
 
 class SandboxFileOutput(BaseModel):
@@ -120,7 +162,8 @@ async def extract_sandbox_files(
         sandbox: The E2B sandbox instance
         working_directory: Directory to search for files
         since_timestamp: ISO timestamp - only return files modified after this time
-        text_only: If True, only extract text files (default). If False, extract all files.
+        text_only: If True, only extract text files. If False, also extract
+                   supported binary files (images, PDFs, etc.).
 
     Returns:
         List of ExtractedFile objects with path, content, and metadata
@@ -149,15 +192,48 @@ async def extract_sandbox_files(
             if not file_path:
                 continue
 
-            # Check if it's a text file
-            is_text = any(file_path.endswith(ext) for ext in TEXT_EXTENSIONS)
+            # Check file type (case-insensitive for extensions)
+            file_path_lower = file_path.lower()
+            is_text = any(
+                file_path_lower.endswith(ext.lower()) for ext in TEXT_EXTENSIONS
+            )
+            is_binary = any(
+                file_path_lower.endswith(ext.lower()) for ext in BINARY_EXTENSIONS
+            )
 
-            # Skip non-text files if text_only mode
+            # Skip files with unrecognized extensions
+            if not is_text and not is_binary:
+                continue
+
+            # In text_only mode, skip binary files
             if text_only and not is_text:
                 continue
 
             try:
-                # Read file content as bytes
+                # Check file size before reading to prevent OOM
+                stat_result = await sandbox.commands.run(
+                    f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                )
+                if stat_result.exit_code != 0 or not stat_result.stdout:
+                    logger.debug(f"Skipping {file_path}: could not determine file size")
+                    continue
+
+                try:
+                    file_size = int(stat_result.stdout.strip())
+                except ValueError:
+                    logger.debug(
+                        f"Skipping {file_path}: unexpected stat output "
+                        f"{stat_result.stdout.strip()!r}"
+                    )
+                    continue
+
+                if file_size > MAX_BINARY_FILE_SIZE:
+                    logger.info(
+                        f"Skipping {file_path}: size {file_size} bytes "
+                        f"exceeds limit {MAX_BINARY_FILE_SIZE}"
+                    )
+                    continue
+
                 content = await sandbox.files.read(file_path, format="bytes")
                 if isinstance(content, str):
                     content = content.encode("utf-8")
