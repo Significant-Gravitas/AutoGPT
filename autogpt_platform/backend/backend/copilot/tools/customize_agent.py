@@ -1,4 +1,4 @@
-"""CustomizeAgentTool - Customizes marketplace/template agents using natural language."""
+"""CustomizeAgentTool - Customizes marketplace/template agents."""
 
 import logging
 from typing import Any
@@ -14,6 +14,7 @@ from .agent_generator import (
     graph_to_json,
     save_agent_to_library,
 )
+from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class CustomizeAgentTool(BaseTool):
-    """Tool for customizing marketplace/template agents using natural language."""
+    """Tool for customizing marketplace/template agents."""
 
     @property
     def name(self) -> str:
@@ -37,9 +38,12 @@ class CustomizeAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Customize a marketplace or template agent using natural language. "
-            "Takes an existing agent from the marketplace and modifies it based on "
-            "the user's requirements before adding to their library."
+            "Customize a marketplace or template agent. Supports two modes:\n\n"
+            "1. **Local mode** (preferred): Pass `agent_json` with the complete "
+            "customized agent JSON. The tool validates, auto-fixes, and saves.\n\n"
+            "2. **External mode** (fallback): Pass `modifications` as natural language. "
+            "Delegates to the external Agent Generator service.\n\n"
+            "Use agent_id in format 'creator/slug' to specify the marketplace agent."
         )
 
     @property
@@ -55,15 +59,21 @@ class CustomizeAgentTool(BaseTool):
                     "type": "string",
                     "description": (
                         "The marketplace agent ID in format 'creator/slug' "
-                        "(e.g., 'autogpt/newsletter-writer'). "
-                        "Get this from find_agent results."
+                        "(e.g., 'autogpt/newsletter-writer')."
+                    ),
+                },
+                "agent_json": {
+                    "type": "object",
+                    "description": (
+                        "Complete customized agent JSON to validate and save. "
+                        "When provided, skips external service."
                     ),
                 },
                 "modifications": {
                     "type": "string",
                     "description": (
                         "Natural language description of how to customize the agent. "
-                        "Be specific about what changes you want to make."
+                        "Used when agent_json is not provided (external mode)."
                     ),
                 },
                 "context": {
@@ -75,13 +85,12 @@ class CustomizeAgentTool(BaseTool):
                 "save": {
                     "type": "boolean",
                     "description": (
-                        "Whether to save the customized agent to the user's library. "
-                        "Default is true. Set to false for preview only."
+                        "Whether to save the customized agent. Default is true."
                     ),
                     "default": True,
                 },
             },
-            "required": ["agent_id", "modifications"],
+            "required": ["agent_id"],
         }
 
     async def _execute(
@@ -90,18 +99,8 @@ class CustomizeAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the customize_agent tool.
-
-        Flow:
-        1. Parse the agent ID to get creator/slug
-        2. Fetch the template agent from the marketplace
-        3. Call customize_template with the modification request
-        4. Preview or save based on the save parameter
-        """
         agent_id = kwargs.get("agent_id", "").strip()
-        modifications = kwargs.get("modifications", "").strip()
-        context = kwargs.get("context", "")
-        save = kwargs.get("save", True)
+        agent_json = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
         if not agent_id:
@@ -111,9 +110,123 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        if agent_json and isinstance(agent_json, dict):
+            return await self._execute_local(user_id, session_id, agent_json, kwargs)
+        return await self._execute_external(user_id, session_id, agent_id, kwargs)
+
+    async def _execute_local(
+        self,
+        user_id: str | None,
+        session_id: str | None,
+        agent_json: dict[str, Any],
+        kwargs: dict[str, Any],
+    ) -> ToolResponseBase:
+        """Local mode: validate, fix, and save pre-built customized agent JSON."""
+        save = kwargs.get("save", True)
+
+        nodes = agent_json.get("nodes", [])
+
+        if not nodes:
+            return ErrorResponse(
+                message="The agent JSON has no nodes.",
+                error="empty_agent",
+                session_id=session_id,
+            )
+
+        agent_json.setdefault("is_active", True)
+
+        # Auto-fix
+        try:
+            blocks = get_blocks_as_dicts()
+            fixer = AgentFixer()
+            agent_json = await fixer.apply_all_fixes(agent_json, blocks)
+            fixes = fixer.get_fixes_applied()
+            if fixes:
+                logger.info(f"Applied {len(fixes)} auto-fixes to customized agent")
+        except Exception as e:
+            logger.warning(f"Auto-fix failed: {e}")
+
+        # Validate
+        try:
+            blocks = get_blocks_as_dicts()
+            validator = AgentValidator()
+            is_valid, _ = validator.validate(agent_json, blocks)
+            if not is_valid:
+                errors = validator.errors
+                return ErrorResponse(
+                    message=(
+                        f"The customized agent has {len(errors)} validation error(s):\n"
+                        + "\n".join(f"- {e}" for e in errors[:5])
+                    ),
+                    error="validation_failed",
+                    details={"errors": errors},
+                    session_id=session_id,
+                )
+        except Exception as e:
+            logger.warning(f"Validation failed: {e}")
+
+        agent_name = agent_json.get("name", "Customized Agent")
+        agent_description = agent_json.get("description", "")
+        node_count = len(agent_json.get("nodes", []))
+        link_count = len(agent_json.get("links", []))
+
+        if not save:
+            return AgentPreviewResponse(
+                message=(
+                    f"Customized agent '{agent_name}' with {node_count} blocks is ready. "
+                    f"Call customize_agent with save=true to save."
+                ),
+                agent_json=agent_json,
+                agent_name=agent_name,
+                description=agent_description,
+                node_count=node_count,
+                link_count=link_count,
+                session_id=session_id,
+            )
+
+        if not user_id:
+            return ErrorResponse(
+                message="You must be logged in to save agents.",
+                error="auth_required",
+                session_id=session_id,
+            )
+
+        try:
+            created_graph, library_agent = await save_agent_to_library(
+                agent_json, user_id, is_update=False
+            )
+            return AgentSavedResponse(
+                message=f"Customized agent '{created_graph.name}' has been saved!",
+                agent_id=created_graph.id,
+                agent_name=created_graph.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=f"/library/agents/{library_agent.id}",
+                agent_page_link=f"/build?flowID={created_graph.id}",
+                session_id=session_id,
+            )
+        except Exception as e:
+            return ErrorResponse(
+                message=f"Failed to save: {str(e)}",
+                error="save_failed",
+                details={"exception": str(e)},
+                session_id=session_id,
+            )
+
+    async def _execute_external(
+        self,
+        user_id: str | None,
+        session_id: str | None,
+        agent_id: str,
+        kwargs: dict[str, Any],
+    ) -> ToolResponseBase:
+        """External mode: customize via external Agent Generator service."""
+        modifications = kwargs.get("modifications", "").strip()
+        context = kwargs.get("context", "")
+        save = kwargs.get("save", True)
+
         if not modifications:
             return ErrorResponse(
-                message="Please describe how you want to customize this agent.",
+                message="Please describe how you want to customize this agent, or pass agent_json directly.",
                 error="missing_modifications",
                 session_id=session_id,
             )
@@ -124,28 +237,22 @@ class CustomizeAgentTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Invalid agent ID format: '{agent_id}'. "
-                    "Expected format is 'creator/agent-name' "
-                    "(e.g., 'autogpt/newsletter-writer')."
+                    "Expected format is 'creator/agent-name'."
                 ),
                 error="invalid_agent_id_format",
                 session_id=session_id,
             )
 
         creator_username, agent_slug = parts
-
         store_db = get_store_db()
 
-        # Fetch the marketplace agent details
         try:
             agent_details = await store_db.get_store_agent_details(
                 username=creator_username, agent_name=agent_slug
             )
         except AgentNotFoundError:
             return ErrorResponse(
-                message=(
-                    f"Could not find marketplace agent '{agent_id}'. "
-                    "Please check the agent ID and try again."
-                ),
+                message=f"Could not find marketplace agent '{agent_id}'.",
                 error="agent_not_found",
                 session_id=session_id,
             )
@@ -159,27 +266,22 @@ class CustomizeAgentTool(BaseTool):
 
         if not agent_details.store_listing_version_id:
             return ErrorResponse(
-                message=(
-                    f"The agent '{agent_id}' does not have an available version. "
-                    "Please try a different agent."
-                ),
+                message=f"The agent '{agent_id}' does not have an available version.",
                 error="no_version_available",
                 session_id=session_id,
             )
 
-        # Get the full agent graph
         try:
             graph = await store_db.get_agent(agent_details.store_listing_version_id)
             template_agent = graph_to_json(graph)
         except Exception as e:
             logger.error(f"Error fetching agent graph for {agent_id}: {e}")
             return ErrorResponse(
-                message="Failed to fetch the agent configuration. Please try again.",
+                message="Failed to fetch the agent configuration.",
                 error="graph_fetch_error",
                 session_id=session_id,
             )
 
-        # Call customize_template
         try:
             result = await customize_template(
                 template_agent=template_agent,
@@ -198,40 +300,26 @@ class CustomizeAgentTool(BaseTool):
         except Exception as e:
             logger.error(f"Error calling customize_template for {agent_id}: {e}")
             return ErrorResponse(
-                message=(
-                    "Failed to customize the agent due to a service error. "
-                    "Please try again."
-                ),
+                message="Failed to customize the agent. Please try again.",
                 error="customization_service_error",
                 session_id=session_id,
             )
 
         if result is None:
             return ErrorResponse(
-                message=(
-                    "Failed to customize the agent. "
-                    "The agent generation service may be unavailable or timed out. "
-                    "Please try again."
-                ),
+                message="Failed to customize the agent. Please try again.",
                 error="customization_failed",
                 session_id=session_id,
             )
 
-        # Handle error response
         if isinstance(result, dict) and result.get("type") == "error":
             error_msg = result.get("error", "Unknown error")
             error_type = result.get("error_type", "unknown")
             user_message = get_user_message_for_error(
                 error_type,
                 operation="customize the agent",
-                llm_parse_message=(
-                    "The AI had trouble customizing the agent. "
-                    "Please try again or simplify your request."
-                ),
-                validation_message=(
-                    "The customized agent failed validation. "
-                    "Please try rephrasing your request."
-                ),
+                llm_parse_message="The AI had trouble customizing the agent. Please try again.",
+                validation_message="The customized agent failed validation.",
                 error_details=error_msg,
             )
             return ErrorResponse(
@@ -240,19 +328,12 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Handle clarifying questions
         if isinstance(result, dict) and result.get("type") == "clarifying_questions":
             questions = result.get("questions") or []
             if not isinstance(questions, list):
-                logger.error(
-                    f"Unexpected clarifying questions format: {type(questions)}"
-                )
                 questions = []
             return ClarificationNeededResponse(
-                message=(
-                    "I need some more information to customize this agent. "
-                    "Please answer the following questions:"
-                ),
+                message="I need some more information to customize this agent.",
                 questions=[
                     ClarifyingQuestion(
                         question=q.get("question", ""),
@@ -265,9 +346,7 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Result should be the customized agent JSON
         if not isinstance(result, dict):
-            logger.error(f"Unexpected customize_template response type: {type(result)}")
             return ErrorResponse(
                 message="Failed to customize the agent due to an unexpected response.",
                 error="unexpected_response_type",
@@ -275,7 +354,6 @@ class CustomizeAgentTool(BaseTool):
             )
 
         customized_agent = result
-
         agent_name = customized_agent.get(
             "name", f"Customized {agent_details.agent_name}"
         )
@@ -288,9 +366,9 @@ class CustomizeAgentTool(BaseTool):
         if not save:
             return AgentPreviewResponse(
                 message=(
-                    f"I've customized the agent '{agent_details.agent_name}'. "
-                    f"The customized agent has {node_count} blocks. "
-                    f"Review it and call customize_agent with save=true to save it."
+                    f"I've customized '{agent_details.agent_name}'. "
+                    f"It has {node_count} blocks. "
+                    f"Call customize_agent with save=true to save."
                 ),
                 agent_json=customized_agent,
                 agent_name=agent_name,
@@ -307,17 +385,14 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Save to user's library
         try:
             created_graph, library_agent = await save_agent_to_library(
                 customized_agent, user_id, is_update=False
             )
-
             return AgentSavedResponse(
                 message=(
                     f"Customized agent '{created_graph.name}' "
-                    f"(based on '{agent_details.agent_name}') "
-                    f"has been saved to your library!"
+                    f"(based on '{agent_details.agent_name}') has been saved!"
                 ),
                 agent_id=created_graph.id,
                 agent_name=created_graph.name,
@@ -326,10 +401,9 @@ class CustomizeAgentTool(BaseTool):
                 agent_page_link=f"/build?flowID={created_graph.id}",
                 session_id=session_id,
             )
-        except Exception as e:
-            logger.error(f"Error saving customized agent: {e}")
+        except Exception:
             return ErrorResponse(
-                message="Failed to save the customized agent. Please try again.",
+                message="Failed to save the customized agent.",
                 error="save_failed",
                 session_id=session_id,
             )

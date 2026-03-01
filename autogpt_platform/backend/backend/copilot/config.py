@@ -93,6 +93,14 @@ class ChatConfig(BaseSettings):
         "history compression. Falls back to compression when unavailable.",
     )
 
+    # Agent generation: local (Claude Agent SDK as brain) vs external service
+    agent_generator_use_local: bool = Field(
+        default=True,
+        description="Use local agent generation (Claude Agent SDK generates JSON, "
+        "validated/fixed locally). When False, falls back to the external "
+        "AgentGenerator service for decomposition and generation.",
+    )
+
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(
         default=True,

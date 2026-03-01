@@ -29,9 +29,12 @@ from .core import (
 from .errors import get_user_message_for_error
 from .service import health_check as check_external_service_health
 from .service import is_external_service_configured
+from .validation import AgentFixer, AgentValidator
 
 __all__ = [
+    "AgentFixer",
     "AgentGeneratorNotConfiguredError",
+    "AgentValidator",
     "AgentJsonValidationError",
     "AgentSummary",
     "DecompositionResult",
