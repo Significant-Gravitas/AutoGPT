@@ -83,7 +83,8 @@ class StagehandRecommendedLlmModel(str, Enum):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"  # Keep for backwards compat
+    CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
 
     @property
     def provider_name(self) -> str:
@@ -137,7 +138,7 @@ class StagehandObserveBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -227,7 +228,7 @@ class StagehandActBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -324,7 +325,7 @@ class StagehandExtractBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
