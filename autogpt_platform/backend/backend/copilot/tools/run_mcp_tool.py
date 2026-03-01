@@ -1,12 +1,17 @@
 """Tool for discovering and executing MCP (Model Context Protocol) server tools."""
 
-import json
 import logging
 from typing import Any
 from urllib.parse import urlparse
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.helpers import (
+    auto_lookup_mcp_credential,
+    normalize_mcp_url,
+    parse_mcp_content,
+    server_host,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
 from backend.util.request import HTTPClientError, validate_url
@@ -146,7 +151,7 @@ class RunMCPToolTool(BaseTool):
             msg = str(e)
             if "Unable to resolve" in msg or "No IP addresses" in msg:
                 user_msg = (
-                    f"Hostname not found: {_server_host(server_url)}. "
+                    f"Hostname not found: {server_host(server_url)}. "
                     "Please check the URL — the domain may not exist."
                 )
             else:
@@ -154,10 +159,8 @@ class RunMCPToolTool(BaseTool):
             return ErrorResponse(message=user_msg, session_id=session_id)
 
         # Fast DB lookup — no network call.
-        # Use rstrip("/") for matching because stored credentials are normalized.
-        creds = await MCPToolBlock._auto_lookup_credential(
-            user_id, server_url.rstrip("/")
-        )
+        # Normalize for matching because stored credentials use normalized URLs.
+        creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
         auth_token = creds.access_token.get_secret_value() if creds else None
 
         client = MCPClient(server_url, auth_token=auth_token)
@@ -178,14 +181,14 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", _server_host(server_url), e)
+            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
             return ErrorResponse(
                 message=f"MCP server returned HTTP {e.status_code}: {e}",
                 session_id=session_id,
             )
 
         except MCPClientError as e:
-            logger.warning("MCP client error for %s: %s", _server_host(server_url), e)
+            logger.warning("MCP client error for %s: %s", server_host(server_url), e)
             return ErrorResponse(
                 message=str(e),
                 session_id=session_id,
@@ -194,7 +197,7 @@ class RunMCPToolTool(BaseTool):
         except Exception:
             logger.error(
                 "Unexpected error calling MCP server %s",
-                _server_host(server_url),
+                server_host(server_url),
                 exc_info=True,
             )
             return ErrorResponse(
@@ -223,7 +226,7 @@ class RunMCPToolTool(BaseTool):
             )
             for t in tools
         ]
-        host = _server_host(server_url)
+        host = server_host(server_url)
         return MCPToolsDiscoveredResponse(
             message=(
                 f"Discovered {len(tool_infos)} tool(s) on {host}. "
@@ -264,29 +267,7 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Parse content items into a clean Python value
-        output_parts = []
-        for item in result.content:
-            if item.get("type") == "text":
-                text = item.get("text", "")
-                try:
-                    output_parts.append(json.loads(text))
-                except (json.JSONDecodeError, ValueError):
-                    output_parts.append(text)
-            elif item.get("type") == "image":
-                output_parts.append(
-                    {
-                        "type": "image",
-                        "data": item.get("data"),
-                        "mimeType": item.get("mimeType"),
-                    }
-                )
-            elif item.get("type") == "resource":
-                output_parts.append(item.get("resource", {}))
-
-        result_value = (
-            output_parts[0] if len(output_parts) == 1 else (output_parts or None)
-        )
+        result_value = parse_mcp_content(result.content)
 
         return MCPToolOutputResponse(
             message=f"MCP tool '{tool_name}' executed successfully.",
@@ -320,11 +301,11 @@ class RunMCPToolTool(BaseTool):
             logger.error(
                 "No credential requirements found for MCP server %s — "
                 "MCPToolBlock may not have credentials configured",
-                _server_host(server_url),
+                server_host(server_url),
             )
             return ErrorResponse(
                 message=(
-                    f"The MCP server at {_server_host(server_url)} requires authentication, "
+                    f"The MCP server at {server_host(server_url)} requires authentication, "
                     "but no credential configuration was found."
                 ),
                 session_id=session_id,
@@ -332,7 +313,7 @@ class RunMCPToolTool(BaseTool):
 
         missing_creds_list = list(missing_creds_dict.values())
 
-        host = _server_host(server_url)
+        host = server_host(server_url)
         return SetupRequirementsResponse(
             message=(
                 f"The MCP server at {host} requires authentication. "
@@ -356,16 +337,3 @@ class RunMCPToolTool(BaseTool):
             graph_id=None,
             graph_version=None,
         )
-
-
-def _server_host(server_url: str) -> str:
-    """Extract the hostname from a server URL for display purposes.
-
-    Uses ``parsed.hostname`` (never ``netloc``) to strip any embedded
-    username/password before surfacing the value in UI messages.
-    """
-    try:
-        parsed = urlparse(server_url)
-        return parsed.hostname or server_url
-    except Exception:
-        return server_url

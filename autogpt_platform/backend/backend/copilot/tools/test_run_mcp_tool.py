@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.helpers import server_host
+
 from ._test_data import make_session
 from .models import (
     ErrorResponse,
@@ -12,7 +14,7 @@ from .models import (
     MCPToolsDiscoveredResponse,
     SetupRequirementsResponse,
 )
-from .run_mcp_tool import RunMCPToolTool, _server_host
+from .run_mcp_tool import RunMCPToolTool
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,27 +44,27 @@ def _make_call_result(content: list[dict], is_error: bool = False) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# _server_host helper
+# server_host helper
 # ---------------------------------------------------------------------------
 
 
 def test_server_host_plain_url():
-    assert _server_host("https://mcp.example.com/mcp") == "mcp.example.com"
+    assert server_host("https://mcp.example.com/mcp") == "mcp.example.com"
 
 
 def test_server_host_strips_credentials():
     """netloc would expose user:pass — hostname must not."""
-    assert _server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
+    assert server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
 
 
 def test_server_host_with_port():
     """Port should not appear in the returned hostname (hostname strips it)."""
-    assert _server_host("https://mcp.example.com:8080/mcp") == "mcp.example.com"
+    assert server_host("https://mcp.example.com:8080/mcp") == "mcp.example.com"
 
 
 def test_server_host_invalid_url():
     """Falls back to the raw string for un-parseable URLs."""
-    result = _server_host("not-a-url")
+    result = server_host("not-a-url")
     assert result == "not-a-url"
 
 
@@ -140,7 +142,7 @@ async def test_non_dict_tool_arguments_returns_error():
         new_callable=AsyncMock,
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -172,7 +174,7 @@ async def test_discover_tools_returns_discovered_response():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -209,7 +211,7 @@ async def test_discover_tools_with_credentials():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=mock_creds,
         ):
@@ -250,7 +252,7 @@ async def test_execute_tool_returns_output_response():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -286,7 +288,7 @@ async def test_execute_tool_parses_json_result():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -321,7 +323,7 @@ async def test_execute_tool_image_content():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -360,7 +362,7 @@ async def test_execute_tool_resource_content():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -400,7 +402,7 @@ async def test_execute_tool_multi_item_content():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -438,7 +440,7 @@ async def test_execute_tool_empty_content_returns_none():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -471,7 +473,7 @@ async def test_execute_tool_returns_error_on_tool_failure():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -513,7 +515,7 @@ async def test_auth_required_without_creds_returns_setup_requirements():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,  # No stored credentials
         ):
@@ -556,7 +558,7 @@ async def test_auth_error_with_existing_creds_returns_error():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=mock_creds,
         ):
@@ -590,7 +592,7 @@ async def test_mcp_client_error_returns_error_response():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -622,7 +624,7 @@ async def test_unexpected_exception_returns_generic_error():
         "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
     ):
         with patch(
-            "backend.copilot.tools.run_mcp_tool.MCPToolBlock._auto_lookup_credential",
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -669,3 +671,89 @@ def test_tool_parameters_schema():
     assert "tool_name" in params["properties"]
     assert "tool_arguments" in params["properties"]
     assert params["required"] == ["server_url"]
+
+
+# ---------------------------------------------------------------------------
+# Query/fragment rejection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_query_in_url_returns_error():
+    """server_url with query parameters must be rejected."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+    response = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        server_url="https://mcp.example.com/mcp?key=val",
+    )
+    assert isinstance(response, ErrorResponse)
+    assert "query" in response.message.lower() or "fragment" in response.message.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_fragment_in_url_returns_error():
+    """server_url with a fragment must be rejected."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+    response = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        server_url="https://mcp.example.com/mcp#section",
+    )
+    assert isinstance(response, ErrorResponse)
+    assert "query" in response.message.lower() or "fragment" in response.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Credential lookup normalization
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_credential_lookup_normalizes_trailing_slash():
+    """Credential lookup must normalize the URL (strip trailing slash)."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+    url_with_slash = "https://mcp.example.com/mcp/"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_lookup:
+            mock_client = AsyncMock()
+            mock_client.list_tools = AsyncMock(return_value=[])
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=url_with_slash,
+                )
+            # Credential lookup should use the normalized URL (no trailing slash)
+            mock_lookup.assert_called_once_with(_USER_ID, "https://mcp.example.com/mcp")
+
+
+# ---------------------------------------------------------------------------
+# _build_setup_requirements
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_build_setup_requirements_returns_setup_response():
+    """_build_setup_requirements should return a SetupRequirementsResponse."""
+    tool = RunMCPToolTool()
+    result = tool._build_setup_requirements(
+        server_url=_SERVER_URL,
+        session_id="test-session",
+    )
+    assert isinstance(result, SetupRequirementsResponse)
+    assert result.setup_info.agent_id == _SERVER_URL
+    assert "authentication" in result.message.lower()
