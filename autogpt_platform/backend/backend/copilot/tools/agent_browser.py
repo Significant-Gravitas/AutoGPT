@@ -26,6 +26,7 @@ Requires:
 
 import asyncio
 import base64
+import json
 import logging
 import os
 import shutil
@@ -119,6 +120,187 @@ async def _snapshot(session_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Stateless session helpers — persist / restore browser state across pods
+# ---------------------------------------------------------------------------
+
+# Module-level cache of sessions known to be alive on this pod.
+# Avoids the subprocess probe on every tool call within the same pod.
+_alive_sessions: set[str] = set()
+
+# Workspace filename for persisted browser state (auto-scoped to session).
+_STATE_FILENAME = "_browser_state.json"
+
+
+async def _has_local_session(session_name: str) -> bool:
+    """Check if the local agent-browser daemon for this session is running."""
+    rc, _, _ = await _run(session_name, "get", "url", timeout=5)
+    return rc == 0
+
+
+async def _save_browser_state(
+    session_name: str, user_id: str, session: ChatSession
+) -> None:
+    """Persist browser state (cookies, localStorage, URL) to workspace.
+
+    Best-effort: errors are logged but never propagate to the tool response.
+    """
+    try:
+        # Gather state in parallel
+        (rc_url, url_out, _), (rc_ck, ck_out, _), (rc_ls, ls_out, _) = (
+            await asyncio.gather(
+                _run(session_name, "get", "url", timeout=10),
+                _run(session_name, "cookies", "get", "--json", timeout=10),
+                _run(session_name, "storage", "local", "--json", timeout=10),
+            )
+        )
+
+        state = {
+            "url": url_out.strip() if rc_url == 0 else "",
+            "cookies": (json.loads(ck_out) if rc_ck == 0 and ck_out.strip() else []),
+            "local_storage": (
+                json.loads(ls_out) if rc_ls == 0 and ls_out.strip() else {}
+            ),
+        }
+
+        from .workspace_files import _get_manager  # noqa: PLC0415
+
+        manager = await _get_manager(user_id, session.session_id)
+        await manager.write_file(
+            content=json.dumps(state).encode("utf-8"),
+            filename=_STATE_FILENAME,
+            mime_type="application/json",
+            overwrite=True,
+        )
+    except Exception:
+        logger.warning(
+            "[browser] Failed to save browser state for session %s",
+            session_name,
+            exc_info=True,
+        )
+
+
+async def _restore_browser_state(
+    session_name: str, user_id: str, session: ChatSession
+) -> None:
+    """Restore browser state from workspace storage into a fresh daemon.
+
+    Best-effort: errors are logged but never propagate to the tool response.
+    """
+    try:
+        from .workspace_files import _get_manager  # noqa: PLC0415
+
+        manager = await _get_manager(user_id, session.session_id)
+
+        file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
+        if file_info is None:
+            return  # No saved state — first call or never saved
+
+        state_bytes = await manager.read_file(_STATE_FILENAME)
+        state = json.loads(state_bytes.decode("utf-8"))
+
+        url = state.get("url", "")
+        cookies = state.get("cookies", [])
+        local_storage = state.get("local_storage", {})
+
+        # Navigate first — starts daemon + sets the correct origin for cookies
+        if url:
+            rc, _, stderr = await _run(session_name, "open", url)
+            if rc != 0:
+                logger.warning(
+                    "[browser] State restore: failed to open %s: %s",
+                    url,
+                    stderr[:200],
+                )
+                return
+            await _run(session_name, "wait", "--load", "load", timeout=15)
+
+        # Restore cookies (one at a time — CLI limitation)
+        for cookie in cookies:
+            name = cookie.get("name", "")
+            value = cookie.get("value", "")
+            domain = cookie.get("domain", "")
+            path = cookie.get("path", "/")
+            if name and domain:
+                rc, _, stderr = await _run(
+                    session_name,
+                    "cookies",
+                    "set",
+                    name,
+                    value,
+                    "--domain",
+                    domain,
+                    "--path",
+                    path,
+                    timeout=5,
+                )
+                if rc != 0:
+                    logger.debug(
+                        "[browser] State restore: cookie set failed for %s: %s",
+                        name,
+                        stderr[:100],
+                    )
+
+        # Restore localStorage (one at a time — CLI limitation)
+        for key, val in local_storage.items():
+            rc, _, stderr = await _run(
+                session_name,
+                "storage",
+                "local",
+                "set",
+                key,
+                str(val),
+                timeout=5,
+            )
+            if rc != 0:
+                logger.debug(
+                    "[browser] State restore: localStorage set failed for %s: %s",
+                    key,
+                    stderr[:100],
+                )
+    except Exception:
+        logger.warning(
+            "[browser] Failed to restore browser state for session %s",
+            session_name,
+            exc_info=True,
+        )
+
+
+async def _ensure_session(
+    session_name: str, user_id: str, session: ChatSession
+) -> None:
+    """Ensure the local browser daemon has state. Restore from cloud if needed."""
+    if session_name in _alive_sessions:
+        return
+    if await _has_local_session(session_name):
+        _alive_sessions.add(session_name)
+        return
+    await _restore_browser_state(session_name, user_id, session)
+    _alive_sessions.add(session_name)
+
+
+async def _close_browser_session(session_name: str) -> None:
+    """Shut down the local agent-browser daemon for a session.
+
+    Best-effort: errors are logged but never raised.
+    """
+    _alive_sessions.discard(session_name)
+    try:
+        rc, _, stderr = await _run(session_name, "close", timeout=10)
+        if rc != 0:
+            logger.debug(
+                "[browser] close failed for session %s: %s",
+                session_name,
+                stderr[:200],
+            )
+    except Exception:
+        logger.debug(
+            "[browser] Exception closing browser session %s",
+            session_name,
+            exc_info=True,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Tool: browser_navigate
 # ---------------------------------------------------------------------------
 
@@ -184,7 +366,7 @@ class BrowserNavigateTool(BaseTool):
 
     async def _execute(
         self,
-        user_id: str | None,  # noqa: ARG002
+        user_id: str | None,
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
@@ -214,6 +396,10 @@ class BrowserNavigateTool(BaseTool):
                 session_id=session_name,
             )
 
+        # Restore browser state from cloud if this is a different pod
+        if user_id:
+            await _ensure_session(session_name, user_id, session)
+
         # Navigate
         rc, _, stderr = await _run(session_name, "open", url)
         if rc != 0:
@@ -241,13 +427,19 @@ class BrowserNavigateTool(BaseTool):
 
         snapshot = await _snapshot(session_name)
 
-        return BrowserNavigateResponse(
+        result = BrowserNavigateResponse(
             message=f"Navigated to {url}",
             url=url_out.strip() or url,
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
         )
+
+        # Persist browser state to cloud for cross-pod continuity
+        if user_id:
+            await _save_browser_state(session_name, user_id, session)
+
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +541,7 @@ class BrowserActTool(BaseTool):
 
     async def _execute(
         self,
-        user_id: str | None,  # noqa: ARG002
+        user_id: str | None,
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
@@ -425,6 +617,10 @@ class BrowserActTool(BaseTool):
                 session_id=session_name,
             )
 
+        # Restore browser state from cloud if this is a different pod
+        if user_id:
+            await _ensure_session(session_name, user_id, session)
+
         rc, _, stderr = await _run(session_name, *cmd_args)
         if rc != 0:
             logger.warning("[browser_act] %s failed: %s", action, stderr[:300])
@@ -446,13 +642,19 @@ class BrowserActTool(BaseTool):
         snapshot = await _snapshot(session_name)
         _, url_out, _ = await _run(session_name, "get", "url")
 
-        return BrowserActResponse(
+        result = BrowserActResponse(
             message=f"Performed '{action}'" + (f" on '{target}'" if target else ""),
             action=action,
             current_url=url_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
         )
+
+        # Persist browser state to cloud for cross-pod continuity
+        if user_id:
+            await _save_browser_state(session_name, user_id, session)
+
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +727,10 @@ class BrowserScreenshotTool(BaseTool):
         filename: str = (kwargs.get("filename") or "screenshot.png").strip()
         session_name = session.session_id
 
+        # Restore browser state from cloud if this is a different pod
+        if user_id:
+            await _ensure_session(session_name, user_id, session)
+
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
         os.close(tmp_fd)
         try:
@@ -574,9 +780,15 @@ class BrowserScreenshotTool(BaseTool):
                 session_id=session_name,
             )
 
-        return BrowserScreenshotResponse(
+        result = BrowserScreenshotResponse(
             message=f"Screenshot saved to workspace as '{filename}'. Use read_workspace_file with file_id='{write_resp.file_id}' to retrieve it.",
             file_id=write_resp.file_id,
             filename=filename,
             session_id=session_name,
         )
+
+        # Persist browser state to cloud for cross-pod continuity
+        if user_id:
+            await _save_browser_state(session_name, user_id, session)
+
+        return result
