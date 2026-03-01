@@ -253,12 +253,14 @@ class GmailBase(Block, ABC):
             if attachment_data:
                 return self._decode_base64(attachment_data)
 
-        # Recursively search in parts
-        for sub_part in part.get("parts", []):
-            text = await self._walk_for_body(sub_part, msg_id, service, depth + 1)
+# Prefer text/plain siblings before recursing into other mime types
+        sub_parts = part.get("parts", [])
+        plain_parts = [p for p in sub_parts if p.get("mimeType") == "text/plain"]
+        prioritised = plain_parts + [p for p in sub_parts if p not in plain_parts]
+        for sub in prioritised:
+            text = await self._walk_for_body(sub, msg_id, service, depth + 1)
             if text:
                 return text
-
         return None
 
     def _decode_base64(self, data):
