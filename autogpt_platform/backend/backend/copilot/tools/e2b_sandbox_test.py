@@ -1,4 +1,4 @@
-"""Tests for e2b_sandbox: get_or_create_sandbox and _try_reconnect.
+"""Tests for e2b_sandbox: get_or_create_sandbox, _try_reconnect, kill_sandbox.
 
 Uses mock Redis and mock AsyncSandbox — no external dependencies.
 Tests are synchronous (using asyncio.run) to avoid conflicts with the
@@ -15,6 +15,7 @@ from .e2b_sandbox import (
     _SANDBOX_REDIS_PREFIX,
     _try_reconnect,
     get_or_create_sandbox,
+    kill_sandbox,
 )
 
 _KEY = f"{_SANDBOX_REDIS_PREFIX}sess-123"
@@ -184,3 +185,57 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         redis.delete.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# kill_sandbox
+# ---------------------------------------------------------------------------
+
+
+class TestKillSandbox:
+    def test_kill_existing_sandbox(self):
+        """Kill a running sandbox and clean up Redis."""
+        sb = _mock_sandbox()
+        sb.kill = AsyncMock()
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is True
+        redis.delete.assert_awaited_once_with(_KEY)
+        sb.kill.assert_awaited_once()
+
+    def test_kill_no_sandbox(self):
+        """No-op when no sandbox exists in Redis."""
+        redis = _mock_redis(get_val=None)
+        with _patch_redis(redis):
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+        redis.delete.assert_not_awaited()
+
+    def test_kill_creating_state(self):
+        """Clears Redis key but returns False when sandbox is still being created."""
+        redis = _mock_redis(get_val=_CREATING)
+        with _patch_redis(redis):
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+        redis.delete.assert_awaited_once_with(_KEY)
+
+    def test_kill_connect_failure(self):
+        """Returns False and cleans Redis if connect/kill fails."""
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
+            result = asyncio.run(kill_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+        redis.delete.assert_awaited_once_with(_KEY)

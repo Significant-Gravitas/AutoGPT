@@ -127,3 +127,40 @@ async def get_or_create_sandbox(
         session_id,
     )
     return sandbox
+
+
+async def kill_sandbox(session_id: str, api_key: str) -> bool:
+    """Kill the E2B sandbox for *session_id* and clean up its Redis entry.
+
+    Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
+    Safe to call even when no sandbox exists for the session.
+    """
+    redis = await get_redis_async()
+    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
+    raw = await redis.get(redis_key)
+    if not raw:
+        return False
+
+    sandbox_id = raw if isinstance(raw, str) else raw.decode()
+    await redis.delete(redis_key)
+
+    if sandbox_id == _CREATING:
+        return False
+
+    try:
+        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+        await sandbox.kill()
+        logger.info(
+            "[E2B] Killed sandbox %.12s for session %.12s",
+            sandbox_id,
+            session_id,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Failed to kill sandbox %.12s for session %.12s: %s",
+            sandbox_id,
+            session_id,
+            exc,
+        )
+        return False
