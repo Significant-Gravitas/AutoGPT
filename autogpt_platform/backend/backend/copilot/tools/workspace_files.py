@@ -163,11 +163,17 @@ async def _save_to_path(
     )
     if isinstance(validated, ErrorResponse):
         return validated
-    dir_path = os.path.dirname(validated)
-    if dir_path:
-        os.makedirs(dir_path, exist_ok=True)
-    with open(validated, "wb") as f:
-        f.write(content)
+    try:
+        dir_path = os.path.dirname(validated)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        with open(validated, "wb") as f:
+            f.write(content)
+    except Exception as exc:
+        return ErrorResponse(
+            message=f"Failed to write to local path: {path} ({exc})",
+            session_id=session_id,
+        )
     return validated
 
 
