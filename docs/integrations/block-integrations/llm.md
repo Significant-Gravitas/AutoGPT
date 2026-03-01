@@ -125,7 +125,7 @@ Creating an interactive chatbot that can maintain context over multiple exchange
 ## AI Image Customizer
 
 ### What it is
-Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5. Provide a prompt and optional reference images to create or modify images.
+Generate and edit custom images using Google's Nano-Banana models from Gemini. Provide a prompt and optional reference images to create or modify images.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -139,7 +139,7 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | A text description of the image you want to generate | str | Yes |
-| model | The AI model to use for image generation and editing | "google/nano-banana" \| "google/nano-banana-pro" | No |
+| model | The AI model to use for image generation and editing | "google/nano-banana" \| "google/nano-banana-pro" \| "google/nano-banana-2" | No |
 | images | Optional list of input images to reference or modify | List[str (file)] | No |
 | aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "2:3" \| "3:2" \| "3:4" \| "4:3" \| "4:5" \| "5:4" \| "9:16" \| "16:9" \| "21:9" | No |
 | output_format | Format of the output image | "jpg" \| "png" | No |
@@ -165,13 +165,13 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 ## AI Image Editor
 
 ### What it is
-Edit images using BlackForest Labs' Flux Kontext models. Provide a prompt and optional reference image to generate a modified image.
+Edit images using Flux Kontext or Google Nano Banana models. Provide a prompt and optional reference image to generate a modified image.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses BlackForest Labs' Flux Kontext models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
+This block uses BlackForest Labs' Flux Kontext or Google's Nano Banana models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
 
-Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs.
+Choose between Flux Kontext Pro, Max, or Nano Banana models for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs (Flux Kontext only).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -181,8 +181,8 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 | prompt | Text instruction describing the desired edit | str | Yes |
 | input_image | Reference image URI (jpeg, png, gif, webp) | str (file) | No |
 | aspect_ratio | Aspect ratio of the generated image | "match_input_image" \| "1:1" \| "16:9" \| "9:16" \| "4:3" \| "3:4" \| "3:2" \| "2:3" \| "4:5" \| "5:4" \| "21:9" \| "9:21" \| "2:1" \| "1:2" | No |
-| seed | Random seed. Set for reproducible generation | int | No |
-| model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" | No |
+| seed | Random seed. Set for reproducible generation (Flux Kontext only; ignored by Nano Banana models) | int | No |
+| model | Model variant to use | "Flux Kontext Pro" \| "Flux Kontext Max" \| "Nano Banana Pro" \| "Nano Banana 2" | No |
 
 ### Outputs
 
@@ -219,7 +219,7 @@ The unified interface allows switching between models without changing your work
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Text prompt for image generation | str | Yes |
-| model | The AI model to use for image generation | "Flux 1.1 Pro" \| "Flux 1.1 Pro Ultra" \| "Recraft v3" \| "Stable Diffusion 3.5 Medium" \| "Nano Banana Pro" | No |
+| model | The AI model to use for image generation | "Flux 1.1 Pro" \| "Flux 1.1 Pro Ultra" \| "Recraft v3" \| "Stable Diffusion 3.5 Medium" \| "Nano Banana Pro" \| "Nano Banana 2" | No |
 | size | Format of the generated image: - Square: Perfect for profile pictures, icons - Landscape: Traditional photo format - Portrait: Vertical photos, portraits - Wide: Cinematic format, desktop wallpapers - Tall: Mobile wallpapers, social media stories | "square" \| "landscape" \| "portrait" \| "wide" \| "tall" | No |
 | style | Visual style for the generated image | "any" \| "realistic_image" \| "realistic_image/b_and_w" \| "realistic_image/hdr" \| "realistic_image/natural_light" \| "realistic_image/studio_portrait" \| "realistic_image/enterprise" \| "realistic_image/hard_flash" \| "realistic_image/motion_blur" \| "digital_illustration" \| "digital_illustration/pixel_art" \| "digital_illustration/hand_drawn" \| "digital_illustration/grain" \| "digital_illustration/infantile_sketch" \| "digital_illustration/2d_art_poster" \| "digital_illustration/2d_art_poster_2" \| "digital_illustration/handmade_3d" \| "digital_illustration/hand_drawn_outline" \| "digital_illustration/engraving_color" | No |
 
