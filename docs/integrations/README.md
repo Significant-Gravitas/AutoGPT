@@ -492,8 +492,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Add Audio To Video](block-integrations/video/add_audio.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
+| [Edit Video By Text](block-integrations/video/edit_by_text.md#edit-video-by-text) | Edit a video by modifying its transcript |
 | [Loop Video](block-integrations/video/loop.md#loop-video) | Block to loop a video to a given duration or number of repeats |
 | [Media Duration](block-integrations/video/duration.md#media-duration) | Block to get the duration of a media file |
+| [Transcribe Video](block-integrations/video/transcribe.md#transcribe-video) | Transcribe speech from a video file to text |
 | [Video Clip](block-integrations/video/clip.md#video-clip) | Extract a time segment from a video |
 | [Video Concat](block-integrations/video/concat.md#video-concat) | Merge multiple video clips into one continuous video |
 | [Video Download](block-integrations/video/download.md#video-download) | Download video from URL (YouTube, Vimeo, news sites, direct links) |
