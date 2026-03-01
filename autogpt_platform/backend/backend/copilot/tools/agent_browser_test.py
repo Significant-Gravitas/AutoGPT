@@ -393,7 +393,8 @@ class TestBrowserActExecute:
         result = await self._act(action="fill", target="@e1", value="hello@test.com")
         assert isinstance(result, BrowserActResponse)
         assert "fill" in result.message
-        assert "hello@test.com" in result.message
+        # value must NOT appear in the message — it may contain credentials
+        assert "hello@test.com" not in result.message
 
     @pytest.mark.asyncio
     async def test_back_success(self):
@@ -675,7 +676,7 @@ class TestSnapshot:
             return_value=_run_result(rc=0, stdout=big_text),
         ):
             result = await _snapshot("test-session")
-        assert len(result) <= _MAX_SNAPSHOT_CHARS + 200  # truncation message adds a bit
+        assert len(result) <= _MAX_SNAPSHOT_CHARS
         assert "truncated" in result.lower()
 
     @pytest.mark.asyncio

@@ -419,9 +419,7 @@ class BrowserActTool(BaseTool):
         _, url_out, _ = await _run(session_name, "get", "url")
 
         return BrowserActResponse(
-            message=f"Performed '{action}'"
-            + (f" on '{target}'" if target else "")
-            + (f" with '{value}'" if value and action == "fill" else ""),
+            message=f"Performed '{action}'" + (f" on '{target}'" if target else ""),
             action=action,
             current_url=url_out.strip(),
             snapshot=snapshot,
