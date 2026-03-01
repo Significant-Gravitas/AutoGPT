@@ -59,7 +59,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
         server_url: serverUrl,
       });
-      if (loginRes.status !== 200) {
+      if (!(loginRes.status >= 200 && loginRes.status < 300)) {
         const d =
           loginRes.data && typeof loginRes.data === "object"
             ? loginRes.data
@@ -87,7 +87,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           code: result.code,
           state_token,
         });
-        if (cbRes.status !== 200) {
+        if (!(cbRes.status >= 200 && cbRes.status < 300)) {
           const d =
             cbRes.data && typeof cbRes.data === "object" ? cbRes.data : {};
           throw { status: cbRes.status, ...d };
