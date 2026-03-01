@@ -3,6 +3,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
+import { debounce } from "lodash";
 import {
   CSSProperties,
   PropsWithChildren,
@@ -76,13 +77,21 @@ export function DialogWrap({
       if (!el) return;
       setHasVerticalScrollbar(el.scrollHeight > el.clientHeight + 1);
     }
+    
+    // Debounce the update function to prevent rapid successive state updates
+    const debouncedUpdate = debounce(update, 100);
+    
+    // Initial update without debounce for immediate UI feedback
     update();
-    const ro = new ResizeObserver(update);
+    
+    const ro = new ResizeObserver(debouncedUpdate);
     if (scrollRef.current) ro.observe(scrollRef.current);
-    window.addEventListener("resize", update);
+    window.addEventListener("resize", debouncedUpdate);
+    
     return () => {
+      debouncedUpdate.cancel();
       ro.disconnect();
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", debouncedUpdate);
     };
   }, []);
 
