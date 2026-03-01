@@ -95,7 +95,7 @@ class RunMCPToolTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        server_url: str = (kwargs.get("server_url") or "").strip()
+        server_url: str = (kwargs.get("server_url") or "").strip().rstrip("/")
         tool_name: str = (kwargs.get("tool_name") or "").strip()
         raw_tool_arguments = kwargs.get("tool_arguments")
         tool_arguments: dict[str, Any] = (
