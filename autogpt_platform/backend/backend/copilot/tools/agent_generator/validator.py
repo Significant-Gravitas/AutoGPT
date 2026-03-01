@@ -275,9 +275,9 @@ class AgentValidator:
                 self.add_error(
                     f"Data type mismatch in link '{link.get('id')}': "
                     f"Source '{source_block_name}' output "
-                    f"'{link['source_name']}' outputs '{source_type}' "
+                    f"'{link.get('source_name', '')}' outputs '{source_type}' "
                     f"type, but sink '{sink_block_name}' input "
-                    f"'{link['sink_name']}' expects '{sink_type}' type. "
+                    f"'{link.get('sink_name', '')}' expects '{sink_type}' type. "
                     f"These types must match for the connection to work "
                     f"properly."
                 )
@@ -294,11 +294,11 @@ class AgentValidator:
         """
         valid = True
         block_input_schemas = {
-            block["id"]: block.get("inputSchema", {}).get("properties", {})
+            block.get("id", ""): block.get("inputSchema", {}).get("properties", {})
             for block in blocks
         }
         block_names = {
-            block["id"]: block.get("name", "Unknown Block") for block in blocks
+            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
 
         for link in agent.get("links", []):
@@ -365,7 +365,7 @@ class AgentValidator:
                         block_name = block_names.get(block_id, "Unknown Block")
                         self.add_error(
                             f"Invalid nested sink link '{sink_name}' "
-                            f"for node '{link['sink_id']}' (block "
+                            f"for node '{link.get('sink_id', '')}' (block "
                             f"'{block_name}' - {block_id}): Child "
                             f"property '{child}' does not exist in "
                             f"parent '{parent}' schema. Available "
@@ -453,11 +453,11 @@ class AgentValidator:
 
         # Create lookup dictionaries for efficiency
         block_output_schemas = {
-            block["id"]: block.get("outputSchema", {}).get("properties", {})
+            block.get("id", ""): block.get("outputSchema", {}).get("properties", {})
             for block in blocks
         }
         block_names = {
-            block["id"]: block.get("name", "Unknown Block") for block in blocks
+            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
 
         for link in agent.get("links", []):
@@ -612,7 +612,7 @@ class AgentValidator:
         # Create lookup for library agents
         library_agent_lookup: dict[str, dict[str, Any]] = {}
         if library_agents:
-            library_agent_lookup = {la["graph_id"]: la for la in library_agents}
+            library_agent_lookup = {la.get("graph_id", ""): la for la in library_agents}
 
         for node in nodes:
             if node.get("block_id") != self.AGENT_EXECUTOR_BLOCK_ID:

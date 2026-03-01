@@ -63,9 +63,9 @@ class AgentFixer:
         # Fix link IDs
         links = []
         for link in agent.get("links", []):
-            if not self.is_uuid(link["id"]):
+            if not self.is_uuid(link.get("id", "")):
                 link["id"] = get_new_id()
-                self.add_fix_log(f"Fixed link ID: {link['id']}")
+                self.add_fix_log(f"Fixed link ID: {link.get('id', '')}")
             links.append(link)
         agent["links"] = links
 
@@ -444,7 +444,9 @@ class AgentFixer:
             if node.get("block_id") == self.ADDTOLIST_BLOCK_ID:
                 original_addtolist_node_ids.add(node.get("id"))
                 original_node_id = node.get("id")
-                original_node_position = node.get("metadata", {}).get("position", {})
+                original_node_position = (node.get("metadata") or {}).get(
+                    "position", {}
+                )
                 if original_node_position:
                     original_node_position_x = original_node_position.get("x", 0)
                     original_node_position_y = original_node_position.get("y", 0)
@@ -591,10 +593,10 @@ class AgentFixer:
                     continue
 
                 has_self_reference = any(
-                    link["source_id"] == node_id
-                    and link["sink_id"] == node_id
-                    and link["source_name"] == "updated_list"
-                    and link["sink_name"] == "list"
+                    link.get("source_id") == node_id
+                    and link.get("sink_id") == node_id
+                    and link.get("source_name") == "updated_list"
+                    and link.get("sink_name") == "list"
                     for link in new_links
                 )
 
@@ -712,7 +714,7 @@ class AgentFixer:
                 (
                     node
                     for node in agent.get("nodes", [])
-                    if node["id"] == link["source_id"]
+                    if node.get("id") == link.get("source_id")
                 ),
                 None,
             )
@@ -937,8 +939,8 @@ class AgentFixer:
         links = agent.get("links", [])
 
         # Create lookup dictionaries for efficiency
-        block_lookup = {block["id"]: block for block in blocks}
-        node_lookup = {node["id"]: node for node in nodes}
+        block_lookup = {block.get("id", ""): block for block in blocks}
+        node_lookup = {node.get("id", ""): node for node in nodes}
 
         def get_defined_property_type(schema: dict[str, Any], name: str) -> str | None:
             """Helper function to get property type from schema, handling
@@ -987,8 +989,8 @@ class AgentFixer:
         converter_counter = 0
 
         for link in links:
-            source_node = node_lookup.get(link["source_id"])
-            sink_node = node_lookup.get(link["sink_id"])
+            source_node = node_lookup.get(link.get("source_id"))
+            sink_node = node_lookup.get(link.get("sink_id"))
 
             if not source_node or not sink_node:
                 new_links.append(link)
@@ -1004,8 +1006,12 @@ class AgentFixer:
             source_outputs = source_block.get("outputSchema", {}).get("properties", {})
             sink_inputs = sink_block.get("inputSchema", {}).get("properties", {})
 
-            source_type = get_defined_property_type(source_outputs, link["source_name"])
-            sink_type = get_defined_property_type(sink_inputs, link["sink_name"])
+            source_type = get_defined_property_type(
+                source_outputs, link.get("source_name", "")
+            )
+            sink_type = get_defined_property_type(
+                sink_inputs, link.get("sink_name", "")
+            )
 
             # Check if types are incompatible
             if (
@@ -1036,8 +1042,8 @@ class AgentFixer:
                 # Create new links: source -> converter -> sink
                 source_to_converter_link = {
                     "id": self.generate_uuid(),
-                    "source_id": link["source_id"],
-                    "source_name": link["source_name"],
+                    "source_id": link.get("source_id", ""),
+                    "source_name": link.get("source_name", ""),
                     "sink_id": converter_node_id,
                     "sink_name": "value",
                 }
@@ -1046,8 +1052,8 @@ class AgentFixer:
                     "id": self.generate_uuid(),
                     "source_id": converter_node_id,
                     "source_name": "value",
-                    "sink_id": link["sink_id"],
-                    "sink_name": link["sink_name"],
+                    "sink_id": link.get("sink_id", ""),
+                    "sink_name": link.get("sink_name", ""),
                 }
 
                 new_links.append(source_to_converter_link)
@@ -1109,8 +1115,8 @@ class AgentFixer:
             if not source_node or not sink_node:
                 continue
 
-            source_pos = source_node.get("metadata", {}).get("position", {})
-            sink_meta = sink_node.get("metadata", {})
+            source_pos = (source_node.get("metadata") or {}).get("position", {})
+            sink_meta = sink_node.get("metadata") or {}
             sink_pos = sink_meta.get("position", {})
             source_x = source_pos.get("x", 0)
             sink_x = sink_pos.get("x", 0)
@@ -1324,7 +1330,7 @@ class AgentFixer:
         links = agent.get("links", [])
 
         # Create lookup for library agents
-        library_agent_lookup = {la["graph_id"]: la for la in library_agents}
+        library_agent_lookup = {la.get("graph_id", ""): la for la in library_agents}
         logger.info(
             f"fix_agent_executor_blocks: library_agent_lookup keys = "
             f"{list(library_agent_lookup.keys())}"
@@ -1525,11 +1531,11 @@ class AgentFixer:
             return agent
 
         block_input_schemas = {
-            block["id"]: block.get("inputSchema", {}).get("properties", {})
+            block.get("id", ""): block.get("inputSchema", {}).get("properties", {})
             for block in blocks
         }
         block_names = {
-            block["id"]: block.get("name", "Unknown Block") for block in blocks
+            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
 
         links = agent.get("links", [])
@@ -1547,7 +1553,7 @@ class AgentFixer:
                         (
                             node
                             for node in agent.get("nodes", [])
-                            if node["id"] == link["sink_id"]
+                            if node.get("id") == link.get("sink_id")
                         ),
                         None,
                     )
@@ -1560,7 +1566,7 @@ class AgentFixer:
                             f"Array indices (like '{child}') are not "
                             f"valid with _#_ notation"
                         )
-                        links_to_remove.append(link["id"])
+                        links_to_remove.append(link.get("id", ""))
                     continue
 
                 # Check if parent property exists and child is valid
@@ -1568,7 +1574,7 @@ class AgentFixer:
                     (
                         node
                         for node in agent.get("nodes", [])
-                        if node["id"] == link["sink_id"]
+                        if node.get("id") == link.get("sink_id")
                     ),
                     None,
                 )
@@ -1589,12 +1595,12 @@ class AgentFixer:
                                 f"array type, _#_ notation not "
                                 f"applicable"
                             )
-                            links_to_remove.append(link["id"])
+                            links_to_remove.append(link.get("id", ""))
 
         # Remove invalid links
         if links_to_remove:
             agent["links"] = [
-                link for link in links if link["id"] not in links_to_remove
+                link for link in links if link.get("id", "") not in links_to_remove
             ]
 
         return agent
