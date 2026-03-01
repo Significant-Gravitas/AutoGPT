@@ -95,7 +95,7 @@ class RunMCPToolTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        server_url: str = (kwargs.get("server_url") or "").strip().rstrip("/")
+        server_url: str = (kwargs.get("server_url") or "").strip()
         tool_name: str = (kwargs.get("tool_name") or "").strip()
         raw_tool_arguments = kwargs.get("tool_arguments")
         tool_arguments: dict[str, Any] = (
@@ -153,8 +153,11 @@ class RunMCPToolTool(BaseTool):
                 user_msg = f"Blocked server URL: {msg}"
             return ErrorResponse(message=user_msg, session_id=session_id)
 
-        # Fast DB lookup — no network call
-        creds = await MCPToolBlock._auto_lookup_credential(user_id, server_url)
+        # Fast DB lookup — no network call.
+        # Use rstrip("/") for matching because stored credentials are normalized.
+        creds = await MCPToolBlock._auto_lookup_credential(
+            user_id, server_url.rstrip("/")
+        )
         auth_token = creds.access_token.get_secret_value() if creds else None
 
         client = MCPClient(server_url, auth_token=auth_token)
