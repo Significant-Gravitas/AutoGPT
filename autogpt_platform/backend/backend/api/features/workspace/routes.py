@@ -4,14 +4,23 @@ Workspace API routes for managing user file storage.
 
 import logging
 import re
+import uuid
 from typing import Annotated
 from urllib.parse import quote
 
 import fastapi
+import pydantic
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from fastapi import File, UploadFile
 from fastapi.responses import Response
 
-from backend.data.workspace import WorkspaceFile, get_workspace, get_workspace_file
+from backend.data.workspace import (
+    WorkspaceFile,
+    get_or_create_workspace,
+    get_workspace,
+    get_workspace_file,
+)
+from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import get_workspace_storage
 
 
@@ -120,3 +129,73 @@ async def download_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return await _create_file_download_response(file)
+
+
+@router.delete(
+    "/files/{file_id}",
+    summary="Delete a workspace file",
+)
+async def delete_workspace_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+) -> dict[str, bool]:
+    """
+    Soft-delete a workspace file and remove it from storage.
+
+    Used when a user clears a file input in the builder.
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    manager = WorkspaceManager(user_id, workspace.id)
+    deleted = await manager.delete_file(file_id)
+    if not deleted:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    return {"deleted": True}
+
+
+class WorkspaceUploadResponse(pydantic.BaseModel):
+    file_uri: str
+    file_name: str
+    size: int
+    content_type: str
+
+
+@router.post(
+    "/files/upload",
+    summary="Upload a file to the workspace",
+)
+async def upload_workspace_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file: UploadFile = File(...),
+) -> WorkspaceUploadResponse:
+    """
+    Upload a file to the user's workspace for use in builder graph inputs.
+
+    Returns a workspace:// URI that can be stored in graph node inputs
+    instead of embedding full file content as base64.
+    """
+    workspace = await get_or_create_workspace(user_id)
+    content = await file.read()
+
+    filename = file.filename or "upload"
+    content_type = file.content_type or "application/octet-stream"
+    file_id = str(uuid.uuid4())
+    path = f"/builder-uploads/{file_id}/{filename}"
+
+    manager = WorkspaceManager(user_id, workspace.id)
+    workspace_file = await manager.write_file(
+        content=content,
+        filename=filename,
+        path=path,
+        mime_type=content_type,
+    )
+
+    return WorkspaceUploadResponse(
+        file_uri=f"workspace://{workspace_file.id}#{workspace_file.mime_type}",
+        file_name=workspace_file.name,
+        size=workspace_file.size_bytes,
+        content_type=workspace_file.mime_type,
+    )

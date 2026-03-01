@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
 import { cn } from "@/lib/utils";
-import { Progress } from "../Progress/Progress";
 import { Text } from "../Text/Text";
 
 type UploadFileResult = {
@@ -20,6 +19,7 @@ interface BaseProps {
   value?: string;
   placeholder?: string;
   onChange: (value: string) => void;
+  onDeleteFile?: (fileURI: string) => void;
   className?: string;
   maxFileSize?: number;
   accept?: string | string[];
@@ -30,7 +30,7 @@ interface BaseProps {
 interface UploadModeProps extends BaseProps {
   mode?: "upload";
   onUploadFile: (file: File) => Promise<UploadFileResult>;
-  uploadProgress: number;
+  uploadProgress?: number;
 }
 
 interface Base64ModeProps extends BaseProps {
@@ -45,6 +45,7 @@ export function FileInput(props: Props) {
   const {
     value,
     onChange,
+    onDeleteFile,
     className,
     maxFileSize,
     accept,
@@ -56,8 +57,6 @@ export function FileInput(props: Props) {
 
   const onUploadFile =
     mode === "upload" ? (props as UploadModeProps).onUploadFile : undefined;
-  const uploadProgress =
-    mode === "upload" ? (props as UploadModeProps).uploadProgress : 0;
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -124,9 +123,21 @@ export function FileInput(props: Props) {
       return "File";
     }
 
-    // Handle string values (data URIs or file paths)
+    // Handle string values (workspace URIs, data URIs, or file paths)
     if (typeof val !== "string") {
       return "File";
+    }
+
+    if (val.startsWith("workspace://")) {
+      const fragment = val.split("#")[1];
+      if (fragment) {
+        const parts = fragment.split("/");
+        if (parts.length > 1) {
+          return `${parts[1].toUpperCase()} file`;
+        }
+        return "File";
+      }
+      return "Uploaded file";
     }
 
     if (val.startsWith("data:")) {
@@ -226,13 +237,16 @@ export function FileInput(props: Props) {
     if (file) uploadFile(file);
   };
 
-  const handleClear = () => {
+  function handleClear() {
+    if (value && onDeleteFile) {
+      onDeleteFile(value);
+    }
     if (inputRef.current) {
       inputRef.current.value = "";
     }
     onChange("");
     setFileInfo(null);
-  };
+  }
 
   const displayName = placeholder || "File";
 
@@ -241,27 +255,14 @@ export function FileInput(props: Props) {
       <div className={cn("flex flex-col gap-1.5", className)}>
         <div className="nodrag flex flex-col gap-1.5">
           {isUploading ? (
-            <div className="flex flex-col gap-1.5 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
-              <div className="flex items-center gap-2">
-                <UploadIcon className="h-4 w-4 animate-pulse text-blue-600 dark:text-blue-400" />
-                <Text
-                  variant="small"
-                  className="text-blue-700 dark:text-blue-300"
-                >
-                  {mode === "base64" ? "Processing..." : "Uploading..."}
-                </Text>
-                {mode === "upload" && (
-                  <Text
-                    variant="small-medium"
-                    className="ml-auto text-blue-600 dark:text-blue-400"
-                  >
-                    {Math.round(uploadProgress)}%
-                  </Text>
-                )}
-              </div>
-              {mode === "upload" && (
-                <Progress value={uploadProgress} className="h-1 w-full" />
-              )}
+            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600 dark:border-blue-700 dark:border-t-blue-400" />
+              <Text
+                variant="small"
+                className="text-blue-700 dark:text-blue-300"
+              >
+                {mode === "base64" ? "Processing..." : "Uploading..."}
+              </Text>
             </div>
           ) : value ? (
             <div className="flex items-center gap-2">
@@ -333,26 +334,13 @@ export function FileInput(props: Props) {
       {isUploading ? (
         <div className="space-y-2">
           <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full flex-col justify-center rounded-xl bg-zinc-50 p-4 text-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <UploadIcon className="h-5 w-5 text-blue-600" />
-                <span className="text-gray-700">
-                  {mode === "base64" ? "Processing..." : "Uploading..."}
-                </span>
-                {mode === "upload" && (
-                  <span className="text-gray-500">
-                    {Math.round(uploadProgress)}%
-                  </span>
-                )}
-              </div>
-              {mode === "upload" && (
-                <Progress value={uploadProgress} className="w-full" />
-              )}
+            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+              <span className="text-gray-700">
+                {mode === "base64" ? "Processing..." : "Uploading..."}
+              </span>
             </div>
           </div>
-          {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
-          )}
         </div>
       ) : value ? (
         <div className="space-y-2">
