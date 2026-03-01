@@ -91,6 +91,12 @@ async def auto_lookup_mcp_credential(
         mcp_creds = await mgr.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
+        # Collect all matching credentials and pick the best one.
+        # Primary sort: latest access_token_expires_at (tokens with expiry
+        # are preferred over non-expiring ones).  Secondary sort: last in
+        # iteration order, which corresponds to the most recently created
+        # row — this acts as a tiebreaker when multiple bearer tokens have
+        # no expiry (e.g. after a failed old-credential cleanup).
         best: OAuth2Credentials | None = None
         for cred in mcp_creds:
             if (
@@ -99,7 +105,7 @@ async def auto_lookup_mcp_credential(
             ):
                 if best is None or (
                     (cred.access_token_expires_at or 0)
-                    > (best.access_token_expires_at or 0)
+                    >= (best.access_token_expires_at or 0)
                 ):
                     best = cred
         if best:
