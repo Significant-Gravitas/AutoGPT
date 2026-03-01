@@ -68,9 +68,12 @@ class TestDiscoverTools:
 
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={
@@ -132,10 +135,12 @@ class TestDiscoverTools:
 
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=stored_cred,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[stored_cred])
-            mock_cm.refresh_if_needed = AsyncMock(return_value=stored_cred)
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
@@ -157,9 +162,12 @@ class TestDiscoverTools:
     async def test_discover_tools_mcp_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
@@ -177,9 +185,12 @@ class TestDiscoverTools:
     async def test_discover_tools_generic_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
@@ -195,9 +206,12 @@ class TestDiscoverTools:
     async def test_discover_tools_auth_required(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
@@ -215,9 +229,12 @@ class TestDiscoverTools:
     async def test_discover_tools_forbidden(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
