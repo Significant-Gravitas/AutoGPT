@@ -7,7 +7,6 @@ frontend can list available tools on an MCP server before placing a block.
 
 import logging
 from typing import Annotated, Any
-from urllib.parse import urlparse
 
 import fastapi
 from autogpt_libs.auth import get_user_id
@@ -16,11 +15,16 @@ from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.helpers import (
+    auto_lookup_mcp_credential,
+    normalize_mcp_url,
+    server_host,
+)
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, Requests
+from backend.util.request import HTTPClientError, Requests, validate_url
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -74,32 +78,20 @@ async def discover_tools(
     If the user has a stored MCP credential for this server URL, it will be
     used automatically — no need to pass an explicit auth token.
     """
+    # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
+    try:
+        await validate_url(request.server_url, trusted_origins=[])
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
+
     auth_token = request.auth_token
 
     # Auto-use stored MCP credential when no explicit token is provided.
     if not auth_token:
-        mcp_creds = await creds_manager.store.get_creds_by_provider(
-            user_id, ProviderName.MCP.value
+        best_cred = await auto_lookup_mcp_credential(
+            user_id, normalize_mcp_url(request.server_url)
         )
-        # Find the freshest credential for this server URL
-        best_cred: OAuth2Credentials | None = None
-        for cred in mcp_creds:
-            if (
-                isinstance(cred, OAuth2Credentials)
-                and (cred.metadata or {}).get("mcp_server_url") == request.server_url
-            ):
-                if best_cred is None or (
-                    (cred.access_token_expires_at or 0)
-                    > (best_cred.access_token_expires_at or 0)
-                ):
-                    best_cred = cred
         if best_cred:
-            # Refresh the token if expired before using it
-            best_cred = await creds_manager.refresh_if_needed(user_id, best_cred)
-            logger.info(
-                f"Using MCP credential {best_cred.id} for {request.server_url}, "
-                f"expires_at={best_cred.access_token_expires_at}"
-            )
             auth_token = best_cred.access_token.get_secret_value()
 
     client = MCPClient(request.server_url, auth_token=auth_token)
@@ -134,7 +126,7 @@ async def discover_tools(
         ],
         server_name=(
             init_result.get("serverInfo", {}).get("name")
-            or urlparse(request.server_url).hostname
+            or server_host(request.server_url)
             or "MCP"
         ),
         protocol_version=init_result.get("protocolVersion"),
@@ -173,9 +165,15 @@ async def mcp_oauth_login(
     3. Performs Dynamic Client Registration (RFC 7591) if available
     4. Returns the authorization URL for the frontend to open in a popup
     """
+    # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
+    try:
+        await validate_url(request.server_url, trusted_origins=[])
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
+
     # Normalize the URL so that credentials stored here are matched consistently
-    # by run_mcp_tool._auto_lookup_credential (which also strips trailing slashes).
-    server_url = request.server_url.strip().rstrip("/")
+    # by auto_lookup_mcp_credential (which also uses normalized URLs).
+    server_url = normalize_mcp_url(request.server_url)
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -186,6 +184,15 @@ async def mcp_oauth_login(
     if protected_resource and protected_resource.get("authorization_servers"):
         auth_server_url = protected_resource["authorization_servers"][0]
         resource_url = protected_resource.get("resource", server_url)
+
+        # Validate the auth server URL from metadata to prevent SSRF.
+        try:
+            await validate_url(auth_server_url, trusted_origins=[])
+        except ValueError as e:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"Invalid authorization server URL in metadata: {e}",
+            )
 
         # Step 2a: Discover auth-server metadata (RFC 8414)
         metadata = await client.discover_auth_server_metadata(auth_server_url)
@@ -225,12 +232,18 @@ async def mcp_oauth_login(
     client_id = ""
     client_secret = ""
     if registration_endpoint:
-        reg_result = await _register_mcp_client(
-            registration_endpoint, redirect_uri, server_url
-        )
-        if reg_result:
-            client_id = reg_result.get("client_id", "")
-            client_secret = reg_result.get("client_secret", "")
+        # Validate the registration endpoint to prevent SSRF via metadata.
+        try:
+            await validate_url(registration_endpoint, trusted_origins=[])
+        except ValueError:
+            pass  # Skip registration, fall back to default client_id
+        else:
+            reg_result = await _register_mcp_client(
+                registration_endpoint, redirect_uri, server_url
+            )
+            if reg_result:
+                client_id = reg_result.get("client_id", "")
+                client_secret = reg_result.get("client_secret", "")
 
     if not client_id:
         client_id = "autogpt-platform"
@@ -345,7 +358,7 @@ async def mcp_oauth_callback(
     credentials.metadata["mcp_token_url"] = meta["token_url"]
     credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
 
-    hostname = urlparse(meta["server_url"]).hostname or meta["server_url"]
+    hostname = server_host(meta["server_url"])
     credentials.title = f"MCP: {hostname}"
 
     # Remove old MCP credentials for the same server to prevent stale token buildup.
@@ -360,7 +373,9 @@ async def mcp_oauth_callback(
             ):
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
-                    f"Removed old MCP credential {old.id} for {meta['server_url']}"
+                    "Removed old MCP credential %s for %s",
+                    old.id,
+                    server_host(meta["server_url"]),
                 )
     except Exception:
         logger.debug("Could not clean up old MCP credentials", exc_info=True)
@@ -412,9 +427,15 @@ async def mcp_store_token(
     if not token:
         raise fastapi.HTTPException(status_code=422, detail="Token must not be blank.")
 
+    # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
+    try:
+        await validate_url(request.server_url, trusted_origins=[])
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
+
     # Normalize URL so trailing-slash variants match existing credentials.
-    server_url = request.server_url.strip().rstrip("/")
-    hostname = urlparse(server_url).hostname or server_url
+    server_url = normalize_mcp_url(request.server_url)
+    hostname = server_host(server_url)
 
     # Collect IDs of old credentials to clean up after successful create.
     old_cred_ids: list[str] = []
@@ -426,7 +447,8 @@ async def mcp_store_token(
             old.id
             for old in old_creds
             if isinstance(old, OAuth2Credentials)
-            and (old.metadata or {}).get("mcp_server_url", "").rstrip("/") == server_url
+            and normalize_mcp_url((old.metadata or {}).get("mcp_server_url", ""))
+            == server_url
         ]
     except Exception:
         logger.debug("Could not query old MCP token credentials", exc_info=True)
@@ -483,5 +505,7 @@ async def _register_mcp_client(
             return data
         return None
     except Exception as e:
-        logger.warning(f"Dynamic client registration failed for {server_url}: {e}")
+        logger.warning(
+            "Dynamic client registration failed for %s: %s", server_host(server_url), e
+        )
         return None
