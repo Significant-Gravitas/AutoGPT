@@ -411,3 +411,36 @@ async def test_get_store_agents_search_category_array_injection():
     # Verify the query executed without error
     # Category should be parameterized, preventing SQL injection
     assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_creators_only_returns_approved(mocker):
+    mock_creators = [
+        prisma.models.Creator(
+            name="Creator One",
+            username="creator1",
+            description="desc",
+            avatar_url="avatar.jpg",
+            num_agents=1,
+            agent_rating=4.5,
+            agent_runs=10,
+            is_featured=False,
+        )
+    ]
+
+    mock_creator = mocker.patch("prisma.models.Creator.prisma")
+    mock_creator.return_value.find_many = mocker.AsyncMock(return_value=mock_creators)
+    mock_creator.return_value.count = mocker.AsyncMock(return_value=1)
+
+    result = await db.get_store_creators()
+
+    assert len(result.creators) == 1
+    assert result.creators[0].username == "creator1"
+
+    mock_creator.return_value.find_many.assert_called_once()
+    mock_creator.return_value.count.assert_called_once()
+
+    _, find_kwargs = mock_creator.return_value.find_many.call_args
+    _, count_kwargs = mock_creator.return_value.count.call_args
+    assert find_kwargs["where"].num_agents == {"gt": 0}
+    assert count_kwargs["where"].num_agents == {"gt": 0}
