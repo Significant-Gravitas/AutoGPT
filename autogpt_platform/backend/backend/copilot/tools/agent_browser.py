@@ -143,9 +143,13 @@ class BrowserNavigateTool(BaseTool):
             "tree snapshot listing the page's interactive elements with @ref IDs "
             "(e.g. @e3) that can be used with browser_act. "
             "Session persists — cookies and login state carry over between calls. "
-            "Handles JS-rendered pages, SPAs, and any site that requires a real browser. "
-            "For authenticated pages, navigate to the login page first and use "
-            "browser_act to fill credentials before navigating to the target."
+            "Use this (with browser_act) for multi-step interaction: login flows, "
+            "form filling, button clicks, or anything requiring page interaction. "
+            "For one-shot content extraction from JS pages with no interaction needed, "
+            "prefer browse_web (if available) — it's simpler and faster. "
+            "For plain static pages, prefer web_fetch — no browser overhead. "
+            "For authenticated pages: navigate to the login page first, use browser_act "
+            "to fill credentials and submit, then navigate to the target page."
         )
 
     @property
@@ -451,10 +455,12 @@ class BrowserScreenshotTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Take a screenshot of the current browser page and save it to the "
-            "workspace so the user can view it. With annotate=true (default), "
-            "@ref labels are overlaid on interactive elements — useful for "
-            "understanding the page layout and planning next actions."
+            "Take a screenshot of the current browser page and save it to the workspace. "
+            "IMPORTANT: After calling this tool, immediately call read_workspace_file "
+            "with the returned file_id to display the image inline to the user — "
+            "the screenshot is not visible until you do this. "
+            "With annotate=true (default), @ref labels are overlaid on interactive "
+            "elements, making it easy to see which @ref ID maps to which element on screen."
         )
 
     @property

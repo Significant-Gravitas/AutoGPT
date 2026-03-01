@@ -80,9 +80,12 @@ class BrowseWebTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Navigate to a URL using a real browser and extract content. "
-            "Handles JavaScript-rendered pages and dynamic content that "
+            "Navigate to a URL using a real browser and extract content in one shot. "
+            "Handles JavaScript-rendered pages, SPAs, and dynamic content that "
             "web_fetch cannot reach. "
+            "Best for single-page extractions with no interaction required. "
+            "For multi-step workflows (login flows, form filling, clicking buttons), "
+            "use browser_navigate + browser_act instead. "
             "Specify exactly what to extract via the `instruction` parameter."
         )
 
