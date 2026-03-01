@@ -220,10 +220,10 @@ def parse_url(url: str) -> URL:
     url = url.strip("/ ").replace("\\", "/")
 
     # Ensure scheme is present for proper parsing.
-    # Use a character class without nested repetition to avoid ReDoS (CodeQL
-    # py/polynomial-redos).  RFC 3986 §3.1 scheme = ALPHA *( ALPHA / DIGIT /
-    # "+" / "-" / "." ), so we require the scheme to start with a letter.
-    if not re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*://", url):
+    # Avoid regex to sidestep CodeQL py/polynomial-redos on user-controlled
+    # input.  We only need to detect "scheme://"; urlparse() and the
+    # ALLOWED_SCHEMES check downstream handle full validation.
+    if "://" not in url:
         url = f"http://{url}"
 
     return urlparse(url)
