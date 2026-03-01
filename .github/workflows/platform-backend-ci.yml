@@ -190,6 +190,10 @@ jobs:
         name: Run Linter
         run: poetry run lint
 
+      - name: Run Pyright type-checking
+        run: poetry run pyright --pythonversion ${{ matrix.python-version }}
+        working-directory: autogpt_platform/backend
+
       - name: Run pytest with coverage
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
