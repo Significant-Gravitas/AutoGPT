@@ -44,6 +44,7 @@ from .models import (
     ErrorResponse,
     ToolResponseBase,
 )
+from .workspace_files import get_manager
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +167,7 @@ async def _save_browser_state(
             ),
         }
 
-        from .workspace_files import _get_manager  # noqa: PLC0415
-
-        manager = await _get_manager(user_id, session.session_id)
+        manager = await get_manager(user_id, session.session_id)
         await manager.write_file(
             content=json.dumps(state).encode("utf-8"),
             filename=_STATE_FILENAME,
@@ -192,9 +191,7 @@ async def _restore_browser_state(
     Returns True on success (or no state to restore), False on failure.
     """
     try:
-        from .workspace_files import _get_manager  # noqa: PLC0415
-
-        manager = await _get_manager(user_id, session.session_id)
+        manager = await get_manager(user_id, session.session_id)
 
         file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
         if file_info is None:
@@ -291,7 +288,7 @@ async def _ensure_session(
             _alive_sessions.add(session_name)
 
 
-async def _close_browser_session(session_name: str) -> None:
+async def close_browser_session(session_name: str) -> None:
     """Shut down the local agent-browser daemon for a session.
 
     Best-effort: errors are logged but never raised.
@@ -775,10 +772,7 @@ class BrowserScreenshotTool(BaseTool):
         png_b64 = base64.b64encode(png_bytes).decode()
 
         # Import here to avoid circular deps — workspace_files imports from .models
-        from .workspace_files import (  # noqa: PLC0415
-            WorkspaceWriteResponse,
-            WriteWorkspaceFileTool,
-        )
+        from .workspace_files import WorkspaceWriteResponse, WriteWorkspaceFileTool
 
         write_resp = await WriteWorkspaceFileTool()._execute(
             user_id=user_id,

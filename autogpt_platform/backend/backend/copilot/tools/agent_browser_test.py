@@ -15,11 +15,11 @@ from .agent_browser import (
     BrowserActTool,
     BrowserNavigateTool,
     BrowserScreenshotTool,
-    _close_browser_session,
     _ensure_session,
     _has_local_session,
     _restore_browser_state,
     _save_browser_state,
+    close_browser_session,
 )
 from .models import (
     BrowserActResponse,
@@ -896,7 +896,7 @@ class TestHasLocalSession:
 # _save_browser_state
 # ---------------------------------------------------------------------------
 
-_GET_MANAGER = "backend.copilot.tools.workspace_files._get_manager"
+_GET_MANAGER = "backend.copilot.tools.agent_browser.get_manager"
 
 
 def _make_mock_manager():
@@ -1158,7 +1158,7 @@ class TestEnsureSession:
 
 
 # ---------------------------------------------------------------------------
-# _close_browser_session
+# close_browser_session
 # ---------------------------------------------------------------------------
 
 
@@ -1173,7 +1173,7 @@ class TestCloseBrowserSession:
             new_callable=AsyncMock,
             return_value=_run_result(rc=0),
         ) as mock_run:
-            await _close_browser_session("close-sess")
+            await close_browser_session("close-sess")
 
         mock_run.assert_called_once_with("close-sess", "close", timeout=10)
         assert "close-sess" not in _mod._alive_sessions
@@ -1187,7 +1187,7 @@ class TestCloseBrowserSession:
             side_effect=RuntimeError("gone"),
         ):
             # Should not raise
-            await _close_browser_session("bad-sess")
+            await close_browser_session("bad-sess")
 
 
 # ---------------------------------------------------------------------------

@@ -673,12 +673,11 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         _session_locks.pop(session_id, None)
 
     # Shut down any local browser daemon for this session (best-effort).
+    # Inline import: top-level would create a circular import via tools/__init__.
     try:
-        from backend.copilot.tools.agent_browser import (  # noqa: PLC0415
-            _close_browser_session,
-        )
+        from .tools.agent_browser import close_browser_session
 
-        await _close_browser_session(session_id)
+        await close_browser_session(session_id)
     except Exception as e:
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
 
