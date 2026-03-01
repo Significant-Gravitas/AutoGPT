@@ -657,6 +657,12 @@ async def stream_chat_completion_sdk(
         # Set up E2B sandbox for persistent cloud execution when configured.
         # When active, MCP file tools route directly to the sandbox filesystem
         # so bash_exec and file tools share the same /home/user directory.
+        if config.use_e2b_sandbox and not config.e2b_api_key:
+            logger.warning(
+                "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
+                session_id[:12],
+            )
         if config.use_e2b_sandbox and config.e2b_api_key:
             try:
                 e2b_sandbox = await get_or_create_sandbox(

@@ -100,8 +100,8 @@ class TestToolOutputStash:
 # ---------------------------------------------------------------------------
 
 
-class TestTruncatingWrapper:
-    """Test the _truncating closure by creating an MCP server with a mock tool."""
+class TestTruncationAndStashIntegration:
+    """Test truncation + stash behavior that _truncating relies on."""
 
     @pytest.fixture(autouse=True)
     def _init_context(self):

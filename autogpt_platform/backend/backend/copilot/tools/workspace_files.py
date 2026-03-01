@@ -83,17 +83,18 @@ def _resolve_sandbox_path(
 ) -> str | ErrorResponse:
     """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
 
-    Returns an :class:`ErrorResponse` if the resolved path escapes the
-    sandbox boundary (e.g. via ``/etc/passwd`` or ``../`` traversal).
+    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools._resolve_remote`
+    and wraps any ``ValueError`` into an :class:`ErrorResponse`.
     """
-    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
-    normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
+    from backend.copilot.sdk.e2b_file_tools import _resolve_remote
+
+    try:
+        return _resolve_remote(path)
+    except ValueError:
         return ErrorResponse(
             message=f"{param_name} must be within {E2B_WORKDIR}",
             session_id=session_id,
         )
-    return normalized
 
 
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:

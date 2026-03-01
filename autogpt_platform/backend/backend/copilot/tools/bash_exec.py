@@ -15,6 +15,7 @@ limits.  Requires bubblewrap to be installed (Linux only).
 """
 
 import logging
+import shlex
 from typing import Any
 
 from e2b import AsyncSandbox
@@ -139,7 +140,7 @@ class BashExecTool(BaseTool):
         """Execute *command* on the E2B sandbox via commands.run()."""
         try:
             result = await sandbox.commands.run(
-                f"bash -c {_shell_quote(command)}",
+                f"bash -c {shlex.quote(command)}",
                 cwd=E2B_WORKDIR,
                 timeout=timeout,
                 envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
@@ -168,8 +169,3 @@ class BashExecTool(BaseTool):
                 error="e2b_execution_error",
                 session_id=session_id,
             )
-
-
-def _shell_quote(s: str) -> str:
-    """Single-quote a string for safe shell embedding."""
-    return "'" + s.replace("'", "'\\''") + "'"
