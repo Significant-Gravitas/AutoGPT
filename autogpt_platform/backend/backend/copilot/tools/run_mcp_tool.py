@@ -124,6 +124,14 @@ class RunMCPToolTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        if _parsed.query or _parsed.fragment:
+            return ErrorResponse(
+                message=(
+                    "Do not include query parameters or fragments in server_url. "
+                    "Use the MCP credential setup flow instead."
+                ),
+                session_id=session_id,
+            )
 
         if not user_id:
             return ErrorResponse(

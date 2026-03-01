@@ -384,7 +384,9 @@ class MCPStoreTokenRequest(BaseModel):
     server_url: str = Field(
         description="MCP server URL the token authenticates against"
     )
-    token: SecretStr = Field(description="Bearer token / API key for the MCP server")
+    token: SecretStr = Field(
+        min_length=1, description="Bearer token / API key for the MCP server"
+    )
 
 
 @router.post(
