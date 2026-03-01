@@ -986,7 +986,11 @@
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" }
+                    { "$ref": "#/components/schemas/DocPageResponse" },
+                    {
+                      "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
+                    },
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -4634,6 +4638,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MCPOAuthLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/token": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Store a bearer token for an MCP server",
+        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "operationId": "postV2Store a bearer token for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPStoreTokenRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -9976,6 +10020,63 @@
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
+      "MCPStoreTokenRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "MCP server URL the token authenticates against"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "format": "password",
+            "title": "Token",
+            "description": "Bearer token / API key for the MCP server",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": ["server_url", "token"],
+        "title": "MCPStoreTokenRequest",
+        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+      },
+      "MCPToolInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolInfo",
+        "description": "Information about a single MCP tool discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
       "MCPToolResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -9990,6 +10091,29 @@
         "required": ["name", "description", "input_schema"],
         "title": "MCPToolResponse",
         "description": "A single MCP tool returned by discovery."
+      },
+      "MCPToolsDiscoveredResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tools_discovered"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolInfo" },
+            "type": "array",
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tools"],
+        "title": "MCPToolsDiscoveredResponse",
+        "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
       "MarketplaceListing": {
         "properties": {
@@ -11170,7 +11294,9 @@
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
-          "suggested_goal"
+          "suggested_goal",
+          "mcp_tools_discovered",
+          "mcp_tool_output"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

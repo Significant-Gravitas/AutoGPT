@@ -30,6 +30,10 @@ _TEXT_CONTENT_TYPES = {
     "application/xhtml+xml",
     "application/rss+xml",
     "application/atom+xml",
+    # RFC 7807 — JSON problem details; used by many REST APIs for error responses
+    "application/problem+json",
+    "application/problem+xml",
+    "application/ld+json",
 }
 
 
