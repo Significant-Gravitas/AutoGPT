@@ -75,6 +75,47 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/generate-test-data": {
+      "post": {
+        "tags": ["v2", "admin"],
+        "summary": "Generate Test Data",
+        "operationId": "postAdminGenerateTestData",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTestDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateTestDataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -8659,6 +8700,32 @@
         "title": "Graph",
         "description": "Creatable graph model used in API create/update endpoints."
       },
+      "GenerateTestDataRequest": {
+        "properties": {
+          "script_type": {
+            "allOf": [{ "$ref": "#/components/schemas/TestDataScriptType" }],
+            "default": "e2e"
+          }
+        },
+        "type": "object",
+        "title": "GenerateTestDataRequest"
+      },
+      "GenerateTestDataResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "message": { "type": "string", "title": "Message" },
+          "details": {
+            "anyOf": [
+              { "type": "object", "additionalProperties": true },
+              { "type": "null" }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "GenerateTestDataResponse"
+      },
       "GraphExecution": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -12116,6 +12183,11 @@
         "type": "object",
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
+      },
+      "TestDataScriptType": {
+        "type": "string",
+        "enum": ["full", "e2e"],
+        "title": "TestDataScriptType"
       },
       "TimezoneResponse": {
         "properties": {
