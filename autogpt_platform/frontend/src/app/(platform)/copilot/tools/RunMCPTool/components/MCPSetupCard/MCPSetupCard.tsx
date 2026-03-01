@@ -3,8 +3,8 @@
 import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
+  postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { customMutator } from "@/app/api/mutators/custom-mutator";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { openOAuthPopup } from "@/lib/oauth-popup";
@@ -130,13 +130,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await customMutator<{
-        data: unknown;
-        status: number;
-        headers: Headers;
-      }>("/v2/mcp/token", {
-        method: "POST",
-        body: JSON.stringify({ server_url: serverUrl, token }),
+      const res = await postV2StoreABearerTokenForAnMcpServer({
+        server_url: serverUrl,
+        token,
       });
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
