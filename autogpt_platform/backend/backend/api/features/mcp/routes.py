@@ -173,7 +173,10 @@ async def mcp_oauth_login(
     3. Performs Dynamic Client Registration (RFC 7591) if available
     4. Returns the authorization URL for the frontend to open in a popup
     """
-    client = MCPClient(request.server_url)
+    # Normalize the URL so that credentials stored here are matched consistently
+    # by run_mcp_tool._auto_lookup_credential (which also strips trailing slashes).
+    server_url = request.server_url.strip().rstrip("/")
+    client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
     protected_resource = await client.discover_auth()
@@ -182,7 +185,7 @@ async def mcp_oauth_login(
 
     if protected_resource and protected_resource.get("authorization_servers"):
         auth_server_url = protected_resource["authorization_servers"][0]
-        resource_url = protected_resource.get("resource", request.server_url)
+        resource_url = protected_resource.get("resource", server_url)
 
         # Step 2a: Discover auth-server metadata (RFC 8414)
         metadata = await client.discover_auth_server_metadata(auth_server_url)
@@ -192,7 +195,7 @@ async def mcp_oauth_login(
         # Don't assume a resource_url — omitting it lets the auth server choose
         # the correct audience for the token (RFC 8707 resource is optional).
         resource_url = None
-        metadata = await client.discover_auth_server_metadata(request.server_url)
+        metadata = await client.discover_auth_server_metadata(server_url)
 
     if (
         not metadata
@@ -223,7 +226,7 @@ async def mcp_oauth_login(
     client_secret = ""
     if registration_endpoint:
         reg_result = await _register_mcp_client(
-            registration_endpoint, redirect_uri, request.server_url
+            registration_endpoint, redirect_uri, server_url
         )
         if reg_result:
             client_id = reg_result.get("client_id", "")
@@ -245,7 +248,7 @@ async def mcp_oauth_login(
             "token_url": token_url,
             "revoke_url": revoke_url,
             "resource_url": resource_url,
-            "server_url": request.server_url,
+            "server_url": server_url,
             "client_id": client_id,
             "client_secret": client_secret,
         },
