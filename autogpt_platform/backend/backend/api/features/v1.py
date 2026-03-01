@@ -849,7 +849,28 @@ async def update_graph(
 
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        # User doesn't own this graph -- check if they have it in their library
+        # (e.g. added from the marketplace). If so, fork it and apply their edits.
+        library_agent = await library_db.get_library_agent_by_graph_id(
+            user_id=user_id, graph_id=graph_id
+        )
+        if not library_agent:
+            raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+
+        # Fork the marketplace agent to create a user-owned copy
+        forked = await graph_db.fork_graph(
+            graph_id, library_agent.graph_version, user_id
+        )
+        forked = await on_graph_activate(forked, user_id=user_id)
+        await graph_db.set_graph_active_version(
+            graph_id=forked.id, version=forked.version, user_id=user_id
+        )
+        await library_db.create_library_agent(forked, user_id)
+
+        # Apply the user's edits on top of the fork via the normal update path
+        graph_id = forked.id
+        graph.id = forked.id
+        existing_versions = [forked]
 
     graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
