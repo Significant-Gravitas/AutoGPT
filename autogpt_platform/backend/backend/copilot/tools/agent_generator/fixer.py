@@ -845,7 +845,7 @@ class AgentFixer:
         self,
         agent: dict[str, Any],
         blocks: list[dict[str, Any]],
-        default_model: str = "gpt-5.2-2025-12-11",
+        default_model: str = "gpt-4o",
     ) -> dict[str, Any]:
         """
         Add or fix the model parameter on AI blocks.
@@ -855,17 +855,15 @@ class AgentFixer:
         If missing or set to an unsupported value, it is replaced with
         default_model.
 
-        Allowed models: "gpt-5.2-2025-12-11", "claude-opus-4-6"
-
         Args:
             agent: The agent dictionary to fix
             blocks: List of available blocks with their schemas
-            default_model: The fallback model to use (default "gpt-5.2-2025-12-11")
+            default_model: The fallback model to use (default "gpt-4o")
 
         Returns:
             The fixed agent dictionary
         """
-        allowed_models = {"gpt-5.2-2025-12-11", "claude-opus-4-6"}
+        allowed_models = {"gpt-4o", "claude-opus-4-6"}
 
         # Create a mapping of block_id to block for quick lookup
         block_map = {block.get("id"): block for block in blocks}
