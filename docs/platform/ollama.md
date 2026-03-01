@@ -101,7 +101,7 @@ Now that both Ollama and the AutoGPT platform are running, we can use Ollama wit
 1. Add an AI Text Generator block to your workspace (it can work with any AI LLM block but for this example will be using the AI Text Generator block):
    ![Add AI Text Generator Block](../imgs/ollama/Select-AI-block.png)
 
-2. **Configure the API Key field**: Enter any value (e.g., "dummy" or "not-needed") since Ollama doesn't require authentication.
+2. **Configure the API Key field**: Select the pre-configured "Use Credits for Ollama (no API key needed)" credential from the dropdown. Ollama runs locally and does not require an API key — the platform provides this built-in credential automatically.
 
 3. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
    ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
@@ -259,7 +259,7 @@ If you encounter any issues, verify that:
   ```
 
 #### API Key Errors
-- Remember that Ollama doesn't require authentication - any value works for the API key field
+- Ollama does not require authentication. Select the built-in "Use Credits for Ollama (no API key needed)" credential from the dropdown — no real API key is needed
 
 #### Model Selection Issues
 - Look for models with "ollama" in their description in the dropdown
