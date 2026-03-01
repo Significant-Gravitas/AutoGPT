@@ -117,6 +117,22 @@ class TestSsrfViaValidateUrl:
 # ---------------------------------------------------------------------------
 
 
+class TestAgentBrowserAvailability:
+    """is_available reflects whether the agent-browser CLI binary is installed."""
+
+    def test_available_when_binary_found(self):
+        with patch("shutil.which", return_value="/usr/local/bin/agent-browser"):
+            assert BrowserNavigateTool().is_available is True
+            assert BrowserActTool().is_available is True
+            assert BrowserScreenshotTool().is_available is True
+
+    def test_unavailable_when_binary_missing(self):
+        with patch("shutil.which", return_value=None):
+            assert BrowserNavigateTool().is_available is False
+            assert BrowserActTool().is_available is False
+            assert BrowserScreenshotTool().is_available is False
+
+
 class TestBrowserNavigateMetadata:
     def setup_method(self):
         self.tool = BrowserNavigateTool()

@@ -28,6 +28,7 @@ import asyncio
 import base64
 import logging
 import os
+import shutil
 import tempfile
 from typing import Any
 
@@ -169,6 +170,10 @@ class BrowserNavigateTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def is_available(self) -> bool:
+        return shutil.which("agent-browser") is not None
 
     async def _execute(
         self,
@@ -325,6 +330,10 @@ class BrowserActTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def is_available(self) -> bool:
+        return shutil.which("agent-browser") is not None
+
     async def _execute(
         self,
         user_id: str | None,  # noqa: ARG002
@@ -469,6 +478,10 @@ class BrowserScreenshotTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def is_available(self) -> bool:
+        return shutil.which("agent-browser") is not None
 
     async def _execute(
         self,

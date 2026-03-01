@@ -75,10 +75,18 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
-# Generated from registry for OpenAI API
-tools: list[ChatCompletionToolParam] = [
-    tool.as_openai_tool() for tool in TOOL_REGISTRY.values()
-]
+
+def get_available_tools() -> list[ChatCompletionToolParam]:
+    """Return OpenAI tool schemas for tools available in the current environment.
+
+    Called per-request so that env-var or binary availability is evaluated
+    fresh each time (e.g. browse_web is excluded when STAGEHAND_API_KEY is
+    absent; browser_* tools are excluded when agent-browser CLI is not
+    installed).
+    """
+    return [
+        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
+    ]
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

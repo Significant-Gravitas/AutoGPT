@@ -133,6 +133,30 @@ class TestBrowseWebToolMetadata:
     def test_requires_auth(self):
         assert BrowseWebTool().requires_auth is True
 
+    def test_is_available_true_when_all_env_vars_set(self, monkeypatch):
+        monkeypatch.setenv("STAGEHAND_API_KEY", "key")
+        monkeypatch.setenv("STAGEHAND_PROJECT_ID", "proj")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
+        assert BrowseWebTool().is_available is True
+
+    def test_is_available_false_when_api_key_missing(self, monkeypatch):
+        monkeypatch.delenv("STAGEHAND_API_KEY", raising=False)
+        monkeypatch.setenv("STAGEHAND_PROJECT_ID", "proj")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
+        assert BrowseWebTool().is_available is False
+
+    def test_is_available_false_when_project_id_missing(self, monkeypatch):
+        monkeypatch.setenv("STAGEHAND_API_KEY", "key")
+        monkeypatch.delenv("STAGEHAND_PROJECT_ID", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
+        assert BrowseWebTool().is_available is False
+
+    def test_is_available_false_when_anthropic_key_missing(self, monkeypatch):
+        monkeypatch.setenv("STAGEHAND_API_KEY", "key")
+        monkeypatch.setenv("STAGEHAND_PROJECT_ID", "proj")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        assert BrowseWebTool().is_available is False
+
     def test_url_is_required_parameter(self):
         params = BrowseWebTool().parameters
         assert "url" in params["properties"]

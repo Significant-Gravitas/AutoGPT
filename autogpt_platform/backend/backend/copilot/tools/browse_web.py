@@ -114,6 +114,14 @@ class BrowseWebTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def is_available(self) -> bool:
+        return bool(
+            os.environ.get("STAGEHAND_API_KEY")
+            and os.environ.get("STAGEHAND_PROJECT_ID")
+            and os.environ.get("ANTHROPIC_API_KEY")
+        )
+
     async def _execute(
         self,
         user_id: str | None,  # noqa: ARG002
