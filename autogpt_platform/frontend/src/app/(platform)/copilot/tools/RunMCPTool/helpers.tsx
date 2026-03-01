@@ -48,7 +48,9 @@ export function isSetupRequirementsOutput(
 ): output is SetupRequirementsResponse {
   return (
     output.type === ResponseType.setup_requirements ||
-    ("setup_info" in output && typeof output.setup_info === "object")
+    ("setup_info" in output &&
+      output.setup_info !== null &&
+      typeof output.setup_info === "object")
   );
 }
 
@@ -79,7 +81,7 @@ function parseOutput(raw: unknown): RunMCPToolOutput | null {
       return null;
     }
   }
-  if (typeof raw === "object") {
+  if (raw !== null && typeof raw === "object") {
     const type = (raw as { type?: unknown }).type;
     if (
       typeof type === "string" &&
