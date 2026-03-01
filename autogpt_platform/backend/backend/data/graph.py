@@ -1663,8 +1663,10 @@ async def migrate_llm_models(migrate_to: LlmModel):
             if field.annotation == LlmModel:
                 llm_model_fields[block.id] = field_name
 
-    # Convert enum values to a list of strings for the SQL query
-    enum_values = [v.value for v in LlmModel]
+    # Get all model slugs from the registry (dynamic, not hardcoded enum)
+    from backend.data import llm_registry
+
+    enum_values = list(llm_registry.get_all_model_slugs_for_validation())
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
     # Update each block

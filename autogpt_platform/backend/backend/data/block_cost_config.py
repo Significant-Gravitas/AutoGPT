@@ -1,4 +1,7 @@
+import logging
 from typing import Type
+
+import prisma.models
 
 from backend.blocks._base import Block, BlockCost, BlockCostType
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
@@ -24,13 +27,11 @@ from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import (
-    MODEL_METADATA,
     AIConversationBlock,
     AIListGeneratorBlock,
     AIStructuredResponseGeneratorBlock,
     AITextGeneratorBlock,
     AITextSummarizerBlock,
-    LlmModel,
 )
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
@@ -38,6 +39,7 @@ from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
+from backend.data import llm_registry
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
@@ -57,210 +59,119 @@ from backend.integrations.credentials_store import (
     v0_credentials,
 )
 
-# =============== Configure the cost for each LLM Model call =============== #
+logger = logging.getLogger(__name__)
 
-MODEL_COST: dict[LlmModel, int] = {
-    LlmModel.O3: 4,
-    LlmModel.O3_MINI: 2,
-    LlmModel.O1: 16,
-    LlmModel.O1_MINI: 4,
-    # GPT-5 models
-    LlmModel.GPT5_2: 6,
-    LlmModel.GPT5_1: 5,
-    LlmModel.GPT5: 2,
-    LlmModel.GPT5_MINI: 1,
-    LlmModel.GPT5_NANO: 1,
-    LlmModel.GPT5_CHAT: 5,
-    LlmModel.GPT41: 2,
-    LlmModel.GPT41_MINI: 1,
-    LlmModel.GPT4O_MINI: 1,
-    LlmModel.GPT4O: 3,
-    LlmModel.GPT4_TURBO: 10,
-    LlmModel.GPT3_5_TURBO: 1,
-    LlmModel.CLAUDE_4_1_OPUS: 21,
-    LlmModel.CLAUDE_4_OPUS: 21,
-    LlmModel.CLAUDE_4_SONNET: 5,
-    LlmModel.CLAUDE_4_6_OPUS: 14,
-    LlmModel.CLAUDE_4_5_HAIKU: 4,
-    LlmModel.CLAUDE_4_5_OPUS: 14,
-    LlmModel.CLAUDE_4_5_SONNET: 9,
-    LlmModel.CLAUDE_3_HAIKU: 1,
-    LlmModel.AIML_API_QWEN2_5_72B: 1,
-    LlmModel.AIML_API_LLAMA3_1_70B: 1,
-    LlmModel.AIML_API_LLAMA3_3_70B: 1,
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: 1,
-    LlmModel.AIML_API_LLAMA_3_2_3B: 1,
-    LlmModel.LLAMA3_3_70B: 1,
-    LlmModel.LLAMA3_1_8B: 1,
-    LlmModel.OLLAMA_LLAMA3_3: 1,
-    LlmModel.OLLAMA_LLAMA3_2: 1,
-    LlmModel.OLLAMA_LLAMA3_8B: 1,
-    LlmModel.OLLAMA_LLAMA3_405B: 1,
-    LlmModel.OLLAMA_DOLPHIN: 1,
-    LlmModel.OPENAI_GPT_OSS_120B: 1,
-    LlmModel.OPENAI_GPT_OSS_20B: 1,
-    LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GEMINI_3_PRO_PREVIEW: 5,
-    LlmModel.GEMINI_2_5_FLASH: 1,
-    LlmModel.GEMINI_2_0_FLASH: 1,
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
-    LlmModel.GEMINI_2_0_FLASH_LITE: 1,
-    LlmModel.MISTRAL_NEMO: 1,
-    LlmModel.COHERE_COMMAND_R_08_2024: 1,
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
-    LlmModel.DEEPSEEK_CHAT: 2,
-    LlmModel.DEEPSEEK_R1_0528: 1,
-    LlmModel.PERPLEXITY_SONAR: 1,
-    LlmModel.PERPLEXITY_SONAR_PRO: 5,
-    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
-    LlmModel.AMAZON_NOVA_LITE_V1: 1,
-    LlmModel.AMAZON_NOVA_MICRO_V1: 1,
-    LlmModel.AMAZON_NOVA_PRO_V1: 1,
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: 1,
-    LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
-    LlmModel.META_LLAMA_4_SCOUT: 1,
-    LlmModel.META_LLAMA_4_MAVERICK: 1,
-    LlmModel.LLAMA_API_LLAMA_4_SCOUT: 1,
-    LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
-    LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
-    LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
-    LlmModel.GROK_4: 9,
-    LlmModel.GROK_4_FAST: 1,
-    LlmModel.GROK_4_1_FAST: 1,
-    LlmModel.GROK_CODE_FAST_1: 1,
-    LlmModel.KIMI_K2: 1,
-    LlmModel.QWEN3_235B_A22B_THINKING: 1,
-    LlmModel.QWEN3_CODER: 9,
-    # v0 by Vercel models
-    LlmModel.V0_1_5_MD: 1,
-    LlmModel.V0_1_5_LG: 2,
-    LlmModel.V0_1_0_MD: 1,
+PROVIDER_CREDENTIALS = {
+    "openai": openai_credentials,
+    "anthropic": anthropic_credentials,
+    "groq": groq_credentials,
+    "open_router": open_router_credentials,
+    "llama_api": llama_api_credentials,
+    "aiml_api": aiml_api_credentials,
+    "v0": v0_credentials,
 }
 
-for model in LlmModel:
-    if model not in MODEL_COST:
-        raise ValueError(f"Missing MODEL_COST for model: {model}")
+# =============== Configure the cost for each LLM Model call =============== #
+# All LLM costs now come from the database via llm_registry
+
+LLM_COST: list[BlockCost] = []
 
 
-LLM_COST = (
-    # Anthropic Models
-    [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
+async def _build_llm_costs_from_registry() -> list[BlockCost]:
+    """
+    Build BlockCost list from all models in the LLM registry.
+
+    This function checks for active model migrations with customCreditCost overrides.
+    When a model has been migrated with a custom price, that price is used instead
+    of the target model's default cost.
+    """
+    # Query active migrations with custom pricing overrides.
+    # Note: LlmModelMigration is system-level data (no userId field) and this function
+    # is only called during app startup and admin operations, so no user ID filter needed.
+    migration_overrides: dict[str, int] = {}
+    try:
+        active_migrations = await prisma.models.LlmModelMigration.prisma().find_many(
+            where={
+                "isReverted": False,
+                "customCreditCost": {"not": None},
+            }
+        )
+        # Key by targetModelSlug since that's the model nodes are now using
+        # after migration. The custom cost applies to the target model.
+        migration_overrides = {
+            migration.targetModelSlug: migration.customCreditCost
+            for migration in active_migrations
+            if migration.customCreditCost is not None
+        }
+        if migration_overrides:
+            logger.info(
+                "Found %d active model migrations with custom pricing overrides",
+                len(migration_overrides),
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to query model migration overrides: %s. Proceeding with default costs.",
+            exc,
+            exc_info=True,
+        )
+
+    costs: list[BlockCost] = []
+    for model in llm_registry.iter_dynamic_models():
+        for cost in model.costs:
+            credentials = PROVIDER_CREDENTIALS.get(cost.credential_provider)
+            if not credentials:
+                logger.warning(
+                    "Skipping cost entry for %s due to unknown credentials provider %s",
+                    model.slug,
+                    cost.credential_provider,
+                )
+                continue
+
+            # Check if this model has a custom cost override from migration
+            cost_amount = migration_overrides.get(model.slug, cost.credit_cost)
+
+            if model.slug in migration_overrides:
+                logger.debug(
+                    "Applying custom cost override for model %s: %d credits (default: %d)",
+                    model.slug,
+                    cost_amount,
+                    cost.credit_cost,
+                )
+
+            cost_filter = {
+                "model": model.slug,
                 "credentials": {
-                    "id": anthropic_credentials.id,
-                    "provider": anthropic_credentials.provider,
-                    "type": anthropic_credentials.type,
+                    "id": credentials.id,
+                    "provider": credentials.provider,
+                    "type": credentials.type,
                 },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "anthropic"
-    ]
-    # OpenAI Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "openai"
-    ]
-    # Groq Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {"id": groq_credentials.id},
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "groq"
-    ]
-    # Open Router Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": open_router_credentials.id,
-                    "provider": open_router_credentials.provider,
-                    "type": open_router_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "open_router"
-    ]
-    # Llama API Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": llama_api_credentials.id,
-                    "provider": llama_api_credentials.provider,
-                    "type": llama_api_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "llama_api"
-    ]
-    # v0 by Vercel Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": v0_credentials.id,
-                    "provider": v0_credentials.provider,
-                    "type": v0_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "v0"
-    ]
-    # AI/ML Api Models
-    + [
-        BlockCost(
-            cost_type=BlockCostType.RUN,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": aiml_api_credentials.id,
-                    "provider": aiml_api_credentials.provider,
-                    "type": aiml_api_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "aiml_api"
-    ]
-)
+            }
+            costs.append(
+                BlockCost(
+                    cost_type=BlockCostType.RUN,
+                    cost_filter=cost_filter,
+                    cost_amount=cost_amount,
+                )
+            )
+    return costs
+
+
+async def refresh_llm_costs() -> None:
+    """
+    Refresh LLM costs from the registry. All costs now come from the database.
+
+    This function also checks for active model migrations with custom pricing overrides
+    and applies them to ensure accurate billing.
+    """
+    # Build new costs first, then swap atomically to avoid race condition
+    # where concurrent readers see an empty list during the await
+    new_costs = await _build_llm_costs_from_registry()
+    LLM_COST.clear()
+    LLM_COST.extend(new_costs)
+
+
+# Initial load will happen after registry is refreshed at startup
+# Don't call refresh_llm_costs() here - it will be called after registry refresh
 
 # =============== This is the exhaustive list of cost for each Block =============== #
 

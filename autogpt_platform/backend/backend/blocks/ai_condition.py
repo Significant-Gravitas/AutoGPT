@@ -7,7 +7,6 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.llm import (
-    DEFAULT_LLM_MODEL,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     AIBlockBase,
@@ -16,6 +15,7 @@ from backend.blocks.llm import (
     LlmModel,
     LLMResponse,
     llm_call,
+    llm_model_schema_extra,
 )
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
@@ -50,9 +50,10 @@ class AIConditionBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for evaluating the condition.",
             advanced=False,
+            json_schema_extra=llm_model_schema_extra(),
         )
         credentials: AICredentials = AICredentialsField()
 
@@ -82,7 +83,7 @@ class AIConditionBlock(AIBlockBase):
                 "condition": "the input is an email address",
                 "yes_value": "Valid email",
                 "no_value": "Not an email",
-                "model": DEFAULT_LLM_MODEL,
+                "model": LlmModel.default(),
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,

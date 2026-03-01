@@ -226,9 +226,10 @@ class SmartDecisionMakerBlock(Block):
         )
         model: llm.LlmModel = SchemaField(
             title="LLM Model",
-            default=llm.DEFAULT_LLM_MODEL,
+            default_factory=llm.LlmModel.default,
             description="The language model to use for answering the prompt.",
             advanced=False,
+            json_schema_extra=llm.llm_model_schema_extra(),
         )
         credentials: llm.AICredentials = llm.AICredentialsField()
         multiple_tool_calls: bool = SchemaField(

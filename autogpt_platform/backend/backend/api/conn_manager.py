@@ -122,6 +122,24 @@ class ConnectionManager:
 
         return len(connections)
 
+    async def broadcast_to_all(self, *, method: WSMethod, data: dict) -> int:
+        """Broadcast a message to all active websocket connections."""
+        message = WSMessage(
+            method=method,
+            data=data,
+        ).model_dump_json()
+
+        connections = tuple(self.active_connections)
+        if not connections:
+            return 0
+
+        await asyncio.gather(
+            *(connection.send_text(message) for connection in connections),
+            return_exceptions=True,
+        )
+
+        return len(connections)
+
     async def _subscribe(self, channel_key: str, websocket: WebSocket) -> str:
         if channel_key not in self.subscriptions:
             self.subscriptions[channel_key] = set()

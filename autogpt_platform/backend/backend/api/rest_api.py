@@ -18,6 +18,7 @@ from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.llm_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -39,13 +40,15 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
+import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.data import llm_registry
+from backend.data.block_cost_config import refresh_llm_costs
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -116,11 +119,30 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Refresh LLM registry before initializing blocks so blocks can use registry data
+    try:
+        await llm_registry.refresh_llm_registry()
+        await refresh_llm_costs()
+    except Exception as e:
+        logger.warning(f"Failed to refresh LLM registry/costs at startup: {e}")
+
+    # Clear block schema caches so they're regenerated with updated discriminator_mapping
+    from backend.blocks._base import BlockSchema
+
+    BlockSchema.clear_all_schema_caches()
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    # migrate_llm_models uses registry default model
+    from backend.blocks.llm import LlmModel
+
+    default_model_slug = llm_registry.get_default_model_slug()
+    if default_model_slug:
+        await backend.data.graph.migrate_llm_models(LlmModel(default_model_slug))
+    else:
+        logger.warning("Skipping LLM model migration: no default model available")
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
@@ -313,6 +335,16 @@ app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
+)
+app.include_router(
+    backend.api.features.admin.llm_routes.router,
+    tags=["v2", "admin", "llm"],
+    prefix="/api/llm/admin",
+)
+app.include_router(
+    public_llm_routes.router,
+    tags=["v2", "llm"],
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"

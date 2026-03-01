@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from functools import lru_cache
 from typing import Any, Sequence, get_args, get_origin
 
 import prisma
@@ -21,6 +22,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.llm import LlmModel
+from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -37,7 +39,20 @@ from .model import (
 )
 
 logger = logging.getLogger(__name__)
-llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
+
+
+@lru_cache(maxsize=1)
+def _get_llm_models() -> tuple[str, ...]:
+    """Get LLM model names for search matching from the registry.
+
+    Cached to avoid rebuilding on every search call.
+    Cache is cleared when registry is refreshed via _refresh_runtime_state.
+    Returns tuple for hashability (required by lru_cache).
+    """
+    return tuple(
+        slug.lower().replace("-", " ") for slug in get_all_model_slugs_for_validation()
+    )
+
 
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
@@ -656,8 +671,10 @@ def _contains_type(annotation: Any, target: type) -> bool:
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     for field in schema_cls.model_fields.values():
         if _contains_type(field.annotation, LlmModel):
-            # Check if query matches any value in llm_models
-            if any(query in name for name in llm_models):
+            # Normalize query same as model slugs (lowercase, hyphens to spaces)
+            normalized_model_query = query.lower().replace("-", " ")
+            # Check if query matches any value in llm_models from registry
+            if any(normalized_model_query in name for name in _get_llm_models()):
                 return True
     return False
 

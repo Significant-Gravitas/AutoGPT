@@ -10,13 +10,13 @@ import stagehand.main
 from stagehand import Stagehand
 
 from backend.blocks.llm import (
-    MODEL_METADATA,
     AICredentials,
     AICredentialsField,
     LlmModel,
     ModelMetadata,
 )
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
+from backend.data import llm_registry
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -91,7 +91,7 @@ class StagehandRecommendedLlmModel(str, Enum):
         Returns the provider name for the model in the required format for Stagehand:
         provider/model_name
         """
-        model_metadata = MODEL_METADATA[LlmModel(self.value)]
+        model_metadata = self.metadata
         model_name = self.value
 
         if len(model_name.split("/")) == 1 and not self.value.startswith(
@@ -102,24 +102,28 @@ class StagehandRecommendedLlmModel(str, Enum):
             ), "Logic failed and open_router provider attempted to be prepended to model name! in stagehand/_config.py"
             model_name = f"{model_metadata.provider}/{model_name}"
 
-        logger.error(f"Model name: {model_name}")
+        logger.debug(f"Model name: {model_name}")
         return model_name
 
     @property
     def provider(self) -> str:
-        return MODEL_METADATA[LlmModel(self.value)].provider
+        return self.metadata.provider
 
     @property
     def metadata(self) -> ModelMetadata:
-        return MODEL_METADATA[LlmModel(self.value)]
+        metadata = llm_registry.get_llm_model_metadata(self.value)
+        if metadata:
+            return metadata
+        # Fallback to LlmModel enum if registry lookup fails
+        return LlmModel(self.value).metadata
 
     @property
     def context_window(self) -> int:
-        return MODEL_METADATA[LlmModel(self.value)].context_window
+        return self.metadata.context_window
 
     @property
     def max_output_tokens(self) -> int | None:
-        return MODEL_METADATA[LlmModel(self.value)].max_output_tokens
+        return self.metadata.max_output_tokens
 
 
 class StagehandObserveBlock(Block):

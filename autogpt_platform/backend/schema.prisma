@@ -1184,6 +1184,157 @@ enum APIKeyStatus {
 
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+/////////////   LLM REGISTRY AND BILLING DATA   /////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// LlmCostUnit: Defines how LLM MODEL costs are calculated (per run or per token).
+// This is distinct from BlockCostType (in backend/data/block.py) which defines
+// how BLOCK EXECUTION costs are calculated (per run, per byte, or per second).
+// LlmCostUnit is for pricing individual LLM model API calls in the registry,
+// while BlockCostType is for billing platform block executions.
+enum LlmCostUnit {
+  RUN
+  TOKENS
+}
+
+model LlmModelCreator {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique // e.g., "openai", "anthropic", "meta"
+  displayName String // e.g., "OpenAI", "Anthropic", "Meta"
+  description String?
+  websiteUrl  String? // Link to creator's website
+  logoUrl     String? // URL to creator's logo
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
+model LlmProvider {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String @unique
+  displayName String
+  description String?
+
+  defaultCredentialProvider String?
+  defaultCredentialId       String?
+  defaultCredentialType     String?
+
+  supportsTools        Boolean @default(true)
+  supportsJsonOutput   Boolean @default(true)
+  supportsReasoning    Boolean @default(false)
+  supportsParallelTool Boolean @default(false)
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
+model LlmModel {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slug        String @unique
+  displayName String
+  description String?
+
+  providerId String
+  Provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  // Creator is the organization that created/trained the model (e.g., OpenAI, Meta)
+  // This is distinct from the provider who hosts/serves the model (e.g., OpenRouter)
+  creatorId String?
+  Creator   LlmModelCreator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  contextWindow   Int
+  maxOutputTokens Int?
+  priceTier       Int     @default(1) // 1=cheapest, 2=medium, 3=expensive
+  isEnabled       Boolean @default(true)
+  isRecommended   Boolean @default(false)
+
+  capabilities Json @default("{}")
+  metadata     Json @default("{}")
+
+  Costs LlmModelCost[]
+
+  @@index([providerId, isEnabled])
+  @@index([creatorId])
+  // Note: slug already has @unique which creates an implicit index
+}
+
+model LlmModelCost {
+  id        String     @id @default(uuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  unit      LlmCostUnit @default(RUN)
+
+  creditCost Int
+
+  credentialProvider String
+  credentialId       String?
+  credentialType     String?
+  currency           String?
+
+  metadata Json @default("{}")
+
+  llmModelId String
+  Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
+
+  @@unique([llmModelId, credentialProvider, unit])
+  @@index([llmModelId])
+  @@index([credentialProvider])
+}
+
+// Tracks model migrations for revert capability
+// When a model is disabled with migration, we record which nodes were affected
+// so they can be reverted when the original model is back online
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The original model that was disabled
+  targetModelSlug String // The model workflows were migrated to
+  reason          String? // Why the migration happened (e.g., "Provider outage")
+
+  // Track affected nodes as JSON array of node IDs
+  // Format: ["node-uuid-1", "node-uuid-2", ...]
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // Number of nodes migrated
+
+  // Custom pricing override for migrated workflows during the migration period.
+  // Use case: When migrating users from an expensive model (e.g., GPT-4) to a cheaper
+  // one (e.g., GPT-3.5), you may want to temporarily maintain the original pricing
+  // to avoid billing surprises, or offer a discount during the transition.
+  //
+  // IMPORTANT: This field is intended for integration with the billing system.
+  // When billing calculates costs for nodes affected by this migration, it should
+  // check if customCreditCost is set and use it instead of the target model's cost.
+  // If null, the target model's normal cost applies.
+  //
+  // TODO: Integrate with billing system to apply this override during cost calculation.
+  customCreditCost Int?
+
+  // Revert tracking
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  @@index([sourceModelSlug])
+  @@index([targetModelSlug])
+  @@index([isReverted])
+  @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
 //////////////   OAUTH PROVIDER TABLES    //////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
