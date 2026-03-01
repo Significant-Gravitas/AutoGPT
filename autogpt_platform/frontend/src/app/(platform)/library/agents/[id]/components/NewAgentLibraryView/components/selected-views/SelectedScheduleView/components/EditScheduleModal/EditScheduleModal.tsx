@@ -3,7 +3,6 @@
 import React from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Select } from "@/components/atoms/Select/Select";
@@ -37,6 +36,7 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
 
   return (
     <Dialog
+      title="Edit Schedule"
       controlled={{ isOpen, set: setIsOpen }}
       styling={{ maxWidth: "22rem" }}
     >
@@ -51,7 +51,6 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-6">
-          <Text variant="h3">Edit schedule</Text>
           <Input
             id="schedule-name"
             label="Name"

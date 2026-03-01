@@ -200,6 +200,7 @@ export function RunAgentModal({
   return (
     <>
       <Dialog
+        title="Run Agent"
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >
