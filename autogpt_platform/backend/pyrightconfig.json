@@ -1,0 +1,9 @@
+{
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["backend"],
+  "exclude": ["**/node_modules", "**/__pycache__", "**/.*"]
+}
