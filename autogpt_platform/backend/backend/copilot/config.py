@@ -93,6 +93,14 @@ class ChatConfig(BaseSettings):
         "history compression. Falls back to compression when unavailable.",
     )
 
+    # Agent generation: local (Claude Agent SDK as brain) vs external service
+    agent_generator_use_local: bool = Field(
+        default=True,
+        description="Use local agent generation (Claude Agent SDK generates JSON, "
+        "validated/fixed locally). When False, falls back to the external "
+        "AgentGenerator service for decomposition and generation.",
+    )
+
     # Extended thinking configuration for Claude models
     thinking_enabled: bool = Field(
         default=True,
@@ -129,6 +137,15 @@ class ChatConfig(BaseSettings):
             if not v:
                 v = "https://openrouter.ai/api/v1"
         return v
+
+    @field_validator("agent_generator_use_local", mode="before")
+    @classmethod
+    def get_agent_generator_use_local(cls, v):
+        """Get agent_generator_use_local from environment if not provided."""
+        env_val = os.getenv("CHAT_AGENT_GENERATOR_USE_LOCAL", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return True if v is None else v
 
     @field_validator("use_claude_agent_sdk", mode="before")
     @classmethod

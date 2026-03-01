@@ -11170,7 +11170,10 @@
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
-          "suggested_goal"
+          "suggested_goal",
+          "blocks_for_goal",
+          "validation_result",
+          "fix_result"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

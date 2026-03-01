@@ -1,6 +1,7 @@
-"""CreateAgentTool - Creates agents from natural language descriptions."""
+"""CreateAgentTool - Creates agents from natural language or pre-built JSON."""
 
 import logging
+import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -13,6 +14,7 @@ from .agent_generator import (
     get_user_message_for_error,
     save_agent_to_library,
 )
+from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class CreateAgentTool(BaseTool):
-    """Tool for creating agents from natural language descriptions."""
+    """Tool for creating agents from natural language or pre-built JSON."""
 
     @property
     def name(self) -> str:
@@ -37,11 +39,16 @@ class CreateAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a new agent workflow from a natural language description. "
-            "First generates a preview, then saves to library if save=true. "
-            "\n\nIMPORTANT: Before calling this tool, search for relevant existing agents "
+            "Create a new agent workflow. Supports two modes:\n\n"
+            "1. **Local mode** (preferred): Pass `agent_json` directly — "
+            "the JSON you generated using block schemas from get_blocks_for_goal. "
+            "The tool validates, auto-fixes, and saves.\n\n"
+            "2. **External mode** (fallback): Pass `description` only — "
+            "delegates to the external Agent Generator service for decomposition "
+            "and generation.\n\n"
+            "IMPORTANT: Before calling this tool, search for relevant existing agents "
             "using find_library_agent that could be used as building blocks. "
-            "Pass their IDs in the library_agent_ids parameter so the generator can compose them."
+            "Pass their IDs in the library_agent_ids parameter."
         )
 
     @property
@@ -53,39 +60,45 @@ class CreateAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
+                "agent_json": {
+                    "type": "object",
+                    "description": (
+                        "Pre-built agent JSON to validate and save. "
+                        "Must contain 'nodes' and 'links' arrays, and optionally "
+                        "'name' and 'description'. When provided, skips external "
+                        "service and uses local validate+fix+save flow."
+                    ),
+                },
                 "description": {
                     "type": "string",
                     "description": (
                         "Natural language description of what the agent should do. "
-                        "Be specific about inputs, outputs, and the workflow steps."
+                        "Used when agent_json is not provided (external service mode)."
                     ),
                 },
                 "context": {
                     "type": "string",
                     "description": (
-                        "Additional context or answers to previous clarifying questions. "
-                        "Include any preferences or constraints mentioned by the user."
+                        "Additional context or answers to previous clarifying questions."
                     ),
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "List of library agent IDs to use as building blocks. "
-                        "Search for relevant agents using find_library_agent first, "
-                        "then pass their IDs here so they can be composed into the new agent."
+                        "List of library agent IDs to use as building blocks."
                     ),
                 },
                 "save": {
                     "type": "boolean",
                     "description": (
-                        "Whether to save the agent to the user's library. "
-                        "Default is true. Set to false for preview only."
+                        "Whether to save the agent. Default is true. "
+                        "Set to false for preview only."
                     ),
                     "default": True,
                 },
             },
-            "required": ["description"],
+            "required": [],
         }
 
     async def _execute(
@@ -94,27 +107,69 @@ class CreateAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the create_agent tool.
+        agent_json = kwargs.get("agent_json")
+        session_id = session.session_id if session else None
 
-        Flow:
-        1. Decompose the description into steps (may return clarifying questions)
-        2. Generate agent JSON (external service handles fixing and validation)
-        3. Preview or save based on the save parameter
-        """
+        if isinstance(agent_json, dict):
+            return await self._execute_local(user_id, session_id, agent_json, kwargs)
+        return await self._execute_external(user_id, session_id, kwargs)
+
+    async def _execute_local(
+        self,
+        user_id: str | None,
+        session_id: str | None,
+        agent_json: dict[str, Any],
+        kwargs: dict[str, Any],
+    ) -> ToolResponseBase:
+        """Local mode: validate, fix, and save pre-built agent JSON."""
+        save = kwargs.get("save", True)
+        library_agent_ids = kwargs.get("library_agent_ids", [])
+
+        nodes = agent_json.get("nodes", [])
+
+        if not nodes:
+            return ErrorResponse(
+                message="The agent JSON has no nodes. An agent needs at least one block.",
+                error="empty_agent",
+                session_id=session_id,
+            )
+
+        # Ensure top-level fields
+        if "id" not in agent_json:
+            agent_json["id"] = str(uuid.uuid4())
+        if "version" not in agent_json:
+            agent_json["version"] = 1
+        if "is_active" not in agent_json:
+            agent_json["is_active"] = True
+
+        # Fetch library agents for AgentExecutorBlock validation
+        library_agents = await fetch_library_agents(user_id, library_agent_ids)
+
+        return await fix_validate_and_save(
+            agent_json,
+            user_id=user_id,
+            session_id=session_id,
+            save=save,
+            is_update=False,
+            default_name="Generated Agent",
+            library_agents=library_agents,
+        )
+
+    async def _execute_external(
+        self,
+        user_id: str | None,
+        session_id: str | None,
+        kwargs: dict[str, Any],
+    ) -> ToolResponseBase:
+        """External mode: decompose + generate via external service."""
         description = kwargs.get("description", "").strip()
         context = kwargs.get("context", "")
         library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
-        session_id = session.session_id if session else None
-
-        logger.info(
-            f"[AGENT_CREATE_DEBUG] START - description_len={len(description)}, "
-            f"library_agent_ids={library_agent_ids}, save={save}, user_id={user_id}, session_id={session_id}"
-        )
 
         if not description:
             return ErrorResponse(
-                message="Please provide a description of what the agent should do.",
+                message="Please provide a description of what the agent should do, or pass agent_json directly.",
                 error="Missing description parameter",
                 session_id=session_id,
             )
@@ -129,9 +184,6 @@ class CreateAgentTool(BaseTool):
                     user_id=user_id,
                     agent_ids=library_agent_ids,
                 )
-                logger.debug(
-                    f"Fetched {len(library_agents)} library agents by ID for sub-agent composition"
-                )
             except Exception as e:
                 logger.warning(f"Failed to fetch library agents by IDs: {e}")
 
@@ -139,14 +191,7 @@ class CreateAgentTool(BaseTool):
             decomposition_result = await decompose_goal(
                 description, context, library_agents
             )
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] DECOMPOSE - type={decomposition_result.get('type') if decomposition_result else None}, "
-                f"session_id={session_id}"
-            )
         except AgentGeneratorNotConfiguredError:
-            logger.error(
-                f"[AGENT_CREATE_DEBUG] ERROR - AgentGeneratorNotConfigured, session_id={session_id}"
-            )
             return ErrorResponse(
                 message=(
                     "Agent generation is not available. "
@@ -237,9 +282,6 @@ class CreateAgentTool(BaseTool):
                     existing_agents=library_agents,
                     include_marketplace=True,
                 )
-                logger.debug(
-                    f"After enrichment: {len(library_agents)} total agents for sub-agent composition"
-                )
             except Exception as e:
                 logger.warning(f"Failed to enrich library agents from steps: {e}")
 
@@ -248,16 +290,7 @@ class CreateAgentTool(BaseTool):
                 decomposition_result,
                 library_agents,
             )
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] GENERATE - "
-                f"success={agent_json is not None}, "
-                f"is_error={isinstance(agent_json, dict) and agent_json.get('type') == 'error'}, "
-                f"session_id={session_id}"
-            )
         except AgentGeneratorNotConfiguredError:
-            logger.error(
-                f"[AGENT_CREATE_DEBUG] ERROR - AgentGeneratorNotConfigured during generation, session_id={session_id}"
-            )
             return ErrorResponse(
                 message=(
                     "Agent generation is not available. "
@@ -305,15 +338,7 @@ class CreateAgentTool(BaseTool):
         node_count = len(agent_json.get("nodes", []))
         link_count = len(agent_json.get("links", []))
 
-        logger.info(
-            f"[AGENT_CREATE_DEBUG] AGENT_JSON - name={agent_name}, "
-            f"nodes={node_count}, links={link_count}, save={save}, session_id={session_id}"
-        )
-
         if not save:
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] RETURN - AgentPreviewResponse, session_id={session_id}"
-            )
             return AgentPreviewResponse(
                 message=(
                     f"I've generated an agent called '{agent_name}' with {node_count} blocks. "
@@ -338,14 +363,6 @@ class CreateAgentTool(BaseTool):
             created_graph, library_agent = await save_agent_to_library(
                 agent_json, user_id
             )
-
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] SAVED - graph_id={created_graph.id}, "
-                f"library_agent_id={library_agent.id}, session_id={session_id}"
-            )
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] RETURN - AgentSavedResponse, session_id={session_id}"
-            )
             return AgentSavedResponse(
                 message=f"Agent '{created_graph.name}' has been saved to your library!",
                 agent_id=created_graph.id,
@@ -356,12 +373,6 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error(
-                f"[AGENT_CREATE_DEBUG] ERROR - save_failed: {str(e)}, session_id={session_id}"
-            )
-            logger.info(
-                f"[AGENT_CREATE_DEBUG] RETURN - ErrorResponse (save_failed), session_id={session_id}"
-            )
             return ErrorResponse(
                 message=f"Failed to save the agent: {str(e)}",
                 error="save_failed",

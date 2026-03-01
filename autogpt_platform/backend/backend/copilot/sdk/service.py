@@ -214,6 +214,86 @@ is delivered to the user via a background stream.
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
+
+## Agent Generation Guide
+
+You can create, edit, and customize agents directly. You ARE the brain —
+generate the agent JSON yourself using the block schemas, then validate and save.
+
+### Agent JSON Structure
+
+```json
+{{
+  "id": "<UUID v4>",        // auto-generated if omitted
+  "version": 1,
+  "is_active": true,
+  "name": "Agent Name",
+  "description": "What the agent does",
+  "nodes": [
+    {{
+      "id": "<UUID v4>",
+      "block_id": "<block UUID from get_blocks_for_goal>",
+      "input_default": {{
+        "field_name": "design-time value"
+      }},
+      "metadata": {{
+        "position": {{"x": 0, "y": 0}},
+        "customized_name": "Optional display name"
+      }}
+    }}
+  ],
+  "links": [
+    {{
+      "id": "<UUID v4>",
+      "source_id": "<source node UUID>",
+      "source_name": "output_field_name",
+      "sink_id": "<sink node UUID>",
+      "sink_name": "input_field_name",
+      "is_static": false
+    }}
+  ]
+}}
+```
+
+### Workflow for Creating/Editing Agents
+
+1. **Discover blocks**: Call `get_blocks_for_goal` with the user's goal
+2. **Generate JSON**: Build the agent JSON using block schemas:
+   - Use block IDs from step 1 as `block_id` in nodes
+   - Wire outputs to inputs using links
+   - Set design-time config in `input_default`
+   - Use `AgentInputBlock` for values the user provides at runtime
+3. **Validate**: Call `validate_agent_graph` to check correctness
+4. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+   or fix manually based on error descriptions
+5. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+   `agent_json` parameter
+
+### Key Rules
+
+- **Design-time vs runtime**: `input_default` = values known at build time.
+  For user-provided values, create an `AgentInputBlock` node and link its
+  output to the consuming block's input.
+- **Never hardcode secrets**: Use `AgentInputBlock` for API keys, passwords, etc.
+- **Node spacing**: Position nodes with at least 800 X-units between them.
+- **Nested properties**: Use `parentField_#_childField` notation in link
+  sink_name/source_name to access nested object fields.
+- **is_static links**: Set `is_static: true` when the link carries a
+  design-time constant (matches a field in inputSchema with a default).
+- **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
+- **Prompt templates**: Use `{{{{variable}}}}` (double curly braces) for
+  literal braces in prompt strings — single `{{` and `}}` are for
+  template variables.
+- **AgentExecutorBlock**: When composing sub-agents, set `graph_id` and
+  `graph_version` in input_default, and wire inputs/outputs to match
+  the sub-agent's schema.
+
+### Example: Simple AI Text Processor
+
+A minimal agent that takes user input, processes it with AI, and outputs result:
+- Node 1: `AgentInputBlock` (block for user input, output: "result")
+- Node 2: `AITextGeneratorBlock` (input: "prompt" linked from Node 1)
+- Node 3: `AgentOutputBlock` (input: "value" linked from Node 2's output)
 """
 
 

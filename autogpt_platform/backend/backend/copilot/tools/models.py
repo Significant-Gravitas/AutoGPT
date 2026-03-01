@@ -48,6 +48,10 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_CREATED = "feature_request_created"
     # Goal refinement
     SUGGESTED_GOAL = "suggested_goal"
+    # Agent generation tools
+    BLOCKS_FOR_GOAL = "blocks_for_goal"
+    VALIDATION_RESULT = "validation_result"
+    FIX_RESULT = "fix_result"
 
 
 # Base response model
@@ -476,3 +480,35 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
     issue_url: str
     is_new_issue: bool  # False if added to existing
     customer_name: str
+
+
+# Agent generation tool response models
+
+
+class BlocksForGoalResponse(ToolResponseBase):
+    """Response for get_blocks_for_goal tool."""
+
+    type: ResponseType = ResponseType.BLOCKS_FOR_GOAL
+    blocks: list[dict[str, Any]]
+    count: int
+    goal: str
+
+
+class ValidationResultResponse(ToolResponseBase):
+    """Response for validate_agent_graph tool."""
+
+    type: ResponseType = ResponseType.VALIDATION_RESULT
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    error_count: int = 0
+
+
+class FixResultResponse(ToolResponseBase):
+    """Response for fix_agent_graph tool."""
+
+    type: ResponseType = ResponseType.FIX_RESULT
+    fixed_agent_json: dict[str, Any]
+    fixes_applied: list[str] = Field(default_factory=list)
+    fix_count: int = 0
+    valid_after_fix: bool = False
+    remaining_errors: list[str] = Field(default_factory=list)
