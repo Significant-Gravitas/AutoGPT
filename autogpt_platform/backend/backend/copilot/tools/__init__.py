@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
@@ -31,6 +32,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
     from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)

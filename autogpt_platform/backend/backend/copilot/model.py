@@ -673,7 +673,8 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         _session_locks.pop(session_id, None)
 
     # Shut down any local browser daemon for this session (best-effort).
-    # Inline import: top-level would create a circular import via tools/__init__.
+    # Inline import required: all tool modules import ChatSession from this
+    # module, so any top-level import from tools.* would create a cycle.
     try:
         from .tools.agent_browser import close_browser_session
 
