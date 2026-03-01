@@ -32,6 +32,14 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
+from backend.util.openai_responses import (
+    convert_tools_to_responses_format,
+    extract_responses_content,
+    extract_responses_reasoning,
+    extract_responses_tool_calls,
+    extract_responses_usage,
+    requires_chat_completions,
+)
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
 
@@ -659,38 +667,94 @@ async def llm_call(
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
-        tools_param = tools if tools else openai.NOT_GIVEN
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
-        response_format = None
 
-        parallel_tool_calls = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
-        )
+        if requires_chat_completions(llm_model.value):
+            # Legacy fallback: gpt-3.5-turbo only (not supported by Responses API)
+            tools_param = tools if tools else openai.NOT_GIVEN
+            response_format = None
 
-        if force_json_output:
-            response_format = {"type": "json_object"}
+            parallel_tool_calls = get_parallel_tool_calls_param(
+                llm_model, parallel_tool_calls
+            )
 
-        response = await oai_client.chat.completions.create(
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            response_format=response_format,  # type: ignore
-            max_completion_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls,
-        )
+            if force_json_output:
+                response_format = {"type": "json_object"}
 
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
+            response = await oai_client.chat.completions.create(
+                model=llm_model.value,
+                messages=prompt,  # type: ignore
+                response_format=response_format,  # type: ignore
+                max_completion_tokens=max_tokens,
+                tools=tools_param,  # type: ignore
+                parallel_tool_calls=parallel_tool_calls,
+            )
 
-        return LLMResponse(
-            raw_response=response.choices[0].message,
-            prompt=prompt,
-            response=response.choices[0].message.content or "",
-            tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            reasoning=reasoning,
-        )
+            tool_calls = extract_openai_tool_calls(response)
+            reasoning = extract_openai_reasoning(response)
+
+            return LLMResponse(
+                raw_response=response.choices[0].message,
+                prompt=prompt,
+                response=response.choices[0].message.content or "",
+                tool_calls=tool_calls,
+                prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+                completion_tokens=(
+                    response.usage.completion_tokens if response.usage else 0
+                ),
+                reasoning=reasoning,
+            )
+        else:
+            # Default: All modern OpenAI models use the Responses API
+            tools_param = (
+                convert_tools_to_responses_format(tools) if tools else openai.omit
+            )
+
+            text_config = openai.omit
+            if force_json_output:
+                text_config = {"format": {"type": "json_object"}}  # type: ignore
+
+            response = await oai_client.responses.create(
+                model=llm_model.value,
+                input=prompt,  # type: ignore[arg-type]
+                tools=tools_param,  # type: ignore[arg-type]
+                max_output_tokens=max_tokens,
+                parallel_tool_calls=get_parallel_tool_calls_param(
+                    llm_model, parallel_tool_calls
+                ),
+                text=text_config,  # type: ignore[arg-type]
+                store=False,
+            )
+
+            raw_tool_calls = extract_responses_tool_calls(response)
+            tool_calls = (
+                [
+                    ToolContentBlock(
+                        id=tc["id"],
+                        type=tc["type"],
+                        function=ToolCall(
+                            name=tc["function"]["name"],
+                            arguments=tc["function"]["arguments"],
+                        ),
+                    )
+                    for tc in raw_tool_calls
+                ]
+                if raw_tool_calls
+                else None
+            )
+            reasoning = extract_responses_reasoning(response)
+            content = extract_responses_content(response)
+            prompt_tokens, completion_tokens = extract_responses_usage(response)
+
+            return LLMResponse(
+                raw_response=response,
+                prompt=prompt,
+                response=content,
+                tool_calls=tool_calls,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                reasoning=reasoning,
+            )
     elif provider == "anthropic":
 
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
