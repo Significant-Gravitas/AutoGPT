@@ -47,7 +47,7 @@ def _reset_and_mock_state(monkeypatch):
         "backend.copilot.tools.agent_browser._ensure_session", AsyncMock()
     )
     monkeypatch.setattr(
-        "backend.copilot.tools.agent_browser._save_browser_state", AsyncMock()
+        "backend.copilot.tools.agent_browser._fire_and_forget_save", MagicMock()
     )
     yield
     _mod._alive_sessions.clear()
@@ -939,7 +939,7 @@ class TestSaveBrowserState:
         ]
         assert written["local_storage"] == {"theme": "dark"}
         assert call_kwargs.kwargs["overwrite"] is True
-        assert call_kwargs.kwargs["filename"] == "_browser_state.json"
+        assert call_kwargs.kwargs["filename"] == "._browser_state.json"
 
     @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
@@ -1180,6 +1180,35 @@ class TestCloseBrowserSession:
         assert "close-sess" not in _mod._session_locks
 
     @pytest.mark.asyncio
+    async def test_deletes_state_file_when_user_id_provided(self):
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="state-file-1")
+        mock_mgr.delete_file = AsyncMock(return_value=True)
+
+        with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_session("close-sess", user_id="user1")
+
+        mock_mgr.get_file_info_by_path.assert_called_once_with("._browser_state.json")
+        mock_mgr.delete_file.assert_called_once_with("state-file-1")
+
+    @pytest.mark.asyncio
+    async def test_skips_state_cleanup_without_user_id(self):
+        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr:
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_session("close-sess")
+
+        mock_get_mgr.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
         with patch(
             "backend.copilot.tools.agent_browser._run",
@@ -1196,7 +1225,7 @@ class TestCloseBrowserSession:
 
 
 class TestStatePersistenceIntegration:
-    """Verify _execute methods call _ensure_session and _save_browser_state."""
+    """Verify _execute methods call _ensure_session and _fire_and_forget_save."""
 
     def setup_method(self):
         self.session = make_session("int-sess")
@@ -1204,12 +1233,12 @@ class TestStatePersistenceIntegration:
     @pytest.mark.asyncio
     async def test_navigate_calls_ensure_and_save(self, monkeypatch):
         mock_ensure = AsyncMock()
-        mock_save = AsyncMock()
+        mock_save = MagicMock()
         monkeypatch.setattr(
             "backend.copilot.tools.agent_browser._ensure_session", mock_ensure
         )
         monkeypatch.setattr(
-            "backend.copilot.tools.agent_browser._save_browser_state", mock_save
+            "backend.copilot.tools.agent_browser._fire_and_forget_save", mock_save
         )
 
         tool = BrowserNavigateTool()
@@ -1240,9 +1269,9 @@ class TestStatePersistenceIntegration:
 
     @pytest.mark.asyncio
     async def test_navigate_no_save_on_error(self, monkeypatch):
-        mock_save = AsyncMock()
+        mock_save = MagicMock()
         monkeypatch.setattr(
-            "backend.copilot.tools.agent_browser._save_browser_state", mock_save
+            "backend.copilot.tools.agent_browser._fire_and_forget_save", mock_save
         )
 
         tool = BrowserNavigateTool()
@@ -1268,12 +1297,12 @@ class TestStatePersistenceIntegration:
     @pytest.mark.asyncio
     async def test_navigate_skips_persistence_without_user_id(self, monkeypatch):
         mock_ensure = AsyncMock()
-        mock_save = AsyncMock()
+        mock_save = MagicMock()
         monkeypatch.setattr(
             "backend.copilot.tools.agent_browser._ensure_session", mock_ensure
         )
         monkeypatch.setattr(
-            "backend.copilot.tools.agent_browser._save_browser_state", mock_save
+            "backend.copilot.tools.agent_browser._fire_and_forget_save", mock_save
         )
 
         tool = BrowserNavigateTool()
@@ -1305,12 +1334,12 @@ class TestStatePersistenceIntegration:
     @pytest.mark.asyncio
     async def test_act_calls_ensure_and_save(self, monkeypatch):
         mock_ensure = AsyncMock()
-        mock_save = AsyncMock()
+        mock_save = MagicMock()
         monkeypatch.setattr(
             "backend.copilot.tools.agent_browser._ensure_session", mock_ensure
         )
         monkeypatch.setattr(
-            "backend.copilot.tools.agent_browser._save_browser_state", mock_save
+            "backend.copilot.tools.agent_browser._fire_and_forget_save", mock_save
         )
 
         tool = BrowserActTool()
@@ -1343,12 +1372,12 @@ class TestStatePersistenceIntegration:
         from .workspace_files import WorkspaceWriteResponse
 
         mock_ensure = AsyncMock()
-        mock_save = AsyncMock()
+        mock_save = MagicMock()
         monkeypatch.setattr(
             "backend.copilot.tools.agent_browser._ensure_session", mock_ensure
         )
         monkeypatch.setattr(
-            "backend.copilot.tools.agent_browser._save_browser_state", mock_save
+            "backend.copilot.tools.agent_browser._fire_and_forget_save", mock_save
         )
 
         png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
@@ -1396,3 +1425,172 @@ class TestStatePersistenceIntegration:
         assert isinstance(result, BrowserScreenshotResponse)
         mock_ensure.assert_called_once()
         mock_save.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# SSRF protection in _restore_browser_state
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreSsrf:
+    @pytest.mark.asyncio
+    async def test_blocked_url_returns_false(self):
+        """Saved URL pointing at a private IP should be blocked."""
+        session = make_session("ssrf-sess")
+        state = {
+            "url": "http://169.254.169.254/metadata",
+            "cookies": [],
+            "local_storage": {},
+        }
+
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(state).encode("utf-8")
+
+        with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+            with patch(
+                _VALIDATE_URL,
+                new_callable=AsyncMock,
+                side_effect=ValueError("blocked"),
+            ):
+                with patch(
+                    "backend.copilot.tools.agent_browser._run",
+                    new_callable=AsyncMock,
+                ) as mock_run:
+                    result = await _restore_browser_state("ssrf-sess", "user1", session)
+
+        assert result is False
+        # Should NOT have called _run at all — URL was blocked before open
+        mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Partial-failure tests for save/restore
+# ---------------------------------------------------------------------------
+
+
+class TestPartialFailures:
+    """Test mixed success/failure scenarios in save and restore."""
+
+    @pytest.mark.asyncio
+    async def test_save_partial_export_failure(self):
+        """If cookies export fails but URL and storage succeed, state is still saved."""
+        session = make_session("partial-save")
+        mock_mgr = _make_mock_manager()
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            mock_run.side_effect = [
+                _run_result(rc=0, stdout="https://example.com"),  # get url
+                _run_result(rc=1, stderr="cookie export error"),  # cookies get fails
+                _run_result(rc=0, stdout='{"theme":"dark"}'),  # storage local
+            ]
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                await _save_browser_state("partial-save", "user1", session)
+
+        # Should still write state — with empty cookies list
+        mock_mgr.write_file.assert_called_once()
+        written = json.loads(
+            mock_mgr.write_file.call_args.kwargs["content"].decode("utf-8")
+        )
+        assert written["url"] == "https://example.com"
+        assert written["cookies"] == []  # Failed export → empty
+        assert written["local_storage"] == {"theme": "dark"}
+
+    @pytest.mark.asyncio
+    async def test_restore_cookies_fail_url_succeeds(self):
+        """If some cookies fail to restore, the overall restore still succeeds."""
+        session = make_session("partial-restore")
+        state = {
+            "url": "https://example.com",
+            "cookies": [
+                {"name": "good", "value": "1", "domain": ".example.com", "path": "/"},
+                {"name": "bad", "value": "2", "domain": ".example.com", "path": "/"},
+            ],
+            "local_storage": {"key": "val"},
+        }
+
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(state).encode("utf-8")
+
+        call_count = 0
+
+        async def selective_fail(session_name, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            # First two calls: open URL + wait for load → succeed
+            if args[:1] == ("open",) or args[:1] == ("wait",):
+                return _run_result(rc=0)
+            # First cookie set succeeds, second fails
+            if args[:2] == ("cookies", "set"):
+                if args[2] == "bad":
+                    return _run_result(rc=1, stderr="cookie set error")
+                return _run_result(rc=0)
+            # Storage always succeeds
+            return _run_result(rc=0)
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run", side_effect=selective_fail
+        ):
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                with patch(
+                    _VALIDATE_URL,
+                    new_callable=AsyncMock,
+                    return_value=(object(), False, ["1.2.3.4"]),
+                ):
+                    result = await _restore_browser_state(
+                        "partial-restore", "user1", session
+                    )
+
+        # Restore still returns True — individual cookie failures are non-fatal
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_restore_url_fails_returns_false(self):
+        """If the URL navigation itself fails, restore returns False."""
+        session = make_session("url-fail-sess")
+        state = {
+            "url": "https://example.com",
+            "cookies": [],
+            "local_storage": {},
+        }
+
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(state).encode("utf-8")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=1, stderr="navigation failed"),
+        ):
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                with patch(
+                    _VALIDATE_URL,
+                    new_callable=AsyncMock,
+                    return_value=(object(), False, ["1.2.3.4"]),
+                ):
+                    result = await _restore_browser_state(
+                        "url-fail-sess", "user1", session
+                    )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_save_workspace_write_fails(self):
+        """If workspace write raises, save swallows the error."""
+        session = make_session("write-fail")
+        mock_mgr = _make_mock_manager()
+        mock_mgr.write_file.side_effect = RuntimeError("storage down")
+
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=0, stdout="https://example.com"),
+        ):
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                # Should not raise
+                await _save_browser_state("write-fail", "user1", session)

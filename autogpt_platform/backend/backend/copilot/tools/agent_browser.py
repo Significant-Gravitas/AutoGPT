@@ -135,7 +135,25 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _session_locks_mutex = asyncio.Lock()
 
 # Workspace filename for persisted browser state (auto-scoped to session).
-_STATE_FILENAME = "_browser_state.json"
+# Dot-prefixed so it is hidden from user workspace listings.
+_STATE_FILENAME = "._browser_state.json"
+
+# Background tasks for fire-and-forget state persistence.
+# Prevents GC from collecting tasks before they complete.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget_save(
+    session_name: str, user_id: str, session: ChatSession
+) -> None:
+    """Schedule state persistence as a background task (non-blocking).
+
+    State save is already best-effort (errors are swallowed), so running it
+    in the background avoids adding latency to tool responses.
+    """
+    task = asyncio.create_task(_save_browser_state(session_name, user_id, session))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def _has_local_session(session_name: str) -> bool:
@@ -208,6 +226,15 @@ async def _restore_browser_state(
 
         # Navigate first — starts daemon + sets the correct origin for cookies
         if url:
+            # Validate the saved URL to prevent SSRF via stored redirect targets.
+            try:
+                await validate_url(url, trusted_origins=[])
+            except ValueError:
+                logger.warning(
+                    "[browser] State restore: blocked SSRF URL %s", url[:200]
+                )
+                return False
+
             rc, _, stderr = await _run(session_name, "open", url)
             if rc != 0:
                 logger.warning(
@@ -218,34 +245,34 @@ async def _restore_browser_state(
                 return False
             await _run(session_name, "wait", "--load", "load", timeout=15)
 
-        # Restore cookies (one at a time — CLI limitation)
-        for cookie in cookies:
-            name = cookie.get("name", "")
-            value = cookie.get("value", "")
-            domain = cookie.get("domain", "")
-            path = cookie.get("path", "/")
-            if name and domain:
-                rc, _, stderr = await _run(
-                    session_name,
-                    "cookies",
-                    "set",
+        # Restore cookies and localStorage in parallel via asyncio.gather.
+        async def _set_cookie(c: dict) -> None:
+            name = c.get("name", "")
+            value = c.get("value", "")
+            domain = c.get("domain", "")
+            path = c.get("path", "/")
+            if not (name and domain):
+                return
+            rc, _, stderr = await _run(
+                session_name,
+                "cookies",
+                "set",
+                name,
+                value,
+                "--domain",
+                domain,
+                "--path",
+                path,
+                timeout=5,
+            )
+            if rc != 0:
+                logger.debug(
+                    "[browser] State restore: cookie set failed for %s: %s",
                     name,
-                    value,
-                    "--domain",
-                    domain,
-                    "--path",
-                    path,
-                    timeout=5,
+                    stderr[:100],
                 )
-                if rc != 0:
-                    logger.debug(
-                        "[browser] State restore: cookie set failed for %s: %s",
-                        name,
-                        stderr[:100],
-                    )
 
-        # Restore localStorage (one at a time — CLI limitation)
-        for key, val in local_storage.items():
+        async def _set_storage(key: str, val: object) -> None:
             rc, _, stderr = await _run(
                 session_name,
                 "storage",
@@ -261,6 +288,11 @@ async def _restore_browser_state(
                     key,
                     stderr[:100],
                 )
+
+        await asyncio.gather(
+            *[_set_cookie(c) for c in cookies],
+            *[_set_storage(k, v) for k, v in local_storage.items()],
+        )
 
         return True
     except Exception:
@@ -291,14 +323,32 @@ async def _ensure_session(
             _alive_sessions.add(session_name)
 
 
-async def close_browser_session(session_name: str) -> None:
-    """Shut down the local agent-browser daemon for a session.
+async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
+    """Shut down the local agent-browser daemon and clean up stored state.
+
+    Deletes ``._browser_state.json`` from workspace storage so cookies and
+    other credentials do not linger after the session is deleted.
 
     Best-effort: errors are logged but never raised.
     """
     _alive_sessions.discard(session_name)
     async with _session_locks_mutex:
         _session_locks.pop(session_name, None)
+
+    # Delete persisted browser state (cookies, localStorage) from workspace.
+    if user_id:
+        try:
+            manager = await get_manager(user_id, session_name)
+            file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
+            if file_info is not None:
+                await manager.delete_file(file_info.id)
+        except Exception:
+            logger.debug(
+                "[browser] Failed to delete state file for session %s",
+                session_name,
+                exc_info=True,
+            )
+
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
@@ -450,7 +500,7 @@ class BrowserNavigateTool(BaseTool):
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
-            await _save_browser_state(session_name, user_id, session)
+            _fire_and_forget_save(session_name, user_id, session)
 
         return result
 
@@ -665,7 +715,7 @@ class BrowserActTool(BaseTool):
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
-            await _save_browser_state(session_name, user_id, session)
+            _fire_and_forget_save(session_name, user_id, session)
 
         return result
 
@@ -799,6 +849,6 @@ class BrowserScreenshotTool(BaseTool):
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
-            await _save_browser_state(session_name, user_id, session)
+            _fire_and_forget_save(session_name, user_id, session)
 
         return result

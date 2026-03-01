@@ -678,7 +678,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     try:
         from .tools.agent_browser import close_browser_session
 
-        await close_browser_session(session_id)
+        await close_browser_session(session_id, user_id=user_id)
     except Exception as e:
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
 
