@@ -15,6 +15,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import browser_agent
 import learning
+import finance_skills
 
 cfg = Config()
 
@@ -138,6 +139,33 @@ def execute_command(command_name, arguments):
             return learning.learn(arguments["category"], arguments["detail"])
         elif command_name == "recall_learnings":
             return learning.recall_learnings()
+        elif command_name == "finance_news":
+            return finance_skills.finance_news(
+                arguments["query"], arguments.get("count", 8))
+        elif command_name == "finance_stock":
+            return finance_skills.finance_stock(arguments["query"])
+        elif command_name == "finance_sentiment":
+            return finance_skills.finance_sentiment(arguments["text"])
+        elif command_name == "finance_predict":
+            return finance_skills.finance_predict(
+                arguments["ticker"], arguments.get("horizon", "7d"))
+        elif command_name == "finance_signal":
+            return finance_skills.finance_signal(
+                arguments["action"],
+                arguments.get("signal_name", ""),
+                arguments.get("detail", ""))
+        elif command_name == "finance_visualize":
+            return finance_skills.finance_visualize(
+                arguments["logic_chain"],
+                arguments.get("filename", "finance_logic.html"))
+        elif command_name == "finance_report":
+            return finance_skills.finance_report(
+                arguments["topic"], arguments.get("data", ""))
+        elif command_name == "finance_search":
+            return finance_skills.finance_search(
+                arguments["query"],
+                arguments.get("engine", "ddg"),
+                arguments.get("max_results", 8))
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

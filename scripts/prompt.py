@@ -50,6 +50,14 @@ def get_prompt():
         ("Browser Get Element Text", "browser_get_text", {"selector": "<css_selector_or_text_locator>"}),
         ("Learn About User (auto-record insight)", "learn", {"category": "<preferences|workflows|corrections|facts>", "detail": "<concise_insight>"}),
         ("Recall All Learnings About User", "recall_learnings", {}),
+        ("Finance News — real-time news & trends from 10+ sources", "finance_news", {"query": "<topic>", "count": "<max_results>"}),
+        ("Finance Stock — search tickers & get OHLCV price data", "finance_stock", {"query": "<ticker_or_company_name>"}),
+        ("Finance Sentiment — score text from -1.0 to +1.0", "finance_sentiment", {"text": "<financial_text>"}),
+        ("Finance Predict — time-series forecast with news context", "finance_predict", {"ticker": "<ticker>", "horizon": "<7d|30d|3m>"}),
+        ("Finance Signal — track investment signal evolution", "finance_signal", {"action": "<create|update|list|delete>", "signal_name": "<name>", "detail": "<info>"}),
+        ("Finance Visualize — Draw.io logic chain diagram", "finance_visualize", {"logic_chain": "<description_of_chain>", "filename": "<output.html>"}),
+        ("Finance Report — generate professional analysis report", "finance_report", {"topic": "<report_topic>", "data": "<supporting_data>"}),
+        ("Finance Search — multi-engine financial web search", "finance_search", {"query": "<search_query>", "engine": "<ddg>", "max_results": "<count>"}),
         ("Do Nothing", "do_nothing", {}),
     ]
 
@@ -64,6 +72,7 @@ def get_prompt():
     prompt_generator.add_resource("File output.")
     prompt_generator.add_resource("Headless browser automation for interacting with JavaScript-rendered web pages, filling forms, clicking buttons, and taking screenshots.")
     prompt_generator.add_resource("Persistent user profile that remembers preferences, workflows, corrections, and facts across sessions.")
+    prompt_generator.add_resource("AlphaEar finance skills: news aggregation, stock data, sentiment analysis, market prediction, signal tracking, logic visualization, report generation, and multi-engine financial search.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation("Continuously review and analyze your actions to ensure you are performing to the best of your abilities.")
