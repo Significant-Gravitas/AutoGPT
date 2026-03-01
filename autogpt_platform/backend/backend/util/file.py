@@ -71,11 +71,15 @@ def sanitize_filename(filename: str) -> str:
 
     # Truncate if too long
     if len(sanitized) > MAX_FILENAME_LENGTH:
-        # Keep the extension if possible
+        # Keep the extension if possible, but only if it's reasonable length
         if "." in sanitized:
             name, ext = sanitized.rsplit(".", 1)
-            max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
-            sanitized = name[:max_name_length] + "." + ext
+            # If extension is too long, it's likely not a file extension but just text
+            if len(ext) <= 20:
+                max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
+                sanitized = name[:max_name_length] + "." + ext
+            else:
+                sanitized = sanitized[:MAX_FILENAME_LENGTH]
         else:
             sanitized = sanitized[:MAX_FILENAME_LENGTH]
 
@@ -129,7 +133,7 @@ async def store_media_file(
 
     Return format options:
     - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
-    - "for_external_api": Returns data URI (base64) - use when sending to external APIs
+    - "for_external_api": Returns data URI (base64) - use when sending content to external APIs
     - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
 
     :param file:               Data URI, URL, workspace://, or local (relative) path.
