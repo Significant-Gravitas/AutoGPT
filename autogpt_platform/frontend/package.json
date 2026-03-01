@@ -89,6 +89,7 @@
     "geist": "1.5.1",
     "highlight.js": "11.11.1",
     "jaro-winkler": "0.2.8",
+    "jszip": "3.10.1",
     "katex": "0.16.25",
     "launchdarkly-react-client-sdk": "3.9.0",
     "lodash": "4.17.21",
