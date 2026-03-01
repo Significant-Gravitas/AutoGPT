@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
+from backend.util.truncate import truncate
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,9 @@ class StreamToolInputAvailable(StreamBaseResponse):
     )
 
 
+_MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
+
+
 class StreamToolOutputAvailable(StreamBaseResponse):
     """Tool execution result."""
 
@@ -163,6 +167,10 @@ class StreamToolOutputAvailable(StreamBaseResponse):
     success: bool = Field(
         default=True, description="Whether the tool execution succeeded"
     )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Truncate oversized outputs after construction."""
+        self.output = truncate(self.output, _MAX_TOOL_OUTPUT_SIZE)
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-spec fields."""

@@ -66,18 +66,23 @@ function getToolCategory(toolName: string): ToolCategory {
     case "WebFetch":
       return "web";
     case "read_workspace_file":
+    case "read_file":
     case "Read":
       return "file-read";
     case "write_workspace_file":
+    case "write_file":
     case "Write":
       return "file-write";
     case "delete_workspace_file":
       return "file-delete";
     case "list_workspace_files":
+    case "glob":
     case "Glob":
       return "file-list";
+    case "grep":
     case "Grep":
       return "search";
+    case "edit_file":
     case "Edit":
       return "edit";
     case "TodoWrite":
@@ -185,12 +190,14 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "WebSearch":
       return typeof inp.query === "string" ? inp.query : null;
     case "read_workspace_file":
+    case "read_file":
     case "Read":
       return (
         (typeof inp.file_path === "string" ? inp.file_path : null) ??
         (typeof inp.path === "string" ? inp.path : null)
       );
     case "write_workspace_file":
+    case "write_file":
     case "Write":
       return (
         (typeof inp.file_path === "string" ? inp.file_path : null) ??
@@ -198,10 +205,13 @@ function getInputSummary(toolName: string, input: unknown): string | null {
       );
     case "delete_workspace_file":
       return typeof inp.file_path === "string" ? inp.file_path : null;
+    case "glob":
     case "Glob":
       return typeof inp.pattern === "string" ? inp.pattern : null;
+    case "grep":
     case "Grep":
       return typeof inp.pattern === "string" ? inp.pattern : null;
+    case "edit_file":
     case "Edit":
       return typeof inp.file_path === "string" ? inp.file_path : null;
     case "TodoWrite": {
@@ -418,16 +428,22 @@ function getBashAccordionData(
     description: truncate(command, 80),
     content: (
       <div className="space-y-2">
+        {command && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <ContentCodeBlock>{command}</ContentCodeBlock>
+          </div>
+        )}
         {stdout && (
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
-            <ContentCodeBlock>{truncate(stdout, 2000)}</ContentCodeBlock>
+            <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
             <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
-            <ContentCodeBlock>{truncate(stderr, 1000)}</ContentCodeBlock>
+            <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
         {!stdout && !stderr && message && (
@@ -475,18 +491,17 @@ function getWebAccordionData(
         : "Search results",
     description: truncate(url, 80),
     content: content ? (
-      <ContentCodeBlock>{truncate(content, 2000)}</ContentCodeBlock>
+      <ContentCodeBlock>{content}</ContentCodeBlock>
     ) : message ? (
       <ContentMessage>{message}</ContentMessage>
     ) : Object.keys(output).length > 0 ? (
-      <ContentCodeBlock>
-        {truncate(JSON.stringify(output, null, 2), 2000)}
-      </ContentCodeBlock>
+      <ContentCodeBlock>{JSON.stringify(output, null, 2)}</ContentCodeBlock>
     ) : null,
   };
 }
 
 function getFileAccordionData(
+  category: ToolCategory,
   input: unknown,
   output: Record<string, unknown>,
 ): AccordionData {
@@ -529,6 +544,20 @@ function getFileAccordionData(
     displayContent = extractMcpText(output);
   }
 
+  // For edit: show old/new diff; for write: show written content if output is just a status
+  const oldString =
+    category === "edit"
+      ? getStringField(inp as Record<string, unknown>, "old_string")
+      : null;
+  const newString =
+    category === "edit"
+      ? getStringField(inp as Record<string, unknown>, "new_string")
+      : null;
+  const writtenContent =
+    category === "file-write"
+      ? getStringField(inp as Record<string, unknown>, "content")
+      : null;
+
   // For Glob/list results, try to show file list
   // Files can be either strings (from Glob) or objects (from list_workspace_files)
   const files = Array.isArray(output.files) ? output.files : null;
@@ -562,18 +591,33 @@ function getFileAccordionData(
     fileListText = fileLines.join("\n");
   }
 
+  const isWriteOrEdit = category === "file-write" || category === "edit";
+
   return {
-    title: message ?? "File output",
+    title:
+      message ??
+      (isWriteOrEdit ? `Wrote ${truncate(filePath, 60)}` : "File output"),
     description: truncate(filePath, 80),
     content: (
       <div className="space-y-2">
-        {displayContent && (
-          <ContentCodeBlock>{truncate(displayContent, 2000)}</ContentCodeBlock>
-        )}
-        {fileListText && (
-          <ContentCodeBlock>{truncate(fileListText, 2000)}</ContentCodeBlock>
-        )}
-        {!displayContent && !fileListText && message && (
+        {oldString && newString != null ? (
+          <>
+            <div>
+              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <ContentCodeBlock>{oldString}</ContentCodeBlock>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <ContentCodeBlock>{newString}</ContentCodeBlock>
+            </div>
+          </>
+        ) : writtenContent ? (
+          <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
+        ) : displayContent ? (
+          <ContentCodeBlock>{displayContent}</ContentCodeBlock>
+        ) : null}
+        {fileListText && <ContentCodeBlock>{fileListText}</ContentCodeBlock>}
+        {!displayContent && !fileListText && !writtenContent && message && (
           <ContentMessage>{message}</ContentMessage>
         )}
       </div>
@@ -675,9 +719,7 @@ function getDefaultAccordionData(
   return {
     title: "Output",
     description: message ?? undefined,
-    content: (
-      <ContentCodeBlock>{truncate(displayContent, 2000)}</ContentCodeBlock>
-    ),
+    content: <ContentCodeBlock>{displayContent}</ContentCodeBlock>,
   };
 }
 
@@ -697,7 +739,7 @@ function getAccordionData(
     case "file-list":
     case "search":
     case "edit":
-      return getFileAccordionData(input, output);
+      return getFileAccordionData(category, input, output);
     case "todo":
       return getTodoAccordionData(input);
     default:
@@ -738,20 +780,18 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Only show loading text when NOT showing accordion */}
-      {!showAccordion && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <ToolIcon
-            category={category}
-            isStreaming={isStreaming}
-            isError={isError}
-          />
-          <MorphingTextAnimation
-            text={text}
-            className={isError ? "text-red-500" : undefined}
-          />
-        </div>
-      )}
+      {/* Status line: always visible so the user sees what tool ran */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          category={category}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
 
       {showAccordion && accordionData ? (
         <ToolAccordion

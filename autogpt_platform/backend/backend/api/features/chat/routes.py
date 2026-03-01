@@ -238,6 +238,18 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
+    # Best-effort cleanup of the E2B sandbox (if any).
+    config = ChatConfig()
+    if config.use_e2b_sandbox and config.e2b_api_key:
+        from backend.copilot.tools.e2b_sandbox import kill_sandbox
+
+        try:
+            await kill_sandbox(session_id, config.e2b_api_key)
+        except Exception:
+            logger.warning(
+                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
+            )
+
     return Response(status_code=204)
 
 

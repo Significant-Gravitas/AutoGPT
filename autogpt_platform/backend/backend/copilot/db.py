@@ -16,7 +16,7 @@ from prisma.types import (
 )
 
 from backend.data import db
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, sanitize_string
 
 from .model import ChatMessage, ChatSession, ChatSessionInfo
 
@@ -101,15 +101,16 @@ async def add_chat_message(
         "sequence": sequence,
     }
 
-    # Add optional string fields
+    # Add optional string fields — sanitize to strip PostgreSQL-incompatible
+    # control characters (null bytes etc.) that may appear in tool outputs.
     if content is not None:
-        data["content"] = content
+        data["content"] = sanitize_string(content)
     if name is not None:
         data["name"] = name
     if tool_call_id is not None:
         data["toolCallId"] = tool_call_id
     if refusal is not None:
-        data["refusal"] = refusal
+        data["refusal"] = sanitize_string(refusal)
 
     # Add optional JSON fields only when they have values
     if tool_calls is not None:
@@ -170,15 +171,16 @@ async def add_chat_messages_batch(
                         "createdAt": now,
                     }
 
-                    # Add optional string fields
+                    # Add optional string fields — sanitize to strip
+                    # PostgreSQL-incompatible control characters.
                     if msg.get("content") is not None:
-                        data["content"] = msg["content"]
+                        data["content"] = sanitize_string(msg["content"])
                     if msg.get("name") is not None:
                         data["name"] = msg["name"]
                     if msg.get("tool_call_id") is not None:
                         data["toolCallId"] = msg["tool_call_id"]
                     if msg.get("refusal") is not None:
-                        data["refusal"] = msg["refusal"]
+                        data["refusal"] = sanitize_string(msg["refusal"])
 
                     # Add optional JSON fields only when they have values
                     if msg.get("tool_calls") is not None:
@@ -312,7 +314,7 @@ async def update_tool_message_content(
                 "toolCallId": tool_call_id,
             },
             data={
-                "content": new_content,
+                "content": sanitize_string(new_content),
             },
         )
         if result == 0:
