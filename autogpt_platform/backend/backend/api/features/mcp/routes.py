@@ -407,7 +407,9 @@ async def mcp_store_token(
     if not token:
         raise fastapi.HTTPException(status_code=422, detail="Token must not be blank.")
 
-    hostname = urlparse(request.server_url).hostname or request.server_url
+    # Normalize URL so trailing-slash variants match existing credentials.
+    server_url = request.server_url.strip().rstrip("/")
+    hostname = urlparse(server_url).hostname or server_url
 
     # Collect IDs of old credentials to clean up after successful create.
     old_cred_ids: list[str] = []
@@ -419,7 +421,7 @@ async def mcp_store_token(
             old.id
             for old in old_creds
             if isinstance(old, OAuth2Credentials)
-            and (old.metadata or {}).get("mcp_server_url") == request.server_url
+            and (old.metadata or {}).get("mcp_server_url", "").rstrip("/") == server_url
         ]
     except Exception:
         logger.debug("Could not query old MCP token credentials", exc_info=True)
@@ -429,7 +431,7 @@ async def mcp_store_token(
         title=f"MCP: {hostname}",
         access_token=SecretStr(token),
         scopes=[],
-        metadata={"mcp_server_url": request.server_url},
+        metadata={"mcp_server_url": server_url},
     )
     await creds_manager.create(user_id, credentials)
 
@@ -447,7 +449,7 @@ async def mcp_store_token(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
-        host=request.server_url,
+        host=hostname,
     )
 
 
