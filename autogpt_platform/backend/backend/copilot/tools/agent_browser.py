@@ -127,6 +127,10 @@ async def _snapshot(session_name: str) -> str:
 # Avoids the subprocess probe on every tool call within the same pod.
 _alive_sessions: set[str] = set()
 
+# Per-session locks to prevent concurrent _ensure_session calls from
+# triggering duplicate _restore_browser_state for the same session.
+_session_locks: dict[str, asyncio.Lock] = {}
+
 # Workspace filename for persisted browser state (auto-scoped to session).
 _STATE_FILENAME = "_browser_state.json"
 
@@ -271,11 +275,16 @@ async def _ensure_session(
     """Ensure the local browser daemon has state. Restore from cloud if needed."""
     if session_name in _alive_sessions:
         return
-    if await _has_local_session(session_name):
+    lock = _session_locks.setdefault(session_name, asyncio.Lock())
+    async with lock:
+        # Double-check after acquiring lock — another coroutine may have restored.
+        if session_name in _alive_sessions:
+            return
+        if await _has_local_session(session_name):
+            _alive_sessions.add(session_name)
+            return
+        await _restore_browser_state(session_name, user_id, session)
         _alive_sessions.add(session_name)
-        return
-    await _restore_browser_state(session_name, user_id, session)
-    _alive_sessions.add(session_name)
 
 
 async def _close_browser_session(session_name: str) -> None:
@@ -284,6 +293,7 @@ async def _close_browser_session(session_name: str) -> None:
     Best-effort: errors are logged but never raised.
     """
     _alive_sessions.discard(session_name)
+    _session_locks.pop(session_name, None)
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:

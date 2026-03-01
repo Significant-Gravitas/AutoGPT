@@ -42,6 +42,7 @@ def _reset_and_mock_state(monkeypatch):
     from . import agent_browser as _mod
 
     _mod._alive_sessions.clear()
+    _mod._session_locks.clear()
     monkeypatch.setattr(
         "backend.copilot.tools.agent_browser._ensure_session", AsyncMock()
     )
@@ -50,6 +51,7 @@ def _reset_and_mock_state(monkeypatch):
     )
     yield
     _mod._alive_sessions.clear()
+    _mod._session_locks.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1109,6 +1111,26 @@ class TestEnsureSession:
         mock_restore.assert_called_once_with("dead-sess", "user1", session)
         assert "dead-sess" in _mod._alive_sessions
 
+    @pytest.mark.asyncio
+    async def test_concurrent_calls_restore_once(self):
+        """Two concurrent _ensure_session calls should only restore once."""
+        session = make_session("race-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._has_local_session",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            with patch(
+                "backend.copilot.tools.agent_browser._restore_browser_state",
+                new_callable=AsyncMock,
+            ) as mock_restore:
+                await asyncio.gather(
+                    _ensure_session("race-sess", "user1", session),
+                    _ensure_session("race-sess", "user1", session),
+                )
+
+        mock_restore.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # _close_browser_session
@@ -1130,6 +1152,7 @@ class TestCloseBrowserSession:
 
         mock_run.assert_called_once_with("close-sess", "close", timeout=10)
         assert "close-sess" not in _mod._alive_sessions
+        assert "close-sess" not in _mod._session_locks
 
     @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
