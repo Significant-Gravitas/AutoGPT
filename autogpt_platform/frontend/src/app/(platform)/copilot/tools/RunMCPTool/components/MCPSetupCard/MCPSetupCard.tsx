@@ -138,7 +138,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         method: "POST",
         body: JSON.stringify({ server_url: serverUrl, token }),
       });
-      if (res.status !== 200) throw new Error("Failed to store token");
+      if (!(res.status >= 200 && res.status < 300))
+        throw new Error("Failed to store token");
       setConnected(true);
       onSend(
         retryInstruction ??
