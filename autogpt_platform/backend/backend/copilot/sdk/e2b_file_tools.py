@@ -90,7 +90,8 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     sandbox, remote = result
 
     try:
-        content: str = await sandbox.files.read(remote, format="text")
+        raw: bytes = await sandbox.files.read(remote, format="bytes")
+        content = raw.decode("utf-8", errors="replace")
     except Exception as exc:
         return _mcp(f"Failed to read {remote}: {exc}", error=True)
 
@@ -142,7 +143,8 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     sandbox, remote = result
 
     try:
-        content: str = await sandbox.files.read(remote, format="text")
+        raw: bytes = await sandbox.files.read(remote, format="bytes")
+        content = raw.decode("utf-8", errors="replace")
     except Exception as exc:
         return _mcp(f"Failed to read {remote}: {exc}", error=True)
 
