@@ -53,7 +53,7 @@ class ModelsLabImageSize(str, Enum):
     WIDE = "1536x640"
 
 
-class AIImageGeneratorBlock(Block):
+class ModelsLabImageGeneratorBlock(Block):
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="Text description of the image to generate.",
@@ -81,6 +81,11 @@ class AIImageGeneratorBlock(Block):
             le=4,
             description="Number of images to generate (1–4).",
         )
+        safety_checker: bool = SchemaField(
+            title="Safety Checker",
+            default=False,
+            description="Enable NSFW content filtering. When enabled, may filter some outputs.",
+        )
         credentials: ModelsLabCredentialsInput = ModelsLabCredentialsField()
 
     class Output(BlockSchemaOutput):
@@ -89,7 +94,7 @@ class AIImageGeneratorBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="93180aca-aa2b-4857-990e-81cf9ac66ff8",
             description=(
                 "Generate images using ModelsLab AI. "
                 "Supports Flux, SDXL, and 100+ community models."
@@ -122,6 +127,7 @@ class AIImageGeneratorBlock(Block):
         size: ModelsLabImageSize,
         negative_prompt: str,
         num_images: int,
+        safety_checker: bool = False,
     ) -> dict:
         width, height = map(int, size.value.split("x"))
         return {
@@ -133,7 +139,7 @@ class AIImageGeneratorBlock(Block):
             "height": height,
             "samples": num_images,
             "num_inference_steps": 30,
-            "safety_checker": "no",
+            "safety_checker": "yes" if safety_checker else "no",
             "enhance_prompt": "yes",
         }
 
@@ -145,10 +151,11 @@ class AIImageGeneratorBlock(Block):
         size: ModelsLabImageSize,
         negative_prompt: str,
         num_images: int,
+        safety_checker: bool = False,
     ) -> str:
         """Generate an image and return the URL. Handles async polling."""
         body = self._build_request_body(
-            api_key, prompt, model, size, negative_prompt, num_images
+            api_key, prompt, model, size, negative_prompt, num_images, safety_checker
         )
 
         try:
@@ -201,28 +208,29 @@ class AIImageGeneratorBlock(Block):
             f"ModelsLab image generation timed out after {POLL_TIMEOUT}s (request_id={request_id})"
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: ModelsLabCredentials,
-        context: ExecutionContext,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
 
-        image_url = context.run_coroutine(
-            self.generate_image(
-                api_key=api_key,
-                prompt=input_data.prompt,
-                model=input_data.model,
-                size=input_data.size,
-                negative_prompt=input_data.negative_prompt,
-                num_images=input_data.num_images,
-            )
+        image_url = await self.generate_image(
+            api_key=api_key,
+            prompt=input_data.prompt,
+            model=input_data.model,
+            size=input_data.size,
+            negative_prompt=input_data.negative_prompt,
+            num_images=input_data.num_images,
+            safety_checker=input_data.safety_checker,
         )
 
-        workspace_url = context.run_coroutine(
-            store_media_file(context, image_url, MediaFileType.IMAGE)
+        workspace_url = await store_media_file(
+            file=MediaFileType(image_url),
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
         yield "image_url", workspace_url
