@@ -149,7 +149,10 @@ class BrowserNavigateTool(BaseTool):
             "prefer browse_web (if available) — it's simpler and faster. "
             "For plain static pages, prefer web_fetch — no browser overhead. "
             "For authenticated pages: navigate to the login page first, use browser_act "
-            "to fill credentials and submit, then navigate to the target page."
+            "to fill credentials and submit, then navigate to the target page. "
+            "Note: for slow SPAs, the returned snapshot may reflect a partially-loaded "
+            "state. If elements seem missing, use browser_act with action='wait' and a "
+            "CSS selector or millisecond delay, then take a browser_screenshot to verify."
         )
 
     @property
@@ -185,6 +188,12 @@ class BrowserNavigateTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Navigate to *url*, wait for the page to settle, and return a snapshot.
+
+        The snapshot is an accessibility-tree listing of interactive elements.
+        Note: for slow SPAs that never fully idle, the snapshot may reflect a
+        partially-loaded state (the wait is best-effort).
+        """
         url: str = (kwargs.get("url") or "").strip()
         wait_for: str = kwargs.get("wait_for") or "networkidle"
         session_name = session.session_id
@@ -344,6 +353,12 @@ class BrowserActTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Perform a browser action and return an updated page snapshot.
+
+        Validates the *action*/*target*/*value* combination, delegates to
+        ``agent-browser``, waits for the page to settle, and returns the
+        accessibility-tree snapshot so the LLM can plan the next step.
+        """
         action: str = (kwargs.get("action") or "").strip()
         target: str = (kwargs.get("target") or "").strip()
         value: str = (kwargs.get("value") or "").strip()
@@ -495,6 +510,13 @@ class BrowserScreenshotTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Capture a PNG screenshot and upload it to the workspace.
+
+        Handles string-to-bool coercion for *annotate* (OpenAI function-call
+        payloads sometimes deliver ``"true"``/``"false"`` as strings).
+        Returns a :class:`BrowserScreenshotResponse` with the workspace
+        ``file_id`` the LLM should pass to ``read_workspace_file``.
+        """
         raw_annotate = kwargs.get("annotate", True)
         if isinstance(raw_annotate, str):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}

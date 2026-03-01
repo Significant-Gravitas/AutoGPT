@@ -524,5 +524,5 @@ class TestPatchStagehandOnce:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
         assert _browse_web_mod._stagehand_patched is True

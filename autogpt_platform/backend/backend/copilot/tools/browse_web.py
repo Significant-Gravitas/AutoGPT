@@ -131,7 +131,12 @@ class BrowseWebTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        """Navigate to a URL with a real browser and return extracted content."""
+        """Navigate to *url* with a cloud Stagehand/Browserbase session.
+
+        Performs SSRF validation, opens a headless Chromium in Browserbase,
+        uses the Stagehand LLM to extract content per *instruction*, and
+        returns truncated text (capped at ``_MAX_CONTENT_CHARS``).
+        """
         url: str = (kwargs.get("url") or "").strip()
         instruction: str = (
             kwargs.get("instruction") or "Extract the main content of this page."
