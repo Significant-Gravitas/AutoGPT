@@ -1,7 +1,7 @@
 """Shared fix → validate → preview/save pipeline for agent tools."""
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from backend.copilot.tools.models import (
     AgentPreviewResponse,
@@ -17,6 +17,29 @@ from .validator import AgentValidator
 logger = logging.getLogger(__name__)
 
 
+async def fetch_library_agents(
+    user_id: str | None,
+    library_agent_ids: list[str],
+) -> list[dict[str, Any]] | None:
+    """Fetch library agents by IDs for AgentExecutorBlock validation.
+
+    Returns None if no IDs provided or user is not authenticated.
+    """
+    if not user_id or not library_agent_ids:
+        return None
+    try:
+        from .core import get_library_agents_by_ids
+
+        agents = await get_library_agents_by_ids(
+            user_id=user_id,
+            agent_ids=library_agent_ids,
+        )
+        return cast(list[dict[str, Any]], agents)
+    except Exception as e:
+        logger.warning(f"Failed to fetch library agents by IDs: {e}")
+        return None
+
+
 async def fix_validate_and_save(
     agent_json: dict[str, Any],
     *,
@@ -27,6 +50,7 @@ async def fix_validate_and_save(
     default_name: str = "Agent",
     preview_message: str | None = None,
     save_message: str | None = None,
+    library_agents: list[dict[str, Any]] | None = None,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -39,6 +63,7 @@ async def fix_validate_and_save(
         default_name: Fallback name if agent_json has none.
         preview_message: Custom preview message (optional).
         save_message: Custom save success message (optional).
+        library_agents: Library agents for AgentExecutorBlock validation/fixing.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -48,7 +73,7 @@ async def fix_validate_and_save(
     # Auto-fix
     try:
         fixer = AgentFixer()
-        agent_json = await fixer.apply_all_fixes(agent_json, blocks)
+        agent_json = await fixer.apply_all_fixes(agent_json, blocks, library_agents)
         fixes = fixer.get_fixes_applied()
         if fixes:
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
@@ -58,7 +83,7 @@ async def fix_validate_and_save(
     # Validate
     try:
         validator = AgentValidator()
-        is_valid, _ = validator.validate(agent_json, blocks)
+        is_valid, _ = validator.validate(agent_json, blocks, library_agents)
         if not is_valid:
             errors = validator.errors
             return ErrorResponse(

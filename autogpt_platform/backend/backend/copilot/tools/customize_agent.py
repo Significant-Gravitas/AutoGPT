@@ -14,7 +14,7 @@ from .agent_generator import (
     graph_to_json,
     save_agent_to_library,
 )
-from .agent_generator.pipeline import fix_validate_and_save
+from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
 from .models import (
     AgentPreviewResponse,
@@ -123,6 +123,7 @@ class CustomizeAgentTool(BaseTool):
     ) -> ToolResponseBase:
         """Local mode: validate, fix, and save pre-built customized agent JSON."""
         save = kwargs.get("save", True)
+        library_agent_ids = kwargs.get("library_agent_ids", [])
 
         nodes = agent_json.get("nodes", [])
 
@@ -135,6 +136,9 @@ class CustomizeAgentTool(BaseTool):
 
         agent_json.setdefault("is_active", True)
 
+        # Fetch library agents for AgentExecutorBlock validation
+        library_agents = await fetch_library_agents(user_id, library_agent_ids)
+
         return await fix_validate_and_save(
             agent_json,
             user_id=user_id,
@@ -142,6 +146,7 @@ class CustomizeAgentTool(BaseTool):
             save=save,
             is_update=False,
             default_name="Customized Agent",
+            library_agents=library_agents,
         )
 
     async def _execute_external(
