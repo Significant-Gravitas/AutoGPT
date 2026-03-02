@@ -129,7 +129,7 @@ The platform can have one recommended model that serves as the default for all L
 3. Choose the model you want as the platform default
 4. Save
 
-All blocks with `model` inputs using `default_factory=LlmModel.default()` will use this model.
+All blocks with `model` inputs using `default_factory=LlmModel.default` will use this model.
 
 ### When to Change It
 
@@ -232,4 +232,4 @@ When a block has a `model` input:
 
 ---
 
-For questions or issues with the LLM Registry, consult the [platform documentation](../README.md) or contact your platform administrator.
+For questions or issues with the LLM Registry, contact your platform administrator.
