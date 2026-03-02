@@ -1048,6 +1048,48 @@ class TestRestoreBrowserState:
         mock_run.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_empty_url_skips_navigation(self):
+        """State with url='' should skip navigation and still restore cookies/storage."""
+        session = make_session("empty-url-sess")
+        state = {
+            "url": "",
+            "cookies": [
+                {"name": "c1", "value": "v1", "domain": ".example.com", "path": "/"},
+            ],
+            "local_storage": {"k": "v"},
+        }
+
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="f-1")
+        mock_mgr.read_file.return_value = json.dumps(state).encode("utf-8")
+
+        captured_cmds: list[tuple] = []
+
+        async def track_run(session_name, *args, **kwargs):
+            captured_cmds.append((session_name, args))
+            return _run_result(rc=0)
+
+        with patch("backend.copilot.tools.agent_browser._run", side_effect=track_run):
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                result = await _restore_browser_state(
+                    "empty-url-sess", "user1", session
+                )
+
+        assert result is True
+        # Should NOT have called "open" — no URL to navigate to
+        open_cmds = [c for c in captured_cmds if c[1][:1] == ("open",)]
+        assert open_cmds == []
+        # But cookies and storage should still be restored
+        cookie_cmds = [c for c in captured_cmds if c[1][:2] == ("cookies", "set")]
+        storage_cmds = [
+            c
+            for c in captured_cmds
+            if len(c[1]) > 2 and c[1][:2] == ("storage", "local")
+        ]
+        assert len(cookie_cmds) == 1
+        assert len(storage_cmds) == 1
+
+    @pytest.mark.asyncio
     async def test_error_returns_false(self):
         session = make_session("err-sess")
         with patch(
@@ -1207,6 +1249,24 @@ class TestCloseBrowserSession:
                 await close_browser_session("close-sess")
 
         mock_get_mgr.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_state_file_not_found_skips_delete(self):
+        """If get_file_info_by_path returns None, delete_file should not be called."""
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = None
+        mock_mgr.delete_file = AsyncMock()
+
+        with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_session("close-sess", user_id="user1")
+
+        mock_mgr.get_file_info_by_path.assert_called_once_with("._browser_state.json")
+        mock_mgr.delete_file.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
@@ -1589,8 +1649,15 @@ class TestPartialFailures:
         with patch(
             "backend.copilot.tools.agent_browser._run",
             new_callable=AsyncMock,
-            return_value=_run_result(rc=0, stdout="https://example.com"),
-        ):
+        ) as mock_run:
+            mock_run.side_effect = [
+                _run_result(rc=0, stdout="https://example.com"),  # get url
+                _run_result(rc=0, stdout="[]"),  # cookies get --json
+                _run_result(rc=0, stdout="{}"),  # storage local --json
+            ]
             with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
                 # Should not raise
                 await _save_browser_state("write-fail", "user1", session)
+
+        # write_file was actually called and its RuntimeError was swallowed
+        mock_mgr.write_file.assert_called_once()

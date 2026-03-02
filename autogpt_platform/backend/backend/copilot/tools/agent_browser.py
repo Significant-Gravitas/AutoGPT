@@ -246,25 +246,30 @@ async def _restore_browser_state(
             await _run(session_name, "wait", "--load", "load", timeout=15)
 
         # Restore cookies and localStorage in parallel via asyncio.gather.
-        async def _set_cookie(c: dict) -> None:
+        # Semaphore caps concurrent subprocess spawns so we don't overwhelm the
+        # system when a session has hundreds of cookies.
+        sem = asyncio.Semaphore(10)
+
+        async def _set_cookie(c: dict[str, Any]) -> None:
             name = c.get("name", "")
             value = c.get("value", "")
             domain = c.get("domain", "")
             path = c.get("path", "/")
             if not (name and domain):
                 return
-            rc, _, stderr = await _run(
-                session_name,
-                "cookies",
-                "set",
-                name,
-                value,
-                "--domain",
-                domain,
-                "--path",
-                path,
-                timeout=5,
-            )
+            async with sem:
+                rc, _, stderr = await _run(
+                    session_name,
+                    "cookies",
+                    "set",
+                    name,
+                    value,
+                    "--domain",
+                    domain,
+                    "--path",
+                    path,
+                    timeout=5,
+                )
             if rc != 0:
                 logger.debug(
                     "[browser] State restore: cookie set failed for %s: %s",
@@ -273,15 +278,16 @@ async def _restore_browser_state(
                 )
 
         async def _set_storage(key: str, val: object) -> None:
-            rc, _, stderr = await _run(
-                session_name,
-                "storage",
-                "local",
-                "set",
-                key,
-                str(val),
-                timeout=5,
-            )
+            async with sem:
+                rc, _, stderr = await _run(
+                    session_name,
+                    "storage",
+                    "local",
+                    "set",
+                    key,
+                    str(val),
+                    timeout=5,
+                )
             if rc != 0:
                 logger.debug(
                     "[browser] State restore: localStorage set failed for %s: %s",
