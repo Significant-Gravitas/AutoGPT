@@ -75,11 +75,10 @@ services:
       timeout: 5s
       retries: 5
   rabbitmq:
+    # Keep management variant for local startup diagnostics (UI is localhost-bound below)
     image: rabbitmq:4.1.4-management
     container_name: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-rabbitmq_user_default}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7}
+    <<: *backend-env-files
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672" # Management UI
