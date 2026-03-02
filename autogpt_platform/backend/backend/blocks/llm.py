@@ -12,7 +12,7 @@ from typing import Any, Iterable, List, Literal, Optional
 import anthropic
 import ollama
 import openai
-from anthropic.types import ToolParam, ToolUnionParam
+from anthropic.types import ToolUnionParam
 from groq import AsyncGroq
 from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
 from pydantic_core import CoreSchema, core_schema
