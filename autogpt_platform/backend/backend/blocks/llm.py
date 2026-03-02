@@ -106,6 +106,11 @@ class LlmModelMeta(type):
         if name.startswith("_"):
             raise AttributeError(f"type object 'LlmModel' has no attribute '{name}'")
 
+        # Only support enum-like attribute access (e.g. GPT4O, CLAUDE_3_5_SONNET)
+        # This prevents silent typos from passing through
+        if not re.fullmatch(r"[A-Z0-9_]+", name):
+            raise AttributeError(f"type object 'LlmModel' has no attribute '{name}'")
+
         # Convert attribute name to slug format:
         # 1. Lowercase: GPT4O -> gpt4o
         # 2. Underscores to hyphens: GPT4O_MINI -> gpt4o-mini
@@ -119,7 +124,9 @@ class LlmModelMeta(type):
         # If no exact match, try inserting hyphen between letter and digit
         # e.g., gpt4o -> gpt-4o
         transformed_slug = re.sub(r"([a-z])(\d)", r"\1-\2", slug)
-        return cls(transformed_slug)
+        if not registry_slugs or transformed_slug in registry_slugs:
+            return cls(transformed_slug)
+        raise AttributeError(f"type object 'LlmModel' has no attribute '{name}'")
 
     def __iter__(cls):
         """Iterate over all models from the registry.
@@ -345,9 +352,24 @@ async def resolve_model_for_call(llm_model: LlmModel) -> ResolvedModel:
         )
 
     if not model_info.is_enabled:
+        # Try same-provider fallback (consistent with pre-refresh behavior)
+        fallback = get_fallback_model_for_disabled(llm_model.value)
+        if fallback:
+            logger.warning(
+                f"Model '{llm_model.value}' is disabled. Using fallback "
+                f"'{fallback.slug}' from same provider ({fallback.metadata.provider})."
+            )
+            return ResolvedModel(
+                slug=fallback.slug,
+                provider=fallback.metadata.provider,
+                context_window=fallback.metadata.context_window,
+                max_output_tokens=fallback.metadata.max_output_tokens or 2**15,
+                used_fallback=True,
+                original_slug=llm_model.value,
+            )
         raise ModelUnavailableError(
-            f"Model '{llm_model.value}' exists but is disabled. "
-            f"Enable it via the admin UI at /admin/llms."
+            f"Model '{llm_model.value}' exists but is disabled and no fallback from "
+            f"the same provider is available. Enable the model or select a different one."
         )
 
     logger.info(f"Model '{llm_model.value}' loaded after registry refresh")
