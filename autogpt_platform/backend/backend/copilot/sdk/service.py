@@ -20,6 +20,12 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
+from ..constants import (
+    COMPACTION_DONE_MSG,
+    COMPACTION_STARTED_MSG,
+    COPILOT_ERROR_PREFIX,
+    COPILOT_SYSTEM_PREFIX,
+)
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -36,6 +42,9 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    system_notice_end_events,
+    system_notice_events,
+    system_notice_start_events,
 )
 from ..service import (
     _build_system_prompt,
@@ -133,10 +142,6 @@ class CapturedTranscript:
 
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
-
-# Special message prefixes for text-based markers (parsed by frontend)
-COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"  # Renders as ErrorCard
-COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
@@ -308,7 +313,7 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
 
 async def _compress_conversation_history(
     session: ChatSession,
-) -> list[ChatMessage]:
+) -> tuple[list[ChatMessage], bool]:
     """Compress prior conversation messages if they exceed the token threshold.
 
     Uses the shared compress_context() from prompt.py which supports:
@@ -320,7 +325,7 @@ async def _compress_conversation_history(
     """
     messages = session.messages[:-1]
     if len(messages) < 2:
-        return messages
+        return messages, False
 
     from backend.util.prompt import compress_context
 
@@ -372,9 +377,9 @@ async def _compress_conversation_history(
                 tool_call_id=m.get("tool_call_id"),
             )
             for m in result.messages
-        ]
+        ], True
 
-    return messages
+    return messages, False
 
 
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
@@ -444,12 +449,11 @@ async def _build_query_message(
     use_resume: bool,
     transcript_msg_count: int,
     session_id: str,
-) -> str:
+) -> tuple[str, bool]:
     """Build the query message with appropriate context.
 
-    With --resume the CLI already has full context, so only the new message
-    is needed.  Without resume, compress history into a context prefix.
-    Hybrid mode: if the transcript is stale, compress only the gap.
+    Returns:
+        Tuple of (query_message, was_compacted).
     """
     msg_count = len(session.messages)
 
@@ -462,18 +466,24 @@ async def _build_query_message(
                     f"[SDK] Transcript stale: covers {transcript_msg_count} "
                     f"of {msg_count} messages, compressing {len(gap)} missed"
                 )
-                return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    False,
+                )
     elif not use_resume and msg_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
             f"{session_id} ({msg_count} messages) — no transcript for --resume"
         )
-        compressed = await _compress_conversation_history(session)
+        compressed, was_compressed = await _compress_conversation_history(session)
         history_context = _format_conversation_context(compressed)
         if history_context:
-            return f"{history_context}\n\nNow, the user says:\n{current_message}"
+            return (
+                f"{history_context}\n\nNow, the user says:\n{current_message}",
+                was_compressed,
+            )
 
-    return current_message
+    return current_message, False
 
 
 async def stream_chat_completion_sdk(
@@ -638,11 +648,16 @@ async def stream_chat_completion_sdk(
                         f"{transcript_path}"
                     )
 
+            # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
+            sdk_compact_start = asyncio.Event()
+            sdk_compact_notified = False  # True after "Summarizing..." emitted
+
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
+                on_compact=sdk_compact_start.set,
             )
 
             # --- Resume strategy: download transcript from bucket ---
@@ -722,7 +737,7 @@ async def stream_chat_completion_sdk(
                     )
                     return
 
-                query_message = await _build_query_message(
+                query_message, was_compacted = await _build_query_message(
                     current_message,
                     session,
                     use_resume,
@@ -736,6 +751,12 @@ async def stream_chat_completion_sdk(
                     len(session.messages),
                     len(query_message),
                 )
+
+                compaction_notified = False
+                if was_compacted:
+                    compaction_notified = True
+                    for ev in system_notice_events(COMPACTION_DONE_MSG):
+                        yield ev
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -767,9 +788,19 @@ async def stream_chat_completion_sdk(
                         )
 
                         if not done:
-                            # Timeout — emit heartbeat but keep the task alive
-                            # Also refresh lock TTL to keep it alive
                             await lock.refresh()
+                            # Emit compaction start if PreCompact hook fired
+                            if (
+                                sdk_compact_start.is_set()
+                                and not sdk_compact_notified
+                                and not compaction_notified
+                            ):
+                                sdk_compact_start.clear()
+                                sdk_compact_notified = True
+                                for ev in system_notice_start_events(
+                                    COMPACTION_STARTED_MSG
+                                ):
+                                    yield ev
                             yield StreamHeartbeat()
                             continue
 
@@ -870,6 +901,23 @@ async def stream_chat_completion_sdk(
                                     session_id[:12],
                                     sdk_msg.result or "(no error message provided)",
                                 )
+
+                        # Emit compaction end if SDK finished compacting
+                        if not compaction_notified and (
+                            sdk_compact_notified or sdk_compact_start.is_set()
+                        ):
+                            # Close bracket if "Summarizing..." was shown,
+                            # otherwise emit a self-contained notice.
+                            done_events = (
+                                system_notice_end_events(COMPACTION_DONE_MSG)
+                                if sdk_compact_notified
+                                else system_notice_events(COMPACTION_DONE_MSG)
+                            )
+                            sdk_compact_start.clear()
+                            sdk_compact_notified = False
+                            compaction_notified = True
+                            for ev in done_events:
+                                yield ev
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):

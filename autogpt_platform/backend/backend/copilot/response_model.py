@@ -7,12 +7,15 @@ See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 
 import json
 import logging
+import uuid
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
+
+from .constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -224,3 +227,47 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
+
+
+def _system_text_events(prefix: str, message: str) -> list[StreamBaseResponse]:
+    """Return text events (no step boundary) for a system/error message."""
+    text_id = str(uuid.uuid4())
+    return [
+        StreamTextStart(id=text_id),
+        StreamTextDelta(id=text_id, delta=f"{prefix} {message}"),
+        StreamTextEnd(id=text_id),
+    ]
+
+
+def system_notice_events(message: str) -> list[StreamBaseResponse]:
+    """Return a self-contained step that renders as a system info bar."""
+    return [
+        StreamStartStep(),
+        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
+        StreamFinishStep(),
+    ]
+
+
+def system_notice_start_events(message: str) -> list[StreamBaseResponse]:
+    """Open a step with a system notice (no StreamFinishStep — caller closes)."""
+    return [
+        StreamStartStep(),
+        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
+    ]
+
+
+def system_notice_end_events(message: str) -> list[StreamBaseResponse]:
+    """Close a step with a system notice (no StreamStartStep — already open)."""
+    return [
+        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
+        StreamFinishStep(),
+    ]
+
+
+def system_error_events(message: str) -> list[StreamBaseResponse]:
+    """Return a self-contained step that renders as an error bar."""
+    return [
+        StreamStartStep(),
+        *_system_text_events(COPILOT_ERROR_PREFIX, message),
+        StreamFinishStep(),
+    ]
