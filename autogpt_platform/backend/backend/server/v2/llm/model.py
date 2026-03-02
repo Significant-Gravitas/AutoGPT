@@ -121,8 +121,8 @@ class CreateLlmModelRequest(pydantic.BaseModel):
     description: Optional[str] = None
     provider_id: str
     creator_id: Optional[str] = None
-    context_window: int
-    max_output_tokens: Optional[int] = None
+    context_window: int = pydantic.Field(gt=0)
+    max_output_tokens: Optional[int] = pydantic.Field(default=None, gt=0)
     is_enabled: bool = True
     capabilities: dict[str, Any] = pydantic.Field(default_factory=dict)
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
@@ -144,8 +144,8 @@ class CreateLlmModelRequest(pydantic.BaseModel):
 class UpdateLlmModelRequest(pydantic.BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
-    context_window: Optional[int] = None
-    max_output_tokens: Optional[int] = None
+    context_window: Optional[int] = pydantic.Field(default=None, gt=0)
+    max_output_tokens: Optional[int] = pydantic.Field(default=None, gt=0)
     is_enabled: Optional[bool] = None
     capabilities: Optional[dict[str, Any]] = None
     metadata: Optional[dict[str, Any]] = None
