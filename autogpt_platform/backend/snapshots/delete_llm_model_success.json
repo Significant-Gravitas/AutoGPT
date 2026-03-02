@@ -1,0 +1,7 @@
+{
+  "deleted_model_display_name": "GPT-3.5 Turbo",
+  "deleted_model_slug": "gpt-3.5-turbo",
+  "message": "Successfully deleted model 'GPT-3.5 Turbo' (gpt-3.5-turbo) and migrated 42 workflow node(s) to 'gpt-4o-mini'.",
+  "nodes_migrated": 42,
+  "replacement_model_slug": "gpt-4o-mini"
+}

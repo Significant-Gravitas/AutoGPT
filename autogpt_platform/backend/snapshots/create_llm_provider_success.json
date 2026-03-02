@@ -1,0 +1,15 @@
+{
+  "default_credential_id": null,
+  "default_credential_provider": null,
+  "default_credential_type": null,
+  "description": "Groq LLM provider",
+  "display_name": "Groq",
+  "id": "new-provider-id",
+  "metadata": {},
+  "models": [],
+  "name": "groq",
+  "supports_json_output": true,
+  "supports_parallel_tool": false,
+  "supports_reasoning": false,
+  "supports_tools": true
+}

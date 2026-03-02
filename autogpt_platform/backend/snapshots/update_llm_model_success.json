@@ -1,0 +1,27 @@
+{
+  "capabilities": {},
+  "context_window": 256000,
+  "costs": [
+    {
+      "credential_id": null,
+      "credential_provider": "openai",
+      "credential_type": null,
+      "credit_cost": 15,
+      "currency": null,
+      "id": "cost-1",
+      "metadata": {},
+      "unit": "RUN"
+    }
+  ],
+  "creator": null,
+  "creator_id": null,
+  "description": "Updated description",
+  "display_name": "GPT-4o Updated",
+  "id": "model-1",
+  "is_enabled": true,
+  "is_recommended": false,
+  "max_output_tokens": 32768,
+  "metadata": {},
+  "provider_id": "provider-1",
+  "slug": "gpt-4o"
+}
