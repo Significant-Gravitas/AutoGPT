@@ -65,7 +65,7 @@ class CompactionTracker:
         refresh.
         """
         evts = compaction_events(COMPACTION_DONE_MSG)
-        _persist_compaction(session, evts)
+        persist_compaction(session, evts)
         return evts
 
     # ------------------------------------------------------------------
@@ -122,11 +122,11 @@ class CompactionTracker:
         self.compact_start.clear()
         self._start_emitted = False
         self._done = True
-        _persist_compaction(session, all_events)
+        persist_compaction(session, all_events)
         return done_events
 
 
-def _persist_compaction(session: ChatSession, events: list[StreamBaseResponse]) -> None:
+def persist_compaction(session: ChatSession, events: list[StreamBaseResponse]) -> None:
     """Record compaction tool-call + result into the session so it survives refresh.
 
     Compaction events are synthetic (not real SDK tool calls), so they bypass the

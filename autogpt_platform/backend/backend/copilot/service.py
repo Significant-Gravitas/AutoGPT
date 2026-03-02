@@ -981,7 +981,11 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
-        for ev in compaction_events(COMPACTION_DONE_MSG):
+        from .sdk.compaction import persist_compaction
+
+        evts = compaction_events(COMPACTION_DONE_MSG)
+        persist_compaction(session, evts)
+        for ev in evts:
             yield ev
 
     # Loop to handle tool calls and continue conversation
