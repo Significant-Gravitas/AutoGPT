@@ -65,6 +65,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 
 export type ConnectionData = Array<{
@@ -497,6 +498,34 @@ export const CustomNode = React.memo(
       },
       [data.hardcodedValues, setHardcodedValues],
     );
+
+    // Populate agent_name/agent_version when loading an existing agent block
+    // that has graph_id set but no persisted agent_name yet (e.g. created before this fix).
+    const api = useBackendAPI();
+    useEffect(() => {
+      if (
+        data.uiType !== BlockUIType.AGENT ||
+        !data.hardcodedValues?.graph_id ||
+        data.hardcodedValues?.agent_name
+      ) {
+        return;
+      }
+      api
+        .getGraph(data.hardcodedValues.graph_id)
+        .then((graph) => {
+          if (graph?.name) {
+            updateAgentInBlock({
+              id: data.hardcodedValues.graph_id,
+              name: graph.name,
+              version: data.hardcodedValues.graph_version ?? "",
+            });
+          }
+        })
+        .catch(() => {
+          // Fail silently — title stays as "Agent Executor"
+        });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const isInputHandleConnected = (key: string) => {
       return (
