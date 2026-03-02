@@ -31,30 +31,35 @@ import { ViewAgentOutputTool } from "../../tools/ViewAgentOutput/ViewAgentOutput
 // Special text parsing (error markers, workspace URLs, etc.)
 // ---------------------------------------------------------------------------
 
-// Special message prefixes for text-based markers (set by backend)
-const COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]";
-const COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]";
+// Special message prefixes for text-based markers (set by backend).
+// The hex suffix makes it virtually impossible for an LLM to accidentally
+// produce these strings in normal conversation.
+const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
+const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
 
 type MarkerType = "error" | "system" | null;
 
-/**
- * Parse special markers from message content (error, system).
- *
- * Detects markers added by the backend for special rendering:
- * - `[COPILOT_ERROR] message` → ErrorCard
- * - `[COPILOT_SYSTEM] message` → System info message
- *
- * Returns marker type, marker text, and cleaned text.
- */
+/** Escape all regex special characters in a string. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Pre-compiled marker regexes (avoids re-creating on every call / render)
+const ERROR_MARKER_RE = new RegExp(
+  `${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`,
+  "s",
+);
+const SYSTEM_MARKER_RE = new RegExp(
+  `${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`,
+  "s",
+);
+
 function parseSpecialMarkers(text: string): {
   markerType: MarkerType;
   markerText: string;
   cleanText: string;
 } {
-  // Check for error marker
-  const errorMatch = text.match(
-    new RegExp(`\\${COPILOT_ERROR_PREFIX}\\s*(.+?)$`, "s"),
-  );
+  const errorMatch = text.match(ERROR_MARKER_RE);
   if (errorMatch) {
     return {
       markerType: "error",
@@ -63,10 +68,7 @@ function parseSpecialMarkers(text: string): {
     };
   }
 
-  // Check for system marker
-  const systemMatch = text.match(
-    new RegExp(`\\${COPILOT_SYSTEM_PREFIX}\\s*(.+?)$`, "s"),
-  );
+  const systemMatch = text.match(SYSTEM_MARKER_RE);
   if (systemMatch) {
     return {
       markerType: "system",
@@ -270,6 +272,21 @@ export const ChatMessagesContainer = ({
                         parseSpecialMarkers(part.text);
 
                       if (markerType === "error") {
+                        const lowerMarker = markerText.toLowerCase();
+                        const isCancellation =
+                          lowerMarker.includes("cancel") ||
+                          lowerMarker.includes("abort") ||
+                          lowerMarker === "operation cancelled";
+                        if (isCancellation) {
+                          return (
+                            <div
+                              key={`${message.id}-${i}`}
+                              className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+                            >
+                              You stopped this chat
+                            </div>
+                          );
+                        }
                         return (
                           <ErrorCard
                             key={`${message.id}-${i}`}

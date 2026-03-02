@@ -487,7 +487,7 @@ async def stream_chat_post(
             )
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                     chunks_yielded += 1
 
                     if not first_chunk_yielded:
@@ -640,7 +640,7 @@ async def resume_session_stream(
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                     if chunk_count < 3:
                         logger.info(
                             "Resume stream chunk",

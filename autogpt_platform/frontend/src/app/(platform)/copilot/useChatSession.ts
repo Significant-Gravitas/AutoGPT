@@ -25,10 +25,12 @@ export function useChatSession() {
     },
   });
 
-  // When the user navigates away from a session, invalidate its query cache.
+  // Invalidate query cache on session switch.
   // useChat destroys its Chat instance on id change, so messages are lost.
-  // Invalidating ensures the next visit fetches fresh data from the API
-  // instead of hydrating from stale cache that's missing recent messages.
+  // We invalidate BOTH the old session (stale after leaving) and the new
+  // session (may have been cached before the user sent their last message,
+  // so active_stream and messages could be outdated). This guarantees a
+  // fresh fetch that gives the resume effect accurate hasActiveStream state.
   const prevSessionIdRef = useRef(sessionId);
 
   useEffect(() => {
@@ -37,6 +39,11 @@ export function useChatSession() {
     if (prev && prev !== sessionId) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(prev),
+      });
+    }
+    if (sessionId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
     }
   }, [sessionId, queryClient]);
