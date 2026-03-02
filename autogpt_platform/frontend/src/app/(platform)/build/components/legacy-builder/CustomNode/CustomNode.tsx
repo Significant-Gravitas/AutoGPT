@@ -65,7 +65,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import {useDebounce} from "react-use";
+
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -118,7 +118,7 @@ export const CustomNode = React.memo(
     const [customTitle, setCustomTitle] = useState(
       data.metadata?.customized_name || "",
     );
-    const [localAgent, setLocalAgent] = useState<any>(null);
+
     const [isTitleHovered, setIsTitleHovered] = useState(false);
     const titleInputRef = useRef<HTMLInputElement>(null);
     const { updateNodeData, deleteElements, addNodes, getNode } = useReactFlow<
@@ -137,20 +137,6 @@ export const CustomNode = React.memo(
       data.inputSchema = data.hardcodedValues?.input_schema || {};
       data.outputSchema = data.hardcodedValues?.output_schema || {};
       subGraphID = data.hardcodedValues?.graph_id || subGraphID;
-      const agentFromInput = data.hardcodedValues?.agent_id
-      ?{
-        id:data.hardcodedValues.agent_id,
-        name: data.hardcodedValues.agent_name || "Agent Executor",
-        version: data.hardcodedValues.agent_version || "",
-      }
-      : null;
-
-      if(agentFromInput && !localAgent) {
-        setLocalAgent(agentFromInput);
-      }
-
-      
-        
     }
 
     if (!builderContext) {
@@ -216,26 +202,18 @@ export const CustomNode = React.memo(
       customTitle ||
       beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
 
-    // Agent title with version if available
-    const agentTitle = data.uiType === BlockUIType.AGENT && (data.hardcodedValues?.agent_name || localAgent?.name)
-      ? `${data.hardcodedValues?.agent_name || localAgent?.name}${data.hardcodedValues?.agent_version ? ` v${data.hardcodedValues.agent_version}` : ""}`
-      : null;
+    // Agent title with version if available — reads directly from persisted hardcodedValues
+    const agentTitle =
+      data.uiType === BlockUIType.AGENT && data.hardcodedValues?.agent_name
+        ? `${data.hardcodedValues.agent_name}${
+            data.hardcodedValues.agent_version
+              ? ` v${data.hardcodedValues.agent_version}`
+              : ""
+          }`
+        : null;
 
     // Final title prioritizing custom title > agent title > display title
     const finalDisplayTitle = customTitle || agentTitle || displayTitle;
-
-    // Handle agent state management
-    const agentFromInput = data.hardcodedValues?.agent_id
-      ? {
-          id: data.hardcodedValues.agent_id,
-          name: data.hardcodedValues.agent_name || "Agent Executor",
-          version: data.hardcodedValues.agent_version || "",
-        }
-      : null;
-
-    if(agentFromInput && !localAgent) {
-      setLocalAgent(agentFromInput);
-    }
 
     useEffect(() => {
       isInitialSetup.current = false;
@@ -254,13 +232,7 @@ export const CustomNode = React.memo(
           fillObjectDefaultsFromSchema(data.hardcodedValues, data.inputSchema),
         );
       }
-      if(data.uiType === BlockUIType.AGENT && data.hardcodedValues?.agent_id ){
-        setLocalAgent({
-          id:data.hardcodedValues.agent_id,
-          name: data.hardcodedValues.agent_name || "Agent Executor",
-          version: data.hardcodedValues.agent_version || "",
-        });
-      }
+
     }, []);
 
     const setErrors = useCallback(
@@ -511,20 +483,20 @@ export const CustomNode = React.memo(
       },
       [data.hardcodedValues, id, setHardcodedValues, data.errors, setErrors],
     );
-    const updateAgentInBlock = useCallback((agent:any) =>{
-      if(!agent?.id) return;
-      const agentName = agent.name ? agent.name : "Agent Executor";
-      const version = agent.version || "";
-      const title = version ? `${agentName} v${version}` : agentName;
-      const newHardcodedValues = {
-        ...data.hardcodedValues,
-        agent_id: agent.id,
-        agent_name: agentName,  // Store just the name without version
-        agent_version: version,
-      }
-      setLocalAgent({id:agent.id, name:agentName, version:version});
-      setHardcodedValues(newHardcodedValues);
-    },[data.hardcodedValues, setHardcodedValues]);
+    const updateAgentInBlock = useCallback(
+      (agent: any) => {
+        if (!agent?.id) return;
+        const agentName = agent.name ? agent.name : "Agent Executor";
+        const version = agent.version || "";
+        setHardcodedValues({
+          ...data.hardcodedValues,
+          agent_id: agent.id,
+          agent_name: agentName,
+          agent_version: version,
+        });
+      },
+      [data.hardcodedValues, setHardcodedValues],
+    );
 
     const isInputHandleConnected = (key: string) => {
       return (
@@ -1106,6 +1078,6 @@ export const CustomNode = React.memo(
   },
   (prevProps, nextProps) => {
     // Only re-render if the 'data' prop has changed
-    return prevProps.data === nextProps.data && prevProps.id === nextProps.id;
+    return prevProps.data === nextProps.data;
   },
 );
