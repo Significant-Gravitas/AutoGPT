@@ -108,7 +108,7 @@ async def _run(
 
 async def _snapshot(session_name: str) -> str:
     """Return the current page's interactive accessibility tree, truncated."""
-    rc, stdout, stderr = await _run(session_name, "snapshot", "-i")
+    rc, stdout, stderr = await _run(session_name, "snapshot", "-i", "-c")
     if rc != 0:
         return f"[snapshot failed: {stderr[:300]}]"
     text = stdout.strip()
