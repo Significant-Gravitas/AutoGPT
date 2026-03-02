@@ -7,7 +7,6 @@ See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 
 import json
 import logging
-import uuid
 from enum import Enum
 from typing import Any
 
@@ -225,58 +224,3 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
-
-
-COMPACTION_TOOL_NAME = "context_compaction"
-
-
-def compaction_start_events() -> tuple[str, list[StreamBaseResponse]]:
-    """Emit tool-call-start events for compaction — renders as a spinning tool.
-
-    Returns ``(tool_call_id, events)`` so the caller can close with the same id.
-    """
-    tool_call_id = f"compaction-{uuid.uuid4().hex[:12]}"
-    return tool_call_id, [
-        StreamStartStep(),
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME),
-        StreamToolInputAvailable(
-            toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME, input={}
-        ),
-    ]
-
-
-def compaction_end_events(tool_call_id: str, message: str) -> list[StreamBaseResponse]:
-    """Close a compaction tool call with the result message."""
-    return [
-        StreamToolOutputAvailable(
-            toolCallId=tool_call_id,
-            toolName=COMPACTION_TOOL_NAME,
-            output=message,
-        ),
-        StreamFinishStep(),
-    ]
-
-
-def compaction_events(
-    message: str, tool_call_id: str | None = None
-) -> list[StreamBaseResponse]:
-    """Emit a self-contained compaction tool call (already completed).
-
-    When *tool_call_id* is provided it is reused (e.g. for persistence that
-    must match an already-streamed start event).  Otherwise a new random ID
-    is generated.
-    """
-    if tool_call_id is None:
-        tool_call_id, start = compaction_start_events()
-    else:
-        # Build start events with the given ID (no new random ID)
-        start = [
-            StreamStartStep(),
-            StreamToolInputStart(
-                toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME
-            ),
-            StreamToolInputAvailable(
-                toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME, input={}
-            ),
-        ]
-    return start + compaction_end_events(tool_call_id, message)

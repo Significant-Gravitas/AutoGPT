@@ -59,7 +59,6 @@ from .response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
-    compaction_events,
 )
 from .tools import execute_tool, tools
 from .tools.models import ErrorResponse
@@ -981,7 +980,7 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
-        from .sdk.compaction import persist_compaction
+        from .sdk.compaction import compaction_events, persist_compaction
 
         evts = compaction_events(COMPACTION_DONE_MSG)
         persist_compaction(session, evts)

@@ -45,7 +45,7 @@ from ..service import (
 )
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
-from .compaction import CompactionTracker
+from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -304,32 +304,6 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-def _filter_compaction_messages(
-    messages: list[ChatMessage],
-) -> list[ChatMessage]:
-    """Remove synthetic compaction tool-call messages (UI-only artifacts)."""
-    from ..response_model import COMPACTION_TOOL_NAME
-
-    compaction_ids: set[str] = set()
-    filtered: list[ChatMessage] = []
-    for msg in messages:
-        if msg.role == "assistant" and msg.tool_calls:
-            for tc in msg.tool_calls:
-                if tc.get("function", {}).get("name") == COMPACTION_TOOL_NAME:
-                    compaction_ids.add(tc.get("id", ""))
-            non_compaction = [
-                tc
-                for tc in msg.tool_calls
-                if tc.get("function", {}).get("name") != COMPACTION_TOOL_NAME
-            ]
-            if not non_compaction and not msg.content:
-                continue
-        if msg.role == "tool" and msg.tool_call_id in compaction_ids:
-            continue
-        filtered.append(msg)
-    return filtered
-
-
 async def _compress_messages(
     messages: list[ChatMessage],
 ) -> tuple[list[ChatMessage], bool]:
@@ -340,7 +314,7 @@ async def _compress_messages(
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
     """
-    messages = _filter_compaction_messages(messages)
+    messages = filter_compaction_messages(messages)
 
     if len(messages) < 2:
         return messages, False
@@ -409,13 +383,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 
     Returns None if there are no messages to format.
     """
-    from ..response_model import COMPACTION_TOOL_NAME
-
     if not messages:
         return None
 
-    # Collect tool-call IDs for compaction calls so we can skip their results too
-    compaction_tool_call_ids: set[str] = set()
+    # Filter out compaction messages first, then format
+    messages = filter_compaction_messages(messages)
 
     lines: list[str] = []
     for msg in messages:
@@ -429,14 +401,9 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
                 for tc in msg.tool_calls:
                     func = tc.get("function", {})
                     tool_name = func.get("name", "unknown")
-                    if tool_name == COMPACTION_TOOL_NAME:
-                        compaction_tool_call_ids.add(tc.get("id", ""))
-                        continue
                     tool_args = func.get("arguments", "")
                     lines.append(f"You called tool: {tool_name}({tool_args})")
         elif msg.role == "tool":
-            if msg.tool_call_id and msg.tool_call_id in compaction_tool_call_ids:
-                continue
             content = msg.content or ""
             lines.append(f"Tool result: {content}")
 
