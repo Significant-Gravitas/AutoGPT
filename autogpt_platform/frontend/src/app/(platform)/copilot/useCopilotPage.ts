@@ -7,7 +7,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotStream } from "./useCopilotStream";
@@ -134,25 +134,22 @@ export function useCopilotPage() {
   }
 
   // --- Delete handlers ---
-  const handleDeleteClick = useCallback(
-    (id: string, title: string | null | undefined) => {
-      if (isDeleting) return;
-      setSessionToDelete({ id, title });
-    },
-    [isDeleting, setSessionToDelete],
-  );
+  function handleDeleteClick(id: string, title: string | null | undefined) {
+    if (isDeleting) return;
+    setSessionToDelete({ id, title });
+  }
 
-  const handleConfirmDelete = useCallback(() => {
+  function handleConfirmDelete() {
     if (sessionToDelete) {
       deleteSessionMutation({ sessionId: sessionToDelete.id });
     }
-  }, [sessionToDelete, deleteSessionMutation]);
+  }
 
-  const handleCancelDelete = useCallback(() => {
+  function handleCancelDelete() {
     if (!isDeleting) {
       setSessionToDelete(null);
     }
-  }, [isDeleting, setSessionToDelete]);
+  }
 
   return {
     sessionId,

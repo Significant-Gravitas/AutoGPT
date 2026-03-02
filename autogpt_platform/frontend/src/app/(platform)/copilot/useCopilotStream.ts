@@ -138,10 +138,17 @@ export function useCopilotStream({
 
       // Check if backend executor is still running after clean close
       const result = await refetchSession();
-      const d = result.data as
-        | { status: number; data: { active_stream?: unknown } }
-        | undefined;
-      const backendActive = d?.status === 200 && !!d.data.active_stream;
+      const d = result.data;
+      const backendActive =
+        d != null &&
+        typeof d === "object" &&
+        "status" in d &&
+        d.status === 200 &&
+        "data" in d &&
+        d.data != null &&
+        typeof d.data === "object" &&
+        "active_stream" in d.data &&
+        !!d.data.active_stream;
 
       if (backendActive) {
         handleReconnect(sessionId);
@@ -188,7 +195,30 @@ export function useCopilotStream({
   async function stop() {
     isUserStoppingRef.current = true;
     sdkStop();
-    setMessages((prev) => resolveInProgressTools(prev, "cancelled"));
+    // Resolve pending tool calls and inject a cancellation marker so the UI
+    // shows "You manually stopped this chat" immediately (the backend writes
+    // the same marker to the DB, but the SSE connection is already aborted).
+    // Marker must match COPILOT_ERROR_PREFIX in ChatMessagesContainer/helpers.ts.
+    setMessages((prev) => {
+      const resolved = resolveInProgressTools(prev, "cancelled");
+      const last = resolved[resolved.length - 1];
+      if (last?.role === "assistant") {
+        return [
+          ...resolved.slice(0, -1),
+          {
+            ...last,
+            parts: [
+              ...last.parts,
+              {
+                type: "text" as const,
+                text: "[__COPILOT_ERROR_f7a1__] Operation cancelled",
+              },
+            ],
+          },
+        ];
+      }
+      return resolved;
+    });
 
     if (!sessionId) return;
     try {
@@ -273,20 +303,53 @@ export function useCopilotStream({
     // Only resume once per session
     if (hasResumedRef.current.get(sessionId)) return;
 
+    // Don't resume a stream the user just cancelled
+    if (isUserStoppingRef.current) return;
+
     // Mark as resumed immediately to prevent race conditions
     hasResumedRef.current.set(sessionId, true);
+
+    // Remove the in-progress assistant message before resuming.
+    // The backend replays the stream from "0-0", so keeping the hydrated
+    // version would cause the old parts to overlap with replayed parts.
+    // Previous turns are preserved; the stream recreates the current turn.
+    setMessages((prev) => {
+      if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+
     resumeStream();
-  }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
+  }, [
+    sessionId,
+    hasActiveStream,
+    hydratedMessages,
+    status,
+    resumeStream,
+    setMessages,
+  ]);
 
   // Clear messages when session is null
   useEffect(() => {
     if (!sessionId) setMessages([]);
   }, [sessionId, setMessages]);
 
-  // True while reconnecting or backend has active stream but we haven't connected yet
+  // Reset the user-stop flag once the backend confirms the stream is no
+  // longer active — this prevents the flag from staying stale forever.
+  useEffect(() => {
+    if (!hasActiveStream && isUserStoppingRef.current) {
+      isUserStoppingRef.current = false;
+    }
+  }, [hasActiveStream]);
+
+  // True while reconnecting or backend has active stream but we haven't connected yet.
+  // Suppressed when the user explicitly stopped — the backend may take a moment
+  // to clear active_stream but the UI should be responsive immediately.
   const isReconnecting =
-    isReconnectScheduled ||
-    (hasActiveStream && status !== "streaming" && status !== "submitted");
+    !isUserStoppingRef.current &&
+    (isReconnectScheduled ||
+      (hasActiveStream && status !== "streaming" && status !== "submitted"));
 
   return {
     messages,
