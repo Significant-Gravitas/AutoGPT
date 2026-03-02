@@ -12,7 +12,7 @@ from typing import Any, Iterable, List, Literal, Optional
 import anthropic
 import ollama
 import openai
-from anthropic.types import ToolParam
+from anthropic.types import ToolParam, ToolUnionParam
 from groq import AsyncGroq
 from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
 from pydantic_core import CoreSchema, core_schema
@@ -385,7 +385,7 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.NotGiven:
+) -> Iterable[ToolUnionParam] | anthropic.NotGiven:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
