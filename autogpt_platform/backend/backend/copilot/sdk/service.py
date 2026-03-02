@@ -20,7 +20,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
-from ..constants import COMPACTION_DONE_MSG, COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
+from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -37,9 +37,6 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
-    compaction_end_events,
-    compaction_events,
-    compaction_start_events,
 )
 from ..service import (
     _build_system_prompt,
@@ -48,6 +45,7 @@ from ..service import (
 )
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from .compaction import CompactionTracker
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -644,15 +642,14 @@ async def stream_chat_completion_sdk(
                     )
 
             # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
-            sdk_compact_start = asyncio.Event()
-            sdk_compact_notified = False  # True after "Summarizing..." emitted
+            compaction = CompactionTracker()
 
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
-                on_compact=sdk_compact_start.set,
+                on_compact=compaction.on_compact,
             )
 
             # --- Resume strategy: download transcript from bucket ---
@@ -748,13 +745,10 @@ async def stream_chat_completion_sdk(
                 )
 
                 if was_compacted:
-                    for ev in compaction_events(COMPACTION_DONE_MSG):
+                    for ev in compaction.emit_pre_query(session):
                         yield ev
 
-                # Track SDK-internal compaction separately so a pre-query
-                # compaction doesn't suppress notifications for it.
-                sdk_compaction_notified = False
-                compaction_tool_call_id = ""
+                compaction.reset_for_query()
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -787,19 +781,8 @@ async def stream_chat_completion_sdk(
 
                         if not done:
                             await lock.refresh()
-                            # Emit compaction start if PreCompact hook fired
-                            if (
-                                sdk_compact_start.is_set()
-                                and not sdk_compact_notified
-                                and not sdk_compaction_notified
-                            ):
-                                sdk_compact_start.clear()
-                                sdk_compact_notified = True
-                                compaction_tool_call_id, start_evts = (
-                                    compaction_start_events()
-                                )
-                                for ev in start_evts:
-                                    yield ev
+                            for ev in compaction.emit_start_if_ready():
+                                yield ev
                             yield StreamHeartbeat()
                             continue
 
@@ -902,24 +885,8 @@ async def stream_chat_completion_sdk(
                                 )
 
                         # Emit compaction end if SDK finished compacting
-                        if not sdk_compaction_notified and (
-                            sdk_compact_notified or sdk_compact_start.is_set()
-                        ):
-                            if sdk_compact_notified:
-                                # Close the open tool call
-                                done_events = compaction_end_events(
-                                    compaction_tool_call_id,
-                                    COMPACTION_DONE_MSG,
-                                )
-                            else:
-                                # PreCompact fired but we never emitted start
-                                # — emit a self-contained compaction tool call.
-                                done_events = compaction_events(COMPACTION_DONE_MSG)
-                            sdk_compact_start.clear()
-                            sdk_compact_notified = False
-                            sdk_compaction_notified = True
-                            for ev in done_events:
-                                yield ev
+                        for ev in await compaction.emit_end_if_ready(session):
+                            yield ev
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
