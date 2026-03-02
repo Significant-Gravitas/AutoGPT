@@ -75,19 +75,21 @@ services:
       timeout: 5s
       retries: 5
   rabbitmq:
-    image: rabbitmq:4.1.4
+    image: rabbitmq:4.1.4-management
     container_name: rabbitmq
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 10s
-    <<: *backend-env-files
-    environment:
-      <<: *backend-env
-    ports:
-      - "5672:5672"
+    restart: unless-stopped
 
   rest_server:
     build:
