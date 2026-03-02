@@ -199,12 +199,12 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
         ]
     )
 
-    # Mock _compress_conversation_history to return the messages as-is
-    async def _mock_compress(sess):
-        return sess.messages[:-1], False
+    # Mock _compress_messages to return the messages as-is
+    async def _mock_compress(msgs):
+        return msgs, False
 
     monkeypatch.setattr(
-        "backend.copilot.sdk.service._compress_conversation_history",
+        "backend.copilot.sdk.service._compress_messages",
         _mock_compress,
     )
 

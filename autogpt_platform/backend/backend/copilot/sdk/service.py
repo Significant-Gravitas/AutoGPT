@@ -304,29 +304,19 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-async def _compress_conversation_history(
-    session: ChatSession,
-) -> tuple[list[ChatMessage], bool]:
-    """Compress prior conversation messages if they exceed the token threshold.
-
-    Uses the shared compress_context() from prompt.py which supports:
-    - LLM summarization of old messages (keeps recent ones intact)
-    - Progressive content truncation as fallback
-    - Middle-out deletion as last resort
-
-    Returns the compressed prior messages (everything except the current message).
-    """
+def _filter_compaction_messages(
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Remove synthetic compaction tool-call messages (UI-only artifacts)."""
     from ..response_model import COMPACTION_TOOL_NAME
 
-    # Filter out synthetic compaction messages — they're UI-only artifacts.
     compaction_ids: set[str] = set()
-    messages: list[ChatMessage] = []
-    for msg in session.messages[:-1]:
+    filtered: list[ChatMessage] = []
+    for msg in messages:
         if msg.role == "assistant" and msg.tool_calls:
             for tc in msg.tool_calls:
                 if tc.get("function", {}).get("name") == COMPACTION_TOOL_NAME:
                     compaction_ids.add(tc.get("id", ""))
-            # Skip assistant messages that only contain compaction calls
             non_compaction = [
                 tc
                 for tc in msg.tool_calls
@@ -336,7 +326,21 @@ async def _compress_conversation_history(
                 continue
         if msg.role == "tool" and msg.tool_call_id in compaction_ids:
             continue
-        messages.append(msg)
+        filtered.append(msg)
+    return filtered
+
+
+async def _compress_messages(
+    messages: list[ChatMessage],
+) -> tuple[list[ChatMessage], bool]:
+    """Compress a list of messages if they exceed the token threshold.
+
+    Uses the shared compress_context() from prompt.py which supports:
+    - LLM summarization of old messages (keeps recent ones intact)
+    - Progressive content truncation as fallback
+    - Middle-out deletion as last resort
+    """
+    messages = _filter_compaction_messages(messages)
 
     if len(messages) < 2:
         return messages, False
@@ -484,22 +488,27 @@ async def _build_query_message(
     if use_resume and transcript_msg_count > 0:
         if transcript_msg_count < msg_count - 1:
             gap = session.messages[transcript_msg_count:-1]
-            gap_context = _format_conversation_context(gap)
+            compressed, was_compressed = await _compress_messages(gap)
+            gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
-                    f"[SDK] Transcript stale: covers {transcript_msg_count} "
-                    f"of {msg_count} messages, compressing {len(gap)} missed"
+                    "[SDK] Transcript stale: covers %d of %d messages, "
+                    "gap=%d (compressed=%s)",
+                    transcript_msg_count,
+                    msg_count,
+                    len(gap),
+                    was_compressed,
                 )
                 return (
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
-                    False,
+                    was_compressed,
                 )
     elif not use_resume and msg_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
             f"{session_id} ({msg_count} messages) — no transcript for --resume"
         )
-        compressed, was_compressed = await _compress_conversation_history(session)
+        compressed, was_compressed = await _compress_messages(session.messages[:-1])
         history_context = _format_conversation_context(compressed)
         if history_context:
             return (
