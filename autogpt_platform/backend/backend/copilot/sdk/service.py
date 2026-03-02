@@ -316,7 +316,28 @@ async def _compress_conversation_history(
 
     Returns the compressed prior messages (everything except the current message).
     """
-    messages = session.messages[:-1]
+    from ..response_model import COMPACTION_TOOL_NAME
+
+    # Filter out synthetic compaction messages — they're UI-only artifacts.
+    compaction_ids: set[str] = set()
+    messages: list[ChatMessage] = []
+    for msg in session.messages[:-1]:
+        if msg.role == "assistant" and msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc.get("function", {}).get("name") == COMPACTION_TOOL_NAME:
+                    compaction_ids.add(tc.get("id", ""))
+            # Skip assistant messages that only contain compaction calls
+            non_compaction = [
+                tc
+                for tc in msg.tool_calls
+                if tc.get("function", {}).get("name") != COMPACTION_TOOL_NAME
+            ]
+            if not non_compaction and not msg.content:
+                continue
+        if msg.role == "tool" and msg.tool_call_id in compaction_ids:
+            continue
+        messages.append(msg)
+
     if len(messages) < 2:
         return messages, False
 
@@ -384,8 +405,13 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
 
     Returns None if there are no messages to format.
     """
+    from ..response_model import COMPACTION_TOOL_NAME
+
     if not messages:
         return None
+
+    # Collect tool-call IDs for compaction calls so we can skip their results too
+    compaction_tool_call_ids: set[str] = set()
 
     lines: list[str] = []
     for msg in messages:
@@ -399,9 +425,14 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
                 for tc in msg.tool_calls:
                     func = tc.get("function", {})
                     tool_name = func.get("name", "unknown")
+                    if tool_name == COMPACTION_TOOL_NAME:
+                        compaction_tool_call_ids.add(tc.get("id", ""))
+                        continue
                     tool_args = func.get("arguments", "")
                     lines.append(f"You called tool: {tool_name}({tool_args})")
         elif msg.role == "tool":
+            if msg.tool_call_id and msg.tool_call_id in compaction_tool_call_ids:
+                continue
             content = msg.content or ""
             lines.append(f"Tool result: {content}")
 
