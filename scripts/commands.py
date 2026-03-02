@@ -16,6 +16,7 @@ from googleapiclient.errors import HttpError
 import browser_agent
 import learning
 import finance_skills
+import openclaw_integration
 
 cfg = Config()
 
@@ -166,6 +167,24 @@ def execute_command(command_name, arguments):
                 arguments["query"],
                 arguments.get("engine", "ddg"),
                 arguments.get("max_results", 8))
+        elif command_name == "openclaw_status":
+            return openclaw_integration.openclaw_status()
+        elif command_name == "openclaw_send":
+            return openclaw_integration.openclaw_send(
+                arguments["channel"],
+                arguments["recipient"],
+                arguments["message"])
+        elif command_name == "openclaw_sessions":
+            return openclaw_integration.openclaw_sessions(
+                arguments["action"],
+                arguments.get("session_id", ""),
+                arguments.get("message", ""))
+        elif command_name == "openclaw_agent":
+            return openclaw_integration.openclaw_agent(
+                arguments["message"],
+                arguments.get("thinking", "adaptive"))
+        elif command_name == "openclaw_channels":
+            return openclaw_integration.openclaw_channels()
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

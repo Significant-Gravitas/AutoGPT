@@ -58,6 +58,11 @@ def get_prompt():
         ("Finance Visualize — Draw.io logic chain diagram", "finance_visualize", {"logic_chain": "<description_of_chain>", "filename": "<output.html>"}),
         ("Finance Report — generate professional analysis report", "finance_report", {"topic": "<report_topic>", "data": "<supporting_data>"}),
         ("Finance Search — multi-engine financial web search", "finance_search", {"query": "<search_query>", "engine": "<ddg>", "max_results": "<count>"}),
+        ("OpenClaw Status — check gateway health & version", "openclaw_status", {}),
+        ("OpenClaw Send — deliver message via channel", "openclaw_send", {"channel": "<whatsapp|telegram|slack|discord|signal|imessage|google_chat|line|feishu|email>", "recipient": "<recipient_id>", "message": "<text>"}),
+        ("OpenClaw Sessions — manage cross-channel sessions", "openclaw_sessions", {"action": "<list|history|send>", "session_id": "<id>", "message": "<text>"}),
+        ("OpenClaw Agent — talk to OpenClaw agent runtime", "openclaw_agent", {"message": "<prompt>", "thinking": "<adaptive|high|low|off>"}),
+        ("OpenClaw Channels — list configured channels", "openclaw_channels", {}),
         ("Do Nothing", "do_nothing", {}),
     ]
 
@@ -73,6 +78,7 @@ def get_prompt():
     prompt_generator.add_resource("Headless browser automation for interacting with JavaScript-rendered web pages, filling forms, clicking buttons, and taking screenshots.")
     prompt_generator.add_resource("Persistent user profile that remembers preferences, workflows, corrections, and facts across sessions.")
     prompt_generator.add_resource("AlphaEar finance skills: news aggregation, stock data, sentiment analysis, market prediction, signal tracking, logic visualization, report generation, and multi-engine financial search.")
+    prompt_generator.add_resource("OpenClaw v2026.3.1 gateway: multi-channel message delivery (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Line, Feishu, Email), session management, and agent-to-agent communication.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation("Continuously review and analyze your actions to ensure you are performing to the best of your abilities.")
