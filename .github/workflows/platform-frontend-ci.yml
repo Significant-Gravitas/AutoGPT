@@ -149,7 +149,7 @@ jobs:
           driver-opts: network=host
 
       - name: Set up Platform - Expose GHA cache to docker buildx CLI
-        uses: crazy-max/ghaction-github-runtime@v3
+        uses: crazy-max/ghaction-github-runtime@v4
 
       - name: Set up Platform - Build Docker images (with cache)
         working-directory: autogpt_platform
