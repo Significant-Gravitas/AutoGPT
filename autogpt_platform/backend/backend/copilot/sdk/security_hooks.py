@@ -146,6 +146,7 @@ def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
+    on_compact: Callable[[], None] | None = None,
     on_stop: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
@@ -326,6 +327,8 @@ def create_security_hooks(
             logger.info(
                 f"[SDK] Context compaction triggered: {trigger}, user={user_id}"
             )
+            if on_compact is not None:
+                on_compact()
             return cast(SyncHookJSONOutput, {})
 
         # --- Stop hook: capture transcript path for stateless resume ---
