@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { JobStatsBar } from "../JobStatsBar/JobStatsBar";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -65,6 +66,7 @@ export const ChatContainer = ({
                 isLoading={isLoadingSession}
                 headerSlot={headerSlot}
               />
+              <JobStatsBar messages={messages} status={status} />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
