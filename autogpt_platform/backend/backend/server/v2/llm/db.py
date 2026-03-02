@@ -394,21 +394,20 @@ async def toggle_model(
 
     # If disabling with migration, perform migration first
     if not is_enabled and migrate_to_slug:
-        # Validate replacement model exists and is enabled
-        replacement = await prisma.models.LlmModel.prisma().find_unique(
-            where={"slug": migrate_to_slug}
-        )
-        if not replacement:
-            raise ValueError(f"Replacement model '{migrate_to_slug}' not found")
-        if not replacement.isEnabled:
-            raise ValueError(
-                f"Replacement model '{migrate_to_slug}' is disabled. "
-                f"Please enable it before using it as a replacement."
-            )
-
         # Perform all operations atomically within a single transaction
         # This ensures no nodes are missed between query and update
         async with transaction() as tx:
+            # Validate replacement model exists and is enabled (inside transaction to prevent TOCTOU)
+            replacement = await tx.llmmodel.find_unique(
+                where={"slug": migrate_to_slug}
+            )
+            if not replacement:
+                raise ValueError(f"Replacement model '{migrate_to_slug}' not found")
+            if not replacement.isEnabled:
+                raise ValueError(
+                    f"Replacement model '{migrate_to_slug}' is disabled. "
+                    f"Please enable it before using it as a replacement."
+                )
             # Get the IDs of nodes that will be migrated (inside transaction for consistency)
             node_ids_result = await tx.query_raw(
                 """

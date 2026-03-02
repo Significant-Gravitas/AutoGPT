@@ -80,7 +80,9 @@ async def event_broadcaster(manager: ConnectionManager):
                 )
 
         # Track registry pubsub for cleanup
-        registry_pubsub = None
+        from redis.asyncio.client import PubSub
+        
+        registry_pubsub: PubSub | None = None
 
         async def registry_refresh_worker():
             """Listen for LLM registry refresh notifications and broadcast to all clients."""
