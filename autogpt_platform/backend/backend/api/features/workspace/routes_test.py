@@ -14,6 +14,15 @@ from backend.data.workspace import WorkspaceFile
 app = fastapi.FastAPI()
 app.include_router(workspace_routes.router)
 
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from rest_api.py."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -180,6 +189,38 @@ def test_upload_any_extension(mocker: pytest_mock.MockFixture):
 
     response = _upload(filename="data.xyz", content=b"arbitrary")
     assert response.status_code == 200
+
+
+# ---- Virus scan rejection ----
+
+
+def test_upload_blocked_by_virus_scan(mocker: pytest_mock.MockFixture):
+    """Files flagged by ClamAV should be rejected and never written to storage."""
+    from backend.api.features.store.exceptions import VirusDetectedError
+
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        side_effect=VirusDetectedError("Eicar-Test-Signature"),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload(filename="evil.exe", content=b"X5O!P%@AP...")
+    assert response.status_code == 400
+    assert "Virus detected" in response.text
+    mock_manager.write_file.assert_not_called()
 
 
 # ---- Filename sanitization (SF5) ----
