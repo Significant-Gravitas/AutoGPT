@@ -407,12 +407,12 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolUnionParam] | anthropic.NotGiven:
+) -> Iterable[ToolUnionParam] | anthropic.Omit:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return anthropic.NOT_GIVEN
+        return anthropic.omit
 
     anthropic_tools = []
     for tool in openai_tools:
