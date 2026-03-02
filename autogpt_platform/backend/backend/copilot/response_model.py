@@ -15,8 +15,6 @@ from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
 
-from .constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
-
 logger = logging.getLogger(__name__)
 
 
@@ -229,25 +227,6 @@ class StreamHeartbeat(StreamBaseResponse):
         return ": heartbeat\n\n"
 
 
-def _system_text_events(prefix: str, message: str) -> list[StreamBaseResponse]:
-    """Return text events (no step boundary) for a system/error message."""
-    text_id = str(uuid.uuid4())
-    return [
-        StreamTextStart(id=text_id),
-        StreamTextDelta(id=text_id, delta=f"{prefix} {message}"),
-        StreamTextEnd(id=text_id),
-    ]
-
-
-def system_notice_events(message: str) -> list[StreamBaseResponse]:
-    """Return a self-contained step that renders as a system info bar."""
-    return [
-        StreamStartStep(),
-        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
-        StreamFinishStep(),
-    ]
-
-
 COMPACTION_TOOL_NAME = "context_compaction"
 
 
@@ -282,12 +261,3 @@ def compaction_events(message: str) -> list[StreamBaseResponse]:
     """Emit a self-contained compaction tool call (already completed)."""
     tool_call_id, start = compaction_start_events()
     return start + compaction_end_events(tool_call_id, message)
-
-
-def system_error_events(message: str) -> list[StreamBaseResponse]:
-    """Return a self-contained step that renders as an error bar."""
-    return [
-        StreamStartStep(),
-        *_system_text_events(COPILOT_ERROR_PREFIX, message),
-        StreamFinishStep(),
-    ]
