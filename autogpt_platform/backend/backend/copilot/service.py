@@ -33,7 +33,6 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
-from .constants import COMPACTION_DONE_MSG
 from .model import (
     ChatMessage,
     ChatSession,
@@ -980,11 +979,9 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
-        from .sdk.compaction import compaction_events, persist_compaction
+        from .sdk.compaction import emit_compaction
 
-        evts = compaction_events(COMPACTION_DONE_MSG)
-        persist_compaction(session, evts)
-        for ev in evts:
+        for ev in emit_compaction(session):
             yield ev
 
     # Loop to handle tool calls and continue conversation
