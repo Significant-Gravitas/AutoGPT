@@ -85,7 +85,7 @@ class ChatConfig(BaseSettings):
     )
     claude_agent_max_subtasks: int = Field(
         default=10,
-        description="Max number of sub-agent Tasks the SDK can spawn per session.",
+        description="Max number of concurrent sub-agent Tasks the SDK can run per session.",
     )
     claude_agent_use_resume: bool = Field(
         default=True,

@@ -707,7 +707,6 @@ async def mark_session_completed(
         True if session was newly marked completed, False if already completed/failed
     """
     status: Literal["completed", "failed"] = "failed" if error_message else "completed"
-
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
 
