@@ -7,7 +7,9 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { ToolGroupRow } from "./components/ToolGroupRow";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { groupConsecutiveParts } from "./groupParts";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -81,14 +83,27 @@ export function ChatMessagesContainer({
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
-                {message.parts.map((part, i) => (
-                  <MessagePartRenderer
-                    key={`${message.id}-${i}`}
-                    part={part}
-                    messageID={message.id}
-                    partIndex={i}
-                  />
-                ))}
+                {groupConsecutiveParts(message.parts).map((item) => {
+                  if (item.kind === "single") {
+                    return (
+                      <MessagePartRenderer
+                        key={`${message.id}-${item.partIndex}`}
+                        part={item.part}
+                        messageID={message.id}
+                        partIndex={item.partIndex}
+                      />
+                    );
+                  }
+                  return (
+                    <ToolGroupRow
+                      key={`${message.id}-group-${item.partIndices[0]}`}
+                      toolType={item.toolType}
+                      parts={item.parts}
+                      partIndices={item.partIndices}
+                      messageID={message.id}
+                    />
+                  );
+                })}
                 {isLastAssistant && showThinking && (
                   <ThinkingIndicator active={showThinking} />
                 )}
