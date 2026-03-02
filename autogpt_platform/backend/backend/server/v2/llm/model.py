@@ -16,7 +16,7 @@ SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 class LlmModelCost(pydantic.BaseModel):
     id: str
     unit: prisma.enums.LlmCostUnit = prisma.enums.LlmCostUnit.RUN
-    credit_cost: int
+    credit_cost: int = pydantic.Field(ge=0)
     credential_provider: str
     credential_id: Optional[str] = None
     credential_type: Optional[str] = None
@@ -107,7 +107,7 @@ class UpsertLlmCreatorRequest(pydantic.BaseModel):
 
 class LlmModelCostInput(pydantic.BaseModel):
     unit: prisma.enums.LlmCostUnit = prisma.enums.LlmCostUnit.RUN
-    credit_cost: int
+    credit_cost: int = pydantic.Field(ge=0)
     credential_provider: str
     credential_id: Optional[str] = None
     credential_type: Optional[str] = "api_key"
@@ -161,7 +161,7 @@ class ToggleLlmModelRequest(pydantic.BaseModel):
     # Custom pricing override for migrated workflows. When set, billing should use
     # this cost instead of the target model's cost for affected nodes.
     # See LlmModelMigration in schema.prisma for full documentation.
-    custom_credit_cost: Optional[int] = None
+    custom_credit_cost: Optional[int] = pydantic.Field(default=None, ge=0)
 
 
 class ToggleLlmModelResponse(pydantic.BaseModel):
@@ -192,7 +192,7 @@ class LlmModelMigration(pydantic.BaseModel):
     reason: Optional[str] = None
     node_count: int
     # Custom pricing override - billing should use this instead of target model's cost
-    custom_credit_cost: Optional[int] = None
+    custom_credit_cost: Optional[int] = pydantic.Field(default=None, ge=0)
     is_reverted: bool = False
     created_at: datetime
     reverted_at: Optional[datetime] = None

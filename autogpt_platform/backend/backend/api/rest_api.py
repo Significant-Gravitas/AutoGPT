@@ -338,12 +338,12 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.llm_routes.router,
-    tags=["v2", "admin", "llm"],
+    tags=["v2"],
     prefix="/api/llm/admin",
 )
 app.include_router(
     public_llm_routes.router,
-    tags=["v2", "llm"],
+    tags=["v2"],
     prefix="/api",
 )
 app.include_router(
