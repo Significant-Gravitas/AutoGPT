@@ -64,6 +64,7 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 headerSlot={headerSlot}
+                sessionID={sessionId}
               />
               <motion.div
                 initial={{ opacity: 0 }}
