@@ -52,9 +52,10 @@ export function useChatSession() {
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
   const hasActiveStream = useMemo(() => {
+    if (sessionQuery.isFetching) return false;
     if (sessionQuery.data?.status !== 200) return false;
     return !!sessionQuery.data.data.active_stream;
-  }, [sessionQuery.data, sessionId]);
+  }, [sessionQuery.data, sessionQuery.isFetching, sessionId]);
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
