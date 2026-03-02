@@ -784,11 +784,10 @@ async def stream_chat_completion_sdk(
                     len(query_message),
                 )
 
+                compaction.reset_for_query()
                 if was_compacted:
                     for ev in compaction.emit_pre_query(session):
                         yield ev
-
-                compaction.reset_for_query()
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")

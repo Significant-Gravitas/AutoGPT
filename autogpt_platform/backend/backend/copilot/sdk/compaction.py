@@ -62,10 +62,12 @@ class CompactionTracker:
         """Return a self-contained compaction tool call for pre-query compression.
 
         Also persists the events to ``session.messages`` so they survive a page
-        refresh.
+        refresh.  Sets ``_done`` so the SDK-internal path doesn't double-notify
+        for the same turn.
         """
         evts = compaction_events(COMPACTION_DONE_MSG)
         persist_compaction(session, evts)
+        self._done = True
         return evts
 
     # ------------------------------------------------------------------
@@ -73,9 +75,13 @@ class CompactionTracker:
     # ------------------------------------------------------------------
 
     def reset_for_query(self) -> None:
-        """Reset per-query state so a pre-query compaction doesn't suppress
-        SDK-internal notifications."""
+        """Reset per-query state for a new SDK query.
+
+        Must be called **before** :meth:`emit_pre_query` so that a pre-query
+        notification can suppress SDK-internal duplicates within the same turn.
+        """
         self._done = False
+        self._start_emitted = False
         self._tool_call_id = ""
 
     def emit_start_if_ready(self) -> list[StreamBaseResponse]:
