@@ -58,7 +58,9 @@ from .response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
+    system_notice_events,
 )
+from .constants import COMPACTION_DONE_MSG
 from .tools import execute_tool, tools
 from .tools.models import ErrorResponse
 from .tracking import track_user_message
@@ -518,6 +520,18 @@ async def stream_chat_completion(
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
+            # Pass through out-of-band events (e.g. compaction notices)
+            # without contaminating the primary text stream state.
+            if isinstance(chunk, (StreamStartStep, StreamFinishStep)):
+                yield chunk
+                continue
+            if (
+                isinstance(chunk, (StreamTextStart, StreamTextDelta, StreamTextEnd))
+                and getattr(chunk, "id", None) != text_block_id
+            ):
+                yield chunk
+                continue
+
             if isinstance(chunk, StreamTextStart):
                 # Emit text-start before first text delta
                 if not has_received_text:
@@ -967,6 +981,8 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
+        for ev in system_notice_events(COMPACTION_DONE_MSG):
+            yield ev
 
     # Loop to handle tool calls and continue conversation
     while True:
@@ -1116,13 +1132,13 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["id"] = tc_chunk.id
                                 if tc_chunk.function:
                                     if tc_chunk.function.name:
-                                        tool_calls[idx]["function"][
-                                            "name"
-                                        ] = tc_chunk.function.name
+                                        tool_calls[idx]["function"]["name"] = (
+                                            tc_chunk.function.name
+                                        )
                                     if tc_chunk.function.arguments:
-                                        tool_calls[idx]["function"][
-                                            "arguments"
-                                        ] += tc_chunk.function.arguments
+                                        tool_calls[idx]["function"]["arguments"] += (
+                                            tc_chunk.function.arguments
+                                        )
 
                                 # Emit StreamToolInputStart only after we have the tool call ID
                                 if (

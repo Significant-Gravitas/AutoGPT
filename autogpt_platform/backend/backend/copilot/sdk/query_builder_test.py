@@ -118,7 +118,7 @@ async def test_build_query_resume_up_to_date():
             ChatMessage(role="user", content="what's new?"),
         ]
     )
-    result = await _build_query_message(
+    result, was_compacted = await _build_query_message(
         "what's new?",
         session,
         use_resume=True,
@@ -141,7 +141,7 @@ async def test_build_query_resume_stale_transcript():
             ChatMessage(role="user", content="turn 3"),
         ]
     )
-    result = await _build_query_message(
+    result, was_compacted = await _build_query_message(
         "turn 3",
         session,
         use_resume=True,
@@ -164,7 +164,7 @@ async def test_build_query_resume_zero_msg_count():
             ChatMessage(role="user", content="new msg"),
         ]
     )
-    result = await _build_query_message(
+    result, was_compacted = await _build_query_message(
         "new msg",
         session,
         use_resume=True,
@@ -178,7 +178,7 @@ async def test_build_query_resume_zero_msg_count():
 async def test_build_query_no_resume_single_message():
     """Without --resume and only 1 message, return raw message."""
     session = _make_session([ChatMessage(role="user", content="first")])
-    result = await _build_query_message(
+    result, was_compacted = await _build_query_message(
         "first",
         session,
         use_resume=False,
@@ -208,7 +208,7 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
         _mock_compress,
     )
 
-    result = await _build_query_message(
+    result, was_compacted = await _build_query_message(
         "new question",
         session,
         use_resume=False,
