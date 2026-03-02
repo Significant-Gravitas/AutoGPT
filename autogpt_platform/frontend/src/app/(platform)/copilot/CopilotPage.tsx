@@ -6,13 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { DotsThree, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
-import { ALLOWED_EXTENSIONS } from "./components/ChatInput/components/AttachmentMenu";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -20,13 +18,7 @@ import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
-function getFileExtension(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot === -1 ? "" : name.slice(dot).toLowerCase();
-}
-
 export function CopilotPage() {
-  const { toast } = useToast();
   const [isDragging, setIsDragging] = useState(false);
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const dragCounter = useRef(0);
@@ -65,30 +57,8 @@ export function CopilotPage() {
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-
-    const accepted: File[] = [];
-    const rejected: string[] = [];
-
-    for (const file of files) {
-      const ext = getFileExtension(file.name);
-      if (ext && ALLOWED_EXTENSIONS.has(ext)) {
-        accepted.push(file);
-      } else {
-        rejected.push(file.name);
-      }
-    }
-
-    if (rejected.length > 0) {
-      toast({
-        title: "Unsupported file type",
-        description: `${rejected.join(", ")} — only documents, images, audio, video, and spreadsheets are supported.`,
-        variant: "destructive",
-      });
-    }
-
-    if (accepted.length > 0) {
-      setDroppedFiles(accepted);
+    if (files.length > 0) {
+      setDroppedFiles(files);
     }
   }
 

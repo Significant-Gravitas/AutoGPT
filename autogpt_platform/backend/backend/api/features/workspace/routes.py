@@ -28,69 +28,6 @@ from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import get_workspace_storage
 
-# Allowed file extensions for upload, grouped by category.
-_ALLOWED_EXTENSIONS: set[str] = {
-    # Documents
-    ".pdf",
-    ".doc",
-    ".docx",
-    ".txt",
-    ".rtf",
-    ".odt",
-    # Spreadsheets
-    ".csv",
-    ".tsv",
-    ".xls",
-    ".xlsx",
-    ".ods",
-    # Images
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".svg",
-    ".bmp",
-    ".ico",
-    ".tiff",
-    # Code / config
-    ".json",
-    ".xml",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".ini",
-    ".cfg",
-    ".py",
-    ".js",
-    ".ts",
-    ".html",
-    ".htm",
-    ".css",
-    ".md",
-    ".sh",
-    ".bat",
-    # Archives
-    ".zip",
-    ".tar",
-    ".gz",
-    ".7z",
-    ".rar",
-    # Audio / Video
-    ".mp3",
-    ".wav",
-    ".ogg",
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".flac",
-    ".aac",
-    ".m4a",
-    ".wma",
-}
-
 
 def _sanitize_filename_for_header(filename: str) -> str:
     """
@@ -233,14 +170,6 @@ async def upload_file(
 
     # Sanitize filename — strip any directory components
     filename = os.path.basename(file.filename or "upload") or "upload"
-
-    # Validate file extension against allowlist
-    _, ext = os.path.splitext(filename)
-    if ext.lower() not in _ALLOWED_EXTENSIONS:
-        raise fastapi.HTTPException(
-            status_code=415,
-            detail=f"File type '{ext}' is not supported",
-        )
 
     # Read file content with early abort on size limit
     max_file_bytes = config.max_file_size_mb * 1024 * 1024

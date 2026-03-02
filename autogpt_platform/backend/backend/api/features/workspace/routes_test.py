@@ -154,17 +154,11 @@ def test_upload_post_write_quota_race(mocker: pytest_mock.MockFixture):
     mock_delete.assert_called_once_with("file-aaa-bbb", "ws-1")
 
 
-# ---- MIME / extension validation (SF4) ----
+# ---- Any extension accepted (no allowlist) ----
 
 
-def test_upload_disallowed_extension(mocker: pytest_mock.MockFixture):
-    """Uploading a file with a disallowed extension should return 415."""
-    response = _upload(filename="malware.exe", content=b"MZ")
-    assert response.status_code == 415
-
-
-def test_upload_allowed_extension(mocker: pytest_mock.MockFixture):
-    """Known good extensions should pass the MIME check."""
+def test_upload_any_extension(mocker: pytest_mock.MockFixture):
+    """Any file extension should be accepted — ClamAV is the security layer."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=MOCK_WORKSPACE,
@@ -184,7 +178,7 @@ def test_upload_allowed_extension(mocker: pytest_mock.MockFixture):
         return_value=mock_manager,
     )
 
-    response = _upload(filename="report.pdf", content=b"%PDF-1.4")
+    response = _upload(filename="data.xyz", content=b"arbitrary")
     assert response.status_code == 200
 
 
