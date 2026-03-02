@@ -257,7 +257,26 @@ def compaction_end_events(tool_call_id: str, message: str) -> list[StreamBaseRes
     ]
 
 
-def compaction_events(message: str) -> list[StreamBaseResponse]:
-    """Emit a self-contained compaction tool call (already completed)."""
-    tool_call_id, start = compaction_start_events()
+def compaction_events(
+    message: str, tool_call_id: str | None = None
+) -> list[StreamBaseResponse]:
+    """Emit a self-contained compaction tool call (already completed).
+
+    When *tool_call_id* is provided it is reused (e.g. for persistence that
+    must match an already-streamed start event).  Otherwise a new random ID
+    is generated.
+    """
+    if tool_call_id is None:
+        tool_call_id, start = compaction_start_events()
+    else:
+        # Build start events with the given ID (no new random ID)
+        start = [
+            StreamStartStep(),
+            StreamToolInputStart(
+                toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME
+            ),
+            StreamToolInputAvailable(
+                toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME, input={}
+            ),
+        ]
     return start + compaction_end_events(tool_call_id, message)

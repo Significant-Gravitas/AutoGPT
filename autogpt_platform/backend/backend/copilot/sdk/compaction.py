@@ -116,9 +116,11 @@ class CompactionTracker:
         if self._start_emitted:
             # Close the open tool call
             done_events = compaction_end_events(self._tool_call_id, COMPACTION_DONE_MSG)
-            # For persistence, build the full event list
-            # (start events were already yielded)
-            all_events = compaction_events(COMPACTION_DONE_MSG)
+            # For persistence, build the full event list using the SAME
+            # tool_call_id so the DB matches what the frontend streamed.
+            all_events = compaction_events(
+                COMPACTION_DONE_MSG, tool_call_id=self._tool_call_id
+            )
         else:
             # PreCompact fired but we never emitted start — emit a
             # self-contained compaction tool call.
