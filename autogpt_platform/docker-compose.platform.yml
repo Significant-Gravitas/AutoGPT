@@ -75,19 +75,22 @@ services:
       timeout: 5s
       retries: 5
   rabbitmq:
-    image: rabbitmq:4.1.4
+    image: rabbitmq:4.1.4-management
     container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-rabbitmq_user_default}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672" # Management UI
+    networks:
+      - app-network
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 10s
-    <<: *backend-env-files
-    environment:
-      <<: *backend-env
-    ports:
-      - "5672:5672"
 
   rest_server:
     build:
