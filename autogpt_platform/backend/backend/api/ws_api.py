@@ -122,8 +122,8 @@ async def event_broadcaster(manager: ConnectionManager):
         # Ensure PubSub connections are closed on any exit to prevent leaks
         await execution_bus.close()
         await notification_bus.close()
-        if registry_pubsub is not None:
-            await registry_pubsub.close()
+        if registry_pubsub is not None:  # type: ignore[reportPossiblyUnboundVariable]
+            await registry_pubsub.close()  # type: ignore[reportUnboundVariable]
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
