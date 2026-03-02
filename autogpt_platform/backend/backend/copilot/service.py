@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from backend.util.prompt import CompressResult
 
 import orjson
-from langfuse import get_client
+from langfuse import Langfuse
 from openai import (
     APIConnectionError,
     APIError,
@@ -73,7 +73,11 @@ settings = Settings()
 client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
-langfuse = get_client()
+langfuse_prompt_client = Langfuse(
+    public_key=settings.secrets.langfuse_public_key,
+    secret_key=settings.secrets.langfuse_secret_key,
+    host=settings.secrets.langfuse_host,
+)
 
 # Default system prompt used when Langfuse is not configured
 # This is a snapshot of the "CoPilot Prompt" from Langfuse (version 11)
@@ -195,7 +199,7 @@ async def _get_system_prompt_template(context: str) -> str:
                 else "latest"
             )
             prompt = await asyncio.to_thread(
-                langfuse.get_prompt,
+                langfuse_prompt_client.get_prompt,
                 config.langfuse_prompt_name,
                 label=label,
                 cache_ttl_seconds=0,
@@ -908,6 +912,7 @@ async def _stream_chat_chunks(
     import time as time_module
 
     stream_chunks_start = time_module.perf_counter()
+    _trace_wall_start = time_module.time()  # wall clock for OTLP spans
     model = config.model
 
     # Build log metadata for structured logging
@@ -1036,11 +1041,22 @@ async def _stream_chat_chunks(
                 first_content_chunk = True
                 chunk_count = 0
 
+                # Accumulators for OTLP trace export
+                _trace_text_parts: list[str] = []
+                _trace_usage: dict[str, int | None] = {
+                    "prompt": None,
+                    "completion": None,
+                    "total": None,
+                }
+
                 # Process the stream
                 chunk: ChatCompletionChunk
                 async for chunk in stream:
                     chunk_count += 1
                     if chunk.usage:
+                        _trace_usage["prompt"] = chunk.usage.prompt_tokens
+                        _trace_usage["completion"] = chunk.usage.completion_tokens
+                        _trace_usage["total"] = chunk.usage.total_tokens
                         yield StreamUsage(
                             promptTokens=chunk.usage.prompt_tokens,
                             completionTokens=chunk.usage.completion_tokens,
@@ -1080,6 +1096,7 @@ async def _stream_chat_chunks(
                                     },
                                 )
                             # Stream the text delta
+                            _trace_text_parts.append(delta.content)
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
                                 delta=delta.content,
@@ -1162,6 +1179,27 @@ async def _stream_chat_chunks(
                     f"session={session.session_id}, user={session.user_id}",
                     extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
                 )
+
+                # Emit OTLP trace (fire-and-forget)
+                from .otlp_trace import emit_trace
+
+                emit_trace(
+                    model=model,
+                    messages=[m if isinstance(m, dict) else dict(m) for m in messages],
+                    assistant_content="".join(_trace_text_parts) or None,
+                    finish_reason=(
+                        "tool_calls" if tool_calls else (finish_reason or "stop")
+                    ),
+                    prompt_tokens=_trace_usage["prompt"],
+                    completion_tokens=_trace_usage["completion"],
+                    total_tokens=_trace_usage["total"],
+                    user_id=session.user_id,
+                    session_id=session.session_id,
+                    tool_calls=tool_calls or None,
+                    start_time=_trace_wall_start,
+                    end_time=time_module.time(),
+                )
+
                 return
             except Exception as e:
                 last_error = e

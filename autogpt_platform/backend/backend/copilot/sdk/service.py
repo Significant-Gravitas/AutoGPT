@@ -1,18 +1,14 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
 import asyncio
-import base64
 import json
 import logging
 import os
-import sys
+import time as time_module
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
-
-from langfuse import propagate_attributes
-from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -40,7 +36,6 @@ from ..response_model import (
 from ..service import (
     _build_system_prompt,
     _generate_session_title,
-    _is_langfuse_configured,
 )
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
@@ -64,55 +59,6 @@ from .transcript import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
-
-
-def _setup_langfuse_otel() -> None:
-    """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
-
-    This uses LangSmith's built-in Claude Agent SDK integration to monkey-patch
-    ``ClaudeSDKClient``, capturing every tool call and model turn as OTEL spans.
-    Spans are exported via OTLP to Langfuse (or any OTEL-compatible backend).
-
-    To route traces elsewhere, override ``OTEL_EXPORTER_OTLP_ENDPOINT`` and
-    ``OTEL_EXPORTER_OTLP_HEADERS`` environment variables — no code changes needed.
-    """
-    if not _is_langfuse_configured():
-        return
-
-    try:
-        settings = Settings()
-        pk = settings.secrets.langfuse_public_key
-        sk = settings.secrets.langfuse_secret_key
-        host = settings.secrets.langfuse_host
-
-        # OTEL exporter config — these are only set if not already present,
-        # so explicit env-var overrides always win.
-        creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
-        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
-        os.environ.setdefault("LANGSMITH_TRACING", "true")
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
-        )
-
-        # Set the Langfuse environment via OTEL resource attributes so the
-        # Langfuse server maps it to the first-class environment field.
-        tracing_env = settings.secrets.langfuse_tracing_environment
-        os.environ.setdefault(
-            "OTEL_RESOURCE_ATTRIBUTES",
-            f"langfuse.environment={tracing_env}",
-        )
-
-        configure_claude_agent_sdk(tags=["sdk"])
-        logger.info(
-            "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
-        )
-    except Exception:
-        logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
-
-
-_setup_langfuse_otel()
 
 
 # Set to hold background tasks to prevent garbage collection
@@ -574,9 +520,6 @@ async def stream_chat_completion_sdk(
         )
         return
 
-    # OTEL context manager — initialized inside the try and cleaned up in finally.
-    _otel_ctx: Any = None
-
     # Make sure there is no more code between the lock acquitition and try-block.
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
@@ -600,6 +543,7 @@ async def stream_chat_completion_sdk(
         )
         system_prompt += _build_sdk_tool_supplement(sdk_cwd)
 
+        trace_wall_start = time_module.time()
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
         set_execution_context(user_id, session)
@@ -676,6 +620,11 @@ async def stream_chat_completion_sdk(
                         f"({len(session.messages)} messages in session)"
                     )
 
+            # Initialise before the async-with block so pyright knows they
+            # are always bound when the OTLP trace section runs.
+            assistant_response = ChatMessage(role="assistant", content="")
+            trace_tool_calls: list[dict[str, Any]] = []
+
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
@@ -694,19 +643,6 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-
-            # Propagate user_id/session_id as OTEL context attributes so the
-            # langsmith tracing integration attaches them to every span.  This
-            # is what Langfuse (or any OTEL backend) maps to its native
-            # user/session fields.
-            _otel_ctx = propagate_attributes(
-                user_id=user_id,
-                session_id=session_id,
-                trace_name="copilot-sdk",
-                tags=["sdk"],
-                metadata={"resume": str(use_resume)},
-            )
-            _otel_ctx.__enter__()
 
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
@@ -740,6 +676,7 @@ async def stream_chat_completion_sdk(
 
                 assistant_response = ChatMessage(role="assistant", content="")
                 accumulated_tool_calls: list[dict[str, Any]] = []
+                trace_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False
 
@@ -928,18 +865,16 @@ async def stream_chat_completion_sdk(
                                         has_appended_assistant = True
 
                             elif isinstance(response, StreamToolInputAvailable):
-                                accumulated_tool_calls.append(
-                                    {
-                                        "id": response.toolCallId,
-                                        "type": "function",
-                                        "function": {
-                                            "name": response.toolName,
-                                            "arguments": json.dumps(
-                                                response.input or {}
-                                            ),
-                                        },
-                                    }
-                                )
+                                tool_call = {
+                                    "id": response.toolCallId,
+                                    "type": "function",
+                                    "function": {
+                                        "name": response.toolName,
+                                        "arguments": json.dumps(response.input or {}),
+                                    },
+                                }
+                                accumulated_tool_calls.append(tool_call)
+                                trace_tool_calls.append(tool_call)
                                 assistant_response.tool_calls = accumulated_tool_calls
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
@@ -1091,6 +1026,36 @@ async def stream_chat_completion_sdk(
             session_id[:12],
             len(session.messages),
         )
+
+        # Emit OTLP trace (fire-and-forget)
+        from ..otlp_trace import emit_trace
+
+        # Keep tool calls scoped to this traced turn only.
+        trace_tool_calls_payload = trace_tool_calls or None
+        trace_finish_reason = (
+            "tool_calls"
+            if trace_tool_calls_payload
+            else ("stop" if stream_completed else "cancelled")
+        )
+
+        # Use to_openai_messages() for clean OpenAI-format dicts that include
+        # assistant messages with tool_calls and role="tool" responses — this
+        # matches the non-SDK path and the product-intelligence parser format.
+        trace_messages: list[dict[str, Any]] = [
+            dict(m) for m in session.to_openai_messages()
+        ]
+
+        emit_trace(
+            model=sdk_model or config.model,
+            messages=trace_messages,
+            assistant_content=assistant_response.content or None,
+            finish_reason=trace_finish_reason,
+            user_id=user_id,
+            session_id=session_id,
+            tool_calls=trace_tool_calls_payload,
+            start_time=trace_wall_start,
+            end_time=time_module.time(),
+        )
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
@@ -1135,13 +1100,6 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
-        # --- Close OTEL context ---
-        if _otel_ctx is not None:
-            try:
-                _otel_ctx.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("OTEL context teardown failed", exc_info=True)
-
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).

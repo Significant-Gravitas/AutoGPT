@@ -721,12 +721,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_public_key: str = Field(default="", description="Langfuse public key")
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
-        default="https://cloud.langfuse.com", description="Langfuse host URL"
+        default="https://cloud.langfuse.com",
+        description="Langfuse host URL for fetching prompts",
     )
-    langfuse_tracing_environment: str = Field(
-        default="local", description="Tracing environment tag (local/dev/production)"
+    otlp_tracing_host: str = Field(
+        default="",
+        description="OTLP trace ingestion host URL (for example, Product Intelligence).",
     )
-
+    otlp_tracing_token: str = Field(
+        default="",
+        description="Bearer token for OTLP trace ingestion endpoint.",
+    )
     # PostHog analytics
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(

@@ -414,10 +414,15 @@ _SDK_BUILTIN_TOOLS = [
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
 # AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+# ToolSearch: SDK bug — ToolSearch results are passed as raw match objects
+#   instead of text content blocks, causing Anthropic API 400 errors.
+#   All copilot tools are already explicitly listed in allowed_tools,
+#   so dynamic tool search is unnecessary.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
     "AskUserQuestion",
+    "ToolSearch",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
