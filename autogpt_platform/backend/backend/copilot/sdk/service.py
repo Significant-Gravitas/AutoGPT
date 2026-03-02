@@ -747,12 +747,14 @@ async def stream_chat_completion_sdk(
                     len(query_message),
                 )
 
-                compaction_notified = False
-                compaction_tool_call_id = ""
                 if was_compacted:
-                    compaction_notified = True
                     for ev in compaction_events(COMPACTION_DONE_MSG):
                         yield ev
+
+                # Track SDK-internal compaction separately so a pre-query
+                # compaction doesn't suppress notifications for it.
+                sdk_compaction_notified = False
+                compaction_tool_call_id = ""
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -789,7 +791,7 @@ async def stream_chat_completion_sdk(
                             if (
                                 sdk_compact_start.is_set()
                                 and not sdk_compact_notified
-                                and not compaction_notified
+                                and not sdk_compaction_notified
                             ):
                                 sdk_compact_start.clear()
                                 sdk_compact_notified = True
@@ -900,7 +902,7 @@ async def stream_chat_completion_sdk(
                                 )
 
                         # Emit compaction end if SDK finished compacting
-                        if not compaction_notified and (
+                        if not sdk_compaction_notified and (
                             sdk_compact_notified or sdk_compact_start.is_set()
                         ):
                             if sdk_compact_notified:
@@ -915,7 +917,7 @@ async def stream_chat_completion_sdk(
                                 done_events = compaction_events(COMPACTION_DONE_MSG)
                             sdk_compact_start.clear()
                             sdk_compact_notified = False
-                            compaction_notified = True
+                            sdk_compaction_notified = True
                             for ev in done_events:
                                 yield ev
 
