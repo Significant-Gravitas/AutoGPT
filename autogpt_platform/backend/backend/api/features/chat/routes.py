@@ -23,6 +23,7 @@ from backend.copilot.model import (
     delete_chat_session,
     get_chat_session,
     get_user_sessions,
+    update_session_title,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.models import (
@@ -128,6 +129,12 @@ class CancelSessionResponse(BaseModel):
 
     cancelled: bool
     reason: str | None = None
+
+
+class UpdateSessionTitleRequest(BaseModel):
+    """Request model for updating a session's title."""
+
+    title: str
 
 
 # ========== Routes ==========
@@ -239,6 +246,44 @@ async def delete_session(
         )
 
     return Response(status_code=204)
+
+
+@router.patch(
+    "/sessions/{session_id}/title",
+    summary="Update session title",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_title_route(
+    session_id: str,
+    request: UpdateSessionTitleRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Update the title of a chat session.
+
+    Allows the user to rename their chat session.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new title.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    await _validate_and_get_session(session_id, user_id)
+    success = await update_session_title(session_id, request.title)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found",
+        )
+    return {"status": "ok"}
 
 
 @router.get(

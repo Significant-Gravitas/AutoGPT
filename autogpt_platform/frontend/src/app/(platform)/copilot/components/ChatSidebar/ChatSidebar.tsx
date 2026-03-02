@@ -3,6 +3,7 @@ import {
   getGetV2ListSessionsQueryKey,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
+  usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -17,7 +18,6 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarTrigger,
   useSidebar,
@@ -27,7 +27,7 @@ import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 
 export function ChatSidebar() {
@@ -70,6 +70,38 @@ export function ChatSidebar() {
       },
     });
 
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+        setEditingSessionId(null);
+      },
+      onError: (error) => {
+        toast({
+          title: "Failed to rename chat",
+          description:
+            error instanceof Error ? error.message : "An error occurred",
+          variant: "destructive",
+        });
+        setEditingSessionId(null);
+      },
+    },
+  });
+
+  // Auto-focus the rename input when editing starts
+  useEffect(() => {
+    if (editingSessionId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [editingSessionId]);
+
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
@@ -80,6 +112,28 @@ export function ChatSidebar() {
   function handleSelectSession(id: string) {
     setSessionId(id);
   }
+
+  function handleRenameClick(
+    e: React.MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) {
+    e.stopPropagation();
+    setEditingSessionId(id);
+    setEditingTitle(title || "");
+  }
+
+  const handleRenameSubmit = useCallback(
+    (id: string) => {
+      const trimmed = editingTitle.trim();
+      if (trimmed) {
+        renameSession({ sessionId: id, data: { title: trimmed } });
+      } else {
+        setEditingSessionId(null);
+      }
+    },
+    [editingTitle, renameSession],
+  );
 
   function handleDeleteClick(
     e: React.MouseEvent,
@@ -171,14 +225,25 @@ export function ChatSidebar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.1 }}
-              className="flex items-center justify-between px-3"
+              className="flex flex-col gap-3 px-3"
             >
-              <Text variant="h3" size="body-medium">
-                Your chats
-              </Text>
-              <div className="relative left-6">
-                <SidebarTrigger />
+              <div className="flex items-center justify-between">
+                <Text variant="h3" size="body-medium">
+                  Your chats
+                </Text>
+                <div className="relative left-6">
+                  <SidebarTrigger />
+                </div>
               </div>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleNewChat}
+                className="w-full"
+                leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+              >
+                New Chat
+              </Button>
             </motion.div>
           )}
 
@@ -208,76 +273,86 @@ export function ChatSidebar() {
                         : "hover:bg-zinc-50",
                     )}
                   >
-                    <button
-                      onClick={() => handleSelectSession(session.id)}
-                      className="w-full px-3 py-2.5 pr-10 text-left"
-                    >
-                      <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                        <div className="min-w-0 max-w-full">
-                          <Text
-                            variant="body"
-                            className={cn(
-                              "truncate font-normal",
-                              session.id === sessionId
-                                ? "text-zinc-600"
-                                : "text-zinc-800",
-                            )}
-                          >
-                            {session.title || `Untitled chat`}
+                    {editingSessionId === session.id ? (
+                      <div className="px-3 py-2.5">
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleRenameSubmit(session.id);
+                            } else if (e.key === "Escape") {
+                              setEditingSessionId(null);
+                            }
+                          }}
+                          onBlur={() => handleRenameSubmit(session.id)}
+                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleSelectSession(session.id)}
+                        className="w-full px-3 py-2.5 pr-10 text-left"
+                      >
+                        <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
+                          <div className="min-w-0 max-w-full">
+                            <Text
+                              variant="body"
+                              className={cn(
+                                "truncate font-normal",
+                                session.id === sessionId
+                                  ? "text-zinc-600"
+                                  : "text-zinc-800",
+                              )}
+                            >
+                              {session.title || `Untitled chat`}
+                            </Text>
+                          </div>
+                          <Text variant="small" className="text-neutral-400">
+                            {formatDate(session.updated_at)}
                           </Text>
                         </div>
-                        <Text variant="small" className="text-neutral-400">
-                          {formatDate(session.updated_at)}
-                        </Text>
-                      </div>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
-                          aria-label="More actions"
-                        >
-                          <DotsThree className="h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) =>
-                            handleDeleteClick(e, session.id, session.title)
-                          }
-                          disabled={isDeleting}
-                          className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                        >
-                          Delete chat
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </button>
+                    )}
+                    {editingSessionId !== session.id && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                            aria-label="More actions"
+                          >
+                            <DotsThree className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) =>
+                              handleRenameClick(e, session.id, session.title)
+                            }
+                          >
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) =>
+                              handleDeleteClick(e, session.id, session.title)
+                            }
+                            disabled={isDeleting}
+                            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                          >
+                            Delete chat
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 ))
               )}
             </motion.div>
           )}
         </SidebarContent>
-        {!isCollapsed && sessionId && (
-          <SidebarFooter className="shrink-0 bg-zinc-50 p-3 pb-1 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, delay: 0.2 }}
-            >
-              <Button
-                variant="primary"
-                size="small"
-                onClick={handleNewChat}
-                className="w-full"
-                leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
-              >
-                New Chat
-              </Button>
-            </motion.div>
-          </SidebarFooter>
-        )}
       </Sidebar>
 
       <DeleteChatDialog
