@@ -52,7 +52,7 @@ function coerceSessionChatMessages(
  */
 const ATTACHED_FILES_RE =
   /\n?\n?\[Attached files\]\n([\s\S]*?)Use read_workspace_file with the file_id to access file contents\./;
-const FILE_LINE_RE = /^- (.+?) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
+const FILE_LINE_RE = /^- (.+) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
 
 function extractFileParts(content: string): {
   cleanText: string;

@@ -449,7 +449,7 @@ export function useCopilotPage() {
           }
           const fileParts = buildFileParts(uploaded);
           sendMessage({
-            text: trimmed || "(attached files)",
+            text: trimmed || "",
             files: fileParts.length > 0 ? fileParts : undefined,
           });
         } finally {
@@ -461,7 +461,7 @@ export function useCopilotPage() {
       return;
     }
 
-    setPendingMessage(trimmed || "(attached files)");
+    setPendingMessage(trimmed || "");
     if (files && files.length > 0) {
       pendingFilesRef.current = files;
     }
