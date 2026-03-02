@@ -3,6 +3,7 @@
 import React from "react";
 import { ToolUIPart } from "ai";
 import {
+  ArrowsClockwiseIcon,
   CheckCircleIcon,
   CircleDashedIcon,
   CircleIcon,
@@ -55,6 +56,7 @@ type ToolCategory =
   | "search"
   | "edit"
   | "todo"
+  | "compaction"
   | "other";
 
 function getToolCategory(toolName: string): ToolCategory {
@@ -82,6 +84,8 @@ function getToolCategory(toolName: string): ToolCategory {
       return "edit";
     case "TodoWrite":
       return "todo";
+    case "context_compaction":
+      return "compaction";
     default:
       return "other";
   }
@@ -135,6 +139,10 @@ function ToolIcon({
       return (
         <ListChecksIcon size={14} weight="regular" className={iconClass} />
       );
+    case "compaction":
+      return (
+        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
+      );
     default:
       return <GearIcon size={14} weight="regular" className={iconClass} />;
   }
@@ -163,6 +171,8 @@ function AccordionIcon({ category }: { category: ToolCategory }) {
       return <PencilSimpleIcon size={32} weight="light" />;
     case "todo":
       return <ListChecksIcon size={32} weight="light" />;
+    case "compaction":
+      return <ArrowsClockwiseIcon size={32} weight="light" />;
     default:
       return <GearIcon size={32} weight="light" />;
   }
@@ -265,6 +275,8 @@ function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
           return shortSummary ? `Editing ${shortSummary}` : "Editing file…";
         case "todo":
           return shortSummary ? `${shortSummary}` : "Updating task list…";
+        case "compaction":
+          return "Summarizing earlier messages…";
         default:
           return `Running ${formatToolName(toolName)}…`;
       }
@@ -303,6 +315,8 @@ function getAnimationText(part: ToolUIPart, category: ToolCategory): string {
           return shortSummary ? `Edited ${shortSummary}` : "Edit completed";
         case "todo":
           return "Updated task list";
+        case "compaction":
+          return "Earlier messages were summarized";
         default:
           return `${formatToolName(toolName)} completed`;
       }
@@ -731,7 +745,9 @@ export function GenericTool({ part }: Props) {
     typeof part.input === "object" &&
     Array.isArray((part.input as Record<string, unknown>).todos);
 
-  const showAccordion = hasOutput || hasError || hasTodoInput;
+  // Compaction shows only a status line — no expandable accordion.
+  const showAccordion =
+    category !== "compaction" && (hasOutput || hasError || hasTodoInput);
   const accordionData = showAccordion
     ? getAccordionData(category, part.input, output ?? {})
     : null;

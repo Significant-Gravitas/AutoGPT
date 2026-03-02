@@ -248,20 +248,40 @@ def system_notice_events(message: str) -> list[StreamBaseResponse]:
     ]
 
 
-def system_notice_start_events(message: str) -> list[StreamBaseResponse]:
-    """Open a step with a system notice (no StreamFinishStep — caller closes)."""
-    return [
+COMPACTION_TOOL_NAME = "context_compaction"
+
+
+def compaction_start_events() -> tuple[str, list[StreamBaseResponse]]:
+    """Emit tool-call-start events for compaction — renders as a spinning tool.
+
+    Returns ``(tool_call_id, events)`` so the caller can close with the same id.
+    """
+    tool_call_id = f"compaction-{uuid.uuid4().hex[:12]}"
+    return tool_call_id, [
         StreamStartStep(),
-        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME),
+        StreamToolInputAvailable(
+            toolCallId=tool_call_id, toolName=COMPACTION_TOOL_NAME, input={}
+        ),
     ]
 
 
-def system_notice_end_events(message: str) -> list[StreamBaseResponse]:
-    """Close a step with a system notice (no StreamStartStep — already open)."""
+def compaction_end_events(tool_call_id: str, message: str) -> list[StreamBaseResponse]:
+    """Close a compaction tool call with the result message."""
     return [
-        *_system_text_events(COPILOT_SYSTEM_PREFIX, message),
+        StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=COMPACTION_TOOL_NAME,
+            output=message,
+        ),
         StreamFinishStep(),
     ]
+
+
+def compaction_events(message: str) -> list[StreamBaseResponse]:
+    """Emit a self-contained compaction tool call (already completed)."""
+    tool_call_id, start = compaction_start_events()
+    return start + compaction_end_events(tool_call_id, message)
 
 
 def system_error_events(message: str) -> list[StreamBaseResponse]:

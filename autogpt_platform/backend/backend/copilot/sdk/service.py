@@ -20,12 +20,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
-from ..constants import (
-    COMPACTION_DONE_MSG,
-    COMPACTION_STARTED_MSG,
-    COPILOT_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
-)
+from ..constants import COMPACTION_DONE_MSG, COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -42,9 +37,9 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
-    system_notice_end_events,
-    system_notice_events,
-    system_notice_start_events,
+    compaction_end_events,
+    compaction_events,
+    compaction_start_events,
 )
 from ..service import (
     _build_system_prompt,
@@ -753,9 +748,10 @@ async def stream_chat_completion_sdk(
                 )
 
                 compaction_notified = False
+                compaction_tool_call_id = ""
                 if was_compacted:
                     compaction_notified = True
-                    for ev in system_notice_events(COMPACTION_DONE_MSG):
+                    for ev in compaction_events(COMPACTION_DONE_MSG):
                         yield ev
                 await client.query(query_message, session_id=session_id)
 
@@ -797,9 +793,10 @@ async def stream_chat_completion_sdk(
                             ):
                                 sdk_compact_start.clear()
                                 sdk_compact_notified = True
-                                for ev in system_notice_start_events(
-                                    COMPACTION_STARTED_MSG
-                                ):
+                                compaction_tool_call_id, start_evts = (
+                                    compaction_start_events()
+                                )
+                                for ev in start_evts:
                                     yield ev
                             yield StreamHeartbeat()
                             continue
@@ -906,13 +903,16 @@ async def stream_chat_completion_sdk(
                         if not compaction_notified and (
                             sdk_compact_notified or sdk_compact_start.is_set()
                         ):
-                            # Close bracket if "Summarizing..." was shown,
-                            # otherwise emit a self-contained notice.
-                            done_events = (
-                                system_notice_end_events(COMPACTION_DONE_MSG)
-                                if sdk_compact_notified
-                                else system_notice_events(COMPACTION_DONE_MSG)
-                            )
+                            if sdk_compact_notified:
+                                # Close the open tool call
+                                done_events = compaction_end_events(
+                                    compaction_tool_call_id,
+                                    COMPACTION_DONE_MSG,
+                                )
+                            else:
+                                # PreCompact fired but we never emitted start
+                                # — emit a self-contained compaction tool call.
+                                done_events = compaction_events(COMPACTION_DONE_MSG)
                             sdk_compact_start.clear()
                             sdk_compact_notified = False
                             compaction_notified = True
