@@ -1667,12 +1667,12 @@ async def migrate_llm_models(migrate_to: LlmModel):
     from backend.data import llm_registry
 
     enum_values = list(llm_registry.get_all_model_slugs_for_validation())
-    
+
     # Skip migration if registry is empty (fresh deployment before seeding)
     if not enum_values:
         logger.warning("LLM registry is empty, skipping model migration")
         return
-    
+
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
     # Update each block

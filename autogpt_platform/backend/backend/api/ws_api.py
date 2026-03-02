@@ -81,7 +81,7 @@ async def event_broadcaster(manager: ConnectionManager):
 
         # Track registry pubsub for cleanup
         from redis.asyncio.client import PubSub
-        
+
         registry_pubsub: PubSub | None = None
 
         async def registry_refresh_worker():
@@ -122,7 +122,7 @@ async def event_broadcaster(manager: ConnectionManager):
         # Ensure PubSub connections are closed on any exit to prevent leaks
         await execution_bus.close()
         await notification_bus.close()
-        if registry_pubsub:
+        if registry_pubsub is not None:
             await registry_pubsub.close()
 
 
