@@ -5,7 +5,9 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
+import { getWebSocketToken } from "@/lib/supabase/actions";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
@@ -123,14 +125,32 @@ export function useCopilotPage() {
     files: File[],
     sid: string,
   ): Promise<UploadedFile[]> {
+    // Upload directly to the Python backend, bypassing the Next.js serverless
+    // proxy.  Vercel's 4.5 MB function payload limit would reject larger files
+    // when routed through /api/workspace/files/upload.
+    const { token, error: tokenError } = await getWebSocketToken();
+    if (tokenError || !token) {
+      toast({
+        title: "Authentication error",
+        description: "Please sign in again.",
+        variant: "destructive",
+      });
+      return [];
+    }
+
+    const backendBase = environment.getAGPTServerBaseUrl();
+
     const results = await Promise.allSettled(
       files.map(async (file) => {
         const formData = new FormData();
         formData.append("file", file);
-        const res = await fetch(
-          `/api/workspace/files/upload?session_id=${encodeURIComponent(sid)}`,
-          { method: "POST", body: formData },
-        );
+        const url = new URL("/api/workspace/files/upload", backendBase);
+        url.searchParams.set("session_id", sid);
+        const res = await fetch(url.toString(), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
         if (!res.ok) {
           const err = await res.text();
           console.error("File upload failed:", err);
