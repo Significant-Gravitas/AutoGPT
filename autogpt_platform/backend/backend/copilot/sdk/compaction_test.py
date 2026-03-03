@@ -280,8 +280,12 @@ class TestCompactionTracker:
         tracker.on_compact()
         start_evts = tracker.emit_start_if_ready()
         end_evts = await tracker.emit_end_if_ready(session)
-        start_id = start_evts[1].toolCallId  # StreamToolInputStart
-        end_id = end_evts[0].toolCallId  # StreamToolOutputAvailable
-        assert start_id == end_id
+        start_evt = start_evts[1]
+        end_evt = end_evts[0]
+        assert isinstance(start_evt, StreamToolInputStart)
+        assert isinstance(end_evt, StreamToolOutputAvailable)
+        assert start_evt.toolCallId == end_evt.toolCallId
         # Persisted ID should also match
-        assert session.messages[0].tool_calls[0]["id"] == start_id
+        tool_calls = session.messages[0].tool_calls
+        assert tool_calls is not None
+        assert tool_calls[0]["id"] == start_evt.toolCallId

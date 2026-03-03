@@ -33,6 +33,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
+from .constants import COMPACTION_TOOL_NAME
 from .model import (
     ChatMessage,
     ChatSession,
@@ -43,7 +44,6 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
-from .constants import COMPACTION_TOOL_NAME
 from .response_model import (
     StreamBaseResponse,
     StreamError,
