@@ -208,19 +208,22 @@ def test_bash_builtin_blocked_message_clarity():
 
 @pytest.fixture()
 def _hooks():
-    """Create security hooks and return the PreToolUse handler."""
+    """Create security hooks and return (pre, post, post_failure) handlers."""
     from .security_hooks import create_security_hooks
 
     hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
     pre = hooks["PreToolUse"][0].hooks[0]
-    return pre
+    post = hooks["PostToolUse"][0].hooks[0]
+    post_failure = hooks["PostToolUseFailure"][0].hooks[0]
+    return pre, post, post_failure
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
 async def test_task_background_blocked(_hooks):
     """Task with run_in_background=true must be denied."""
-    result = await _hooks(
+    pre, _, _ = _hooks
+    result = await pre(
         {"tool_name": "Task", "tool_input": {"run_in_background": True, "prompt": "x"}},
         tool_use_id=None,
         context={},
@@ -233,9 +236,10 @@ async def test_task_background_blocked(_hooks):
 @pytest.mark.asyncio
 async def test_task_foreground_allowed(_hooks):
     """Task without run_in_background should be allowed."""
-    result = await _hooks(
+    pre, _, _ = _hooks
+    result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "do stuff"}},
-        tool_use_id=None,
+        tool_use_id="tu-1",
         context={},
     )
     assert not _is_denied(result)
@@ -245,23 +249,100 @@ async def test_task_foreground_allowed(_hooks):
 @pytest.mark.asyncio
 async def test_task_limit_enforced(_hooks):
     """Task spawns beyond max_subtasks should be denied."""
+    pre, _, _ = _hooks
     # First two should pass
-    for _ in range(2):
-        result = await _hooks(
+    for i in range(2):
+        result = await pre(
             {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
-            tool_use_id=None,
+            tool_use_id=f"tu-limit-{i}",
             context={},
         )
         assert not _is_denied(result)
 
     # Third should be denied (limit=2)
-    result = await _hooks(
+    result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "over limit"}},
-        tool_use_id=None,
+        tool_use_id="tu-limit-2",
         context={},
     )
     assert _is_denied(result)
     assert "Maximum" in _reason(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_slot_released_on_completion(_hooks):
+    """Completing a Task should free a slot so new Tasks can be spawned."""
+    pre, post, _ = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-comp-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied — at capacity
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-comp-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Complete first task — frees a slot
+    await post(
+        {"tool_name": "Task", "tool_input": {}},
+        tool_use_id="tu-comp-0",
+        context={},
+    )
+
+    # Now a new Task should be allowed
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "after release"}},
+        tool_use_id="tu-comp-3",
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_slot_released_on_failure(_hooks):
+    """A failed Task should also free its concurrency slot."""
+    pre, _, post_failure = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-fail-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # At capacity
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-fail-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Fail first task — should free a slot
+    await post_failure(
+        {"tool_name": "Task", "tool_input": {}, "error": "something broke"},
+        tool_use_id="tu-fail-0",
+        context={},
+    )
+
+    # New Task should be allowed
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "after failure"}},
+        tool_use_id="tu-fail-3",
+        context={},
+    )
+    assert not _is_denied(result)
 
 
 # -- _is_tool_error_or_denial ------------------------------------------------
@@ -298,7 +379,9 @@ class TestIsToolErrorOrDenial:
     def test_subtask_limit_denial(self):
         assert (
             _is_tool_error_or_denial(
-                "Maximum 2 sub-tasks per session. Please continue in the main conversation."
+                "Maximum 2 concurrent sub-tasks. "
+                "Wait for running sub-tasks to finish, "
+                "or continue in the main conversation."
             )
             is True
         )

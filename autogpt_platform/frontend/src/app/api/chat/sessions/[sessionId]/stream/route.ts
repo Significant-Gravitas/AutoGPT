@@ -3,6 +3,22 @@ import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
+// Legacy SSE proxy fallback. Primary transport is direct backend SSE.
+// See useCopilotStream.ts for active transport logic.
+export const maxDuration = 800;
+
+const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
+  ? Number(process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS)
+  : undefined;
+
+function debugSignal(): AbortSignal | undefined {
+  if (!DEBUG_SSE_TIMEOUT_MS) return undefined;
+  console.warn(
+    `[SSE_DEBUG] Simulating proxy timeout in ${DEBUG_SSE_TIMEOUT_MS}ms`,
+  );
+  return AbortSignal.timeout(DEBUG_SSE_TIMEOUT_MS);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -11,9 +27,9 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { message, is_user_message, context } = body;
+    const { message, is_user_message, context, file_ids } = body;
 
-    if (!message) {
+    if (message === undefined) {
       return new Response(
         JSON.stringify({ error: "Missing message parameter" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -46,7 +62,9 @@ export async function POST(
         message,
         is_user_message: is_user_message ?? true,
         context: context || null,
+        file_ids: file_ids || null,
       }),
+      signal: debugSignal(),
     });
 
     if (!response.ok) {
@@ -110,6 +128,7 @@ export async function GET(
     const response = await fetch(streamUrl.toString(), {
       method: "GET",
       headers,
+      signal: debugSignal(),
     });
 
     if (response.status === 204) {
