@@ -265,11 +265,11 @@ async def _execute_tool_sync(
 
     content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
 
-    # If the tool result contains inline image data, add an MCP image block
-    # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
-    image_block = _extract_image_block(text)
-    if image_block:
-        content_blocks.append(image_block)
+    # If the tool result contains inline multimodal data, add a content block
+    # so Claude can "see" images or read documents (e.g. read_workspace_file).
+    content_block = _extract_content_block(text)
+    if content_block:
+        content_blocks.append(content_block)
 
     return {
         "content": content_blocks,
@@ -277,18 +277,36 @@ async def _execute_tool_sync(
     }
 
 
-# MIME types that Claude can process as image content blocks.
-_SUPPORTED_IMAGE_TYPES = frozenset(
-    {"image/png", "image/jpeg", "image/gif", "image/webp"}
-)
+# Mapping of MIME types to Claude content block types.
+# "image" → MCP image block (Claude vision).
+# "document" → Claude document block (PDF support).
+# To add new types, just add an entry here.
+_MULTIMODAL_TYPES: dict[str, str] = {
+    # Images
+    "image/png": "image",
+    "image/jpeg": "image",
+    "image/gif": "image",
+    "image/webp": "image",
+    "image/svg+xml": "image",
+    # Documents
+    "application/pdf": "document",
+}
+
+# Max base64 payload sizes (bytes) per block type.
+_MAX_BASE64_BYTES: dict[str, int] = {
+    "image": 27_000_000,  # ~20 MB raw (Claude vision limit)
+    "document": 43_000_000,  # ~32 MB raw (Claude document limit)
+}
 
 
-def _extract_image_block(text: str) -> dict[str, str] | None:
-    """Extract an MCP image content block from a tool result JSON string.
+def _extract_content_block(text: str) -> dict[str, Any] | None:
+    """Extract a multimodal content block from a tool result JSON string.
 
-    Detects workspace file responses with ``content_base64`` and an image
-    MIME type, returning an MCP-format image block that allows Claude to
-    "see" the image.  Returns ``None`` if the result is not an inline image.
+    Detects workspace file responses with ``content_base64`` and a supported
+    MIME type, returning the appropriate content block so Claude can process
+    the file (images via vision, PDFs via document support, etc.).
+
+    Returns ``None`` if the result is not a supported multimodal type.
     """
     try:
         data = json.loads(text)
@@ -301,18 +319,29 @@ def _extract_image_block(text: str) -> dict[str, str] | None:
     mime_type = data.get("mime_type", "")
     base64_content = data.get("content_base64", "")
 
-    # Only inline small images — large ones would exceed Claude's limits.
-    # 32 KB raw ≈ ~43 KB base64.
-    _MAX_IMAGE_BASE64_BYTES = 43_000
-    if (
-        mime_type in _SUPPORTED_IMAGE_TYPES
-        and base64_content
-        and len(base64_content) <= _MAX_IMAGE_BASE64_BYTES
-    ):
+    block_type = _MULTIMODAL_TYPES.get(mime_type)
+    if not block_type or not base64_content:
+        return None
+
+    max_size = _MAX_BASE64_BYTES.get(block_type, 27_000_000)
+    if len(base64_content) > max_size:
+        return None
+
+    if block_type == "image":
         return {
             "type": "image",
             "data": base64_content,
             "mimeType": mime_type,
+        }
+
+    if block_type == "document":
+        return {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": mime_type,
+                "data": base64_content,
+            },
         }
 
     return None

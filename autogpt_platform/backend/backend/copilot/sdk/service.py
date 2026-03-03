@@ -536,6 +536,26 @@ async def _build_query_message(
     return current_message
 
 
+def _build_file_attachment_hint(file_ids: list[str]) -> str:
+    """Build a hint telling Claude about attached files it should read.
+
+    When users upload files alongside their message, we inject a hint so
+    Claude knows to use ``read_workspace_file`` to access the content.
+    The tool's increased inline limit (20 MB) ensures images and documents
+    are returned as base64 content blocks that Claude can process natively.
+    """
+    if not file_ids:
+        return ""
+    ids_list = ", ".join(f"`{fid}`" for fid in file_ids)
+    noun = "file" if len(file_ids) == 1 else "files"
+    return (
+        f"[The user attached {len(file_ids)} {noun} to this message. "
+        f"File IDs: {ids_list}. "
+        f"Use the read_workspace_file tool with the file_id to view "
+        f"the content of each attached file.]"
+    )
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -545,10 +565,16 @@ async def stream_chat_completion_sdk(
     retry_count: int = 0,  # noqa: ARG001
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # noqa: ARG001
+    file_ids: list[str] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream chat completion using Claude Agent SDK.
 
     Drop-in replacement for stream_chat_completion with improved reliability.
+
+    Args:
+        file_ids: Optional workspace file IDs attached to the user's message.
+            When provided, files are fetched, base64-encoded, and attached as
+            multimodal content blocks (images, PDFs, etc.) to the query.
     """
 
     if session is None:
@@ -822,12 +848,21 @@ async def stream_chat_completion_sdk(
                     transcript_msg_count,
                     session_id,
                 )
+
+                # If files are attached, hint Claude to read them via tools.
+                if file_ids:
+                    file_hint = _build_file_attachment_hint(file_ids)
+                    if file_hint:
+                        query_message = f"{query_message}\n\n{file_hint}"
+
                 logger.info(
-                    "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
+                    "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "
+                    "query_len=%d, attached_files=%d",
                     session_id[:12],
                     use_resume,
                     len(session.messages),
                     len(query_message),
+                    len(file_ids) if file_ids else 0,
                 )
                 await client.query(query_message, session_id=session_id)
 
