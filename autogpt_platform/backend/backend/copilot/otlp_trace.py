@@ -119,6 +119,10 @@ def build_otlp_payload(
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     total_tokens: int | None = None,
+    total_cost_usd: float | None = None,
+    cache_creation_input_tokens: int | None = None,
+    cache_read_input_tokens: int | None = None,
+    reasoning_tokens: int | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
@@ -166,57 +170,20 @@ def build_otlp_payload(
         _kv("gen_ai.usage.input_tokens", prompt_tokens),
         _kv("gen_ai.usage.output_tokens", completion_tokens),
         _kv("gen_ai.usage.total_tokens", total_tokens),
-        _kv(
-            "gen_ai.usage.input_tokens.cached", 0 if prompt_tokens is not None else None
-        ),
-        _kv(
-            "gen_ai.usage.output_tokens.reasoning",
-            0 if completion_tokens is not None else None,
-        ),
+        _kv("gen_ai.usage.input_tokens.cached", cache_read_input_tokens),
+        _kv("gen_ai.usage.input_tokens.cache_creation", cache_creation_input_tokens),
+        _kv("gen_ai.usage.output_tokens.reasoning", reasoning_tokens),
         _kv("user.id", user_id),
         _kv("session.id", session_id),
         _kv("trace.metadata.openrouter.source", "openrouter"),
         _kv("trace.metadata.openrouter.user_id", user_id),
+        _kv("gen_ai.usage.total_cost", total_cost_usd),
         _kv("trace.metadata.openrouter.provider_name", provider_name),
         _kv("trace.metadata.openrouter.provider_slug", provider_slug),
         _kv("trace.metadata.openrouter.finish_reason", finish_reason),
     ]:
         if kv is not None:
             attrs.append(kv)
-
-    # Keep keyset aligned with historical OpenRouter traces even when values
-    # are unavailable from this path.
-    attrs.extend(
-        [
-            {"key": "gen_ai.usage.input_cost", "value": {"doubleValue": None}},
-            {"key": "gen_ai.usage.output_cost", "value": {"doubleValue": None}},
-            {"key": "gen_ai.usage.total_cost", "value": {"doubleValue": None}},
-            {
-                "key": "trace.metadata.openrouter.api_key_name",
-                "value": {"stringValue": None},
-            },
-            {
-                "key": "trace.metadata.openrouter.entity_id",
-                "value": {"stringValue": None},
-            },
-            {
-                "key": "trace.metadata.openrouter.creator_user_id",
-                "value": {"stringValue": None},
-            },
-            {
-                "key": "trace.metadata.openrouter.organization_id",
-                "value": {"stringValue": None},
-            },
-            {
-                "key": "trace.metadata.openrouter.input_unit_price",
-                "value": {"doubleValue": None},
-            },
-            {
-                "key": "trace.metadata.openrouter.output_unit_price",
-                "value": {"doubleValue": None},
-            },
-        ]
-    )
 
     if prompt_payload is not None:
         attrs.append({"key": "trace.input", "value": {"stringValue": prompt_payload}})
@@ -295,6 +262,10 @@ def emit_trace(
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     total_tokens: int | None = None,
+    total_cost_usd: float | None = None,
+    cache_creation_input_tokens: int | None = None,
+    cache_read_input_tokens: int | None = None,
+    reasoning_tokens: int | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
@@ -319,6 +290,10 @@ def emit_trace(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
+        total_cost_usd=total_cost_usd,
+        cache_creation_input_tokens=cache_creation_input_tokens,
+        cache_read_input_tokens=cache_read_input_tokens,
+        reasoning_tokens=reasoning_tokens,
         user_id=user_id,
         session_id=session_id,
         tool_calls=tool_calls,

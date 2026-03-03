@@ -1043,11 +1043,7 @@ async def _stream_chat_chunks(
 
                 # Accumulators for OTLP trace export
                 _trace_text_parts: list[str] = []
-                _trace_usage: dict[str, int | None] = {
-                    "prompt": None,
-                    "completion": None,
-                    "total": None,
-                }
+                _trace_usage: dict[str, Any] = {}
 
                 # Process the stream
                 chunk: ChatCompletionChunk
@@ -1057,6 +1053,12 @@ async def _stream_chat_chunks(
                         _trace_usage["prompt"] = chunk.usage.prompt_tokens
                         _trace_usage["completion"] = chunk.usage.completion_tokens
                         _trace_usage["total"] = chunk.usage.total_tokens
+                        if chunk.usage.prompt_tokens_details:
+                            d = chunk.usage.prompt_tokens_details
+                            _trace_usage["cached"] = d.cached_tokens
+                        if chunk.usage.completion_tokens_details:
+                            d = chunk.usage.completion_tokens_details
+                            _trace_usage["reasoning"] = d.reasoning_tokens
                         yield StreamUsage(
                             promptTokens=chunk.usage.prompt_tokens,
                             completionTokens=chunk.usage.completion_tokens,
@@ -1190,9 +1192,11 @@ async def _stream_chat_chunks(
                     finish_reason=(
                         "tool_calls" if tool_calls else (finish_reason or "stop")
                     ),
-                    prompt_tokens=_trace_usage["prompt"],
-                    completion_tokens=_trace_usage["completion"],
-                    total_tokens=_trace_usage["total"],
+                    prompt_tokens=_trace_usage.get("prompt"),
+                    completion_tokens=_trace_usage.get("completion"),
+                    total_tokens=_trace_usage.get("total"),
+                    cache_read_input_tokens=_trace_usage.get("cached"),
+                    reasoning_tokens=_trace_usage.get("reasoning"),
                     user_id=session.user_id,
                     session_id=session.session_id,
                     tool_calls=tool_calls or None,

@@ -620,6 +620,8 @@ async def stream_chat_completion_sdk(
             # are always bound when the OTLP trace section runs.
             assistant_response = ChatMessage(role="assistant", content="")
             trace_tool_calls: list[dict[str, Any]] = []
+            trace_usage: dict[str, Any] = {}
+            trace_cost_usd: float | None = None
 
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
@@ -785,8 +787,13 @@ async def stream_chat_completion_sdk(
                                     - len(adapter.resolved_tool_calls),
                                 )
 
-                        # Log ResultMessage details for debugging
+                        # Extract usage and cost from ResultMessage for OTLP trace
                         if isinstance(sdk_msg, ResultMessage):
+                            if sdk_msg.usage:
+                                trace_usage = sdk_msg.usage
+                            if sdk_msg.total_cost_usd is not None:
+                                trace_cost_usd = sdk_msg.total_cost_usd
+
                             logger.info(
                                 "[SDK] [%s] Received: ResultMessage %s "
                                 "(unresolved=%d, current=%d, resolved=%d)",
@@ -1041,11 +1048,21 @@ async def stream_chat_completion_sdk(
             dict(m) for m in session.to_openai_messages()
         ]
 
+        _input = trace_usage.get("input_tokens")
+        _output = trace_usage.get("output_tokens")
+        _total = (_input or 0) + (_output or 0) if _input or _output else None
+
         emit_trace(
             model=sdk_model or config.model,
             messages=trace_messages,
             assistant_content=assistant_response.content or None,
             finish_reason=trace_finish_reason,
+            prompt_tokens=_input,
+            completion_tokens=_output,
+            total_tokens=_total,
+            total_cost_usd=trace_cost_usd,
+            cache_creation_input_tokens=trace_usage.get("cache_creation_input_tokens"),
+            cache_read_input_tokens=trace_usage.get("cache_read_input_tokens"),
             user_id=user_id,
             session_id=session_id,
             tool_calls=trace_tool_calls_payload,
