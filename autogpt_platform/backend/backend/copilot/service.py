@@ -59,7 +59,6 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .sdk.compaction import COMPACTION_TOOL_NAME
 from .tools import execute_tool, tools
 from .tools.models import ErrorResponse
 from .tracking import track_user_message
@@ -533,7 +532,7 @@ async def stream_chat_completion(
                         StreamToolOutputAvailable,
                     ),
                 )
-                and getattr(chunk, "toolName", None) == COMPACTION_TOOL_NAME
+                and getattr(chunk, "toolName", None) == "context_compaction"
             ):
                 yield chunk
                 continue
