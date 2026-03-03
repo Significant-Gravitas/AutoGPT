@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
@@ -312,7 +312,18 @@ export function ChatSidebar() {
                                   : "text-zinc-800",
                               )}
                             >
-                              {session.title || `Untitled chat`}
+                              <AnimatePresence mode="wait" initial={false}>
+                                <motion.span
+                                  key={session.title || "untitled"}
+                                  initial={{ opacity: 0, y: 4 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -4 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="block truncate"
+                                >
+                                  {session.title || "Untitled chat"}
+                                </motion.span>
+                              </AnimatePresence>
                             </Text>
                           </div>
                           <Text variant="small" className="text-neutral-400">

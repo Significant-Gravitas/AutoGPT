@@ -446,8 +446,18 @@ async def stream_chat_completion(
                         session_id=captured_session_id,
                     )
                     if title:
-                        # Use dedicated title update function that doesn't
-                        # touch messages, avoiding race conditions
+                        # Re-check if user already set a title while we were
+                        # generating (e.g. via rename). Skip to avoid
+                        # overwriting the user's chosen title.
+                        existing = await get_chat_session(
+                            captured_session_id, captured_user_id
+                        )
+                        if existing and existing.title:
+                            logger.info(
+                                f"Skipping auto-title for {captured_session_id}: "
+                                f"title already set to '{existing.title}'"
+                            )
+                            return
                         await update_session_title(captured_session_id, title)
                         logger.info(
                             f"Generated title for session {captured_session_id}: {title}"

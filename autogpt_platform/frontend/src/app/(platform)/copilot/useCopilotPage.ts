@@ -1,9 +1,9 @@
 import {
-  getGetV2GetSessionQueryKey,
   getGetV2ListSessionsQueryKey,
   postV2CancelSessionTask,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
+  type getV2ListSessionsResponse,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
@@ -132,6 +132,12 @@ export function useCopilotPage() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hasShownDisconnectToast = useRef(false);
 
+  // Title polling refs — must be declared before useChat so the onFinish
+  // callback can reference them without stale closure issues.
+  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
+  const TITLE_POLL_INTERVAL_MS = 2_000;
+  const TITLE_POLL_MAX_ATTEMPTS = 5;
+
   // Consolidated reconnect logic
   function handleReconnect(sid: string) {
     if (isReconnectScheduled || !sid) return;
@@ -194,7 +200,34 @@ export function useCopilotPage() {
 
       if (backendActive) {
         handleReconnect(sessionId);
+        return;
       }
+
+      // Stream ended cleanly — refresh the session list immediately, then poll
+      // until the auto-generated title appears
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
+      });
+      const sid = sessionId;
+      let attempts = 0;
+      clearInterval(titlePollRef.current);
+      titlePollRef.current = setInterval(() => {
+        const data = queryClient.getQueryData<getV2ListSessionsResponse>(
+          getGetV2ListSessionsQueryKey({ limit: 50 }),
+        );
+        const hasTitle =
+          data?.status === 200 &&
+          data.data.sessions.some((s) => s.id === sid && s.title);
+        if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
+          clearInterval(titlePollRef.current);
+          titlePollRef.current = undefined;
+          return;
+        }
+        attempts += 1;
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      }, TITLE_POLL_INTERVAL_MS);
     },
     onError: (error) => {
       if (!sessionId) return;
@@ -264,28 +297,7 @@ export function useCopilotPage() {
     setReconnectAttempts(0);
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
-    prevStatusRef.current = status; // Reset to avoid cross-session state bleeding
   }, [sessionId, status]);
-
-  // Invalidate session cache when stream completes
-  const prevStatusRef = useRef(status);
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = status;
-
-    const wasActive = prev === "streaming" || prev === "submitted";
-    const isIdle = status === "ready" || status === "error";
-
-    if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sessionId),
-      });
-      if (status === "ready") {
-        setReconnectAttempts(0);
-        hasShownDisconnectToast.current = false;
-      }
-    }
-  }, [status, sessionId, queryClient, isReconnectScheduled]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
@@ -339,6 +351,14 @@ export function useCopilotPage() {
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  // Clean up polling on session change or unmount
+  useEffect(() => {
+    return () => {
+      clearInterval(titlePollRef.current);
+      titlePollRef.current = undefined;
+    };
+  }, [sessionId]);
 
   function handleOpenDrawer() {
     setIsDrawerOpen(true);
