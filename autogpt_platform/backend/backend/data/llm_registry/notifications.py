@@ -7,6 +7,7 @@ ensuring they refresh their registry cache in real-time.
 """
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -18,15 +19,34 @@ logger = logging.getLogger(__name__)
 REGISTRY_REFRESH_CHANNEL = "llm_registry:refresh"
 
 
-async def publish_registry_refresh_notification() -> None:
+async def publish_registry_refresh_notification(
+    models_data: list[dict[str, Any]] | None = None
+) -> None:
     """
     Publish a notification to Redis that the LLM registry has been updated.
-    All executor services subscribed to this channel will refresh their registry.
+
+    Args:
+        models_data: Optional full registry data to include in notification
     """
     try:
         redis = await connect_async()
-        await redis.publish(REGISTRY_REFRESH_CHANNEL, "refresh")
-        logger.info("Published LLM registry refresh notification to Redis")
+
+        # Prepare payload
+        if models_data is not None:
+            payload = json.dumps({"action": "refresh", "data": models_data})
+        else:
+            payload = "refresh"  # Backwards compatible
+
+        await redis.publish(REGISTRY_REFRESH_CHANNEL, payload)
+
+        if models_data:
+            logger.info(
+                "Published LLM registry refresh notification with %d models",
+                len(models_data),
+            )
+        else:
+            logger.info("Published LLM registry refresh notification")
+
     except Exception as exc:
         logger.warning(
             "Failed to publish LLM registry refresh notification: %s",
@@ -36,14 +56,13 @@ async def publish_registry_refresh_notification() -> None:
 
 
 async def subscribe_to_registry_refresh(
-    on_refresh: Any,  # Async callable that takes no args
+    on_refresh: Any,  # Async callable that takes optional models_data
 ) -> None:
     """
     Subscribe to Redis notifications for LLM registry updates.
-    This runs in a loop and processes messages as they arrive.
 
     Args:
-        on_refresh: Async callable to execute when a refresh notification is received
+        on_refresh: Async callable(models_data: list[dict] | None) -> None
     """
     try:
         redis = await connect_async()
@@ -66,8 +85,28 @@ async def subscribe_to_registry_refresh(
                     and message["channel"] == REGISTRY_REFRESH_CHANNEL
                 ):
                     logger.info("Received LLM registry refresh notification")
+
+                    # Extract models_data if present
+                    models_data = None
                     try:
-                        await on_refresh()
+                        payload = message["data"]
+                        if isinstance(payload, bytes):
+                            payload = payload.decode("utf-8")
+
+                        # Try to parse as JSON
+                        if payload != "refresh":
+                            parsed = json.loads(payload)
+                            models_data = parsed.get("data")
+                            logger.debug(
+                                "Notification includes %d models",
+                                len(models_data) if models_data else 0,
+                            )
+                    except (json.JSONDecodeError, AttributeError):
+                        # Backwards compatible: simple "refresh" string
+                        pass
+
+                    try:
+                        await on_refresh(models_data)
                     except Exception as exc:
                         logger.error(
                             "Error refreshing LLM registry from notification: %s",

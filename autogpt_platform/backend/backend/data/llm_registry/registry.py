@@ -10,6 +10,7 @@ from typing import Any, Iterable
 import prisma.models
 
 from backend.data.llm_registry.model import ModelMetadata
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -113,18 +114,95 @@ def _build_schema_options() -> list[dict[str, str]]:
     return options
 
 
-async def refresh_llm_registry() -> None:
-    """Refresh the LLM registry from the database. Loads all models (enabled and disabled)."""
+@cached(maxsize=1, ttl_seconds=300, shared_cache=True, refresh_ttl_on_get=True)
+async def _fetch_registry_from_db() -> list[dict[str, Any]]:
+    """
+    Fetch all LLM models from database with related data.
+
+    Cached in Redis with 300s TTL. Thundering herd protection ensures
+    only one executor queries DB even if 1000 receive notification simultaneously.
+    """
+    records = await prisma.models.LlmModel.prisma().find_many(
+        include={
+            "Provider": True,
+            "Costs": True,
+            "Creator": True,
+        }
+    )
+    logger.debug("Fetched %d LLM model records from database", len(records))
+
+    # Serialize to plain dicts for caching
+    return [
+        {
+            "id": record.id,
+            "slug": record.slug,
+            "displayName": record.displayName,
+            "description": record.description,
+            "providerId": record.providerId,
+            "creatorId": record.creatorId,
+            "contextWindow": record.contextWindow,
+            "maxOutputTokens": record.maxOutputTokens,
+            "priceTier": getattr(record, "priceTier", 1) or 1,
+            "isEnabled": record.isEnabled,
+            "isRecommended": record.isRecommended,
+            "capabilities": record.capabilities,
+            "metadata": record.metadata,
+            "Provider": (
+                {
+                    "name": (
+                        record.Provider.name if record.Provider else record.providerId
+                    ),
+                    "displayName": (
+                        record.Provider.displayName
+                        if record.Provider
+                        else record.providerId
+                    ),
+                }
+                if record.Provider
+                else None
+            ),
+            "Costs": [
+                {
+                    "creditCost": cost.creditCost,
+                    "credentialProvider": cost.credentialProvider,
+                    "credentialId": cost.credentialId,
+                    "credentialType": cost.credentialType,
+                    "currency": cost.currency,
+                    "metadata": cost.metadata,
+                }
+                for cost in (record.Costs or [])
+            ],
+            "Creator": (
+                {
+                    "id": record.Creator.id,
+                    "name": record.Creator.name,
+                    "displayName": record.Creator.displayName,
+                    "description": record.Creator.description,
+                    "websiteUrl": record.Creator.websiteUrl,
+                    "logoUrl": record.Creator.logoUrl,
+                }
+                if record.Creator
+                else None
+            ),
+        }
+        for record in records
+    ]
+
+
+async def refresh_llm_registry(models_data: list[dict[str, Any]] | None = None) -> None:
+    """
+    Refresh the LLM registry from the database or provided data.
+
+    Args:
+        models_data: Optional pre-fetched model data from notification payload
+    """
     async with _lock:
         try:
-            records = await prisma.models.LlmModel.prisma().find_many(
-                include={
-                    "Provider": True,
-                    "Costs": True,
-                    "Creator": True,
-                }
-            )
-            logger.debug("Found %d LLM model records in database", len(records))
+            if models_data is None:
+                # Fetch from cache (thundering herd protected)
+                models_data = await _fetch_registry_from_db()
+
+            logger.debug("Processing %d LLM model records", len(models_data))
         except Exception as exc:
             logger.error(
                 "Failed to refresh LLM registry from DB: %s", exc, exc_info=True
@@ -132,69 +210,66 @@ async def refresh_llm_registry() -> None:
             return
 
         dynamic: dict[str, RegistryModel] = {}
-        for record in records:
-            provider_name = (
-                record.Provider.name if record.Provider else record.providerId
-            )
+        for record_dict in models_data:
+            provider = record_dict.get("Provider")
+            creator_data = record_dict.get("Creator")
+
+            provider_name = provider["name"] if provider else record_dict["providerId"]
             provider_display_name = (
-                record.Provider.displayName if record.Provider else record.providerId
+                provider["displayName"] if provider else record_dict["providerId"]
             )
             # Creator name: prefer Creator.name, fallback to provider display name
             creator_name = (
-                record.Creator.name if record.Creator else provider_display_name
+                creator_data["name"] if creator_data else provider_display_name
             )
             # Price tier: default to 1 (cheapest) if not set
-            price_tier = getattr(record, "priceTier", 1) or 1
+            price_tier = record_dict.get("priceTier", 1) or 1
             # Clamp to valid range 1-3
             price_tier = max(1, min(3, price_tier))
 
             metadata = ModelMetadata(
                 provider=provider_name,
-                context_window=record.contextWindow,
-                max_output_tokens=record.maxOutputTokens,
-                display_name=record.displayName,
+                context_window=record_dict["contextWindow"],
+                max_output_tokens=record_dict["maxOutputTokens"],
+                display_name=record_dict["displayName"],
                 provider_name=provider_display_name,
                 creator_name=creator_name,
                 price_tier=price_tier,  # type: ignore[arg-type]
             )
             costs = tuple(
                 RegistryModelCost(
-                    credit_cost=cost.creditCost,
-                    credential_provider=cost.credentialProvider,
-                    credential_id=cost.credentialId,
-                    credential_type=cost.credentialType,
-                    currency=cost.currency,
-                    metadata=_json_to_dict(cost.metadata),
+                    credit_cost=cost["creditCost"],
+                    credential_provider=cost["credentialProvider"],
+                    credential_id=cost.get("credentialId"),
+                    credential_type=cost.get("credentialType"),
+                    currency=cost.get("currency"),
+                    metadata=_json_to_dict(cost.get("metadata")),
                 )
-                for cost in (record.Costs or [])
+                for cost in record_dict.get("Costs", [])
             )
 
             # Map creator if present
             creator = None
-            if record.Creator:
+            if creator_data:
                 creator = RegistryModelCreator(
-                    id=record.Creator.id,
-                    name=record.Creator.name,
-                    display_name=record.Creator.displayName,
-                    description=record.Creator.description,
-                    website_url=record.Creator.websiteUrl,
-                    logo_url=record.Creator.logoUrl,
+                    id=creator_data["id"],
+                    name=creator_data["name"],
+                    display_name=creator_data["displayName"],
+                    description=creator_data.get("description"),
+                    website_url=creator_data.get("websiteUrl"),
+                    logo_url=creator_data.get("logoUrl"),
                 )
 
-            dynamic[record.slug] = RegistryModel(
-                slug=record.slug,
-                display_name=record.displayName,
-                description=record.description,
+            dynamic[record_dict["slug"]] = RegistryModel(
+                slug=record_dict["slug"],
+                display_name=record_dict["displayName"],
+                description=record_dict.get("description"),
                 metadata=metadata,
-                capabilities=_json_to_dict(record.capabilities),
-                extra_metadata=_json_to_dict(record.metadata),
-                provider_display_name=(
-                    record.Provider.displayName
-                    if record.Provider
-                    else record.providerId
-                ),
-                is_enabled=record.isEnabled,
-                is_recommended=record.isRecommended,
+                capabilities=_json_to_dict(record_dict.get("capabilities")),
+                extra_metadata=_json_to_dict(record_dict.get("metadata")),
+                provider_display_name=provider_display_name,
+                is_enabled=record_dict["isEnabled"],
+                is_recommended=record_dict["isRecommended"],
                 costs=costs,
                 creator=creator,
             )

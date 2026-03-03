@@ -3,8 +3,13 @@ import logging
 import autogpt_libs.auth
 import fastapi
 
+from backend.api.features.builder import db as builder_db
+from backend.api.features.v1 import _get_cached_blocks
+from backend.blocks._base import BlockSchema
 from backend.data import llm_registry
 from backend.data.block_cost_config import refresh_llm_costs
+from backend.data.llm_registry import publish_registry_refresh_notification
+from backend.data.llm_registry.registry import _fetch_registry_from_db
 from backend.server.v2.llm import db as llm_db
 from backend.server.v2.llm import model as llm_model
 
@@ -20,20 +25,19 @@ async def _refresh_runtime_state() -> None:
     """Refresh the LLM registry and clear all related caches to ensure real-time updates."""
     logger.info("Refreshing LLM registry runtime state...")
     try:
+        _fetch_registry_from_db.cache_clear()
+        logger.debug("Cleared Redis cache for LLM registry")
+
         # Refresh registry from database
         await llm_registry.refresh_llm_registry()
         await refresh_llm_costs()
 
         # Clear block schema caches so they're regenerated with updated model options
-        from backend.blocks._base import BlockSchema
-
         BlockSchema.clear_all_schema_caches()
         logger.info("Cleared all block schema caches")
 
         # Clear the /blocks endpoint cache so frontend gets updated schemas
         try:
-            from backend.api.features.v1 import _get_cached_blocks
-
             _get_cached_blocks.cache_clear()
             logger.info("Cleared /blocks endpoint cache")
         except Exception as e:
@@ -41,8 +45,6 @@ async def _refresh_runtime_state() -> None:
 
         # Clear the v2 builder caches
         try:
-            from backend.api.features.builder import db as builder_db
-
             builder_db._get_all_providers.cache_clear()
             logger.info("Cleared v2 builder providers cache")
             builder_db._build_cached_search_results.cache_clear()
@@ -52,11 +54,13 @@ async def _refresh_runtime_state() -> None:
         except Exception as e:
             logger.debug("Could not clear v2 builder cache: %s", e)
 
-        # Notify all executor services to refresh their registry cache
-        from backend.data.llm_registry import publish_registry_refresh_notification
+        # Fetch fresh data for notification (now contains updated data from DB)
+        models_data = await _fetch_registry_from_db()
 
-        await publish_registry_refresh_notification()
-        logger.info("Published registry refresh notification")
+        await publish_registry_refresh_notification(models_data=models_data)
+        logger.info(
+            "Published registry refresh notification with %d models", len(models_data)
+        )
     except Exception as exc:
         logger.exception(
             "LLM runtime state refresh failed; caches may be stale: %s", exc

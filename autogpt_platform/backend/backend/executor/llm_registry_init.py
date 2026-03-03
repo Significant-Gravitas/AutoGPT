@@ -5,7 +5,9 @@ These functions handle refreshing the LLM registry when the executor starts
 and subscribing to real-time updates via Redis pub/sub.
 """
 
+import asyncio
 import logging
+import random
 
 from backend.blocks._base import BlockSchema
 from backend.data import db, llm_registry
@@ -39,21 +41,39 @@ async def initialize_registry_for_executor() -> None:
         )
 
 
-async def refresh_registry_on_notification() -> None:
-    """Refresh LLM registry when notified via Redis pub/sub."""
+async def refresh_registry_on_notification(
+    models_data: list[dict] | None = None,
+) -> None:
+    """
+    Refresh LLM registry when notified via Redis pub/sub.
+
+    Args:
+        models_data: Optional pre-fetched model data from notification
+    """
+    # Add jitter to spread load across executors (0-2 seconds)
+    jitter = random.uniform(0, 2.0)
+    await asyncio.sleep(jitter)
+    logger.debug("[GraphExecutor] Starting registry refresh after %.2fs jitter", jitter)
+
     try:
         # Ensure DB is connected
         if not db.is_connected():
             await db.connect()
 
-        # Refresh registry and costs
-        await llm_registry.refresh_llm_registry()
+        # Refresh registry (uses provided data or fetches from cache)
+        await llm_registry.refresh_llm_registry(models_data=models_data)
         await refresh_llm_costs()
 
         # Clear block schema caches so they regenerate with new model options
         BlockSchema.clear_all_schema_caches()
 
-        logger.info("[GraphExecutor] LLM registry refreshed from notification")
+        if models_data:
+            logger.info(
+                "[GraphExecutor] LLM registry refreshed from notification data (%d models)",
+                len(models_data),
+            )
+        else:
+            logger.info("[GraphExecutor] LLM registry refreshed from cache")
     except Exception as exc:
         logger.error(
             "[GraphExecutor] Failed to refresh LLM registry from notification: %s",
