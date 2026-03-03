@@ -231,56 +231,52 @@ class WorkspaceManager:
 
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
-        try:
-            file = await create_workspace_file(
-                workspace_id=self.workspace_id,
-                file_id=file_id,
-                name=filename,
-                path=path,
-                storage_path=storage_path,
-                mime_type=mime_type,
-                size_bytes=len(content),
-                checksum=checksum,
-            )
-        except UniqueViolationError:
-            # Race condition: another request created a file at this path
-            if overwrite:
-                # Re-fetch and delete the conflicting file, then retry
-                existing = await get_workspace_file_by_path(self.workspace_id, path)
-                if existing:
-                    await self.delete_file(existing.id)
-                # Retry the create - if this also fails, clean up storage file
-                try:
-                    file = await create_workspace_file(
-                        workspace_id=self.workspace_id,
-                        file_id=file_id,
-                        name=filename,
-                        path=path,
-                        storage_path=storage_path,
-                        mime_type=mime_type,
-                        size_bytes=len(content),
-                        checksum=checksum,
-                    )
-                except Exception:
-                    # Clean up orphaned storage file on retry failure
-                    try:
-                        await storage.delete(storage_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up orphaned storage file: {e}")
-                    raise
-            else:
-                # Clean up the orphaned storage file before raising
-                try:
-                    await storage.delete(storage_path)
-                except Exception as e:
-                    logger.warning(f"Failed to clean up orphaned storage file: {e}")
-                raise ValueError(f"File already exists at path: {path}")
-        except Exception:
-            # Any other database error (connection, validation, etc.) - clean up storage
+        async def _cleanup_storage() -> None:
+            """Remove orphaned storage file on DB failure."""
             try:
                 await storage.delete(storage_path)
             except Exception as e:
                 logger.warning(f"Failed to clean up orphaned storage file: {e}")
+
+        async def _persist_db_record() -> WorkspaceFile:
+            """Create DB record, handling conflicts with optional overwrite."""
+            try:
+                return await create_workspace_file(
+                    workspace_id=self.workspace_id,
+                    file_id=file_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    checksum=checksum,
+                )
+            except UniqueViolationError:
+                if not overwrite:
+                    raise ValueError(f"File already exists at path: {path}")
+            # Overwrite path: delete conflicting file and retry once
+            existing = await get_workspace_file_by_path(self.workspace_id, path)
+            if existing:
+                await self.delete_file(existing.id)
+            try:
+                return await create_workspace_file(
+                    workspace_id=self.workspace_id,
+                    file_id=file_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    checksum=checksum,
+                )
+            except UniqueViolationError:
+                raise ValueError(f"File already exists at path: {path}") from None
+
+        # Single cleanup point — any failure cleans up the orphaned storage file
+        try:
+            file = await _persist_db_record()
+        except Exception:
+            await _cleanup_storage()
             raise
 
         logger.info(
