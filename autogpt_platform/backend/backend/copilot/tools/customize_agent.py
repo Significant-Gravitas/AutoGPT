@@ -105,6 +105,7 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        agent_json.setdefault("version", 1)
         agent_json.setdefault("is_active", True)
 
         # Fetch library agents for AgentExecutorBlock validation

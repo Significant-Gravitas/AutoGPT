@@ -297,6 +297,8 @@ class AgentFixer:
             for key in ("prompt", "format"):
                 if key in input_data:
                     original_text = input_data[key]
+                    if not isinstance(original_text, str):
+                        continue
 
                     # Avoid fixing already double-braced values
                     fixed_text = re.sub(

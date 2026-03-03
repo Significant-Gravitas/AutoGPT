@@ -119,8 +119,8 @@ class EditAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        agent_json.setdefault("id", current_agent.get("id", agent_id))
-        agent_json.setdefault("version", current_agent.get("version", 1))
+        agent_json["id"] = current_agent.get("id", agent_id)
+        agent_json["version"] = current_agent.get("version", 1)
         agent_json.setdefault("is_active", True)
 
         # Fetch library agents for AgentExecutorBlock validation
