@@ -59,6 +59,7 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from .sdk.compaction import COMPACTION_TOOL_NAME
 from .tools import execute_tool, tools
 from .tools.models import ErrorResponse
 from .tracking import track_user_message
@@ -521,6 +522,19 @@ async def stream_chat_completion(
             # Pass through out-of-band events (e.g. compaction notices)
             # without contaminating the primary text stream state.
             if isinstance(chunk, (StreamStartStep, StreamFinishStep)):
+                yield chunk
+                continue
+            if (
+                isinstance(
+                    chunk,
+                    (
+                        StreamToolInputStart,
+                        StreamToolInputAvailable,
+                        StreamToolOutputAvailable,
+                    ),
+                )
+                and getattr(chunk, "toolName", None) == COMPACTION_TOOL_NAME
+            ):
                 yield chunk
                 continue
             if (

@@ -175,7 +175,7 @@ class CompactionTracker:
     """
 
     def __init__(self) -> None:
-        self.compact_start = asyncio.Event()
+        self._compact_start = asyncio.Event()
         self._start_emitted = False
         self._done = False
         self._tool_call_id = ""
@@ -183,7 +183,7 @@ class CompactionTracker:
     @property
     def on_compact(self) -> Callable[[], None]:
         """Callback for the PreCompact hook."""
-        return self.compact_start.set
+        return self._compact_start.set
 
     # ------------------------------------------------------------------
     # Pre-query compaction
@@ -191,11 +191,8 @@ class CompactionTracker:
 
     def emit_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
         """Emit + persist a self-contained compaction tool call."""
-        tc_id = _new_tool_call_id()
-        evts = compaction_events(COMPACTION_DONE_MSG, tool_call_id=tc_id)
-        _persist(session, tc_id, COMPACTION_DONE_MSG)
         self._done = True
-        return evts
+        return emit_compaction(session)
 
     # ------------------------------------------------------------------
     # SDK-internal compaction
@@ -209,8 +206,8 @@ class CompactionTracker:
 
     def emit_start_if_ready(self) -> list[StreamBaseResponse]:
         """If the PreCompact hook fired, emit start events (spinning tool)."""
-        if self.compact_start.is_set() and not self._start_emitted and not self._done:
-            self.compact_start.clear()
+        if self._compact_start.is_set() and not self._start_emitted and not self._done:
+            self._compact_start.clear()
             self._start_emitted = True
             self._tool_call_id = _new_tool_call_id()
             return _start_events(self._tool_call_id)
@@ -223,7 +220,7 @@ class CompactionTracker:
 
         if self._done:
             return []
-        if not self._start_emitted and not self.compact_start.is_set():
+        if not self._start_emitted and not self._compact_start.is_set():
             return []
 
         if self._start_emitted:
@@ -237,7 +234,7 @@ class CompactionTracker:
                 COMPACTION_DONE_MSG, tool_call_id=persist_id
             )
 
-        self.compact_start.clear()
+        self._compact_start.clear()
         self._start_emitted = False
         self._done = True
         _persist(session, persist_id, COMPACTION_DONE_MSG)

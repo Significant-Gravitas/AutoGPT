@@ -127,6 +127,7 @@ async def test_build_query_resume_up_to_date():
     )
     # transcript_msg_count == msg_count - 1, so no gap
     assert result == "what's new?"
+    assert was_compacted is False
 
 
 @pytest.mark.asyncio
@@ -152,6 +153,7 @@ async def test_build_query_resume_stale_transcript():
     assert "turn 2" in result
     assert "reply 2" in result
     assert "Now, the user says:\nturn 3" in result
+    assert was_compacted is False  # gap context does not compact
 
 
 @pytest.mark.asyncio
@@ -172,6 +174,7 @@ async def test_build_query_resume_zero_msg_count():
         session_id="test-session",
     )
     assert result == "new msg"
+    assert was_compacted is False
 
 
 @pytest.mark.asyncio
@@ -186,6 +189,7 @@ async def test_build_query_no_resume_single_message():
         session_id="test-session",
     )
     assert result == "first"
+    assert was_compacted is False
 
 
 @pytest.mark.asyncio
@@ -219,3 +223,33 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
     assert "older question" in result
     assert "older answer" in result
     assert "Now, the user says:\nnew question" in result
+    assert was_compacted is False  # mock returns False
+
+
+@pytest.mark.asyncio
+async def test_build_query_no_resume_multi_message_compacted(monkeypatch):
+    """When compression actually compacts, was_compacted should be True."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="old"),
+            ChatMessage(role="assistant", content="reply"),
+            ChatMessage(role="user", content="new"),
+        ]
+    )
+
+    async def _mock_compress(msgs):
+        return msgs, True  # Simulate actual compaction
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "new",
+        session,
+        use_resume=False,
+        transcript_msg_count=0,
+        session_id="test-session",
+    )
+    assert was_compacted is True
