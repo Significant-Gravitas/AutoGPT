@@ -10,6 +10,7 @@ from uuid import uuid4
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
+from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, Field
 
 from backend.copilot import service as chat_service
@@ -48,6 +49,7 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
@@ -406,10 +408,6 @@ async def stream_chat_post(
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
     sanitized_file_ids: list[str] | None = None
     if request.file_ids and user_id:
-        from prisma.models import UserWorkspaceFile
-
-        from backend.data.workspace import get_or_create_workspace
-
         # Filter to valid UUIDs only to prevent DB abuse
         valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
 

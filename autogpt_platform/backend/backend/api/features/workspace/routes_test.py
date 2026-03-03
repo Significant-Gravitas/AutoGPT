@@ -223,6 +223,40 @@ def test_upload_blocked_by_virus_scan(mocker: pytest_mock.MockFixture):
     mock_manager.write_file.assert_not_called()
 
 
+# ---- No file extension ----
+
+
+def test_upload_file_without_extension(mocker: pytest_mock.MockFixture):
+    """Files without an extension should be accepted and stored as-is."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload(
+        filename="Makefile",
+        content=b"all:\n\techo hello",
+        content_type="application/octet-stream",
+    )
+    assert response.status_code == 200
+    mock_manager.write_file.assert_called_once()
+    assert mock_manager.write_file.call_args[0][1] == "Makefile"
+
+
 # ---- Filename sanitization (SF5) ----
 
 
