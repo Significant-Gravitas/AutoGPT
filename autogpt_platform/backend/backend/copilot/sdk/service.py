@@ -134,13 +134,15 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
-# Special message prefixes for text-based markers (parsed by frontend)
-COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"  # Renders as ErrorCard
-COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
+# Special message prefixes for text-based markers (parsed by frontend).
+# The hex suffix makes accidental LLM generation of these strings virtually
+# impossible, avoiding false-positive marker detection in normal conversation.
+COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]"  # Renders as ErrorCard
+COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]"  # Renders as system info message
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
-_HEARTBEAT_INTERVAL = 10.0  # seconds
+_HEARTBEAT_INTERVAL = 3.0  # seconds
 
 
 # Appended to the system prompt to inform the agent about available tools.
