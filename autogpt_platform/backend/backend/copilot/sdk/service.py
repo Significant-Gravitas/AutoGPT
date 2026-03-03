@@ -13,7 +13,6 @@ from typing import Any, cast
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
-from backend.util.settings import Settings
 
 from ..config import ChatConfig
 from ..model import (
@@ -33,10 +32,7 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from ..service import (
-    _build_system_prompt,
-    _generate_session_title,
-)
+from ..service import _build_system_prompt, _generate_session_title
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .response_adapter import SDKResponseAdapter
