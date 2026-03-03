@@ -216,6 +216,9 @@ _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 # Superset of types that should be returned inline as base64 (not just metadata+URL).
 # Includes images + documents that Claude can process as multimodal content blocks.
 _INLINEABLE_MIME_TYPES = _IMAGE_MIME_TYPES | {
+    "image/svg+xml",
+    "image/bmp",
+    "image/tiff",
     "application/pdf",
 }
 

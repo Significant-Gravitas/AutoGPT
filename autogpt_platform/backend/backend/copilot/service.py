@@ -323,7 +323,7 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
-    file_ids: list[str] | None = None,  # noqa: ARG001  — SDK-only; accepted for compat
+    file_ids: list[str] | None = None,  # SDK-only; accepted here for API compat
     _continuation_message_id: (
         str | None
     ) = None,  # Internal: reuse message ID for tool call continuations

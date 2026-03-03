@@ -12,6 +12,7 @@ import os
 import re
 import uuid
 from contextvars import ContextVar
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -277,25 +278,43 @@ async def _execute_tool_sync(
     }
 
 
-# Mapping of MIME types to Claude content block types.
-# "image" → MCP image block (Claude vision).
-# "document" → Claude document block (PDF support).
-# To add new types, just add an entry here.
-_MULTIMODAL_TYPES: dict[str, str] = {
+# ---------------------------------------------------------------------------
+# Multimodal content block support
+# ---------------------------------------------------------------------------
+# Each entry maps a MIME type to a ``(block_type, max_base64_bytes)`` tuple.
+#   • "image"    → MCP image block (Claude vision, ≤20 MB raw / ~27 MB b64)
+#   • "document" → Claude document block (PDF, ≤32 MB raw / ~43 MB b64)
+#
+# To support a new file type, add a single entry here.
+# ---------------------------------------------------------------------------
+
+_IMAGE_MAX_B64 = 27_000_000  # ~20 MB raw
+_DOCUMENT_MAX_B64 = 43_000_000  # ~32 MB raw
+
+_MULTIMODAL_TYPES: dict[str, tuple[str, int]] = {
     # Images
-    "image/png": "image",
-    "image/jpeg": "image",
-    "image/gif": "image",
-    "image/webp": "image",
-    "image/svg+xml": "image",
+    "image/png": ("image", _IMAGE_MAX_B64),
+    "image/jpeg": ("image", _IMAGE_MAX_B64),
+    "image/gif": ("image", _IMAGE_MAX_B64),
+    "image/webp": ("image", _IMAGE_MAX_B64),
+    "image/svg+xml": ("image", _IMAGE_MAX_B64),
+    "image/bmp": ("image", _IMAGE_MAX_B64),
+    "image/tiff": ("image", _IMAGE_MAX_B64),
     # Documents
-    "application/pdf": "document",
+    "application/pdf": ("document", _DOCUMENT_MAX_B64),
 }
 
-# Max base64 payload sizes (bytes) per block type.
-_MAX_BASE64_BYTES: dict[str, int] = {
-    "image": 27_000_000,  # ~20 MB raw (Claude vision limit)
-    "document": 43_000_000,  # ~32 MB raw (Claude document limit)
+# Block-type → builder function.  Keeps _extract_content_block flat.
+_BLOCK_BUILDERS: dict[str, Callable[[str, str], dict[str, Any]]] = {
+    "image": lambda mime, b64: {
+        "type": "image",
+        "data": b64,
+        "mimeType": mime,
+    },
+    "document": lambda mime, b64: {
+        "type": "document",
+        "source": {"type": "base64", "media_type": mime, "data": b64},
+    },
 }
 
 
@@ -306,7 +325,8 @@ def _extract_content_block(text: str) -> dict[str, Any] | None:
     MIME type, returning the appropriate content block so Claude can process
     the file (images via vision, PDFs via document support, etc.).
 
-    Returns ``None`` if the result is not a supported multimodal type.
+    Returns ``None`` if the result is not a supported multimodal type or
+    exceeds size limits.
     """
     try:
         data = json.loads(text)
@@ -316,35 +336,24 @@ def _extract_content_block(text: str) -> dict[str, Any] | None:
     if not isinstance(data, dict):
         return None
 
-    mime_type = data.get("mime_type", "")
-    base64_content = data.get("content_base64", "")
-
-    block_type = _MULTIMODAL_TYPES.get(mime_type)
-    if not block_type or not base64_content:
+    mime_type: str = data.get("mime_type", "")
+    base64_content: str = data.get("content_base64", "")
+    if not mime_type or not base64_content:
         return None
 
-    max_size = _MAX_BASE64_BYTES.get(block_type, 27_000_000)
-    if len(base64_content) > max_size:
+    entry = _MULTIMODAL_TYPES.get(mime_type)
+    if entry is None:
         return None
 
-    if block_type == "image":
-        return {
-            "type": "image",
-            "data": base64_content,
-            "mimeType": mime_type,
-        }
+    block_type, max_b64 = entry
+    if len(base64_content) > max_b64:
+        return None
 
-    if block_type == "document":
-        return {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": mime_type,
-                "data": base64_content,
-            },
-        }
+    builder = _BLOCK_BUILDERS.get(block_type)
+    if builder is None:
+        return None
 
-    return None
+    return builder(mime_type, base64_content)
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
