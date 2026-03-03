@@ -6137,7 +6137,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
+        "description": "Get the profile details for the authenticated user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -6157,7 +6157,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
-        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    ProfileDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
         "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
@@ -6172,7 +6172,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorDetails" }
+                "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
           },
@@ -7947,43 +7947,24 @@
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
       },
-      "Creator": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "num_agents": { "type": "integer", "title": "Num Agents" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
-          "agent_runs": { "type": "integer", "title": "Agent Runs" },
-          "is_featured": { "type": "boolean", "title": "Is Featured" }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "username",
-          "description",
-          "avatar_url",
-          "num_agents",
-          "agent_rating",
-          "agent_runs",
-          "is_featured"
-        ],
-        "title": "Creator"
-      },
       "CreatorDetails": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
           "links": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Links"
           },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
+          "is_featured": { "type": "boolean", "title": "Is Featured" },
+          "num_agents": { "type": "integer", "title": "Num Agents" },
           "agent_runs": { "type": "integer", "title": "Agent Runs" },
+          "agent_rating": { "type": "number", "title": "Agent Rating" },
           "top_categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7992,21 +7973,24 @@
         },
         "type": "object",
         "required": [
-          "name",
           "username",
+          "name",
           "description",
-          "links",
           "avatar_url",
-          "agent_rating",
+          "links",
+          "is_featured",
+          "num_agents",
           "agent_runs",
+          "agent_rating",
           "top_categories"
         ],
-        "title": "CreatorDetails"
+        "title": "CreatorDetails",
+        "description": "Marketplace creator profile details, including aggregated stats"
       },
       "CreatorsResponse": {
         "properties": {
           "creators": {
-            "items": { "$ref": "#/components/schemas/Creator" },
+            "items": { "$ref": "#/components/schemas/CreatorDetails" },
             "type": "array",
             "title": "Creators"
           },
@@ -10962,43 +10946,51 @@
       },
       "Profile": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "is_featured": {
-            "type": "boolean",
-            "title": "Is Featured",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["name", "username", "description", "links", "avatar_url"],
-        "title": "Profile"
-      },
-      "ProfileDetails": {
-        "properties": {
           "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
           "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
-        "required": ["name", "username", "description", "links"],
-        "title": "ProfileDetails"
+        "required": ["username", "name", "description", "avatar_url", "links"],
+        "title": "Profile",
+        "description": "Marketplace user profile (only attributes that the user can update)"
+      },
+      "ProfileDetails": {
+        "properties": {
+          "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
+          },
+          "is_featured": { "type": "boolean", "title": "Is Featured" }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "name",
+          "description",
+          "avatar_url",
+          "links",
+          "is_featured"
+        ],
+        "title": "ProfileDetails",
+        "description": "Marketplace profile (including read-only fields)"
       },
       "Provider": {
         "properties": {

@@ -75,4 +75,4 @@ async def _get_cached_store_creators(
 @cached(maxsize=100, ttl_seconds=300, shared_cache=True)
 async def _get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
-    return await store_db.get_store_creator_details(username=username.lower())
+    return await store_db.get_store_creator(username=username.lower())

@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, HTTPException, Path, Query, Security, Uploa
 from prisma.enums import APIKeyPermission
 from prisma.enums import ContentType as SearchContentType
 
-from backend.api.external.middleware import require_permission
+from backend.api.external.middleware import require_auth, require_permission
 from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
 from backend.api.features.store import media as store_media
@@ -30,7 +30,6 @@ from .models import (
     MarketplaceAgentSubmissionCreateRequest,
     MarketplaceAgentSubmissionEditRequest,
     MarketplaceAgentSubmissionsListResponse,
-    MarketplaceCreator,
     MarketplaceCreatorDetails,
     MarketplaceCreatorsResponse,
     MarketplaceMediaUploadResponse,
@@ -54,12 +53,8 @@ marketplace_router = APIRouter()
 @marketplace_router.get(
     path="/agents",
     summary="List marketplace agents",
-    response_model=MarketplaceAgentListResponse,
 )
 async def list_agents(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
     featured: bool = Query(default=False, description="Filter to featured agents only"),
     creator: Optional[str] = Query(
         default=None, description="Filter by creator username"
@@ -76,6 +71,8 @@ async def list_agents(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    # This data is public. We still require auth for access tracking and rate limits.
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentListResponse:
     """
     List agents available in the marketplace.
@@ -108,9 +105,8 @@ async def list_agents(
 )
 async def get_agent_by_version(
     version_id: str = Path(description="Store listing version ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    # This data is public, but we still require auth for access tracking and rate limits
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """
     Get detailed information about a marketplace agent by its store listing
@@ -128,14 +124,12 @@ async def get_agent_by_version(
 @marketplace_router.get(
     path="/agents/{username}/{agent_name}",
     summary="Get agent details",
-    response_model=MarketplaceAgentDetails,
 )
 async def get_agent_details(
     username: str = Path(description="Creator username"),
     agent_name: str = Path(description="Agent slug/name"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    # This data is public. We still require auth for access tracking and rate limits.
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """
     Get detailed information about a specific marketplace agent.
@@ -153,12 +147,8 @@ async def get_agent_details(
 @marketplace_router.get(
     path="/creators",
     summary="List marketplace creators",
-    response_model=MarketplaceCreatorsResponse,
 )
 async def list_creators(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
     featured: bool = Query(
         default=False, description="Filter to featured creators only"
     ),
@@ -173,6 +163,8 @@ async def list_creators(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    # This data is public. We still require auth for access tracking and rate limits.
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceCreatorsResponse:
     """
     List creators on the marketplace.
@@ -189,7 +181,7 @@ async def list_creators(
     )
 
     return MarketplaceCreatorsResponse(
-        creators=[MarketplaceCreator.from_internal(c) for c in result.creators],
+        creators=[MarketplaceCreatorDetails.from_internal(c) for c in result.creators],
         page=result.pagination.current_page,
         page_size=result.pagination.page_size,
         total_count=result.pagination.total_items,
@@ -200,13 +192,11 @@ async def list_creators(
 @marketplace_router.get(
     path="/creators/{username}",
     summary="Get creator details",
-    response_model=MarketplaceCreatorDetails,
 )
 async def get_creator_details(
     username: str = Path(description="Creator username"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    # This data is public. We still require auth for access tracking and rate limits.
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceCreatorDetails:
     """
     Get detailed information about a specific marketplace creator.
@@ -274,9 +264,8 @@ async def search_marketplace(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    # This data is public, but we still require auth for access tracking and rate limits
+    auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceSearchResponse:
     """
     Search the marketplace for agents, blocks, and documentation.
@@ -328,14 +317,16 @@ async def get_profile(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE)
     ),
-) -> MarketplaceUserProfile:
+) -> MarketplaceCreatorDetails:
     """
     Get the authenticated user's marketplace profile.
     """
     profile = await store_db.get_user_profile(auth.user_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return MarketplaceUserProfile.from_internal(profile)
+
+    creator = await store_cache._get_cached_creator_details(username=profile.username)
+    return MarketplaceCreatorDetails.from_internal(creator)
 
 
 @marketplace_router.post(
@@ -347,7 +338,7 @@ async def update_profile(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
-) -> MarketplaceCreatorDetails:
+) -> MarketplaceUserProfile:
     """
     Update the authenticated user's marketplace profile.
 
@@ -364,7 +355,7 @@ async def update_profile(
     )
 
     creator = await store_db.update_profile(auth.user_id, profile)
-    return MarketplaceCreatorDetails.from_internal(creator)
+    return MarketplaceUserProfile.from_internal(creator)
 
 
 # ============================================================================
@@ -375,7 +366,6 @@ async def update_profile(
 @marketplace_router.get(
     path="/submissions",
     summary="List my submissions",
-    response_model=MarketplaceAgentSubmissionsListResponse,
 )
 async def list_submissions(
     auth: APIAuthorizationInfo = Security(
@@ -415,7 +405,6 @@ async def list_submissions(
 @marketplace_router.post(
     path="/submissions",
     summary="Create a submission",
-    response_model=MarketplaceAgentSubmission,
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,

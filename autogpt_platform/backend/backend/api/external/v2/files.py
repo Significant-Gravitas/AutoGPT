@@ -46,7 +46,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 @files_router.post(
     path="/upload",
     summary="Upload a file",
-    response_model=UploadFileResponse,
 )
 async def upload_file(
     file: UploadFile = File(...),

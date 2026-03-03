@@ -24,9 +24,9 @@ from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .integrations.helpers import get_credential_requirements
 from .models import (
     BlockInfo,
-    CreatableGraph,
     CredentialRequirementsResponse,
     Graph,
+    GraphCreateRequest,
     GraphDeleteResponse,
     GraphListResponse,
     GraphMeta,
@@ -112,7 +112,7 @@ async def get_graph(
     summary="Create a new graph",
 )
 async def create_graph(
-    create_graph: CreatableGraph,
+    create_graph: GraphCreateRequest,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
@@ -144,7 +144,7 @@ async def create_graph(
 )
 async def update_graph(
     graph_id: str,
-    update_graph: CreatableGraph,
+    update_graph: GraphCreateRequest,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),

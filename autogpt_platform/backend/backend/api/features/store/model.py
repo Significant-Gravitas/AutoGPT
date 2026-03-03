@@ -74,40 +74,34 @@ class StoreAgentDetails(pydantic.BaseModel):
     changelog: list[ChangelogEntry] | None = None
 
 
-class Creator(pydantic.BaseModel):
-    name: str
+class Profile(pydantic.BaseModel):
+    """Marketplace user profile (only attributes that the user can update)"""
+
     username: str
+    name: str
     description: str
-    avatar_url: str
-    num_agents: int
-    agent_rating: float
-    agent_runs: int
+    avatar_url: str | None
+    links: list[str]
+
+
+class ProfileDetails(Profile):
+    """Marketplace user profile (including read-only fields)"""
+
     is_featured: bool
 
 
-class CreatorsResponse(pydantic.BaseModel):
-    creators: List[Creator]
-    pagination: Pagination
+class CreatorDetails(ProfileDetails):
+    """Marketplace creator profile details, including aggregated stats"""
 
-
-class CreatorDetails(pydantic.BaseModel):
-    name: str
-    username: str
-    description: str
-    links: list[str]
-    avatar_url: str
-    agent_rating: float
+    num_agents: int
     agent_runs: int
+    agent_rating: float
     top_categories: list[str]
 
 
-class Profile(pydantic.BaseModel):
-    name: str
-    username: str
-    description: str
-    links: list[str]
-    avatar_url: str
-    is_featured: bool = False
+class CreatorsResponse(pydantic.BaseModel):
+    creators: List[CreatorDetails]
+    pagination: Pagination
 
 
 class StoreSubmission(pydantic.BaseModel):
@@ -195,14 +189,6 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     categories: list[str] = []
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
-
-
-class ProfileDetails(pydantic.BaseModel):
-    name: str
-    username: str
-    description: str
-    links: list[str]
-    avatar_url: str | None = None
 
 
 class StoreReview(pydantic.BaseModel):

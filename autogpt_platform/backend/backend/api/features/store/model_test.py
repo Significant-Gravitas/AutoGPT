@@ -85,60 +85,6 @@ def test_store_agent_details():
     assert len(details.versions) == 2
 
 
-def test_creator():
-    creator = store_model.Creator(
-        agent_rating=4.8,
-        agent_runs=1000,
-        name="Test Creator",
-        username="creator1",
-        description="Test description",
-        avatar_url="avatar.jpg",
-        num_agents=5,
-        is_featured=False,
-    )
-    assert creator.name == "Test Creator"
-    assert creator.num_agents == 5
-
-
-def test_creators_response():
-    response = store_model.CreatorsResponse(
-        creators=[
-            store_model.Creator(
-                agent_rating=4.8,
-                agent_runs=1000,
-                name="Test Creator",
-                username="creator1",
-                description="Test description",
-                avatar_url="avatar.jpg",
-                num_agents=5,
-                is_featured=False,
-            )
-        ],
-        pagination=store_model.Pagination(
-            total_items=1, total_pages=1, current_page=1, page_size=20
-        ),
-    )
-    assert len(response.creators) == 1
-    assert response.pagination.total_items == 1
-
-
-def test_creator_details():
-    details = store_model.CreatorDetails(
-        name="Test Creator",
-        username="creator1",
-        description="Test description",
-        links=["link1.com", "link2.com"],
-        avatar_url="avatar.jpg",
-        agent_rating=4.8,
-        agent_runs=1000,
-        top_categories=["cat1", "cat2"],
-    )
-    assert details.name == "Test Creator"
-    assert len(details.links) == 2
-    assert details.agent_rating == 4.8
-    assert len(details.top_categories) == 2
-
-
 def test_store_submission():
     submission = store_model.StoreSubmission(
         listing_id="listing123",

@@ -30,7 +30,6 @@ credits_router = APIRouter()
 @credits_router.get(
     path="",
     summary="Get credit balance",
-    response_model=CreditBalance,
 )
 async def get_balance(
     auth: APIAuthorizationInfo = Security(
@@ -49,7 +48,6 @@ async def get_balance(
 @credits_router.get(
     path="/transactions",
     summary="Get transaction history",
-    response_model=CreditTransactionsResponse,
 )
 async def get_transactions(
     auth: APIAuthorizationInfo = Security(

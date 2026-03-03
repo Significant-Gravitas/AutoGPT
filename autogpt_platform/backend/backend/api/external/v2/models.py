@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
     )
-    from backend.api.features.store.model import Creator, CreatorDetails
+    from backend.api.features.store.model import CreatorDetails
     from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.api.features.store.model import (
         StoreAgent,
@@ -86,7 +86,7 @@ class GraphNode(BaseModel):
     )
 
 
-class CreatableGraph(BaseModel):
+class GraphCreateRequest(BaseModel):
     """Graph model for creating or updating an agent graph."""
 
     name: str = Field(description="Graph name")
@@ -1017,69 +1017,71 @@ class MarketplaceAgentListResponse(PaginatedResponse):
     agents: list[MarketplaceAgent]
 
 
-class MarketplaceCreator(BaseModel):
-    """A creator on the marketplace."""
+class MarketplaceUserProfile(BaseModel):
+    """User's marketplace profile."""
 
     name: str
     username: str
     description: str
-    avatar_url: str
-    num_agents: int
-    agent_rating: float
-    agent_runs: int
-    is_featured: bool = False
+    links: list[str]
+    avatar_url: Optional[str]
+    is_featured: bool
 
     @classmethod
-    def from_internal(cls, creator: Creator) -> Self:
+    def from_internal(cls, profile: _ProfileDetails) -> Self:
         return cls(
-            name=creator.name,
-            username=creator.username,
-            description=creator.description,
-            avatar_url=creator.avatar_url,
-            num_agents=creator.num_agents,
-            agent_rating=creator.agent_rating,
-            agent_runs=creator.agent_runs,
-            is_featured=creator.is_featured,
+            name=profile.name,
+            username=profile.username,
+            description=profile.description,
+            links=profile.links,
+            avatar_url=profile.avatar_url,
+            is_featured=profile.is_featured,
         )
 
 
-class MarketplaceCreatorDetails(BaseModel):
-    # FIXME: extend MarketplaceCreator
-    """Detailed information about a marketplace creator."""
+class MarketplaceUserProfileUpdateRequest(BaseModel):
+    """Request to update marketplace profile."""
 
-    name: str
-    username: str
-    description: str
-    avatar_url: str
-    agent_rating: float
+    name: str = Field(description="Display name")
+    username: str = Field(description="Unique username")
+    description: str = Field(default="", description="Bio/description")
+    links: list[str] = Field(default_factory=list, description="Profile links")
+    avatar_url: str = Field(default="", description="Avatar image URL")
+
+
+class MarketplaceCreatorDetails(MarketplaceUserProfile):
+    """Profile + stats for a creator on the marketplace."""
+
+    num_agents: int
     agent_runs: int
-    top_categories: list[str] = Field(default_factory=list)
-    links: list[str] = Field(default_factory=list)
+    agent_rating: float
+    top_categories: list[str]
 
     @classmethod
-    def from_internal(cls, creator: CreatorDetails) -> Self:
+    def from_internal(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, creator: CreatorDetails
+    ) -> Self:
         return cls(
             name=creator.name,
             username=creator.username,
-            description=creator.description,
             avatar_url=creator.avatar_url,
-            agent_rating=creator.agent_rating,
-            agent_runs=creator.agent_runs,
-            top_categories=creator.top_categories,
+            description=creator.description,
             links=creator.links,
+            is_featured=creator.is_featured,
+            num_agents=creator.num_agents,
+            agent_runs=creator.agent_runs,
+            agent_rating=creator.agent_rating,
+            top_categories=creator.top_categories,
         )
 
 
 class MarketplaceCreatorsResponse(PaginatedResponse):
     """Response for listing marketplace creators."""
 
-    creators: list[MarketplaceCreator]
+    creators: list[MarketplaceCreatorDetails]
 
 
 SubmissionStatus: TypeAlias = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"]
-SearchContentType: TypeAlias = Literal[
-    "STORE_AGENT", "BLOCK", "INTEGRATION", "DOCUMENTATION", "LIBRARY_AGENT"
-]
 
 
 class MarketplaceAgentSubmission(BaseModel):
@@ -1175,34 +1177,9 @@ class MarketplaceMediaUploadResponse(BaseModel):
     url: str = Field(description="Public URL of the uploaded media")
 
 
-class MarketplaceUserProfile(BaseModel):
-    """User's marketplace profile."""
-
-    name: str
-    username: str
-    description: str
-    links: list[str]
-    avatar_url: Optional[str] = None
-
-    @classmethod
-    def from_internal(cls, profile: _ProfileDetails) -> Self:
-        return cls(
-            name=profile.name,
-            username=profile.username,
-            description=profile.description,
-            links=profile.links,
-            avatar_url=profile.avatar_url,
-        )
-
-
-class MarketplaceUserProfileUpdateRequest(BaseModel):
-    """Request to update marketplace profile."""
-
-    name: str = Field(description="Display name")
-    username: str = Field(description="Unique username")
-    description: str = Field(default="", description="Bio/description")
-    links: list[str] = Field(default_factory=list, description="Profile links")
-    avatar_url: str = Field(default="", description="Avatar image URL")
+SearchContentType: TypeAlias = Literal[
+    "STORE_AGENT", "BLOCK", "INTEGRATION", "DOCUMENTATION", "LIBRARY_AGENT"
+]
 
 
 class MarketplaceSearchResult(BaseModel):

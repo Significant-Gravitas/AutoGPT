@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.api.external.middleware import require_permission
+from backend.api.external.middleware import require_auth, require_permission
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
@@ -230,7 +230,7 @@ async def get_graph_execution_results(
 @v1_router.get(
     path="/store/agents",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.StoreAgentsResponse,
 )
 async def get_store_agents(
@@ -278,7 +278,7 @@ async def get_store_agents(
 @v1_router.get(
     path="/store/agents/{username}/{agent_name}",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.StoreAgentDetails,
 )
 async def get_store_agent(
@@ -306,7 +306,7 @@ async def get_store_agent(
 @v1_router.get(
     path="/store/creators",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.CreatorsResponse,
 )
 async def get_store_creators(
@@ -348,7 +348,7 @@ async def get_store_creators(
 @v1_router.get(
     path="/store/creators/{username}",
     tags=["store"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
     response_model=store_model.CreatorDetails,
 )
 async def get_store_creator(

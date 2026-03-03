@@ -449,15 +449,17 @@ async def get_store_creators(
 
         # Convert to response model
         creator_models = [
-            store_model.Creator(
-                username=creator.username,
+            store_model.CreatorDetails(
                 name=creator.name,
-                description=creator.description,
+                username=creator.username,
                 avatar_url=creator.avatar_url,
-                num_agents=creator.num_agents,
-                agent_rating=creator.agent_rating,
-                agent_runs=creator.agent_runs,
+                description=creator.description,
+                links=creator.links,
                 is_featured=creator.is_featured,
+                num_agents=creator.num_agents,
+                agent_runs=creator.agent_runs,
+                agent_rating=creator.agent_rating,
+                top_categories=creator.top_categories,
             )
             for creator in creators
         ]
@@ -477,7 +479,7 @@ async def get_store_creators(
         raise DatabaseError("Failed to fetch store creators") from e
 
 
-async def get_store_creator_details(
+async def get_store_creator(
     username: str,
 ) -> store_model.CreatorDetails:
     logger.debug(f"Getting store creator details for {username}")
@@ -496,11 +498,13 @@ async def get_store_creator_details(
         return store_model.CreatorDetails(
             name=creator.name,
             username=creator.username,
+            avatar_url=creator.avatar_url,
             description=creator.description,
             links=creator.links,
-            avatar_url=creator.avatar_url,
-            agent_rating=creator.agent_rating,
+            is_featured=creator.is_featured,
+            num_agents=creator.num_agents,
             agent_runs=creator.agent_runs,
+            agent_rating=creator.agent_rating,
             top_categories=creator.top_categories,
         )
     except store_exceptions.CreatorNotFoundError:
@@ -1164,9 +1168,10 @@ async def get_user_profile(
         return store_model.ProfileDetails(
             name=profile.name,
             username=profile.username,
+            avatar_url=profile.avatarUrl,
             description=profile.description,
             links=profile.links,
-            avatar_url=profile.avatarUrl,
+            is_featured=profile.isFeatured,
         )
     except Exception as e:
         logger.error(f"Error getting user profile: {e}")
@@ -1175,14 +1180,14 @@ async def get_user_profile(
 
 async def update_profile(
     user_id: str, profile: store_model.Profile
-) -> store_model.CreatorDetails:
+) -> store_model.ProfileDetails:
     """
     Update the store profile for a user or create a new one if it doesn't exist.
     Args:
         user_id: ID of the authenticated user
         profile: Updated profile details
     Returns:
-        CreatorDetails: The updated or created profile details
+        ProfileDetails: The updated or created profile details
     Raises:
         DatabaseError: If there's an issue updating or creating the profile
     """
@@ -1234,15 +1239,13 @@ async def update_profile(
             logger.error(f"Failed to update profile for user {user_id}")
             raise DatabaseError("Failed to update profile")
 
-        return store_model.CreatorDetails(
+        return store_model.ProfileDetails(
             name=updated_profile.name,
             username=updated_profile.username,
+            avatar_url=updated_profile.avatarUrl,
             description=updated_profile.description,
             links=updated_profile.links,
-            avatar_url=updated_profile.avatarUrl or "",
-            agent_rating=0.0,
-            agent_runs=0,
-            top_categories=[],
+            is_featured=updated_profile.isFeatured,
         )
 
     except prisma.errors.PrismaError as e:

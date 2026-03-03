@@ -1132,7 +1132,6 @@ enum APIKeyPermission {
   WRITE_GRAPH // Can create and update agent graphs
   EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
-  READ_STORE // Can read store/marketplace agents and creators
   WRITE_LIBRARY // Can add agents to library
   USE_TOOLS // Can use chat tools via external API (v1 only)
   MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them (v1 only)
@@ -1142,6 +1141,7 @@ enum APIKeyPermission {
   // V2 permissions
   READ_SCHEDULE // Can list schedules
   WRITE_SCHEDULE // Can create and delete schedules
+  READ_STORE // Can read marketplace submissions (listings are public and accessible without this permission)
   WRITE_STORE // Can create, update, delete marketplace submissions
   READ_LIBRARY // Can list library agents and runs
   RUN_AGENT // Can run agents from library

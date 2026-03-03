@@ -202,7 +202,7 @@ async def test_get_store_creator_details(mocker):
     mock_creator.return_value.find_unique.return_value = mock_creator_data
 
     # Call function
-    result = await db.get_store_creator_details("creator")
+    result = await db.get_store_creator("creator")
 
     # Verify results
     assert result.username == "creator"
@@ -317,7 +317,6 @@ async def test_update_profile(mocker):
         description="Test description",
         links=["link1"],
         avatar_url="avatar.jpg",
-        is_featured=False,
     )
 
     # Call function

@@ -435,15 +435,17 @@ def test_get_creators_pagination(
 ) -> None:
     mocked_value = store_model.CreatorsResponse(
         creators=[
-            store_model.Creator(
+            store_model.CreatorDetails(
                 name=f"Creator {i}",
                 username=f"creator{i}",
-                description=f"Creator {i} description",
                 avatar_url=f"avatar{i}.jpg",
-                num_agents=1,
-                agent_rating=4.5,
-                agent_runs=100,
+                description=f"Creator {i} description",
+                links=[f"user{i}.link.com"],
                 is_featured=False,
+                num_agents=1,
+                agent_runs=100,
+                agent_rating=4.5,
+                top_categories=["cat1", "cat2", "cat3"],
             )
             for i in range(5)
         ],
@@ -496,11 +498,13 @@ def test_get_creator_details(
     mocked_value = store_model.CreatorDetails(
         name="Test User",
         username="creator1",
+        avatar_url="avatar.jpg",
         description="Test creator description",
         links=["link1.com", "link2.com"],
-        avatar_url="avatar.jpg",
-        agent_rating=4.8,
+        is_featured=True,
+        num_agents=5,
         agent_runs=1000,
+        agent_rating=4.8,
         top_categories=["category1", "category2"],
     )
     mock_db_call = mocker.patch(
