@@ -49,7 +49,6 @@ class ResponseType(str, Enum):
     # Goal refinement
     SUGGESTED_GOAL = "suggested_goal"
     # Agent generation tools
-    BLOCKS_FOR_GOAL = "blocks_for_goal"
     VALIDATION_RESULT = "validation_result"
     FIX_RESULT = "fix_result"
 
@@ -371,6 +370,10 @@ class BlockInfoSummary(BaseModel):
         default_factory=dict,
         description="Full JSON schema for block outputs",
     )
+    static_output: bool = Field(
+        default=False,
+        description="Whether the block produces output without needing input",
+    )
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
         description="List of input fields for this block",
@@ -483,15 +486,6 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
 
 
 # Agent generation tool response models
-
-
-class BlocksForGoalResponse(ToolResponseBase):
-    """Response for get_blocks_for_goal tool."""
-
-    type: ResponseType = ResponseType.BLOCKS_FOR_GOAL
-    blocks: list[dict[str, Any]]
-    count: int
-    goal: str
 
 
 class ValidationResultResponse(ToolResponseBase):

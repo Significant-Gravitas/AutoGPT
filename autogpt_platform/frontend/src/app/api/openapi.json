@@ -7468,6 +7468,12 @@
             "title": "Output Schema",
             "description": "Full JSON schema for block outputs"
           },
+          "static_output": {
+            "type": "boolean",
+            "title": "Static Output",
+            "description": "Whether the block produces output without needing input",
+            "default": false
+          },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
@@ -11171,7 +11177,6 @@
           "feature_request_search",
           "feature_request_created",
           "suggested_goal",
-          "blocks_for_goal",
           "validation_result",
           "fix_result"
         ],

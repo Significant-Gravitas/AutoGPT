@@ -71,6 +71,15 @@ class FindBlockTool(BaseTool):
                         "Use keywords like 'email', 'http', 'text', 'ai', etc."
                     ),
                 },
+                "include_schemas": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, include full input_schema and output_schema "
+                        "for each block. Use when generating agent JSON that "
+                        "needs block schemas. Default is false."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["query"],
         }
@@ -98,6 +107,7 @@ class FindBlockTool(BaseTool):
             ErrorResponse: Error message
         """
         query = kwargs.get("query", "").strip()
+        include_schemas = kwargs.get("include_schemas", False)
         session_id = session.session_id
 
         if not query:
@@ -142,14 +152,20 @@ class FindBlockTool(BaseTool):
                 ):
                     continue
 
-                blocks.append(
-                    BlockInfoSummary(
-                        id=block_id,
-                        name=block.name,
-                        description=block.description or "",
-                        categories=[c.value for c in block.categories],
-                    )
+                summary = BlockInfoSummary(
+                    id=block_id,
+                    name=block.name,
+                    description=block.description or "",
+                    categories=[c.value for c in block.categories],
                 )
+
+                if include_schemas:
+                    info = block.get_info()
+                    summary.input_schema = info.inputSchema
+                    summary.output_schema = info.outputSchema
+                    summary.static_output = info.staticOutput
+
+                blocks.append(summary)
 
                 if len(blocks) >= _TARGET_RESULTS:
                     break
