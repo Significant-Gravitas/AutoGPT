@@ -44,22 +44,28 @@ async def initialize_blocks() -> None:
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
+        description_changed = block.description != existing_block.description
         if (
             block.id != existing_block.id
             or block.name != existing_block.name
             or input_schema != existing_block.inputSchema
             or output_schema != existing_block.outputSchema
-            or block.description != existing_block.description
+            or description_changed
         ):
+            update_data: dict[str, Any] = {
+                "id": block.id,
+                "name": block.name,
+                "inputSchema": input_schema,
+                "outputSchema": output_schema,
+                "description": block.description,
+            }
+            # Clear optimized description when source description changes
+            # so the scheduler job regenerates it
+            if description_changed:
+                update_data["optimizedDescription"] = None
             await AgentBlock.prisma().update(
                 where={"id": existing_block.id},
-                data={
-                    "id": block.id,
-                    "name": block.name,
-                    "inputSchema": input_schema,
-                    "outputSchema": output_schema,
-                    "description": block.description,
-                },
+                data=update_data,
             )
 
     failed_blocks: list[str] = []
