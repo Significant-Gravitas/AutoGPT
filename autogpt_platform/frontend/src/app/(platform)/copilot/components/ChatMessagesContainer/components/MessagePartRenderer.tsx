@@ -81,9 +81,8 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
       if (markerType === "error") {
         const lowerMarker = markerText.toLowerCase();
         const isCancellation =
-          lowerMarker.includes("cancel") ||
-          lowerMarker.includes("abort") ||
-          lowerMarker === "operation cancelled";
+          lowerMarker === "operation cancelled" ||
+          lowerMarker === "execution stopped by user";
         if (isCancellation) {
           return (
             <div

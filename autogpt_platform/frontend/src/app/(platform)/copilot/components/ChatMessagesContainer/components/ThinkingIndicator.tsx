@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScaleLoader } from "../../ScaleLoader/ScaleLoader";
 
 const THINKING_PHRASES = [
@@ -35,6 +35,7 @@ function useCyclingPhrase(active: boolean) {
   const indexRef = useRef(0);
   const [phrase, setPhrase] = useState(THINKING_PHRASES[0]);
   const [visible, setVisible] = useState(true);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset to the first phrase when thinking restarts
   const prevActive = useRef(active);
@@ -47,22 +48,24 @@ function useCyclingPhrase(active: boolean) {
     prevActive.current = active;
   }, [active]);
 
-  const advance = useCallback(() => {
-    // Fade out
-    setVisible(false);
-    // After fade-out completes, swap text and fade back in
-    setTimeout(() => {
-      indexRef.current = (indexRef.current + 1) % THINKING_PHRASES.length;
-      setPhrase(THINKING_PHRASES[indexRef.current]);
-      setVisible(true);
-    }, FADE_DURATION_MS);
-  }, []);
-
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(advance, PHRASE_CYCLE_MS);
-    return () => clearInterval(id);
-  }, [active, advance]);
+    const id = setInterval(() => {
+      setVisible(false);
+      fadeTimeoutRef.current = setTimeout(() => {
+        indexRef.current = (indexRef.current + 1) % THINKING_PHRASES.length;
+        setPhrase(THINKING_PHRASES[indexRef.current]);
+        setVisible(true);
+      }, FADE_DURATION_MS);
+    }, PHRASE_CYCLE_MS);
+    return () => {
+      clearInterval(id);
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = null;
+      }
+    };
+  }, [active]);
 
   return { phrase, visible };
 }

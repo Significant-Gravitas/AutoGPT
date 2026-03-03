@@ -267,6 +267,10 @@ export function useCopilotStream({
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     hasResumedRef.current.clear();
+    return () => {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = undefined;
+    };
   }, [sessionId]);
 
   // Invalidate session cache when stream completes

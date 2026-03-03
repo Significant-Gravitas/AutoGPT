@@ -3,16 +3,8 @@ import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
-// ---------------------------------------------------------------------------
-// LEGACY SSE PROXY — no longer used for primary chat streaming.
-//
-// The frontend now connects directly to the Python backend for SSE,
-// bypassing this Next.js serverless proxy. This eliminates the Vercel
-// 800s function timeout that was the root cause of stream disconnections.
-//
-// This route is kept as a fallback / for backwards compatibility.
-// See useCopilotPage.ts for the direct SSE transport implementation.
-// ---------------------------------------------------------------------------
+// Legacy SSE proxy fallback. Primary transport is direct backend SSE.
+// See useCopilotStream.ts for active transport logic.
 export const maxDuration = 800;
 
 const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
