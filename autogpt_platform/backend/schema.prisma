@@ -506,6 +506,11 @@ model AgentBlock {
   inputSchema  String
   outputSchema String
 
+  // Block description synced from Python block definitions.
+  description          String?
+  // LLM-optimized description for agent generation (concise, actionable).
+  optimizedDescription String?
+
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }

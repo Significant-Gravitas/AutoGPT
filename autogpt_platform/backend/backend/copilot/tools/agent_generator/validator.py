@@ -5,7 +5,11 @@ import logging
 import re
 from typing import Any
 
-from .helpers import AGENT_EXECUTOR_BLOCK_ID
+from .helpers import (
+    AGENT_EXECUTOR_BLOCK_ID,
+    AGENT_INPUT_BLOCK_ID,
+    AGENT_OUTPUT_BLOCK_ID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -564,6 +568,39 @@ class AgentValidator:
 
         return valid
 
+    def validate_io_blocks(self, agent: dict[str, Any]) -> bool:
+        """
+        Validate that the agent has at least one AgentInputBlock and one
+        AgentOutputBlock. These blocks define the agent's interface.
+
+        Returns True if both are present, False otherwise.
+        """
+        valid = True
+        block_ids = {node.get("block_id") for node in agent.get("nodes", [])}
+
+        if AGENT_INPUT_BLOCK_ID not in block_ids:
+            self.add_error(
+                f"Agent is missing an AgentInputBlock (block_id: "
+                f"'{AGENT_INPUT_BLOCK_ID}'). Every agent must have at "
+                f"least one AgentInputBlock to define user-facing inputs. "
+                f"Add a node with block_id '{AGENT_INPUT_BLOCK_ID}' and "
+                f"set input_default with 'name' and optionally 'title'."
+            )
+            valid = False
+
+        if AGENT_OUTPUT_BLOCK_ID not in block_ids:
+            self.add_error(
+                f"Agent is missing an AgentOutputBlock (block_id: "
+                f"'{AGENT_OUTPUT_BLOCK_ID}'). Every agent must have at "
+                f"least one AgentOutputBlock to define user-facing outputs. "
+                f"Add a node with block_id '{AGENT_OUTPUT_BLOCK_ID}' and "
+                f"set input_default with 'name', then link 'value' from "
+                f"another block's output."
+            )
+            valid = False
+
+        return valid
+
     def validate_agent_executor_blocks(
         self,
         agent: dict[str, Any],
@@ -830,6 +867,10 @@ class AgentValidator:
             (
                 "Prompt double curly braces spaces",
                 self.validate_prompt_double_curly_braces_spaces(agent),
+            ),
+            (
+                "IO blocks",
+                self.validate_io_blocks(agent),
             ),
             # Always validate AgentExecutorBlock schemas to prevent
             # frontend crashes

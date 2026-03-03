@@ -1,6 +1,11 @@
 """Unit tests for AgentValidator."""
 
-from .helpers import AGENT_EXECUTOR_BLOCK_ID, generate_uuid
+from .helpers import (
+    AGENT_EXECUTOR_BLOCK_ID,
+    AGENT_INPUT_BLOCK_ID,
+    AGENT_OUTPUT_BLOCK_ID,
+    generate_uuid,
+)
 from .validator import AgentValidator
 
 
@@ -457,6 +462,57 @@ class TestValidateAgentExecutorBlocks:
 
 
 # ============================================================================
+# validate_io_blocks
+# ============================================================================
+
+
+class TestValidateIoBlocks:
+    def test_missing_input_block_reports_error(self):
+        v = AgentValidator()
+        # Agent has output block but no input block
+        node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 1
+        assert "AgentInputBlock" in v.errors[0]
+
+    def test_missing_output_block_reports_error(self):
+        v = AgentValidator()
+        # Agent has input block but no output block
+        node = _make_node(block_id=AGENT_INPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 1
+        assert "AgentOutputBlock" in v.errors[0]
+
+    def test_missing_both_io_blocks_reports_two_errors(self):
+        v = AgentValidator()
+        node = _make_node(block_id="some-other-block")
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 2
+
+    def test_both_io_blocks_present_no_error(self):
+        v = AgentValidator()
+        input_node = _make_node(block_id=AGENT_INPUT_BLOCK_ID)
+        output_node = _make_node(block_id=AGENT_OUTPUT_BLOCK_ID)
+        agent = _make_agent(nodes=[input_node, output_node])
+
+        assert v.validate_io_blocks(agent) is True
+        assert v.errors == []
+
+    def test_empty_agent_reports_both_missing(self):
+        v = AgentValidator()
+        agent = _make_agent(nodes=[])
+
+        assert v.validate_io_blocks(agent) is False
+        assert len(v.errors) == 2
+
+
+# ============================================================================
 # validate (integration)
 # ============================================================================
 
@@ -472,18 +528,37 @@ class TestValidate:
             },
             output_schema={"properties": {"result": {"type": "string"}}},
         )
+        input_block = _make_block(
+            block_id=AGENT_INPUT_BLOCK_ID,
+            name="AgentInputBlock",
+            output_schema={"properties": {"result": {}}},
+        )
+        output_block = _make_block(
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            name="AgentOutputBlock",
+        )
+        input_node = _make_node(
+            node_id="n-in",
+            block_id=AGENT_INPUT_BLOCK_ID,
+            input_default={"name": "url"},
+        )
         n1 = _make_node(
             node_id="n1", block_id="b1", input_default={"url": "http://example.com"}
         )
         n2 = _make_node(
             node_id="n2", block_id="b1", input_default={"url": "http://example2.com"}
         )
+        output_node = _make_node(
+            node_id="n-out",
+            block_id=AGENT_OUTPUT_BLOCK_ID,
+            input_default={"name": "result"},
+        )
         link = _make_link(
             source_id="n1", source_name="result", sink_id="n2", sink_name="url"
         )
-        agent = _make_agent(nodes=[n1, n2], links=[link])
+        agent = _make_agent(nodes=[input_node, n1, n2, output_node], links=[link])
 
-        is_valid, error_message = v.validate(agent, [block])
+        is_valid, error_message = v.validate(agent, [block, input_block, output_block])
 
         assert is_valid is True
         assert error_message is None
@@ -499,10 +574,13 @@ class TestValidate:
         assert error_message is not None
         assert "does not exist" in error_message
 
-    def test_empty_agent_passes(self):
+    def test_empty_agent_fails_io_validation(self):
         v = AgentValidator()
         agent = _make_agent()
 
-        is_valid, _ = v.validate(agent, [])
+        is_valid, error_message = v.validate(agent, [])
 
-        assert is_valid is True
+        assert is_valid is False
+        assert error_message is not None
+        assert "AgentInputBlock" in error_message
+        assert "AgentOutputBlock" in error_message

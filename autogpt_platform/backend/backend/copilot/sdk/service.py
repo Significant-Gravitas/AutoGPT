@@ -215,6 +215,18 @@ is delivered to the user via a background stream.
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 
+"""
+
+
+def _build_agent_generation_guide() -> str:
+    """Build the Agent Generation Guide supplement.
+
+    This is appended to the system prompt only when the user's message
+    suggests agent creation / editing intent, to avoid wasting tokens on
+    unrelated queries.
+    """
+    return """
+
 ## Agent Generation Guide
 
 You can create, edit, and customize agents directly. You ARE the brain —
@@ -244,37 +256,59 @@ generate the agent JSON yourself using block schemas, then validate and save.
 ### Agent JSON Structure
 
 ```json
-{{
+{
   "id": "<UUID v4>",        // auto-generated if omitted
   "version": 1,
   "is_active": true,
   "name": "Agent Name",
   "description": "What the agent does",
   "nodes": [
-    {{
+    {
       "id": "<UUID v4>",
       "block_id": "<block UUID from find_block>",
-      "input_default": {{
+      "input_default": {
         "field_name": "design-time value"
-      }},
-      "metadata": {{
-        "position": {{"x": 0, "y": 0}},
+      },
+      "metadata": {
+        "position": {"x": 0, "y": 0},
         "customized_name": "Optional display name"
-      }}
-    }}
+      }
+    }
   ],
   "links": [
-    {{
+    {
       "id": "<UUID v4>",
       "source_id": "<source node UUID>",
       "source_name": "output_field_name",
       "sink_id": "<sink node UUID>",
       "sink_name": "input_field_name",
       "is_static": false
-    }}
+    }
   ]
-}}
+}
 ```
+
+### REQUIRED: AgentInputBlock and AgentOutputBlock
+
+Every agent MUST include at least one AgentInputBlock and one AgentOutputBlock.
+These define the agent's interface — what it accepts and what it produces.
+
+**AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
+- Defines a user-facing input field on the agent
+- Required `input_default` fields: `name` (str), `value` (default: null)
+- Optional: `title`, `description`, `placeholder_values` (for dropdowns)
+- Output: `result` — the user-provided value at runtime
+- Create one AgentInputBlock per distinct input the agent needs
+
+**AgentOutputBlock** (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`):
+- Defines a user-facing output displayed after the agent runs
+- Required `input_default` fields: `name` (str)
+- The `value` input should be linked from another block's output
+- Optional: `title`, `description`, `format` (Jinja2 template)
+- Create one AgentOutputBlock per distinct result to show the user
+
+Without these blocks, the agent has no interface and the user cannot provide
+inputs or see outputs. NEVER skip them.
 
 ### Key Rules
 
@@ -289,8 +323,8 @@ generate the agent JSON yourself using block schemas, then validate and save.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
-- **Prompt templates**: Use `{{{{variable}}}}` (double curly braces) for
-  literal braces in prompt strings — single `{{` and `}}` are for
+- **Prompt templates**: Use `{{variable}}` (double curly braces) for
+  literal braces in prompt strings — single `{` and `}` are for
   template variables.
 - **AgentExecutorBlock**: When composing sub-agents, set `graph_id` and
   `graph_version` in input_default, and wire inputs/outputs to match
@@ -298,11 +332,48 @@ generate the agent JSON yourself using block schemas, then validate and save.
 
 ### Example: Simple AI Text Processor
 
-A minimal agent that takes user input, processes it with AI, and outputs result:
-- Node 1: `AgentInputBlock` (block for user input, output: "result")
-- Node 2: `AITextGeneratorBlock` (input: "prompt" linked from Node 1)
-- Node 3: `AgentOutputBlock` (input: "value" linked from Node 2's output)
+A minimal agent with input, processing, and output:
+- Node 1: `AgentInputBlock` (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`,
+  input_default: {"name": "user_text", "title": "Text to process"},
+  output: "result")
+- Node 2: `AITextGeneratorBlock` (input: "prompt" linked from Node 1's "result")
+- Node 3: `AgentOutputBlock` (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`,
+  input_default: {"name": "summary", "title": "Summary"},
+  input: "value" linked from Node 2's output)
 """
+
+
+# Keywords that suggest the user wants to create/edit/work with agents
+_AGENT_GEN_KEYWORDS = frozenset(
+    {
+        "create agent",
+        "build agent",
+        "make agent",
+        "generate agent",
+        "new agent",
+        "edit agent",
+        "modify agent",
+        "update agent",
+        "agent graph",
+        "agent json",
+        "create_agent",
+        "edit_agent",
+        "find_block",
+        "validate_agent",
+        "fix_agent",
+        "agentinputblock",
+        "agentoutputblock",
+        "agent executor",
+    }
+)
+
+
+def _needs_agent_generation_guide(message: str | None) -> bool:
+    """Check if the user's message suggests agent creation/editing intent."""
+    if not message:
+        return False
+    lower = message.lower()
+    return any(kw in lower for kw in _AGENT_GEN_KEYWORDS)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -687,6 +758,8 @@ async def stream_chat_completion_sdk(
             user_id, has_conversation_history=has_history
         )
         system_prompt += _build_sdk_tool_supplement(sdk_cwd)
+        if _needs_agent_generation_guide(message):
+            system_prompt += _build_agent_generation_guide()
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 

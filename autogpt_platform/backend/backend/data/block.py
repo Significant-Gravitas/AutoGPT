@@ -37,6 +37,7 @@ async def initialize_blocks() -> None:
                     name=block.name,
                     inputSchema=json.dumps(block.input_schema.jsonschema()),
                     outputSchema=json.dumps(block.output_schema.jsonschema()),
+                    description=block.description,
                 )
             )
             return
@@ -48,6 +49,7 @@ async def initialize_blocks() -> None:
             or block.name != existing_block.name
             or input_schema != existing_block.inputSchema
             or output_schema != existing_block.outputSchema
+            or block.description != existing_block.description
         ):
             await AgentBlock.prisma().update(
                 where={"id": existing_block.id},
@@ -56,6 +58,7 @@ async def initialize_blocks() -> None:
                     "name": block.name,
                     "inputSchema": input_schema,
                     "outputSchema": output_schema,
+                    "description": block.description,
                 },
             )
 
@@ -77,3 +80,35 @@ async def initialize_blocks() -> None:
             f"Failed to sync {len(failed_blocks)} block(s) to database: "
             f"{', '.join(failed_blocks)}. These blocks are still available in memory."
         )
+
+
+async def get_blocks_needing_optimization() -> list[dict[str, str]]:
+    """Return blocks that have a description but no optimized description yet."""
+    blocks = await AgentBlock.prisma().find_many(
+        where={
+            "description": {"not": None},
+            "optimizedDescription": None,
+        },
+    )
+    return [
+        {"id": b.id, "name": b.name, "description": b.description or ""} for b in blocks
+    ]
+
+
+async def update_block_optimized_description(
+    block_id: str, optimized_description: str
+) -> None:
+    """Store an LLM-optimized description for a block."""
+    await AgentBlock.prisma().update(
+        where={"id": block_id},
+        data={"optimizedDescription": optimized_description},
+    )
+
+
+async def get_optimized_block_descriptions() -> dict[str, str]:
+    """Return a mapping of block_id -> optimized description for all blocks
+    that have one."""
+    blocks = await AgentBlock.prisma().find_many(
+        where={"optimizedDescription": {"not": None}},
+    )
+    return {b.id: b.optimizedDescription for b in blocks if b.optimizedDescription}

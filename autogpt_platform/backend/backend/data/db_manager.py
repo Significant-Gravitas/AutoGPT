@@ -30,6 +30,11 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.block import (
+    get_blocks_needing_optimization,
+    get_optimized_block_descriptions,
+    update_block_optimized_description,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -294,6 +299,11 @@ class DatabaseManager(AppService):
     get_business_understanding = _(get_business_understanding)
     upsert_business_understanding = _(upsert_business_understanding)
 
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = _(get_blocks_needing_optimization)
+    update_block_optimized_description = _(update_block_optimized_description)
+    get_optimized_block_descriptions = _(get_optimized_block_descriptions)
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = _(chat_db.get_chat_session)
     create_chat_session = _(chat_db.create_chat_session)
@@ -358,6 +368,11 @@ class DatabaseManagerClient(AppServiceClient):
     get_embedding_stats = _(d.get_embedding_stats)
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
+
+    # Block Descriptions
+    get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
+    update_block_optimized_description = _(d.update_block_optimized_description)
+    get_optimized_block_descriptions = _(d.get_optimized_block_descriptions)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
@@ -463,6 +478,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
     upsert_business_understanding = d.upsert_business_understanding
+
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = d.get_blocks_needing_optimization
+    get_optimized_block_descriptions = d.get_optimized_block_descriptions
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = d.get_chat_session
