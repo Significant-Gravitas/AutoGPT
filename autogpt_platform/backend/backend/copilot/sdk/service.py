@@ -237,7 +237,10 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-def _build_sdk_env() -> dict[str, str]:
+def _build_sdk_env(
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> dict[str, str]:
     """Build env vars for the SDK CLI process.
 
     Routes API calls through OpenRouter (or a custom base_url) using
@@ -247,6 +250,11 @@ def _build_sdk_env() -> dict[str, str]:
     Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
     token are both present — otherwise returns an empty dict so the SDK
     falls back to its default credentials.
+
+    When ``user_id`` or ``session_id`` are provided they are injected via
+    ``CLAUDE_CODE_EXTRA_BODY`` so that OpenRouter (or any proxy) receives
+    them on every API call — mirroring the ``extra_body`` the non-SDK path
+    sends.
     """
     env: dict[str, str] = {}
     if config.api_key and config.base_url:
@@ -261,6 +269,17 @@ def _build_sdk_env() -> dict[str, str]:
         env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
         # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
         env["ANTHROPIC_API_KEY"] = ""
+
+    # Inject user/session metadata via CLAUDE_CODE_EXTRA_BODY so
+    # OpenRouter receives it in every API request body.
+    extra_body: dict[str, Any] = {}
+    if user_id:
+        extra_body["user"] = user_id[:128]
+    if session_id:
+        extra_body["session_id"] = session_id[:128]
+    if extra_body:
+        env["CLAUDE_CODE_EXTRA_BODY"] = json.dumps(extra_body)
+
     return env
 
 
@@ -609,7 +628,7 @@ async def stream_chat_completion_sdk(
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
             # Fail fast when no API credentials are available at all
-            sdk_env = _build_sdk_env()
+            sdk_env = _build_sdk_env(user_id=user_id, session_id=session_id)
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
                 raise RuntimeError(
                     "No API key configured. Set OPEN_ROUTER_API_KEY "
