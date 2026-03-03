@@ -6,9 +6,11 @@ type TTSStatus = "idle" | "playing" | "paused";
 
 export function useTextToSpeech(text: string) {
   const [status, setStatus] = useState<TTSStatus>("idle");
+  const [isSupported, setIsSupported] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
+    setIsSupported("speechSynthesis" in window);
     return () => {
       window.speechSynthesis?.cancel();
     };
@@ -70,9 +72,6 @@ export function useTextToSpeech(text: string) {
       play();
     }
   }
-
-  const isSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
 
   return {
     status,
