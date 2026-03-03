@@ -332,7 +332,6 @@ function ExternalLinkModal({
           if (!open) onClose();
         },
       }}
-      onClose={onClose}
     >
       <Dialog.Content>
         <Text variant="body">

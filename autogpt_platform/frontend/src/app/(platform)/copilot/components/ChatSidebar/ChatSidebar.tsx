@@ -27,7 +27,7 @@ import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 
 export function ChatSidebar() {
@@ -73,6 +73,7 @@ export function ChatSidebar() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameCancelledRef = useRef(false);
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
@@ -123,17 +124,14 @@ export function ChatSidebar() {
     setEditingTitle(title || "");
   }
 
-  const handleRenameSubmit = useCallback(
-    (id: string) => {
-      const trimmed = editingTitle.trim();
-      if (trimmed) {
-        renameSession({ sessionId: id, data: { title: trimmed } });
-      } else {
-        setEditingSessionId(null);
-      }
-    },
-    [editingTitle, renameSession],
-  );
+  function handleRenameSubmit(id: string) {
+    const trimmed = editingTitle.trim();
+    if (trimmed) {
+      renameSession({ sessionId: id, data: { title: trimmed } });
+    } else {
+      setEditingSessionId(null);
+    }
+  }
 
   function handleDeleteClick(
     e: React.MouseEvent,
@@ -282,12 +280,19 @@ export function ChatSidebar() {
                           onChange={(e) => setEditingTitle(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                              handleRenameSubmit(session.id);
+                              e.currentTarget.blur();
                             } else if (e.key === "Escape") {
+                              renameCancelledRef.current = true;
                               setEditingSessionId(null);
                             }
                           }}
-                          onBlur={() => handleRenameSubmit(session.id)}
+                          onBlur={() => {
+                            if (renameCancelledRef.current) {
+                              renameCancelledRef.current = false;
+                              return;
+                            }
+                            handleRenameSubmit(session.id);
+                          }}
                           className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
