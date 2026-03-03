@@ -1,0 +1,606 @@
+{
+  "id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+  "version": 1,
+  "is_active": true,
+  "name": "Citedy Publish",
+  "description": "Publish or schedule a social adaptation.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "8c4627b4-738b-4180-98f6-19544cd4226d",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "API Key",
+        "title": null,
+        "value": "citedy_agent_replace_me",
+        "secret": true,
+        "advanced": false,
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": -80
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "0547df3a-66f0-44c7-b207-2f9e4fb49c67",
+          "source_id": "8c4627b4-738b-4180-98f6-19544cd4226d",
+          "sink_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "eeeb3bc9-de42-4964-a8c3-cf19855ce98f",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Request JSON",
+        "title": null,
+        "value": "{\n  \"adaptationId\": \"uuid-replace-me\",\n  \"action\": \"now\",\n  \"platform\": \"linkedin\",\n  \"accountId\": \"uuid-replace-me\"\n}",
+        "secret": false,
+        "advanced": false,
+        "description": "JSON payload for this endpoint.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": 220
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "10c1f2fe-adb1-4c06-9c40-4bad71c3c7ca",
+          "source_id": "eeeb3bc9-de42-4964-a8c3-cf19855ce98f",
+          "sink_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+      "block_id": "b924ddf4-de4f-4b56-9a85-358930dcbc91",
+      "input_default": {
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -520,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "0547df3a-66f0-44c7-b207-2f9e4fb49c67",
+          "source_id": "8c4627b4-738b-4180-98f6-19544cd4226d",
+          "sink_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "c2b9e86e-3ce8-4918-af90-d22c8463a426",
+          "source_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+          "sink_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "{\"Authorization\":\"Bearer {{ api_key }}\",\"Content-Type\":\"application/json\"}",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "c2b9e86e-3ce8-4918-af90-d22c8463a426",
+          "source_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+          "sink_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "008e8efb-8348-40af-8f4d-a2c1a32a076b",
+          "source_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+          "sink_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": 180,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "008e8efb-8348-40af-8f4d-a2c1a32a076b",
+          "source_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+          "sink_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e4aaade8-f6ad-49ae-bde3-6adb47d08c23",
+          "source_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+          "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": 220
+        }
+      },
+      "input_links": [
+        {
+          "id": "10c1f2fe-adb1-4c06-9c40-4bad71c3c7ca",
+          "source_id": "eeeb3bc9-de42-4964-a8c3-cf19855ce98f",
+          "sink_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9a7fe0bb-1dd0-44fa-98cd-e13b26432ffc",
+          "source_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+          "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "block_id": "6595ae1f-b924-42cb-9a41-551a0611c4b4",
+      "input_default": {
+        "url": "https://www.citedy.com/api/agent/publish",
+        "method": "POST",
+        "headers": {},
+        "json_format": true,
+        "body": null,
+        "files_name": "file",
+        "files": []
+      },
+      "metadata": {
+        "position": {
+          "x": 560,
+          "y": 70
+        }
+      },
+      "input_links": [
+        {
+          "id": "e4aaade8-f6ad-49ae-bde3-6adb47d08c23",
+          "source_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+          "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        },
+        {
+          "id": "9a7fe0bb-1dd0-44fa-98cd-e13b26432ffc",
+          "source_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+          "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9afdd10e-b408-4788-98ad-c39b20f414af",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "93143d0c-813a-4e3e-957e-6aa5f5a1bad7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "505f4437-9277-4f0c-b028-cac4989faded",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "a1f01047-e207-48d3-98a9-237166c3f673",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b810c8ac-c612-4ea5-98d9-30a3d41deeb8",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "a39a1b05-6349-4a1c-a25c-800403bf9cfa",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "db883e0d-409d-4c18-9798-e04062c1a095",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "3d466a4c-08d1-4c5e-b892-825aa5e66b3e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "93143d0c-813a-4e3e-957e-6aa5f5a1bad7",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "response",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Successful API response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": -160
+        }
+      },
+      "input_links": [
+        {
+          "id": "9afdd10e-b408-4788-98ad-c39b20f414af",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "93143d0c-813a-4e3e-957e-6aa5f5a1bad7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a1f01047-e207-48d3-98a9-237166c3f673",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "client_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 4xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 20
+        }
+      },
+      "input_links": [
+        {
+          "id": "505f4437-9277-4f0c-b028-cac4989faded",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "a1f01047-e207-48d3-98a9-237166c3f673",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a39a1b05-6349-4a1c-a25c-800403bf9cfa",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "server_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 5xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 200
+        }
+      },
+      "input_links": [
+        {
+          "id": "b810c8ac-c612-4ea5-98d9-30a3d41deeb8",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "a39a1b05-6349-4a1c-a25c-800403bf9cfa",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "3d466a4c-08d1-4c5e-b892-825aa5e66b3e",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Transport/runtime error output.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 380
+        }
+      },
+      "input_links": [
+        {
+          "id": "db883e0d-409d-4c18-9798-e04062c1a095",
+          "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+          "sink_id": "3d466a4c-08d1-4c5e-b892-825aa5e66b3e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "b5757d3e-6112-496c-ab9b-4c7084b2e480",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "0547df3a-66f0-44c7-b207-2f9e4fb49c67",
+      "source_id": "8c4627b4-738b-4180-98f6-19544cd4226d",
+      "sink_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+      "source_name": "result",
+      "sink_name": "values_#_api_key",
+      "is_static": false
+    },
+    {
+      "id": "10c1f2fe-adb1-4c06-9c40-4bad71c3c7ca",
+      "source_id": "eeeb3bc9-de42-4964-a8c3-cf19855ce98f",
+      "sink_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c2b9e86e-3ce8-4918-af90-d22c8463a426",
+      "source_id": "83a0473a-9093-4f3b-a18a-fe79406afcd4",
+      "sink_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+      "source_name": "dictionary",
+      "sink_name": "values",
+      "is_static": false
+    },
+    {
+      "id": "008e8efb-8348-40af-8f4d-a2c1a32a076b",
+      "source_id": "60406f1d-dc6e-41c1-bbdf-47a89a62f687",
+      "sink_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e4aaade8-f6ad-49ae-bde3-6adb47d08c23",
+      "source_id": "449f8363-1e4f-481e-a121-c9aad94f9951",
+      "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "source_name": "value",
+      "sink_name": "headers",
+      "is_static": false
+    },
+    {
+      "id": "9a7fe0bb-1dd0-44fa-98cd-e13b26432ffc",
+      "source_id": "c1acc659-4c0b-46b6-acab-c7f3781f852a",
+      "sink_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "source_name": "value",
+      "sink_name": "body",
+      "is_static": false
+    },
+    {
+      "id": "9afdd10e-b408-4788-98ad-c39b20f414af",
+      "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "sink_id": "93143d0c-813a-4e3e-957e-6aa5f5a1bad7",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "505f4437-9277-4f0c-b028-cac4989faded",
+      "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "sink_id": "a1f01047-e207-48d3-98a9-237166c3f673",
+      "source_name": "client_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "b810c8ac-c612-4ea5-98d9-30a3d41deeb8",
+      "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "sink_id": "a39a1b05-6349-4a1c-a25c-800403bf9cfa",
+      "source_name": "server_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "db883e0d-409d-4c18-9798-e04062c1a095",
+      "source_id": "4d2e262f-c9c4-44ed-ac94-df8f90b668a2",
+      "sink_id": "3d466a4c-08d1-4c5e-b892-825aa5e66b3e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2026-02-28T12:00:00.000Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "API Key": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": true,
+        "title": "API Key",
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "default": "citedy_agent_replace_me"
+      },
+      "Request JSON": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Request JSON",
+        "description": "JSON payload for the selected Citedy endpoint.",
+        "default": "{\n  \"adaptationId\": \"uuid-replace-me\",\n  \"action\": \"now\",\n  \"platform\": \"linkedin\",\n  \"accountId\": \"uuid-replace-me\"\n}"
+      }
+    },
+    "required": ["API Key", "Request JSON"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "response": {
+        "title": "response",
+        "description": "Successful API response payload.",
+        "type": "object"
+      },
+      "client_error": {
+        "title": "client_error",
+        "description": "HTTP 4xx response payload.",
+        "type": "object"
+      },
+      "server_error": {
+        "title": "server_error",
+        "description": "HTTP 5xx response payload.",
+        "type": "object"
+      },
+      "error": {
+        "title": "error",
+        "description": "Transport/runtime error output.",
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {},
+    "required": [],
+    "title": "CitedyTemplateCredentialsInputSchema",
+    "type": "object"
+  }
+}

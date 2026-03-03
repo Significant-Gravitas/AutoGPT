@@ -1,0 +1,606 @@
+{
+  "id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+  "version": 1,
+  "is_active": true,
+  "name": "Citedy Lead Magnet",
+  "description": "Generate PDF lead magnet (checklist, swipe file, framework).",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "94b5bf2a-1523-4feb-967b-e910148dc375",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "API Key",
+        "title": null,
+        "value": "citedy_agent_replace_me",
+        "secret": true,
+        "advanced": false,
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": -80
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "d44b2df4-30ca-49cd-9c33-4698823cc126",
+          "source_id": "94b5bf2a-1523-4feb-967b-e910148dc375",
+          "sink_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "caf1892d-7e50-4185-abbf-8da31a09ab12",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Request JSON",
+        "title": null,
+        "value": "{\n  \"topic\": \"10-Step SEO Audit Checklist\",\n  \"type\": \"checklist\",\n  \"language\": \"en\",\n  \"generate_images\": false\n}",
+        "secret": false,
+        "advanced": false,
+        "description": "JSON payload for this endpoint.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": 220
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "246dfd45-b9f9-4bfe-80f8-3b6dde76fab7",
+          "source_id": "caf1892d-7e50-4185-abbf-8da31a09ab12",
+          "sink_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+      "block_id": "b924ddf4-de4f-4b56-9a85-358930dcbc91",
+      "input_default": {
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -520,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "d44b2df4-30ca-49cd-9c33-4698823cc126",
+          "source_id": "94b5bf2a-1523-4feb-967b-e910148dc375",
+          "sink_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "bed5032c-e1b1-49b0-af94-49a9da8a20d7",
+          "source_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+          "sink_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "95981e11-2b30-494e-b11b-3de730741d4a",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "{\"Authorization\":\"Bearer {{ api_key }}\",\"Content-Type\":\"application/json\"}",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "bed5032c-e1b1-49b0-af94-49a9da8a20d7",
+          "source_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+          "sink_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "705c173c-b7c1-4bc7-bf52-e2de72c34dcf",
+          "source_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+          "sink_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": 180,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "705c173c-b7c1-4bc7-bf52-e2de72c34dcf",
+          "source_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+          "sink_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "58b8ea32-7312-46ba-94bb-2f3f64141dfa",
+          "source_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+          "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": 220
+        }
+      },
+      "input_links": [
+        {
+          "id": "246dfd45-b9f9-4bfe-80f8-3b6dde76fab7",
+          "source_id": "caf1892d-7e50-4185-abbf-8da31a09ab12",
+          "sink_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6bc29aeb-7b0d-4b02-aaab-62d2feff8a02",
+          "source_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+          "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "block_id": "6595ae1f-b924-42cb-9a41-551a0611c4b4",
+      "input_default": {
+        "url": "https://www.citedy.com/api/agent/lead-magnets",
+        "method": "POST",
+        "headers": {},
+        "json_format": true,
+        "body": null,
+        "files_name": "file",
+        "files": []
+      },
+      "metadata": {
+        "position": {
+          "x": 560,
+          "y": 70
+        }
+      },
+      "input_links": [
+        {
+          "id": "58b8ea32-7312-46ba-94bb-2f3f64141dfa",
+          "source_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+          "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        },
+        {
+          "id": "6bc29aeb-7b0d-4b02-aaab-62d2feff8a02",
+          "source_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+          "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "911587e5-78cd-4b65-8d22-8432cc5d8536",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "bf38c2d5-5bd3-4a57-aff8-7a94dfe318f7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "36518348-6873-4a70-accf-09337f0deca7",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "48fd27e1-438f-4c6c-aece-70c1688995a6",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "182af234-3b0b-4599-b1ab-b6ce25d2a768",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "e88924eb-4295-477b-b7fd-803292a094ec",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "3879d534-336a-4d3f-9e7b-a8b6742abf3c",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "72fbebb4-dffa-4626-b126-5b6b4cb7276e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "bf38c2d5-5bd3-4a57-aff8-7a94dfe318f7",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "response",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Successful API response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": -160
+        }
+      },
+      "input_links": [
+        {
+          "id": "911587e5-78cd-4b65-8d22-8432cc5d8536",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "bf38c2d5-5bd3-4a57-aff8-7a94dfe318f7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "48fd27e1-438f-4c6c-aece-70c1688995a6",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "client_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 4xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 20
+        }
+      },
+      "input_links": [
+        {
+          "id": "36518348-6873-4a70-accf-09337f0deca7",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "48fd27e1-438f-4c6c-aece-70c1688995a6",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e88924eb-4295-477b-b7fd-803292a094ec",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "server_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 5xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 200
+        }
+      },
+      "input_links": [
+        {
+          "id": "182af234-3b0b-4599-b1ab-b6ce25d2a768",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "e88924eb-4295-477b-b7fd-803292a094ec",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "72fbebb4-dffa-4626-b126-5b6b4cb7276e",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Transport/runtime error output.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 380
+        }
+      },
+      "input_links": [
+        {
+          "id": "3879d534-336a-4d3f-9e7b-a8b6742abf3c",
+          "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+          "sink_id": "72fbebb4-dffa-4626-b126-5b6b4cb7276e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "80edb64c-3fc7-482b-929f-7ee407ebc572",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "d44b2df4-30ca-49cd-9c33-4698823cc126",
+      "source_id": "94b5bf2a-1523-4feb-967b-e910148dc375",
+      "sink_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+      "source_name": "result",
+      "sink_name": "values_#_api_key",
+      "is_static": false
+    },
+    {
+      "id": "246dfd45-b9f9-4bfe-80f8-3b6dde76fab7",
+      "source_id": "caf1892d-7e50-4185-abbf-8da31a09ab12",
+      "sink_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "bed5032c-e1b1-49b0-af94-49a9da8a20d7",
+      "source_id": "78061992-1474-4e5a-a845-bd30e4e6dfe7",
+      "sink_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+      "source_name": "dictionary",
+      "sink_name": "values",
+      "is_static": false
+    },
+    {
+      "id": "705c173c-b7c1-4bc7-bf52-e2de72c34dcf",
+      "source_id": "95981e11-2b30-494e-b11b-3de730741d4a",
+      "sink_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "58b8ea32-7312-46ba-94bb-2f3f64141dfa",
+      "source_id": "975fcbf3-9032-4799-973c-0f0d57dea995",
+      "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "source_name": "value",
+      "sink_name": "headers",
+      "is_static": false
+    },
+    {
+      "id": "6bc29aeb-7b0d-4b02-aaab-62d2feff8a02",
+      "source_id": "05a0f661-5e37-4578-a3f8-78da1b324639",
+      "sink_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "source_name": "value",
+      "sink_name": "body",
+      "is_static": false
+    },
+    {
+      "id": "911587e5-78cd-4b65-8d22-8432cc5d8536",
+      "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "sink_id": "bf38c2d5-5bd3-4a57-aff8-7a94dfe318f7",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "36518348-6873-4a70-accf-09337f0deca7",
+      "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "sink_id": "48fd27e1-438f-4c6c-aece-70c1688995a6",
+      "source_name": "client_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "182af234-3b0b-4599-b1ab-b6ce25d2a768",
+      "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "sink_id": "e88924eb-4295-477b-b7fd-803292a094ec",
+      "source_name": "server_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "3879d534-336a-4d3f-9e7b-a8b6742abf3c",
+      "source_id": "b13f9364-c1f0-423a-888c-1ee57fcfd947",
+      "sink_id": "72fbebb4-dffa-4626-b126-5b6b4cb7276e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2026-02-28T12:00:00.000Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "API Key": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": true,
+        "title": "API Key",
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "default": "citedy_agent_replace_me"
+      },
+      "Request JSON": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Request JSON",
+        "description": "JSON payload for the selected Citedy endpoint.",
+        "default": "{\n  \"topic\": \"10-Step SEO Audit Checklist\",\n  \"type\": \"checklist\",\n  \"language\": \"en\",\n  \"generate_images\": false\n}"
+      }
+    },
+    "required": ["API Key", "Request JSON"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "response": {
+        "title": "response",
+        "description": "Successful API response payload.",
+        "type": "object"
+      },
+      "client_error": {
+        "title": "client_error",
+        "description": "HTTP 4xx response payload.",
+        "type": "object"
+      },
+      "server_error": {
+        "title": "server_error",
+        "description": "HTTP 5xx response payload.",
+        "type": "object"
+      },
+      "error": {
+        "title": "error",
+        "description": "Transport/runtime error output.",
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {},
+    "required": [],
+    "title": "CitedyTemplateCredentialsInputSchema",
+    "type": "object"
+  }
+}

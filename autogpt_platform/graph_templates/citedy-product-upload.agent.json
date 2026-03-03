@@ -1,0 +1,606 @@
+{
+  "id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+  "version": 1,
+  "is_active": true,
+  "name": "Citedy Product Knowledge",
+  "description": "Upload product document for context-aware content generation.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "d3a6d5e7-bd57-4778-9a6a-73e177e9f322",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "API Key",
+        "title": null,
+        "value": "citedy_agent_replace_me",
+        "secret": true,
+        "advanced": false,
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": -80
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "4aa2e2bf-d023-404c-bbe8-4b9cac703736",
+          "source_id": "d3a6d5e7-bd57-4778-9a6a-73e177e9f322",
+          "sink_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a99b027d-fc2a-4b70-9357-30537302ed57",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Request JSON",
+        "title": null,
+        "value": "{\n  \"title\": \"Our AI Writing Platform\",\n  \"content\": \"Product description here...\",\n  \"source_type\": \"manual\"\n}",
+        "secret": false,
+        "advanced": false,
+        "description": "JSON payload for this endpoint.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -920,
+          "y": 220
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "ed80a58d-2f78-494f-b960-7f8ff293ef8e",
+          "source_id": "a99b027d-fc2a-4b70-9357-30537302ed57",
+          "sink_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+      "block_id": "b924ddf4-de4f-4b56-9a85-358930dcbc91",
+      "input_default": {
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -520,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "4aa2e2bf-d023-404c-bbe8-4b9cac703736",
+          "source_id": "d3a6d5e7-bd57-4778-9a6a-73e177e9f322",
+          "sink_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+          "source_name": "result",
+          "sink_name": "values_#_api_key",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ed553b05-d8b4-4a4d-8502-740bc0280640",
+          "source_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+          "sink_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "{\"Authorization\":\"Bearer {{ api_key }}\",\"Content-Type\":\"application/json\"}",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "ed553b05-d8b4-4a4d-8502-740bc0280640",
+          "source_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+          "sink_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+          "source_name": "dictionary",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "0444028a-7e60-4148-b184-64c419e796c6",
+          "source_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+          "sink_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": 180,
+          "y": -80
+        }
+      },
+      "input_links": [
+        {
+          "id": "0444028a-7e60-4148-b184-64c419e796c6",
+          "source_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+          "sink_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "eb72f1d3-f627-4a42-adb2-6d33c9aeed50",
+          "source_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+          "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "dictionary",
+        "value": null
+      },
+      "metadata": {
+        "position": {
+          "x": -140,
+          "y": 220
+        }
+      },
+      "input_links": [
+        {
+          "id": "ed80a58d-2f78-494f-b960-7f8ff293ef8e",
+          "source_id": "a99b027d-fc2a-4b70-9357-30537302ed57",
+          "sink_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "18cb2ee2-7bf7-48f8-af4d-97d1c8582794",
+          "source_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+          "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "block_id": "6595ae1f-b924-42cb-9a41-551a0611c4b4",
+      "input_default": {
+        "url": "https://www.citedy.com/api/agent/products",
+        "method": "POST",
+        "headers": {},
+        "json_format": true,
+        "body": null,
+        "files_name": "file",
+        "files": []
+      },
+      "metadata": {
+        "position": {
+          "x": 560,
+          "y": 70
+        }
+      },
+      "input_links": [
+        {
+          "id": "eb72f1d3-f627-4a42-adb2-6d33c9aeed50",
+          "source_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+          "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "source_name": "value",
+          "sink_name": "headers",
+          "is_static": false
+        },
+        {
+          "id": "18cb2ee2-7bf7-48f8-af4d-97d1c8582794",
+          "source_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+          "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "source_name": "value",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e90a5232-8096-43aa-9fd3-cc5900741e03",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "fbf21036-a9f8-49e3-b3b9-0cf6ef859a25",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "10be50e8-7eec-415b-ba92-62612d140843",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "950c71d4-ad01-448d-8de7-629867a79f3e",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "919eda10-fea0-4cde-834b-1667c22aa656",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "6d7ae3bc-4386-46af-addf-9405133aee24",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f09efc5c-3cc4-4c04-ac98-f7d53cfdf899",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "12f22cc5-1265-459d-95e4-54d5a1dd187d",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fbf21036-a9f8-49e3-b3b9-0cf6ef859a25",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "response",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Successful API response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": -160
+        }
+      },
+      "input_links": [
+        {
+          "id": "e90a5232-8096-43aa-9fd3-cc5900741e03",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "fbf21036-a9f8-49e3-b3b9-0cf6ef859a25",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "950c71d4-ad01-448d-8de7-629867a79f3e",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "client_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 4xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 20
+        }
+      },
+      "input_links": [
+        {
+          "id": "10be50e8-7eec-415b-ba92-62612d140843",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "950c71d4-ad01-448d-8de7-629867a79f3e",
+          "source_name": "client_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6d7ae3bc-4386-46af-addf-9405133aee24",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "server_error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "HTTP 5xx response payload.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 200
+        }
+      },
+      "input_links": [
+        {
+          "id": "919eda10-fea0-4cde-834b-1667c22aa656",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "6d7ae3bc-4386-46af-addf-9405133aee24",
+          "source_name": "server_error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "12f22cc5-1265-459d-95e4-54d5a1dd187d",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Transport/runtime error output.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 380
+        }
+      },
+      "input_links": [
+        {
+          "id": "f09efc5c-3cc4-4c04-ac98-f7d53cfdf899",
+          "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+          "sink_id": "12f22cc5-1265-459d-95e4-54d5a1dd187d",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "54449497-20d0-44a1-b53b-2d84c55f3d92",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "4aa2e2bf-d023-404c-bbe8-4b9cac703736",
+      "source_id": "d3a6d5e7-bd57-4778-9a6a-73e177e9f322",
+      "sink_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+      "source_name": "result",
+      "sink_name": "values_#_api_key",
+      "is_static": false
+    },
+    {
+      "id": "ed80a58d-2f78-494f-b960-7f8ff293ef8e",
+      "source_id": "a99b027d-fc2a-4b70-9357-30537302ed57",
+      "sink_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "ed553b05-d8b4-4a4d-8502-740bc0280640",
+      "source_id": "4bc3bc90-cab3-4d54-a8c5-ca69c54352f1",
+      "sink_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+      "source_name": "dictionary",
+      "sink_name": "values",
+      "is_static": false
+    },
+    {
+      "id": "0444028a-7e60-4148-b184-64c419e796c6",
+      "source_id": "7ff997ef-60de-4a92-83a0-9bc733e57300",
+      "sink_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "eb72f1d3-f627-4a42-adb2-6d33c9aeed50",
+      "source_id": "7d03c3fc-1ba4-4d3f-8661-d27d1beb44d0",
+      "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "source_name": "value",
+      "sink_name": "headers",
+      "is_static": false
+    },
+    {
+      "id": "18cb2ee2-7bf7-48f8-af4d-97d1c8582794",
+      "source_id": "21d378c9-c7a6-4c33-8e07-58a871fddf97",
+      "sink_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "source_name": "value",
+      "sink_name": "body",
+      "is_static": false
+    },
+    {
+      "id": "e90a5232-8096-43aa-9fd3-cc5900741e03",
+      "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "sink_id": "fbf21036-a9f8-49e3-b3b9-0cf6ef859a25",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "10be50e8-7eec-415b-ba92-62612d140843",
+      "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "sink_id": "950c71d4-ad01-448d-8de7-629867a79f3e",
+      "source_name": "client_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "919eda10-fea0-4cde-834b-1667c22aa656",
+      "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "sink_id": "6d7ae3bc-4386-46af-addf-9405133aee24",
+      "source_name": "server_error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "f09efc5c-3cc4-4c04-ac98-f7d53cfdf899",
+      "source_id": "ef4acb09-3c04-4eea-b3ea-bfa05c0436fc",
+      "sink_id": "12f22cc5-1265-459d-95e4-54d5a1dd187d",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2026-02-28T12:00:00.000Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "API Key": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": true,
+        "title": "API Key",
+        "description": "Citedy API key (starts with citedy_agent_)",
+        "default": "citedy_agent_replace_me"
+      },
+      "Request JSON": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Request JSON",
+        "description": "JSON payload for the selected Citedy endpoint.",
+        "default": "{\n  \"title\": \"Our AI Writing Platform\",\n  \"content\": \"Product description here...\",\n  \"source_type\": \"manual\"\n}"
+      }
+    },
+    "required": ["API Key", "Request JSON"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "response": {
+        "title": "response",
+        "description": "Successful API response payload.",
+        "type": "object"
+      },
+      "client_error": {
+        "title": "client_error",
+        "description": "HTTP 4xx response payload.",
+        "type": "object"
+      },
+      "server_error": {
+        "title": "server_error",
+        "description": "HTTP 5xx response payload.",
+        "type": "object"
+      },
+      "error": {
+        "title": "error",
+        "description": "Transport/runtime error output.",
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {},
+    "required": [],
+    "title": "CitedyTemplateCredentialsInputSchema",
+    "type": "object"
+  }
+}
