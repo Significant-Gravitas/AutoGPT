@@ -18,7 +18,6 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
-from .get_blocks import GetBlocksForGoalTool
 from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
@@ -59,8 +58,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
-    # Agent generation tools (local validation/fixing/block discovery)
-    "get_blocks_for_goal": GetBlocksForGoalTool(),
+    # Agent generation tools (local validation/fixing)
     "validate_agent_graph": ValidateAgentGraphTool(),
     "fix_agent_graph": FixAgentGraphTool(),
     # Workspace tools for CoPilot file operations

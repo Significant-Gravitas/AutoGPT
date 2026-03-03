@@ -174,32 +174,13 @@ async def test_local_mode_no_auth_returns_error(tool, session):
     assert "logged in" in result.message.lower()
 
 
-# ── External mode tests ──────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
-async def test_external_mode_missing_modifications_returns_error(tool, session):
-    """External mode with missing modifications returns ErrorResponse."""
+async def test_missing_agent_json_returns_error(tool, session):
+    """Missing agent_json returns ErrorResponse."""
     result = await tool._execute(
         user_id=_TEST_USER_ID,
         session=session,
         agent_id="creator/test-agent",
-        modifications="",
     )
     assert isinstance(result, ErrorResponse)
-    assert result.error is not None
-    assert "missing_modifications" in result.error
-
-
-@pytest.mark.asyncio
-async def test_external_mode_invalid_agent_id_format(tool, session):
-    """External mode with bad agent ID format returns ErrorResponse."""
-    result = await tool._execute(
-        user_id=_TEST_USER_ID,
-        session=session,
-        agent_id="invalid-format",
-        modifications="make it faster",
-    )
-    assert isinstance(result, ErrorResponse)
-    assert result.error is not None
-    assert "invalid_agent_id_format" in result.error
+    assert result.error == "missing_agent_json"
