@@ -1,6 +1,6 @@
 """Tests for FixAgentGraphTool."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -61,7 +61,7 @@ async def test_fix_and_validate_success(tool, session):
     fixed_agent = dict(agent_json)  # Fixer returns the full agent dict
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(return_value=fixed_agent)
+    mock_fixer.apply_all_fixes = MagicMock(return_value=fixed_agent)
     mock_fixer.get_fixes_applied.return_value = ["Fixed node UUID format"]
 
     mock_validator = MagicMock()
@@ -121,7 +121,7 @@ async def test_fix_with_remaining_errors(tool, session):
     fixed_agent = dict(agent_json)
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(return_value=fixed_agent)
+    mock_fixer.apply_all_fixes = MagicMock(return_value=fixed_agent)
     mock_fixer.get_fixes_applied.return_value = ["Fixed UUID"]
 
     mock_validator = MagicMock()
@@ -166,7 +166,7 @@ async def test_fixer_exception_returns_error(tool, session):
     }
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(side_effect=RuntimeError("fixer crashed"))
+    mock_fixer.apply_all_fixes = MagicMock(side_effect=RuntimeError("fixer crashed"))
 
     with (
         patch(

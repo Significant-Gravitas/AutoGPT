@@ -2,10 +2,23 @@
 
 import logging
 import re
-import uuid
 from typing import Any
 
+from .helpers import AGENT_EXECUTOR_BLOCK_ID, generate_uuid, is_uuid
+
 logger = logging.getLogger(__name__)
+
+# Block IDs used by the fixer
+_FIX_VALUE2_EMPTY_STRING_BLOCK_IDS = ["715696a0-e1da-45c8-b209-c2fa9c3b0be6"]
+_ADDTOLIST_BLOCK_ID = "aeb08fc1-2fc1-4141-bc8e-f758f183a822"
+_ADDTODICTIONARY_BLOCK_ID = "31d1064e-7446-4693-a7d4-65e5ca1180d1"
+_CODE_EXECUTION_BLOCK_ID = "0b02b072-abe7-11ef-8372-fb5d162dd712"
+_DATA_SAMPLING_BLOCK_ID = "4a448883-71fa-49cf-91cf-70d793bd7d87"
+_STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
+_UNIVERSAL_TYPE_CONVERTER_BLOCK_ID = "95d1b990-ce13-4d88-9737-ba5c2070c97b"
+_GET_CURRENT_DATE_BLOCK_ID = "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1"
+_GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
+_TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 
 
 class AgentFixer:
@@ -15,37 +28,13 @@ class AgentFixer:
     """
 
     def __init__(self):
-        self.UUID_REGEX = re.compile(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$"
-        )
-        self.FIX_VALUE2_EMPTY_STRING_BLOCK_IDS = [
-            "715696a0-e1da-45c8-b209-c2fa9c3b0be6"
-        ]
-        self.ADDTOLIST_BLOCK_ID = "aeb08fc1-2fc1-4141-bc8e-f758f183a822"
-        self.ADDTODICTIONARY_BLOCK_ID = "31d1064e-7446-4693-a7d4-65e5ca1180d1"
-        self.CODE_EXECUTION_BLOCK_ID = "0b02b072-abe7-11ef-8372-fb5d162dd712"
-        self.DATA_SAMPLING_BLOCK_ID = "4a448883-71fa-49cf-91cf-70d793bd7d87"
-        self.STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
-        self.UNIVERSAL_TYPE_CONVERTER_BLOCK_ID = "95d1b990-ce13-4d88-9737-ba5c2070c97b"
-        self.GET_CURRENT_DATE_BLOCK_ID = "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1"
-        self.GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
-        self.TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
-        self.AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
         self.fixes_applied: list[str] = []
-
-    def is_uuid(self, value: str) -> bool:
-        """Check if a string is a valid UUID."""
-        return isinstance(value, str) and self.UUID_REGEX.match(value) is not None
-
-    def generate_uuid(self) -> str:
-        """Generate a new UUID string."""
-        return str(uuid.uuid4())
 
     def add_fix_log(self, fix_description: str):
         """Add a fix description to the applied fixes list."""
         self.fixes_applied.append(fix_description)
 
-    async def fix_agent_ids(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_agent_ids(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix agent and link IDs to ensure they are valid UUIDs.
 
@@ -57,29 +46,27 @@ class AgentFixer:
         """
 
         def get_new_id() -> str:
-            new_id = self.generate_uuid()
+            new_id = generate_uuid()
             return new_id
 
         # Fix link IDs
         links = []
         for link in agent.get("links", []):
-            if not self.is_uuid(link.get("id", "")):
+            if not is_uuid(link.get("id", "")):
                 link["id"] = get_new_id()
                 self.add_fix_log(f"Fixed link ID: {link.get('id', '')}")
             links.append(link)
         agent["links"] = links
 
         # Fix agent ID
-        if not self.is_uuid(agent.get("id", "")):
+        if not is_uuid(agent.get("id", "")):
             old_id = agent.get("id", "missing")
-            agent["id"] = self.generate_uuid()
+            agent["id"] = generate_uuid()
             self.add_fix_log(f"Fixed agent ID: {old_id} -> {agent['id']}")
 
         return agent
 
-    async def fix_storevalue_before_condition(
-        self, agent: dict[str, Any]
-    ) -> dict[str, Any]:
+    def fix_storevalue_before_condition(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Add a StoreValueBlock before each ConditionBlock to provide a value for 'value2'.
 
@@ -100,7 +87,7 @@ class AgentFixer:
         links = agent.get("links", []) or []
 
         # Collect ConditionBlock node ids
-        condition_block_id = self.FIX_VALUE2_EMPTY_STRING_BLOCK_IDS[0]
+        condition_block_id = _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS[0]
         condition_node_ids = {
             node.get("id")
             for node in nodes
@@ -129,7 +116,7 @@ class AgentFixer:
                 )
                 if (
                     source_node
-                    and source_node.get("block_id") == self.STORE_VALUE_BLOCK_ID
+                    and source_node.get("block_id") == _STORE_VALUE_BLOCK_ID
                     and link.get("source_name") == "output"
                 ):
                     new_links.append(link)
@@ -155,7 +142,7 @@ class AgentFixer:
                         if (
                             existing_source_node
                             and existing_source_node.get("block_id")
-                            == self.STORE_VALUE_BLOCK_ID
+                            == _STORE_VALUE_BLOCK_ID
                             and existing_link.get("source_name") == "output"
                         ):
                             existing_storevalue_for_condition = True
@@ -171,10 +158,10 @@ class AgentFixer:
 
                 # Create StoreValueBlock node (input will be linked; data left
                 # default None)
-                store_node_id = self.generate_uuid()
+                store_node_id = generate_uuid()
                 store_node = {
                     "id": store_node_id,
-                    "block_id": self.STORE_VALUE_BLOCK_ID,
+                    "block_id": _STORE_VALUE_BLOCK_ID,
                     "input_default": {"data": None},
                     "metadata": {
                         "position": {
@@ -190,7 +177,7 @@ class AgentFixer:
 
                 # Rewire: old source -> StoreValueBlock.input
                 upstream_to_store_link = {
-                    "id": self.generate_uuid(),
+                    "id": generate_uuid(),
                     "source_id": link.get("source_id"),
                     "source_name": link.get("source_name"),
                     "sink_id": store_node_id,
@@ -199,7 +186,7 @@ class AgentFixer:
 
                 # Then StoreValueBlock.output -> ConditionBlock.value2
                 store_to_condition_link = {
-                    "id": self.generate_uuid(),
+                    "id": generate_uuid(),
                     "source_id": store_node_id,
                     "source_name": "output",
                     "sink_id": condition_node_id,
@@ -224,7 +211,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_double_curly_braces(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_double_curly_braces(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix single curly braces to double curly braces in nodes with prompt or
         format fields. Also ensures that prompt_values (passed via links) are
@@ -284,7 +271,7 @@ class AgentFixer:
                     )
                     if (
                         sink_node
-                        and sink_node.get("block_id") == self.CODE_EXECUTION_BLOCK_ID
+                        and sink_node.get("block_id") == _CODE_EXECUTION_BLOCK_ID
                     ):
                         is_linked_to_code_execution = True
                         break
@@ -344,7 +331,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_addtolist_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_addtolist_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix AddToList blocks by adding a prerequisite empty AddToList block.
 
@@ -394,7 +381,7 @@ class AgentFixer:
                 source_node
                 and sink_node
                 and source_node.get("block_id") == createlist_block_id
-                and sink_node.get("block_id") == self.ADDTOLIST_BLOCK_ID
+                and sink_node.get("block_id") == _ADDTOLIST_BLOCK_ID
             ):
                 createlist_nodes_to_remove.add(source_node.get("id"))
                 links_to_remove.append(link)
@@ -407,8 +394,8 @@ class AgentFixer:
             if (
                 source_node
                 and sink_node
-                and source_node.get("block_id") == self.STORE_VALUE_BLOCK_ID
-                and sink_node.get("block_id") == self.ADDTOLIST_BLOCK_ID
+                and source_node.get("block_id") == _STORE_VALUE_BLOCK_ID
+                and sink_node.get("block_id") == _ADDTOLIST_BLOCK_ID
             ):
                 storevalue_id = source_node.get("id")
                 has_createlist_before = False
@@ -443,7 +430,7 @@ class AgentFixer:
             if node.get("id") in createlist_nodes_to_remove:
                 continue
 
-            if node.get("block_id") == self.ADDTOLIST_BLOCK_ID:
+            if node.get("block_id") == _ADDTOLIST_BLOCK_ID:
                 original_addtolist_node_ids.add(node.get("id"))
                 original_node_id = node.get("id")
                 original_node_position = (node.get("metadata") or {}).get(
@@ -470,7 +457,7 @@ class AgentFixer:
                         )
                         if (
                             source_node
-                            and source_node.get("block_id") == self.ADDTOLIST_BLOCK_ID
+                            and source_node.get("block_id") == _ADDTOLIST_BLOCK_ID
                             and source_node.get("id") != original_node_id
                         ):
                             has_prerequisite_block = True
@@ -523,11 +510,11 @@ class AgentFixer:
                                 f"(will be replaced by prerequisite block)"
                             )
 
-                    prerequisite_node_id = self.generate_uuid()
+                    prerequisite_node_id = generate_uuid()
 
                     prerequisite_node = {
                         "id": prerequisite_node_id,
-                        "block_id": self.ADDTOLIST_BLOCK_ID,
+                        "block_id": _ADDTOLIST_BLOCK_ID,
                         "input_default": {
                             "list": [],
                             "entry": None,
@@ -546,7 +533,7 @@ class AgentFixer:
                     prerequisite_counter += 1
 
                     prerequisite_link = {
-                        "id": self.generate_uuid(),
+                        "id": generate_uuid(),
                         "source_id": prerequisite_node_id,
                         "source_name": "updated_list",
                         "sink_id": original_node_id,
@@ -571,7 +558,7 @@ class AgentFixer:
         # self-referencing links
         for node in new_nodes:
             if (
-                node.get("block_id") == self.ADDTOLIST_BLOCK_ID
+                node.get("block_id") == _ADDTOLIST_BLOCK_ID
                 and node.get("id") in original_addtolist_node_ids
             ):
                 node_id = node.get("id")
@@ -604,7 +591,7 @@ class AgentFixer:
 
                 if not has_self_reference:
                     self_reference_link = {
-                        "id": self.generate_uuid(),
+                        "id": generate_uuid(),
                         "source_id": node_id,
                         "source_name": "updated_list",
                         "sink_id": node_id,
@@ -622,7 +609,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_addtodictionary_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_addtodictionary_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix AddToDictionary blocks by removing empty CreateDictionaryBlock nodes
         that are linked to them.
@@ -641,13 +628,13 @@ class AgentFixer:
         """
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
-        createlist_block_id = (
+        create_dict_block_id = (
             "b924ddf4-de4f-4b56-9a85-358930dcbc91"  # CreateDictionaryBlock ID
         )
 
         # First pass: identify CreateDictionaryBlock nodes linked to
         # AddToDictionary blocks
-        createlist_nodes_to_remove: set[str] = set()
+        create_dict_nodes_to_remove: set[str] = set()
         links_to_remove: list[dict[str, Any]] = []
 
         for link in links:
@@ -663,10 +650,10 @@ class AgentFixer:
             if (
                 source_node
                 and sink_node
-                and source_node.get("block_id") == createlist_block_id
-                and sink_node.get("block_id") == self.ADDTODICTIONARY_BLOCK_ID
+                and source_node.get("block_id") == create_dict_block_id
+                and sink_node.get("block_id") == _ADDTODICTIONARY_BLOCK_ID
             ):
-                createlist_nodes_to_remove.add(source_node.get("id"))
+                create_dict_nodes_to_remove.add(source_node.get("id"))
                 links_to_remove.append(link)
                 self.add_fix_log(
                     f"Identified CreateDictionaryBlock "
@@ -677,7 +664,7 @@ class AgentFixer:
         # Second pass: process nodes, skipping CreateDictionaryBlock nodes
         new_nodes = []
         for node in nodes:
-            if node.get("id") in createlist_nodes_to_remove:
+            if node.get("id") in create_dict_nodes_to_remove:
                 continue
             new_nodes.append(node)
 
@@ -690,7 +677,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_link_static_properties(
+    def fix_link_static_properties(
         self, agent: dict[str, Any], blocks: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """
@@ -745,7 +732,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_code_execution_output(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_code_execution_output(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix CodeExecutionBlock output by changing source_name from "response"
         to "stdout_logs" in links.
@@ -771,7 +758,7 @@ class AgentFixer:
 
             if (
                 source_node
-                and source_node.get("block_id") == self.CODE_EXECUTION_BLOCK_ID
+                and source_node.get("block_id") == _CODE_EXECUTION_BLOCK_ID
                 and link.get("source_name") == "response"
             ):
                 old_source_name = link.get("source_name")
@@ -783,9 +770,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_data_sampling_sample_size(
-        self, agent: dict[str, Any]
-    ) -> dict[str, Any]:
+    def fix_data_sampling_sample_size(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix DataSamplingBlock by setting sample_size to 1 as default.
         If old value is set as default, just reset to 1.
@@ -803,7 +788,7 @@ class AgentFixer:
         links_to_remove: list[dict[str, Any]] = []
 
         for node in nodes:
-            if node.get("block_id") == self.DATA_SAMPLING_BLOCK_ID:
+            if node.get("block_id") == _DATA_SAMPLING_BLOCK_ID:
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
 
@@ -843,7 +828,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_ai_model_parameter(
+    def fix_ai_model_parameter(
         self,
         agent: dict[str, Any],
         blocks: list[dict[str, Any]],
@@ -915,7 +900,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_data_type_mismatch(
+    def fix_data_type_mismatch(
         self, agent: dict[str, Any], blocks: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """
@@ -1020,12 +1005,12 @@ class AgentFixer:
                 and not are_types_compatible(source_type, sink_type)
             ):
                 # Create UniversalTypeConverterBlock node
-                converter_node_id = self.generate_uuid()
+                converter_node_id = generate_uuid()
                 target_type = get_target_type_for_conversion(source_type, sink_type)
 
                 converter_node = {
                     "id": converter_node_id,
-                    "block_id": self.UNIVERSAL_TYPE_CONVERTER_BLOCK_ID,
+                    "block_id": _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID,
                     "input_default": {"type": target_type},
                     "metadata": {
                         "position": {
@@ -1041,7 +1026,7 @@ class AgentFixer:
 
                 # Create new links: source -> converter -> sink
                 source_to_converter_link = {
-                    "id": self.generate_uuid(),
+                    "id": generate_uuid(),
                     "source_id": link.get("source_id", ""),
                     "source_name": link.get("source_name", ""),
                     "sink_id": converter_node_id,
@@ -1049,7 +1034,7 @@ class AgentFixer:
                 }
 
                 converter_to_sink_link = {
-                    "id": self.generate_uuid(),
+                    "id": generate_uuid(),
                     "source_id": converter_node_id,
                     "source_name": "value",
                     "sink_id": link.get("sink_id", ""),
@@ -1080,7 +1065,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_node_x_coordinates(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_node_x_coordinates(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix node x-coordinates to ensure adjacent nodes (connected via links)
         have at least 800 units difference in their x-coordinates.
@@ -1137,7 +1122,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_getcurrentdate_offset(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_getcurrentdate_offset(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix GetCurrentDateBlock offset to ensure it's a positive value.
 
@@ -1153,7 +1138,7 @@ class AgentFixer:
         nodes = agent.get("nodes", [])
 
         for node in nodes:
-            if node.get("block_id") == self.GET_CURRENT_DATE_BLOCK_ID:
+            if node.get("block_id") == _GET_CURRENT_DATE_BLOCK_ID:
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
 
@@ -1171,7 +1156,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_addtolist_gmail_self_reference(
+    def fix_addtolist_gmail_self_reference(
         self, agent: dict[str, Any]
     ) -> dict[str, Any]:
         """
@@ -1208,8 +1193,8 @@ class AgentFixer:
             if (
                 source_node
                 and sink_node
-                and source_node.get("block_id") == self.ADDTOLIST_BLOCK_ID
-                and sink_node.get("block_id") == self.GMAIL_SEND_BLOCK_ID
+                and source_node.get("block_id") == _ADDTOLIST_BLOCK_ID
+                and sink_node.get("block_id") == _GMAIL_SEND_BLOCK_ID
             ):
                 addtolist_nodes_linked_to_gmail.add(source_node.get("id"))
                 self.add_fix_log(
@@ -1241,9 +1226,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_text_replace_new_parameter(
-        self, agent: dict[str, Any]
-    ) -> dict[str, Any]:
+    def fix_text_replace_new_parameter(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Fix TextReplaceBlock's 'new' parameter by changing empty string to space.
 
@@ -1259,7 +1242,7 @@ class AgentFixer:
         nodes = agent.get("nodes", [])
 
         for node in nodes:
-            if node.get("block_id") == self.TEXT_REPLACE_BLOCK_ID:
+            if node.get("block_id") == _TEXT_REPLACE_BLOCK_ID:
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
 
@@ -1272,7 +1255,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_credentials(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_credentials(self, agent: dict[str, Any]) -> dict[str, Any]:
         """
         Delete credentials from input_default if it exists.
 
@@ -1297,7 +1280,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_agent_executor_blocks(
+    def fix_agent_executor_blocks(
         self,
         agent: dict[str, Any],
         library_agents: list[dict[str, Any]] | None = None,
@@ -1337,7 +1320,7 @@ class AgentFixer:
         )
 
         for node in nodes:
-            if node.get("block_id") != self.AGENT_EXECUTOR_BLOCK_ID:
+            if node.get("block_id") != AGENT_EXECUTOR_BLOCK_ID:
                 continue
 
             node_id = node.get("id")
@@ -1505,7 +1488,7 @@ class AgentFixer:
 
         return agent
 
-    async def fix_invalid_nested_sink_links(
+    def fix_invalid_nested_sink_links(
         self, agent: dict[str, Any], blocks: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """
@@ -1605,7 +1588,7 @@ class AgentFixer:
 
         return agent
 
-    async def apply_all_fixes(
+    def apply_all_fixes(
         self,
         agent: dict[str, Any],
         blocks: list[dict[str, Any]] | None = None,
@@ -1626,29 +1609,29 @@ class AgentFixer:
         self.fixes_applied = []
 
         # Apply fixes in order
-        agent = await self.fix_agent_ids(agent)
-        agent = await self.fix_double_curly_braces(agent)
-        agent = await self.fix_storevalue_before_condition(agent)
-        agent = await self.fix_addtolist_blocks(agent)
-        agent = await self.fix_addtolist_gmail_self_reference(agent)
-        agent = await self.fix_addtodictionary_blocks(agent)
-        agent = await self.fix_code_execution_output(agent)
-        agent = await self.fix_data_sampling_sample_size(agent)
-        agent = await self.fix_text_replace_new_parameter(agent)
-        agent = await self.fix_credentials(agent)
-        agent = await self.fix_node_x_coordinates(agent)
-        agent = await self.fix_getcurrentdate_offset(agent)
+        agent = self.fix_agent_ids(agent)
+        agent = self.fix_double_curly_braces(agent)
+        agent = self.fix_storevalue_before_condition(agent)
+        agent = self.fix_addtolist_blocks(agent)
+        agent = self.fix_addtolist_gmail_self_reference(agent)
+        agent = self.fix_addtodictionary_blocks(agent)
+        agent = self.fix_code_execution_output(agent)
+        agent = self.fix_data_sampling_sample_size(agent)
+        agent = self.fix_text_replace_new_parameter(agent)
+        agent = self.fix_credentials(agent)
+        agent = self.fix_node_x_coordinates(agent)
+        agent = self.fix_getcurrentdate_offset(agent)
 
         # Apply fixes that require blocks information
         if blocks:
-            agent = await self.fix_invalid_nested_sink_links(agent, blocks)
-            agent = await self.fix_ai_model_parameter(agent, blocks)
-            agent = await self.fix_link_static_properties(agent, blocks)
-            agent = await self.fix_data_type_mismatch(agent, blocks)
+            agent = self.fix_invalid_nested_sink_links(agent, blocks)
+            agent = self.fix_ai_model_parameter(agent, blocks)
+            agent = self.fix_link_static_properties(agent, blocks)
+            agent = self.fix_data_type_mismatch(agent, blocks)
 
         # Apply fixes for AgentExecutorBlock nodes (sub-agents)
         if library_agents:
-            agent = await self.fix_agent_executor_blocks(agent, library_agents)
+            agent = self.fix_agent_executor_blocks(agent, library_agents)
 
         logger.info(f"Applied {len(self.fixes_applied)} fixes to agent")
         for fix in self.fixes_applied:

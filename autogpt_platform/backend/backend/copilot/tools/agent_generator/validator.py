@@ -3,11 +3,9 @@
 import json
 import logging
 import re
-import uuid
 from typing import Any
 
-from .fixer import AgentFixer
-from .helpers import get_blocks_as_dicts
+from .helpers import AGENT_EXECUTOR_BLOCK_ID
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +17,7 @@ class AgentValidator:
     """
 
     def __init__(self):
-        self.UUID_REGEX = re.compile(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$"
-        )
-        self.AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
         self.errors: list[str] = []
-
-    def is_uuid(self, value: str) -> bool:
-        """Check if a string is a valid UUID."""
-        return isinstance(value, str) and self.UUID_REGEX.match(value) is not None
-
-    def generate_uuid(self) -> str:
-        """Generate a new UUID string."""
-        return str(uuid.uuid4())
 
     def add_error(self, error_message: str):
         """Add an error message to the validation errors list."""
@@ -484,7 +470,7 @@ class AgentValidator:
 
             # Special handling for AgentExecutorBlock - use dynamic
             # output_schema from input_default
-            if block_id == self.AGENT_EXECUTOR_BLOCK_ID:
+            if block_id == AGENT_EXECUTOR_BLOCK_ID:
                 input_default = source_node.get("input_default", {})
                 dynamic_output_schema = input_default.get("output_schema", {})
                 if not isinstance(dynamic_output_schema, dict):
@@ -615,7 +601,7 @@ class AgentValidator:
             library_agent_lookup = {la.get("graph_id", ""): la for la in library_agents}
 
         for node in nodes:
-            if node.get("block_id") != self.AGENT_EXECUTOR_BLOCK_ID:
+            if node.get("block_id") != AGENT_EXECUTOR_BLOCK_ID:
                 continue
 
             node_id = node.get("id")
@@ -743,7 +729,7 @@ class AgentValidator:
         nodes = agent.get("nodes", [])
 
         for node in nodes:
-            if node.get("block_id") != self.AGENT_EXECUTOR_BLOCK_ID:
+            if node.get("block_id") != AGENT_EXECUTOR_BLOCK_ID:
                 continue
 
             node_id = node.get("id")
@@ -875,24 +861,3 @@ class AgentValidator:
 
             logger.error(f"Agent validation failed: {error_message}")
             return False, error_message
-
-
-async def fix_and_validate(
-    agent_json: dict[str, Any],
-    library_agents: list[dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any], bool, str | None, list[str]]:
-    """Fix and validate an agent JSON.
-
-    Returns:
-        Tuple of (fixed_agent_json, is_valid, error_message, fixes_applied)
-    """
-    blocks = get_blocks_as_dicts()
-
-    fixer = AgentFixer()
-    fixed_agent = await fixer.apply_all_fixes(agent_json, blocks, library_agents)
-    fixes_applied = fixer.get_fixes_applied()
-
-    validator = AgentValidator()
-    is_valid, error_message = validator.validate(fixed_agent, blocks, library_agents)
-
-    return fixed_agent, is_valid, error_message, fixes_applied

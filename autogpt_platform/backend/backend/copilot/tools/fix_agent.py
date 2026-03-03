@@ -85,7 +85,7 @@ class FixAgentGraphTool(BaseTool):
         try:
             blocks = get_blocks_as_dicts()
             fixer = AgentFixer()
-            fixed_agent = await fixer.apply_all_fixes(agent_json, blocks)
+            fixed_agent = fixer.apply_all_fixes(agent_json, blocks)
             fixes_applied = fixer.get_fixes_applied()
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)

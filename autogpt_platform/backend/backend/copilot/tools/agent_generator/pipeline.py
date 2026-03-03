@@ -88,7 +88,7 @@ async def fix_validate_and_save(
     # Auto-fix
     try:
         fixer = AgentFixer()
-        agent_json = await fixer.apply_all_fixes(agent_json, blocks, library_agents)
+        agent_json = fixer.apply_all_fixes(agent_json, blocks, library_agents)
         fixes = fixer.get_fixes_applied()
         if fixes:
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")

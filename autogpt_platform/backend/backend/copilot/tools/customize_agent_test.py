@@ -1,6 +1,6 @@
 """Tests for CustomizeAgentTool local mode."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -69,7 +69,7 @@ async def test_local_mode_preview(tool, session):
     }
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(return_value=agent_json)
+    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
     mock_fixer.get_fixes_applied.return_value = []
 
     mock_validator = MagicMock()
@@ -110,7 +110,7 @@ async def test_local_mode_validation_failure(tool, session):
     }
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(return_value=agent_json)
+    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
     mock_fixer.get_fixes_applied.return_value = []
 
     mock_validator = MagicMock()
@@ -150,7 +150,7 @@ async def test_local_mode_no_auth_returns_error(tool, session):
     }
 
     mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = AsyncMock(return_value=agent_json)
+    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
     mock_fixer.get_fixes_applied.return_value = []
 
     mock_validator = MagicMock()
