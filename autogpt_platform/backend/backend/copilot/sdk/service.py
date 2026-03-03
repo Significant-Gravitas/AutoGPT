@@ -218,7 +218,28 @@ is delivered to the user via a background stream.
 ## Agent Generation Guide
 
 You can create, edit, and customize agents directly. You ARE the brain —
-generate the agent JSON yourself using the block schemas, then validate and save.
+generate the agent JSON yourself using block schemas, then validate and save.
+
+### Workflow for Creating/Editing Agents
+
+1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+   search for relevant blocks. This returns block IDs, names, descriptions,
+   and full input/output schemas.
+2. **Find library agents**: Call `find_library_agent` to discover reusable
+   agents that can be composed as sub-agents via `AgentExecutorBlock`.
+3. **Generate JSON**: Build the agent JSON using block schemas:
+   - Use block IDs from step 1 as `block_id` in nodes
+   - Wire outputs to inputs using links
+   - Set design-time config in `input_default`
+   - Use `AgentInputBlock` for values the user provides at runtime
+4. **Write to workspace**: Save the JSON to a workspace file so the user
+   can review it: `write_workspace_file(filename="agent.json", content=...)`
+5. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+   for errors
+6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+   or fix manually based on the error descriptions. Iterate until valid.
+7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+   the final `agent_json`
 
 ### Agent JSON Structure
 
@@ -232,7 +253,7 @@ generate the agent JSON yourself using the block schemas, then validate and save
   "nodes": [
     {{
       "id": "<UUID v4>",
-      "block_id": "<block UUID from get_blocks_for_goal>",
+      "block_id": "<block UUID from find_block>",
       "input_default": {{
         "field_name": "design-time value"
       }},
@@ -255,26 +276,13 @@ generate the agent JSON yourself using the block schemas, then validate and save
 }}
 ```
 
-### Workflow for Creating/Editing Agents
-
-1. **Discover blocks**: Call `get_blocks_for_goal` with the user's goal
-2. **Generate JSON**: Build the agent JSON using block schemas:
-   - Use block IDs from step 1 as `block_id` in nodes
-   - Wire outputs to inputs using links
-   - Set design-time config in `input_default`
-   - Use `AgentInputBlock` for values the user provides at runtime
-3. **Validate**: Call `validate_agent_graph` to check correctness
-4. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
-   or fix manually based on error descriptions
-5. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-   `agent_json` parameter
-
 ### Key Rules
 
 - **Design-time vs runtime**: `input_default` = values known at build time.
   For user-provided values, create an `AgentInputBlock` node and link its
   output to the consuming block's input.
-- **Never hardcode secrets**: Use `AgentInputBlock` for API keys, passwords, etc.
+- **Credentials**: Do NOT require credentials upfront. Users configure
+  credentials later in the platform UI after the agent is saved.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
   sink_name/source_name to access nested object fields.
