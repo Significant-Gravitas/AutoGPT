@@ -539,7 +539,14 @@ async def stream_chat_completion_sdk(
         )
         system_prompt += _build_sdk_tool_supplement(sdk_cwd)
 
-        trace_wall_start = time_module.time()
+        from ..otlp_trace import TraceContext
+
+        _tctx = TraceContext(
+            model=config.model,
+            user_id=user_id,
+            session_id=session_id,
+            start_time=time_module.time(),
+        )
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
         set_execution_context(user_id, session)
@@ -619,9 +626,6 @@ async def stream_chat_completion_sdk(
             # Initialise before the async-with block so pyright knows they
             # are always bound when the OTLP trace section runs.
             assistant_response = ChatMessage(role="assistant", content="")
-            trace_tool_calls: list[dict[str, Any]] = []
-            trace_usage: dict[str, Any] = {}
-            trace_cost_usd: float | None = None
 
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
@@ -674,7 +678,6 @@ async def stream_chat_completion_sdk(
 
                 assistant_response = ChatMessage(role="assistant", content="")
                 accumulated_tool_calls: list[dict[str, Any]] = []
-                trace_tool_calls: list[dict[str, Any]] = []
                 has_appended_assistant = False
                 has_tool_results = False
 
@@ -790,9 +793,9 @@ async def stream_chat_completion_sdk(
                         # Extract usage and cost from ResultMessage for OTLP trace
                         if isinstance(sdk_msg, ResultMessage):
                             if sdk_msg.usage:
-                                trace_usage = sdk_msg.usage
+                                _tctx.usage = sdk_msg.usage
                             if sdk_msg.total_cost_usd is not None:
-                                trace_cost_usd = sdk_msg.total_cost_usd
+                                _tctx.cost_usd = sdk_msg.total_cost_usd
 
                             logger.info(
                                 "[SDK] [%s] Received: ResultMessage %s "
@@ -877,7 +880,7 @@ async def stream_chat_completion_sdk(
                                     },
                                 }
                                 accumulated_tool_calls.append(tool_call)
-                                trace_tool_calls.append(tool_call)
+                                _tctx.tool_calls.append(tool_call)
                                 assistant_response.tool_calls = accumulated_tool_calls
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
@@ -1031,15 +1034,15 @@ async def stream_chat_completion_sdk(
         )
 
         # Emit OTLP trace (fire-and-forget)
-        from ..otlp_trace import emit_trace
-
-        # Keep tool calls scoped to this traced turn only.
-        trace_tool_calls_payload = trace_tool_calls or None
-        trace_finish_reason = (
-            "tool_calls"
-            if trace_tool_calls_payload
-            else ("stop" if stream_completed else "cancelled")
+        _tctx.model = sdk_model or config.model
+        _tctx.text_parts = (
+            [assistant_response.content] if assistant_response.content else []
         )
+        # Compute total tokens if not already set
+        _input = _tctx.usage.get("input_tokens")
+        _output = _tctx.usage.get("output_tokens")
+        if _input or _output:
+            _tctx.usage["total"] = (_input or 0) + (_output or 0)
 
         # Use to_openai_messages() for clean OpenAI-format dicts that include
         # assistant messages with tool_calls and role="tool" responses — this
@@ -1047,27 +1050,13 @@ async def stream_chat_completion_sdk(
         trace_messages: list[dict[str, Any]] = [
             dict(m) for m in session.to_openai_messages()
         ]
-
-        _input = trace_usage.get("input_tokens")
-        _output = trace_usage.get("output_tokens")
-        _total = (_input or 0) + (_output or 0) if _input or _output else None
-
-        emit_trace(
-            model=sdk_model or config.model,
+        _tctx.emit(
+            finish_reason=(
+                "tool_calls"
+                if _tctx.tool_calls
+                else ("stop" if stream_completed else "cancelled")
+            ),
             messages=trace_messages,
-            assistant_content=assistant_response.content or None,
-            finish_reason=trace_finish_reason,
-            prompt_tokens=_input,
-            completion_tokens=_output,
-            total_tokens=_total,
-            total_cost_usd=trace_cost_usd,
-            cache_creation_input_tokens=trace_usage.get("cache_creation_input_tokens"),
-            cache_read_input_tokens=trace_usage.get("cache_read_input_tokens"),
-            user_id=user_id,
-            session_id=session_id,
-            tool_calls=trace_tool_calls_payload,
-            start_time=trace_wall_start,
-            end_time=time_module.time(),
         )
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError

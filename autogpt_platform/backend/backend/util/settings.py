@@ -4,7 +4,14 @@ import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -728,8 +735,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="OTLP trace ingestion host URL (for example, Product Intelligence).",
     )
-    otlp_tracing_token: str = Field(
-        default="",
+    otlp_tracing_token: SecretStr = Field(
+        default=SecretStr(""),
         description="Bearer token for OTLP trace ingestion endpoint.",
     )
     # PostHog analytics

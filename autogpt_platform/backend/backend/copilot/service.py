@@ -911,9 +911,16 @@ async def _stream_chat_chunks(
     """
     import time as time_module
 
+    from .otlp_trace import TraceContext
+
     stream_chunks_start = time_module.perf_counter()
-    _trace_wall_start = time_module.time()  # wall clock for OTLP spans
     model = config.model
+    _tctx = TraceContext(
+        model=model,
+        user_id=session.user_id,
+        session_id=session.session_id,
+        start_time=time_module.time(),
+    )
 
     # Build log metadata for structured logging
     log_meta = {"component": "ChatService", "session_id": session.session_id}
@@ -1041,24 +1048,20 @@ async def _stream_chat_chunks(
                 first_content_chunk = True
                 chunk_count = 0
 
-                # Accumulators for OTLP trace export
-                _trace_text_parts: list[str] = []
-                _trace_usage: dict[str, Any] = {}
-
                 # Process the stream
                 chunk: ChatCompletionChunk
                 async for chunk in stream:
                     chunk_count += 1
                     if chunk.usage:
-                        _trace_usage["prompt"] = chunk.usage.prompt_tokens
-                        _trace_usage["completion"] = chunk.usage.completion_tokens
-                        _trace_usage["total"] = chunk.usage.total_tokens
+                        _tctx.usage["prompt"] = chunk.usage.prompt_tokens
+                        _tctx.usage["completion"] = chunk.usage.completion_tokens
+                        _tctx.usage["total"] = chunk.usage.total_tokens
                         if chunk.usage.prompt_tokens_details:
                             d = chunk.usage.prompt_tokens_details
-                            _trace_usage["cached"] = d.cached_tokens
+                            _tctx.usage["cached"] = d.cached_tokens
                         if chunk.usage.completion_tokens_details:
                             d = chunk.usage.completion_tokens_details
-                            _trace_usage["reasoning"] = d.reasoning_tokens
+                            _tctx.usage["reasoning"] = d.reasoning_tokens
                         yield StreamUsage(
                             promptTokens=chunk.usage.prompt_tokens,
                             completionTokens=chunk.usage.completion_tokens,
@@ -1098,7 +1101,7 @@ async def _stream_chat_chunks(
                                     },
                                 )
                             # Stream the text delta
-                            _trace_text_parts.append(delta.content)
+                            _tctx.text_parts.append(delta.content)
                             text_response = StreamTextDelta(
                                 id=text_block_id or "",
                                 delta=delta.content,
@@ -1183,25 +1186,12 @@ async def _stream_chat_chunks(
                 )
 
                 # Emit OTLP trace (fire-and-forget)
-                from .otlp_trace import emit_trace
-
-                emit_trace(
-                    model=model,
-                    messages=[m if isinstance(m, dict) else dict(m) for m in messages],
-                    assistant_content="".join(_trace_text_parts) or None,
+                _tctx.tool_calls = tool_calls or []
+                _tctx.emit(
                     finish_reason=(
                         "tool_calls" if tool_calls else (finish_reason or "stop")
                     ),
-                    prompt_tokens=_trace_usage.get("prompt"),
-                    completion_tokens=_trace_usage.get("completion"),
-                    total_tokens=_trace_usage.get("total"),
-                    cache_read_input_tokens=_trace_usage.get("cached"),
-                    reasoning_tokens=_trace_usage.get("reasoning"),
-                    user_id=session.user_id,
-                    session_id=session.session_id,
-                    tool_calls=tool_calls or None,
-                    start_time=_trace_wall_start,
-                    end_time=time_module.time(),
+                    messages=[m if isinstance(m, dict) else dict(m) for m in messages],
                 )
 
                 return
