@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from typing import Any
 
 from .blocks import get_blocks_as_dicts
 
@@ -10,8 +11,10 @@ __all__ = [
     "AGENT_INPUT_BLOCK_ID",
     "AGENT_OUTPUT_BLOCK_ID",
     "UUID_REGEX",
+    "are_types_compatible",
     "generate_uuid",
     "get_blocks_as_dicts",
+    "get_defined_property_type",
     "is_uuid",
 ]
 
@@ -32,3 +35,23 @@ def is_uuid(value: str) -> bool:
 def generate_uuid() -> str:
     """Generate a new UUID string."""
     return str(uuid.uuid4())
+
+
+def get_defined_property_type(schema: dict[str, Any], name: str) -> str | None:
+    """Get property type from a schema, handling nested `_#_` notation."""
+    if "_#_" in name:
+        parent, child = name.split("_#_", 1)
+        parent_schema = schema.get(parent, {})
+        if "properties" in parent_schema and isinstance(
+            parent_schema["properties"], dict
+        ):
+            return parent_schema["properties"].get(child, {}).get("type")
+        return None
+    return schema.get(name, {}).get("type")
+
+
+def are_types_compatible(src: str, sink: str) -> bool:
+    """Check if two schema types are compatible."""
+    if {src, sink} <= {"integer", "number"}:
+        return True
+    return src == sink

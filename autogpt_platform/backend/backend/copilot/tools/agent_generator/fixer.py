@@ -4,7 +4,13 @@ import logging
 import re
 from typing import Any
 
-from .helpers import AGENT_EXECUTOR_BLOCK_ID, generate_uuid, is_uuid
+from .helpers import (
+    AGENT_EXECUTOR_BLOCK_ID,
+    are_types_compatible,
+    generate_uuid,
+    get_defined_property_type,
+    is_uuid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +18,8 @@ logger = logging.getLogger(__name__)
 _FIX_VALUE2_EMPTY_STRING_BLOCK_IDS = ["715696a0-e1da-45c8-b209-c2fa9c3b0be6"]
 _ADDTOLIST_BLOCK_ID = "aeb08fc1-2fc1-4141-bc8e-f758f183a822"
 _ADDTODICTIONARY_BLOCK_ID = "31d1064e-7446-4693-a7d4-65e5ca1180d1"
+_CREATE_LIST_BLOCK_ID = "a912d5c7-6e00-4542-b2a9-8034136930e4"
+_CREATE_DICT_BLOCK_ID = "b924ddf4-de4f-4b56-9a85-358930dcbc91"
 _CODE_EXECUTION_BLOCK_ID = "0b02b072-abe7-11ef-8372-fb5d162dd712"
 _DATA_SAMPLING_BLOCK_ID = "4a448883-71fa-49cf-91cf-70d793bd7d87"
 _STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
@@ -359,30 +367,24 @@ class AgentFixer:
         """
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
+        node_lookup = {node.get("id", ""): node for node in nodes}
         new_nodes: list[dict[str, Any]] = []
         new_links: list[dict[str, Any]] = []
         original_addtolist_node_ids: set[str] = set()
-        createlist_block_id = "a912d5c7-6e00-4542-b2a9-8034136930e4"
 
         # First pass: identify CreateListBlock nodes and links to remove
         createlist_nodes_to_remove: set[str] = set()
         links_to_remove: list[dict[str, Any]] = []
 
         for link in links:
-            source_node = next(
-                (node for node in nodes if node.get("id") == link.get("source_id")),
-                None,
-            )
-            sink_node = next(
-                (node for node in nodes if node.get("id") == link.get("sink_id")),
-                None,
-            )
+            source_node = node_lookup.get(link.get("source_id", ""))
+            sink_node = node_lookup.get(link.get("sink_id", ""))
 
             # Case 1: CreateListBlock directly linked to AddToList block
             if (
                 source_node
                 and sink_node
-                and source_node.get("block_id") == createlist_block_id
+                and source_node.get("block_id") == _CREATE_LIST_BLOCK_ID
                 and sink_node.get("block_id") == _ADDTOLIST_BLOCK_ID
             ):
                 createlist_nodes_to_remove.add(source_node.get("id"))
@@ -403,17 +405,13 @@ class AgentFixer:
                 has_createlist_before = False
                 for prev_link in links:
                     if prev_link.get("sink_id") == storevalue_id:
-                        prev_source_node = next(
-                            (
-                                node
-                                for node in nodes
-                                if node.get("id") == prev_link.get("source_id")
-                            ),
-                            None,
+                        prev_source_node = node_lookup.get(
+                            prev_link.get("source_id", "")
                         )
                         if (
                             prev_source_node
-                            and prev_source_node.get("block_id") == createlist_block_id
+                            and prev_source_node.get("block_id")
+                            == _CREATE_LIST_BLOCK_ID
                         ):
                             has_createlist_before = True
                             break
@@ -630,9 +628,7 @@ class AgentFixer:
         """
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
-        create_dict_block_id = (
-            "b924ddf4-de4f-4b56-9a85-358930dcbc91"  # CreateDictionaryBlock ID
-        )
+        node_lookup = {node.get("id", ""): node for node in nodes}
 
         # First pass: identify CreateDictionaryBlock nodes linked to
         # AddToDictionary blocks
@@ -640,19 +636,13 @@ class AgentFixer:
         links_to_remove: list[dict[str, Any]] = []
 
         for link in links:
-            source_node = next(
-                (node for node in nodes if node.get("id") == link.get("source_id")),
-                None,
-            )
-            sink_node = next(
-                (node for node in nodes if node.get("id") == link.get("sink_id")),
-                None,
-            )
+            source_node = node_lookup.get(link.get("source_id", ""))
+            sink_node = node_lookup.get(link.get("sink_id", ""))
 
             if (
                 source_node
                 and sink_node
-                and source_node.get("block_id") == create_dict_block_id
+                and source_node.get("block_id") == _CREATE_DICT_BLOCK_ID
                 and sink_node.get("block_id") == _ADDTODICTIONARY_BLOCK_ID
             ):
                 create_dict_nodes_to_remove.add(source_node.get("id"))
@@ -696,23 +686,14 @@ class AgentFixer:
         Returns:
             The fixed agent dictionary
         """
-        # Create a mapping of block_id to block for quick lookup
         block_map = {block.get("id"): block for block in blocks}
+        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
 
         for link in agent.get("links", []):
-            # Find the source node
-            source_node = next(
-                (
-                    node
-                    for node in agent.get("nodes", [])
-                    if node.get("id") == link.get("source_id")
-                ),
-                None,
-            )
+            source_node = node_lookup.get(link.get("source_id", ""))
             if not source_node:
                 continue
 
-            # Get the source block
             source_block = block_map.get(source_node.get("block_id"))
             if not source_block:
                 continue
@@ -747,16 +728,10 @@ class AgentFixer:
         """
 
         links = agent.get("links", [])
+        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
 
         for link in links:
-            source_node = next(
-                (
-                    node
-                    for node in agent.get("nodes", [])
-                    if node.get("id") == link.get("source_id")
-                ),
-                None,
-            )
+            source_node = node_lookup.get(link.get("source_id", ""))
 
             if (
                 source_node
@@ -925,30 +900,8 @@ class AgentFixer:
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
 
-        # Create lookup dictionaries for efficiency
         block_lookup = {block.get("id", ""): block for block in blocks}
         node_lookup = {node.get("id", ""): node for node in nodes}
-
-        def get_defined_property_type(schema: dict[str, Any], name: str) -> str | None:
-            """Helper function to get property type from schema, handling
-            nested properties."""
-            if "_#_" in name:
-                parent, child = name.split("_#_", 1)
-                parent_schema = schema.get(parent, {})
-                if "properties" in parent_schema and isinstance(
-                    parent_schema["properties"], dict
-                ):
-                    return parent_schema["properties"].get(child, {}).get("type")
-                else:
-                    return None
-            else:
-                return schema.get(name, {}).get("type")
-
-        def are_types_compatible(src: str, sink: str) -> bool:
-            """Check if two types are compatible."""
-            if {src, sink} <= {"integer", "number"}:
-                return True
-            return src == sink
 
         def get_target_type_for_conversion(
             source_type: str, sink_type: str  # noqa: ARG001

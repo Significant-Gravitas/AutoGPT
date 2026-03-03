@@ -9,6 +9,8 @@ from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
+    are_types_compatible,
+    get_defined_property_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,6 +185,8 @@ class AgentValidator:
         Returns True if all data types are compatible, False otherwise.
         """
         valid = True
+        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        block_lookup = {block.get("id", ""): block for block in blocks}
 
         for link in agent.get("links", []):
             source_id = link.get("source_id")
@@ -201,30 +205,14 @@ class AgentValidator:
                 valid = False
                 continue
 
-            source_node = next(
-                (
-                    node
-                    for node in agent.get("nodes", [])
-                    if node.get("id") == source_id
-                ),
-                None,
-            )
-            sink_node = next(
-                (node for node in agent.get("nodes", []) if node.get("id") == sink_id),
-                None,
-            )
+            source_node = node_lookup.get(source_id, "")
+            sink_node = node_lookup.get(sink_id, "")
 
             if not source_node or not sink_node:
                 continue
 
-            source_block = next(
-                (b for b in blocks if b.get("id") == source_node.get("block_id")),
-                None,
-            )
-            sink_block = next(
-                (b for b in blocks if b.get("id") == sink_node.get("block_id")),
-                None,
-            )
+            source_block = block_lookup.get(source_node.get("block_id", ""))
+            sink_block = block_lookup.get(sink_node.get("block_id", ""))
 
             if not source_block or not sink_block:
                 continue
@@ -232,28 +220,8 @@ class AgentValidator:
             source_outputs = source_block.get("outputSchema", {}).get("properties", {})
             sink_inputs = sink_block.get("inputSchema", {}).get("properties", {})
 
-            def get_defined_property_type(
-                schema: dict[str, Any], name: str
-            ) -> str | None:
-                if "_#_" in name:
-                    parent, child = name.split("_#_", 1)
-                    parent_schema = schema.get(parent, {})
-                    if "properties" in parent_schema and isinstance(
-                        parent_schema["properties"], dict
-                    ):
-                        return parent_schema["properties"].get(child, {}).get("type")
-                    else:
-                        return None
-                else:
-                    return schema.get(name, {}).get("type")
-
             source_type = get_defined_property_type(source_outputs, source_name)
             sink_type = get_defined_property_type(sink_inputs, sink_name)
-
-            def are_types_compatible(src: str, sink: str) -> bool:
-                if {src, sink} <= {"integer", "number"}:
-                    return True
-                return src == sink
 
             if (
                 source_type
