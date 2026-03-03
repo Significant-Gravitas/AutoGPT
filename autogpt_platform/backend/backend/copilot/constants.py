@@ -6,3 +6,4 @@ COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"
 
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
+COMPACTION_TOOL_NAME = "context_compaction"

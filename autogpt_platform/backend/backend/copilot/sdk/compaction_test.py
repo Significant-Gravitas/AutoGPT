@@ -3,7 +3,7 @@ CompactionTracker state machine."""
 
 import pytest
 
-from backend.copilot.constants import COMPACTION_DONE_MSG
+from backend.copilot.constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamFinishStep,
@@ -13,7 +13,6 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import (
-    COMPACTION_TOOL_NAME,
     CompactionTracker,
     compaction_events,
     emit_compaction,

@@ -13,7 +13,7 @@ import logging
 import uuid
 from collections.abc import Callable
 
-from ..constants import COMPACTION_DONE_MSG
+from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
     StreamBaseResponse,
@@ -25,8 +25,6 @@ from ..response_model import (
 )
 
 logger = logging.getLogger(__name__)
-
-COMPACTION_TOOL_NAME = "context_compaction"
 
 
 # ---------------------------------------------------------------------------

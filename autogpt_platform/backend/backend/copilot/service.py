@@ -43,6 +43,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
+from .constants import COMPACTION_TOOL_NAME
 from .response_model import (
     StreamBaseResponse,
     StreamError,
@@ -532,7 +533,7 @@ async def stream_chat_completion(
                         StreamToolOutputAvailable,
                     ),
                 )
-                and getattr(chunk, "toolName", None) == "context_compaction"
+                and getattr(chunk, "toolName", None) == COMPACTION_TOOL_NAME
             ):
                 yield chunk
                 continue
