@@ -25,6 +25,7 @@ interface UseJobTimerArgs {
 
 export function useJobTimer({ isActive }: UseJobTimerArgs) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [hasStarted, setHasStarted] = useState(false);
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -33,6 +34,7 @@ export function useJobTimer({ isActive }: UseJobTimerArgs) {
       if (isActive) {
         // Start the timer
         startTimeRef.current = Date.now();
+        setHasStarted(true);
         setElapsedSeconds(0);
 
         intervalRef.current = setInterval(function tick() {
@@ -49,6 +51,7 @@ export function useJobTimer({ isActive }: UseJobTimerArgs) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
+        startTimeRef.current = null;
       }
 
       return function cleanup() {
@@ -62,7 +65,6 @@ export function useJobTimer({ isActive }: UseJobTimerArgs) {
   );
 
   const formattedTime = formatElapsed(elapsedSeconds);
-  const hasStarted = startTimeRef.current !== null;
 
   return {
     elapsedSeconds,

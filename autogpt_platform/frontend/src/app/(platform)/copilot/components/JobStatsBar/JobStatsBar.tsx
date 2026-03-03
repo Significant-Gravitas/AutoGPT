@@ -27,6 +27,8 @@ export function JobStatsBar({ messages, status }: Props) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cn(
         "flex items-center justify-center gap-1.5 px-3 py-1.5",
         "transition-opacity duration-300",
