@@ -217,8 +217,8 @@ export function ChatSidebar() {
             </motion.div>
           </SidebarHeader>
         )}
-        <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {!isCollapsed && (
+        {!isCollapsed && (
+          <SidebarHeader className="shrink-0 px-4 pb-4 pt-4 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -243,14 +243,16 @@ export function ChatSidebar() {
                 New Chat
               </Button>
             </motion.div>
-          )}
+          </SidebarHeader>
+        )}
 
+        <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.15 }}
-              className="mt-4 flex flex-col gap-1"
+              className="flex flex-col gap-1"
             >
               {isLoadingSessions ? (
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
