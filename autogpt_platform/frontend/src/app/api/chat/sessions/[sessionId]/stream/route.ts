@@ -3,6 +3,8 @@ import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
+// Legacy SSE proxy fallback. Primary transport is direct backend SSE.
+// See useCopilotStream.ts for active transport logic.
 export const maxDuration = 800;
 
 const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
