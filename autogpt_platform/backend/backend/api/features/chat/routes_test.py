@@ -69,9 +69,9 @@ def _mock_stream_internals(mocker: pytest_mock.MockFixture):
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockFixture):
     """Exactly 20 file_ids should be accepted (not rejected by validation)."""
     _mock_stream_internals(mocker)
-    # Patch the local imports inside stream_chat_post at their source
+    # Patch workspace lookup as imported by the routes module
     mocker.patch(
-        "backend.data.workspace.get_or_create_workspace",
+        "backend.api.features.chat.routes.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
     mock_prisma = mocker.MagicMock()
@@ -100,7 +100,7 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
     and NOT passed to the database query."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.data.workspace.get_or_create_workspace",
+        "backend.api.features.chat.routes.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
 
@@ -138,7 +138,7 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
     """The batch query should scope to the user's workspace."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.data.workspace.get_or_create_workspace",
+        "backend.api.features.chat.routes.get_or_create_workspace",
         return_value=type("W", (), {"id": "my-workspace-id"})(),
     )
 
