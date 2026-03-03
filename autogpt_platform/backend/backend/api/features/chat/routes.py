@@ -284,7 +284,13 @@ async def update_session_title_route(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
-    await _validate_and_get_session(session_id, user_id)
+    try:
+        await _validate_and_get_session(session_id, user_id)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
     success = await update_session_title(session_id, request.title)
     if not success:
         # Re-check to distinguish true disappearance from internal failure.

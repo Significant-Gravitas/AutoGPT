@@ -469,8 +469,17 @@ async def upsert_chat_session(
             )
             db_error = e
 
-        # Save to cache (best-effort, even if DB failed)
+        # Save to cache (best-effort, even if DB failed).
+        # If this in-memory session object has no title, preserve any title that
+        # was written to the cache by an external operation (e.g. PATCH /title or
+        # the background title generator) while streaming was in progress.
         try:
+            if not session.title:
+                existing_cached = await _get_session_from_cache(session.session_id)
+                if existing_cached and existing_cached.title:
+                    session = session.model_copy(
+                        update={"title": existing_cached.title}
+                    )
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error

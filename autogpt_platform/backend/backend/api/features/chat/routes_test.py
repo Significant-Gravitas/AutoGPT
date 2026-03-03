@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -57,8 +58,16 @@ def _mock_update_session_title(
 
 def _mock_get_chat_session(mocker: pytest_mock.MockerFixture, *, exists: bool = True):
     """Mock get_chat_session for the error-handling re-check path."""
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     value = (
-        ChatSession(session_id="sess-1", user_id="user-1", messages=[])
+        ChatSession(
+            session_id="sess-1",
+            user_id="user-1",
+            messages=[],
+            usage=[],
+            started_at=now,
+            updated_at=now,
+        )
         if exists
         else None
     )
