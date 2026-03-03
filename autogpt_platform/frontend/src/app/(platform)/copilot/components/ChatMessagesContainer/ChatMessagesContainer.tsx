@@ -5,7 +5,8 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
@@ -72,6 +73,10 @@ export function ChatMessagesContainer({
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
 
+          const fileParts = message.parts.filter(
+            (p): p is FileUIPart => p.type === "file",
+          );
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -93,6 +98,12 @@ export function ChatMessagesContainer({
                   <ThinkingIndicator active={showThinking} />
                 )}
               </MessageContent>
+              {fileParts.length > 0 && (
+                <MessageAttachments
+                  files={fileParts}
+                  isUser={message.role === "user"}
+                />
+              )}
             </Message>
           );
         })}

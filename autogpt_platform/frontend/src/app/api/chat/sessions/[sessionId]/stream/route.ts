@@ -27,9 +27,9 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { message, is_user_message, context } = body;
+    const { message, is_user_message, context, file_ids } = body;
 
-    if (!message) {
+    if (message === undefined) {
       return new Response(
         JSON.stringify({ error: "Missing message parameter" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -62,6 +62,7 @@ export async function POST(
         message,
         is_user_message: is_user_message ?? true,
         context: context || null,
+        file_ids: file_ids || null,
       }),
       signal: debugSignal(),
     });
