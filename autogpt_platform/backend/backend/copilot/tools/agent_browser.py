@@ -138,6 +138,13 @@ _session_locks_mutex = asyncio.Lock()
 # Dot-prefixed so it is hidden from user workspace listings.
 _STATE_FILENAME = "._browser_state.json"
 
+# Maximum concurrent subprocesses during cookie/storage restore.
+_RESTORE_CONCURRENCY = 10
+
+# Maximum cookies to restore per session.  Pathological sites can accumulate
+# thousands of cookies; restoring them all would be slow and is rarely useful.
+_MAX_RESTORE_COOKIES = 100
+
 # Background tasks for fire-and-forget state persistence.
 # Prevents GC from collecting tasks before they complete.
 _background_tasks: set[asyncio.Task] = set()
@@ -248,7 +255,16 @@ async def _restore_browser_state(
         # Restore cookies and localStorage in parallel via asyncio.gather.
         # Semaphore caps concurrent subprocess spawns so we don't overwhelm the
         # system when a session has hundreds of cookies.
-        sem = asyncio.Semaphore(10)
+        sem = asyncio.Semaphore(_RESTORE_CONCURRENCY)
+
+        # Guard against pathological sites with thousands of cookies.
+        if len(cookies) > _MAX_RESTORE_COOKIES:
+            logger.debug(
+                "[browser] State restore: capping cookies from %d to %d",
+                len(cookies),
+                _MAX_RESTORE_COOKIES,
+            )
+            cookies = cookies[:_MAX_RESTORE_COOKIES]
 
         async def _set_cookie(c: dict[str, Any]) -> None:
             name = c.get("name", "")
