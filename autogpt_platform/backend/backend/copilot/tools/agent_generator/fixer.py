@@ -308,7 +308,9 @@ class AgentFixer:
                 # Determine which field to add missing values to
                 target_field = "prompt" if "prompt" in input_data else "format"
 
-                if target_field in input_data:
+                if target_field in input_data and isinstance(
+                    input_data[target_field], str
+                ):
                     current_text = input_data[target_field]
                     missing_values = []
 

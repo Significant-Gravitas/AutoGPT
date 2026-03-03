@@ -128,6 +128,29 @@ class TestFixDoubleCurlyBraces:
 
         assert result["nodes"][0]["input_default"]["prompt"] == 42
 
+    def test_non_string_prompt_with_prompt_values_skipped(self):
+        """Ensure non-string prompt fields don't crash re.search in the
+        prompt_values path."""
+        fixer = AgentFixer()
+        node_id = generate_uuid()
+        source_id = generate_uuid()
+        node = _make_node(
+            node_id=node_id, input_default={"prompt": None, "prompt_values": {}}
+        )
+        source_node = _make_node(node_id=source_id)
+        link = _make_link(
+            source_id=source_id,
+            source_name="output",
+            sink_id=node_id,
+            sink_name="prompt_values_$_name",
+        )
+        agent = _make_agent(nodes=[node, source_node], links=[link])
+
+        result = fixer.fix_double_curly_braces(agent)
+
+        # Should not crash and prompt stays None
+        assert result["nodes"][0]["input_default"]["prompt"] is None
+
 
 class TestFixCredentials:
     """Tests for fix_credentials."""
