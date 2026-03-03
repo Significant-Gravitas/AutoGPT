@@ -3,11 +3,16 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageActions,
+  MessageContent,
+} from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { TTSButton } from "./components/TTSButton";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -72,6 +77,15 @@ export function ChatMessagesContainer({
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
 
+          const isAssistant = message.role === "assistant";
+
+          // Past assistant messages are always done; the last one
+          // is done only when the stream has finished.
+          const isAssistantDone =
+            isAssistant &&
+            (!isLastAssistant ||
+              (status !== "streaming" && status !== "submitted"));
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -93,6 +107,19 @@ export function ChatMessagesContainer({
                   <ThinkingIndicator active={showThinking} />
                 )}
               </MessageContent>
+              {isAssistantDone && (
+                <MessageActions>
+                  <TTSButton
+                    text={message.parts
+                      .filter(
+                        (p): p is Extract<typeof p, { type: "text" }> =>
+                          p.type === "text",
+                      )
+                      .map((p) => p.text)
+                      .join("\n")}
+                  />
+                </MessageActions>
+              )}
             </Message>
           );
         })}
