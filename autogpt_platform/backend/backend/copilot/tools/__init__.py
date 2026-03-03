@@ -36,31 +36,34 @@ logger = logging.getLogger(__name__)
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
-    "add_understanding": AddUnderstandingTool(),
-    "create_agent": CreateAgentTool(),
-    "customize_agent": CustomizeAgentTool(),
-    "edit_agent": EditAgentTool(),
-    "find_agent": FindAgentTool(),
-    "find_block": FindBlockTool(),
-    "find_library_agent": FindLibraryAgentTool(),
-    "run_agent": RunAgentTool(),
-    "run_block": RunBlockTool(),
-    "view_agent_output": AgentOutputTool(),
-    "search_docs": SearchDocsTool(),
-    "get_doc_page": GetDocPageTool(),
-    # Web fetch for safe URL retrieval
-    "web_fetch": WebFetchTool(),
-    # Sandboxed code execution (bubblewrap)
-    "bash_exec": BashExecTool(),
-    # Persistent workspace tools (cloud storage, survives across sessions)
-    # Feature request tools
-    "search_feature_requests": SearchFeatureRequestsTool(),
-    "create_feature_request": CreateFeatureRequestTool(),
-    # Workspace tools for CoPilot file operations
-    "list_workspace_files": ListWorkspaceFilesTool(),
-    "read_workspace_file": ReadWorkspaceFileTool(),
-    "write_workspace_file": WriteWorkspaceFileTool(),
-    "delete_workspace_file": DeleteWorkspaceFileTool(),
+    tool.name: tool
+    for tool in [
+        AddUnderstandingTool(),
+        CreateAgentTool(),
+        CustomizeAgentTool(),
+        EditAgentTool(),
+        FindAgentTool(),
+        FindBlockTool(),
+        FindLibraryAgentTool(),
+        RunAgentTool(),
+        RunBlockTool(),
+        AgentOutputTool(),
+        SearchDocsTool(),
+        GetDocPageTool(),
+        # Web fetch for safe URL retrieval
+        WebFetchTool(),
+        # Sandboxed code execution (bubblewrap)
+        BashExecTool(),
+        # Persistent workspace tools (cloud storage, survives across sessions)
+        # Feature request tools
+        SearchFeatureRequestsTool(),
+        CreateFeatureRequestTool(),
+        # Workspace tools for CoPilot file operations
+        ListWorkspaceFilesTool(),
+        ReadWorkspaceFileTool(),
+        WriteWorkspaceFileTool(),
+        DeleteWorkspaceFileTool(),
+    ]
 }
 
 # Export individual tool instances for backwards compatibility

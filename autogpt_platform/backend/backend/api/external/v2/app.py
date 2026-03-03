@@ -10,6 +10,7 @@ from backend.api.external.middleware import add_auth_responses_to_openapi
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.api.utils.openapi import sort_openapi
 
+from .mcp_server import create_mcp_app
 from .routes import v2_router
 
 DESCRIPTION = """
@@ -82,6 +83,9 @@ v2_app = FastAPI(
 
 v2_app.add_middleware(SecurityHeadersMiddleware)
 v2_app.include_router(v2_router)
+
+# Mount MCP server (Copilot tools via Streamable HTTP)
+v2_app.mount("/mcp", create_mcp_app())
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(v2_app)

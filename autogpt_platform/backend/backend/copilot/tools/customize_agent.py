@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import store_db as get_store_db
 from backend.util.exceptions import NotFoundError
@@ -33,6 +35,14 @@ class CustomizeAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "customize_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            # READ_STORE permission not needed since we only use public marketplace data
+        ]
 
     @property
     def description(self) -> str:

@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
@@ -105,6 +106,10 @@ class AgentOutputTool(BaseTool):
     @property
     def name(self) -> str:
         return "view_agent_output"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_RUN]
 
     @property
     def description(self) -> str:

@@ -106,7 +106,10 @@ class TestGenerateAgent:
         ) as mock_external:
             mock_external.return_value = expected_result
 
-            instructions = {"type": "instructions", "steps": ["Step 1"]}
+            instructions: core.DecompositionResult = {
+                "type": "instructions",
+                "steps": [{"description": "Step 1"}],
+            }
             result = await core.generate_agent(instructions)
 
             mock_external.assert_called_once_with(instructions, None)

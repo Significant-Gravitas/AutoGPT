@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot.config import ChatConfig
@@ -101,6 +102,10 @@ class RunAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "run_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.RUN_AGENT]
 
     @property
     def description(self) -> str:

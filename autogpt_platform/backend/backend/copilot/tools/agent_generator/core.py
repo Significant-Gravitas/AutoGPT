@@ -4,7 +4,7 @@ import logging
 import re
 import uuid
 from collections.abc import Sequence
-from typing import Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.data.graph import Graph, Link, Node
@@ -17,6 +17,10 @@ from .service import (
     generate_agent_patch_external,
     is_external_service_configured,
 )
+
+if TYPE_CHECKING:
+    from backend.api.features.library.model import LibraryAgent
+
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +79,7 @@ class DecompositionResult(TypedDict, total=False):
     error_type: str
 
 
-AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary | dict[str, Any]
+AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary
 
 
 def _to_dict_list(
@@ -425,7 +429,7 @@ async def get_all_relevant_agents_for_generation(
 
 
 def extract_search_terms_from_steps(
-    decomposition_result: DecompositionResult | dict[str, Any],
+    decomposition_result: DecompositionResult,
 ) -> list[str]:
     """Extract search terms from decomposed instruction steps.
 
@@ -468,12 +472,12 @@ def extract_search_terms_from_steps(
 
 async def enrich_library_agents_from_steps(
     user_id: str,
-    decomposition_result: DecompositionResult | dict[str, Any],
-    existing_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]],
+    decomposition_result: DecompositionResult,
+    existing_agents: Sequence[AgentSummary],
     exclude_graph_id: str | None = None,
     include_marketplace: bool = True,
     max_additional_results: int = 10,
-) -> list[AgentSummary] | list[dict[str, Any]]:
+) -> list[AgentSummary]:
     """Enrich library agents list with additional searches based on decomposed steps.
 
     This implements two-phase search: after decomposition, we search for additional
@@ -583,7 +587,7 @@ async def decompose_goal(
 
 
 async def generate_agent(
-    instructions: DecompositionResult | dict[str, Any],
+    instructions: DecompositionResult,
     library_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Generate agent JSON from instructions.
@@ -696,7 +700,7 @@ def json_to_graph(agent_json: dict[str, Any]) -> Graph:
 
 async def save_agent_to_library(
     agent_json: dict[str, Any], user_id: str, is_update: bool = False
-) -> tuple[Graph, Any]:
+) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
     Args:
