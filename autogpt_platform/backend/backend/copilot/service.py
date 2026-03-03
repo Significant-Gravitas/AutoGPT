@@ -59,7 +59,7 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from .tools import execute_tool, tools
+from .tools import execute_tool, get_available_tools
 from .tools.models import ErrorResponse
 from .tracking import track_user_message
 
@@ -514,7 +514,7 @@ async def stream_chat_completion(
         )
         async for chunk in _stream_chat_chunks(
             session=session,
-            tools=tools,
+            tools=get_available_tools(),
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
