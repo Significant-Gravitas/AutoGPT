@@ -1,5 +1,6 @@
 """Shared fix → validate → preview/save pipeline for agent tools."""
 
+import json
 import logging
 from typing import Any, cast
 
@@ -15,6 +16,8 @@ from .fixer import AgentFixer
 from .validator import AgentValidator
 
 logger = logging.getLogger(__name__)
+
+MAX_AGENT_JSON_SIZE = 1_000_000  # 1 MB
 
 
 async def fetch_library_agents(
@@ -68,6 +71,18 @@ async def fix_validate_and_save(
     Returns:
         An appropriate ToolResponseBase subclass.
     """
+    # Size guard
+    json_size = len(json.dumps(agent_json))
+    if json_size > MAX_AGENT_JSON_SIZE:
+        return ErrorResponse(
+            message=(
+                f"Agent JSON is too large ({json_size:,} bytes, "
+                f"max {MAX_AGENT_JSON_SIZE:,}). Reduce the number of nodes."
+            ),
+            error="agent_json_too_large",
+            session_id=session_id,
+        )
+
     blocks = get_blocks_as_dicts()
 
     # Auto-fix
