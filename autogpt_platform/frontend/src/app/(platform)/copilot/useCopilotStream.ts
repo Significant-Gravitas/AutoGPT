@@ -11,6 +11,7 @@ import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deduplicateMessages, resolveInProgressTools } from "./helpers";
+import type { TurnMetadataMap } from "./helpers/turnMetadata";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -23,6 +24,82 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     throw new Error("Authentication failed — please sign in again.");
   }
   return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Creates a fetch wrapper that intercepts SSE responses to extract turn-level
+ * timing metadata (startedAt / durationMs) from `start` and `finish` events.
+ * The response stream is passed through to the AI SDK completely unchanged.
+ */
+function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
+  return function metadataFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    return fetch(input, init).then(function interceptResponse(response) {
+      if (!response.body) return response;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const stream = new ReadableStream({
+        async pull(controller) {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            return;
+          }
+
+          // Pass through to AI SDK unchanged
+          controller.enqueue(value);
+
+          // Parse for our custom timing fields
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+
+          for (const event of events) {
+            const dataMatch = event.match(/^data:\s*(.+)/s);
+            if (!dataMatch) continue;
+            try {
+              const parsed = JSON.parse(dataMatch[1]);
+              if (parsed.type === "start" && parsed.startedAt) {
+                metadataRef.current.set(parsed.messageId, {
+                  messageId: parsed.messageId,
+                  startedAt: parsed.startedAt,
+                  durationMs: null,
+                });
+              }
+              if (
+                parsed.type === "finish" &&
+                (parsed.durationMs != null || parsed.startedAt != null)
+              ) {
+                // Update the most recent entry that has no duration yet
+                for (const [, meta] of metadataRef.current) {
+                  if (meta.durationMs === null) {
+                    if (parsed.durationMs != null)
+                      meta.durationMs = parsed.durationMs;
+                    if (parsed.startedAt != null)
+                      meta.startedAt = parsed.startedAt;
+                    break;
+                  }
+                }
+              }
+            } catch {
+              // Not valid JSON — ignore
+            }
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    });
+  };
 }
 
 interface UseCopilotStreamArgs {
@@ -40,6 +117,9 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
 
+  const turnMetadataRef = useRef<TurnMetadataMap>(new Map());
+  const metadataFetchRef = useRef(createMetadataFetch(turnMetadataRef));
+
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
   // was the primary cause of stream disconnections on long-running tasks.
@@ -49,6 +129,7 @@ export function useCopilotStream({
       sessionId
         ? new DefaultChatTransport({
             api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+            fetch: metadataFetchRef.current,
             prepareSendMessagesRequest: async ({ messages }) => {
               const last = messages[messages.length - 1];
               // Extract file_ids from FileUIPart entries on the message
@@ -277,6 +358,7 @@ export function useCopilotStream({
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     hasResumedRef.current.clear();
+    turnMetadataRef.current = new Map();
     return () => {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = undefined;
@@ -373,5 +455,6 @@ export function useCopilotStream({
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
     isUserStoppingRef,
+    turnMetadata: turnMetadataRef.current,
   };
 }

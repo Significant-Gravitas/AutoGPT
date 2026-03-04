@@ -45,35 +45,60 @@ function pluralizeWord(word: string): string {
   return word + "s";
 }
 
-interface WorkDoneCounter {
+export interface ToolInvocation {
+  toolName: string;
+  category: string;
+  argsSummary: string;
+}
+
+export interface WorkDoneCounter {
   label: string;
   count: number;
+  category: string;
+  invocations: ToolInvocation[];
 }
 
 export function useWorkDoneCounters(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ) {
-  const counts = new Map<string, number>();
+  const categoryData = new Map<
+    string,
+    { count: number; invocations: ToolInvocation[] }
+  >();
 
   for (const message of messages) {
     if (message.role !== "assistant") continue;
 
     for (const part of message.parts) {
-      // Tool parts have types like "tool-run_agent", "tool-find_agent"
       if (!part.type.startsWith("tool-")) continue;
 
       const toolName = part.type.replace("tool-", "");
       const category = TOOL_TO_CATEGORY[toolName];
       if (!category) continue;
 
-      counts.set(category, (counts.get(category) ?? 0) + 1);
+      const argsSummary =
+        "input" in part && part.input
+          ? summarizeToolArgs(toolName, part.input as Record<string, unknown>)
+          : "";
+
+      const existing = categoryData.get(category) ?? {
+        count: 0,
+        invocations: [],
+      };
+      existing.count += 1;
+      existing.invocations.push({ toolName, category, argsSummary });
+      categoryData.set(category, existing);
     }
   }
 
-  // Sort by count descending, then take the top N
-  const counters: WorkDoneCounter[] = Array.from(counts.entries())
-    .map(function toCounter([label, count]) {
-      return { label: pluralize(label, count), count };
+  const counters: WorkDoneCounter[] = Array.from(categoryData.entries())
+    .map(function toCounter([category, data]) {
+      return {
+        label: pluralize(category, data.count),
+        count: data.count,
+        category,
+        invocations: data.invocations,
+      };
     })
     .sort(function byCountDesc(a, b) {
       return b.count - a.count;
@@ -81,4 +106,19 @@ export function useWorkDoneCounters(
     .slice(0, MAX_COUNTERS);
 
   return { counters };
+}
+
+function summarizeToolArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): string {
+  const keyArgs: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (value == null || value === "") continue;
+    const str = typeof value === "string" ? value : JSON.stringify(value);
+    const truncated = str.length > 60 ? str.slice(0, 57) + "..." : str;
+    keyArgs.push(`${key}="${truncated}"`);
+    if (keyArgs.length >= 2) break;
+  }
+  return keyArgs.join(", ");
 }

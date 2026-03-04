@@ -50,6 +50,7 @@ export function useCopilotPage() {
     error,
     isReconnecting,
     isUserStoppingRef,
+    turnMetadata,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
@@ -304,6 +305,7 @@ export function useCopilotPage() {
     messages,
     status,
     error,
+    turnMetadata,
     stop,
     isReconnecting,
     isLoadingSession,

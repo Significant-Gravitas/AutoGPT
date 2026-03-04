@@ -10,6 +10,8 @@ import {
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import type { TurnMetadataMap } from "../../helpers/turnMetadata";
+import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
@@ -23,6 +25,20 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   headerSlot?: React.ReactNode;
+  turnMetadata?: TurnMetadataMap;
+}
+
+function getTurnMessages(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  assistantIndex: number,
+): UIMessage<unknown, UIDataTypes, UITools>[] {
+  let userIndex = assistantIndex - 1;
+  while (userIndex >= 0 && messages[userIndex].role !== "user") {
+    userIndex--;
+  }
+  return userIndex >= 0
+    ? messages.slice(userIndex, assistantIndex + 1)
+    : [messages[assistantIndex]];
 }
 
 export function ChatMessagesContainer({
@@ -31,6 +47,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   headerSlot,
+  turnMetadata,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
@@ -110,6 +127,19 @@ export function ChatMessagesContainer({
                     partIndex={i}
                   />
                 ))}
+                {/* Per-turn stats — shown at end of completed assistant messages */}
+                {message.role === "assistant" &&
+                  !(
+                    isLastAssistant &&
+                    (status === "streaming" || status === "submitted")
+                  ) && (
+                    <TurnStatsBar
+                      turnMessages={getTurnMessages(messages, messageIndex)}
+                      durationMs={
+                        turnMetadata?.get(message.id)?.durationMs ?? null
+                      }
+                    />
+                  )}
                 {isLastAssistant && showThinking && (
                   <ThinkingIndicator active={showThinking} />
                 )}

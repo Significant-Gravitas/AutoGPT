@@ -530,7 +530,11 @@ async def stream_chat_completion(
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
     if not is_continuation:
-        yield StreamStart(messageId=message_id, sessionId=session.session_id)
+        yield StreamStart(
+            messageId=message_id,
+            sessionId=session.session_id,
+            startedAt=session.started_at.isoformat(),
+        )
 
     # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)
     yield StreamStartStep()
