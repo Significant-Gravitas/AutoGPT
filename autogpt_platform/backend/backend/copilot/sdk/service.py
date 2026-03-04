@@ -536,23 +536,58 @@ async def _build_query_message(
     return current_message
 
 
-def _build_file_attachment_hint(file_ids: list[str]) -> str:
-    """Build a hint telling Claude about attached files it should read.
+async def _prepare_file_attachments(
+    file_ids: list[str],
+    user_id: str,
+    session_id: str,
+    sdk_cwd: str,
+) -> str:
+    """Download workspace files to *sdk_cwd* and return a hint for Claude.
 
-    When users upload files alongside their message, we inject a hint so
-    Claude knows to use ``read_workspace_file`` to access the content.
-    The tool's increased inline limit (20 MB) ensures images and documents
-    are returned as base64 content blocks that Claude can process natively.
+    Binary files (images, PDFs) are written to the ephemeral directory so the
+    CLI's built-in Read tool can view them natively (images via vision, PDFs
+    via document support).  Text files are also saved so Claude can read them
+    without an extra ``read_workspace_file`` tool call.
+
+    Returns a hint string to append to the user message, or ``""`` if no
+    files were successfully prepared.
     """
     if not file_ids:
         return ""
-    ids_list = ", ".join(f"`{fid}`" for fid in file_ids)
-    noun = "file" if len(file_ids) == 1 else "files"
+
+    from backend.copilot.tools.workspace_files import _save_binary_to_cwd, get_manager
+
+    prepared: list[str] = []
+    try:
+        manager = await get_manager(user_id, session_id)
+    except Exception:
+        logger.warning(
+            "Failed to create workspace manager for file attachments",
+            exc_info=True,
+        )
+        return ""
+
+    for fid in file_ids:
+        try:
+            file_info = await manager.get_file_info(fid)
+            if file_info is None:
+                continue
+            content = await manager.read_file_by_id(fid)
+            local_path = _save_binary_to_cwd(sdk_cwd, file_info.name, content)
+            prepared.append(
+                f"- {file_info.name} ({file_info.mime_type}, "
+                f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+            )
+        except Exception:
+            logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
+
+    if not prepared:
+        return ""
+
+    noun = "file" if len(prepared) == 1 else "files"
     return (
-        f"[The user attached {len(file_ids)} {noun} to this message. "
-        f"File IDs: {ids_list}. "
-        f"Use the read_workspace_file tool with the file_id to view "
-        f"the content of each attached file.]"
+        f"[The user attached {len(prepared)} {noun} to this message. "
+        f"Use the Read tool to view each file.\n" + "\n".join(prepared) + "]"
     )
 
 
@@ -849,9 +884,14 @@ async def stream_chat_completion_sdk(
                     session_id,
                 )
 
-                # If files are attached, hint Claude to read them via tools.
-                if file_ids and (file_hint := _build_file_attachment_hint(file_ids)):
-                    query_message = f"{query_message}\n\n{file_hint}"
+                # If files are attached, download them to sdk_cwd so the
+                # CLI's built-in Read tool can view them natively.
+                if file_ids:
+                    file_hint = await _prepare_file_attachments(
+                        file_ids, user_id or "", session_id, sdk_cwd
+                    )
+                    if file_hint:
+                        query_message = f"{query_message}\n\n{file_hint}"
 
                 logger.info(
                     "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "

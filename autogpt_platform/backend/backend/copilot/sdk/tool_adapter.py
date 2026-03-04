@@ -11,7 +11,6 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Callable
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -103,6 +102,9 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
     "_current_sandbox", default=None
 )
+# Raw SDK working directory path (e.g. /tmp/copilot-<session_id>).
+# Used by workspace tools to save binary files for the CLI's built-in Read.
+_current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -141,6 +143,7 @@ def set_execution_context(
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_sandbox.set(sandbox)
+    _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
@@ -149,6 +152,11 @@ def set_execution_context(
 def get_current_sandbox() -> "AsyncSandbox | None":
     """Return the E2B sandbox for the current turn, or None."""
     return _current_sandbox.get()
+
+
+def get_sdk_cwd() -> str:
+    """Return the SDK ephemeral working directory for the current turn."""
+    return _current_sdk_cwd.get()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -264,118 +272,26 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
-    # If the tool result contains inline multimodal data, add a content block
-    # so Claude can "see" images or read documents (e.g. read_workspace_file).
-    # When successful, strip the (potentially huge) base64 from the text block
-    # to avoid duplicating the payload — the multimodal block carries it.
-    content_block = _extract_content_block(text)
-    if content_block:
-        text = _strip_base64_from_text(text)
-
-    content_blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
-    if content_block:
-        content_blocks.append(content_block)
-
     return {
-        "content": content_blocks,
+        "content": [{"type": "text", "text": text}],
         "isError": not result.success,
     }
 
 
 # ---------------------------------------------------------------------------
-# Multimodal content block support
+# Binary MIME types that the workspace tool saves to disk instead of inlining.
+# The CLI's built-in Read tool handles these natively (images via vision,
+# PDFs via document support).
 # ---------------------------------------------------------------------------
-# Each entry maps a MIME type to a ``(block_type, max_base64_bytes)`` tuple.
-#   • "image"    → MCP image block (Claude vision, ≤20 MB raw / ~27 MB b64)
-#   • "document" → Claude document block (PDF, ≤32 MB raw / ~43 MB b64)
-#
-# To support a new file type, add a single entry here.
-# ---------------------------------------------------------------------------
-
-_IMAGE_MAX_B64 = 28_000_000  # ~20 MB raw → ceil(20*1024*1024 * 4/3) ≈ 27_962_028
-_DOCUMENT_MAX_B64 = 43_000_000  # ~32 MB raw
-
-_MULTIMODAL_TYPES: dict[str, tuple[str, int]] = {
-    # Images
-    "image/png": ("image", _IMAGE_MAX_B64),
-    "image/jpeg": ("image", _IMAGE_MAX_B64),
-    "image/gif": ("image", _IMAGE_MAX_B64),
-    "image/webp": ("image", _IMAGE_MAX_B64),
-    # Documents
-    "application/pdf": ("document", _DOCUMENT_MAX_B64),
-}
-
-# Block-type → builder function.  Keeps _extract_content_block flat.
-_BLOCK_BUILDERS: dict[str, Callable[[str, str], dict[str, Any]]] = {
-    "image": lambda mime, b64: {
-        "type": "image",
-        "data": b64,
-        "mimeType": mime,
-    },
-    "document": lambda mime, b64: {
-        "type": "document",
-        "source": {"type": "base64", "media_type": mime, "data": b64},
-    },
-}
-
-
-def _extract_content_block(text: str) -> dict[str, Any] | None:
-    """Extract a multimodal content block from a tool result JSON string.
-
-    Detects workspace file responses with ``content_base64`` and a supported
-    MIME type, returning the appropriate content block so Claude can process
-    the file (images via vision, PDFs via document support, etc.).
-
-    Returns ``None`` if the result is not a supported multimodal type or
-    exceeds size limits.
-    """
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-    if not isinstance(data, dict):
-        return None
-
-    raw_mime = data.get("mime_type", "")
-    base64_content = data.get("content_base64", "")
-    if not isinstance(raw_mime, str) or not isinstance(base64_content, str):
-        return None
-    if not raw_mime or not base64_content:
-        return None
-
-    # Normalise: strip parameters (e.g. "application/pdf; charset=binary").
-    mime_type = raw_mime.split(";", 1)[0].strip().lower()
-    entry = _MULTIMODAL_TYPES.get(mime_type)
-    if entry is None:
-        return None
-
-    block_type, max_b64 = entry
-    if len(base64_content) > max_b64:
-        return None
-
-    builder = _BLOCK_BUILDERS.get(block_type)
-    if builder is None:
-        return None
-
-    return builder(mime_type, base64_content)
-
-
-def _strip_base64_from_text(text: str) -> str:
-    """Replace ``content_base64`` in a JSON string with a short placeholder.
-
-    Called when a multimodal content block has already been created from the
-    base64 data, so the text block only needs the metadata (file name, MIME
-    type, etc.) for Claude to reference.
-    """
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return text
-    if isinstance(data, dict) and "content_base64" in data:
-        data["content_base64"] = "(see attached content block)"
-        return json.dumps(data)
-    return text
+BINARY_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+    }
+)
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -488,35 +404,14 @@ _READ_TOOL_SCHEMA = {
 # ---------------------------------------------------------------------------
 
 
-def _split_content_blocks(
-    result: dict[str, Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Split an MCP result's content into text blocks and non-text blocks.
-
-    Returns ``(text_blocks, non_text_blocks)`` so callers can truncate only
-    the text portion without corrupting binary data (base64 images/documents).
-    """
-    content = result.get("content", [])
-    text_blocks: list[dict[str, Any]] = []
-    non_text_blocks: list[dict[str, Any]] = []
-    if isinstance(content, list):
-        for block in content:
-            if isinstance(block, dict) and block.get("type") != "text":
-                non_text_blocks.append(block)
-            else:
-                text_blocks.append(block)
-    else:
-        # Unexpected shape — treat the whole thing as text-like.
-        text_blocks = content  # type: ignore[assignment]
-    return text_blocks, non_text_blocks
-
-
 def _text_from_mcp_result(result: dict[str, Any]) -> str:
     """Extract concatenated text from an MCP response's content blocks."""
-    text_blocks, _ = _split_content_blocks(result)
+    content = result.get("content", [])
+    if not isinstance(content, list):
+        return ""
     return "".join(
         b.get("text", "")
-        for b in text_blocks
+        for b in content
         if isinstance(b, dict) and b.get("type") == "text"
     )
 
@@ -539,24 +434,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
             result = await fn(args)
-
-            # Separate non-text content blocks (images, documents) before
-            # truncation — truncate() recursively shortens ALL strings,
-            # which would corrupt base64 data in multimodal blocks.
-            text_only_content, non_text_blocks = _split_content_blocks(result)
-
-            # Truncate only the text portion of the result.
-            truncated = truncate(
-                {**result, "content": text_only_content}, _MCP_MAX_CHARS
-            )
-
-            # Re-attach non-text blocks (images, documents) intact.
-            if non_text_blocks:
-                truncated_content = truncated.get("content", [])
-                if isinstance(truncated_content, list):
-                    truncated["content"] = truncated_content + non_text_blocks
-                else:
-                    truncated["content"] = non_text_blocks
+            truncated = truncate(result, _MCP_MAX_CHARS)
 
             # Stash the text so the response adapter can forward our
             # middle-out truncated version to the frontend instead of the

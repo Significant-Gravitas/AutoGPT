@@ -598,14 +598,21 @@ function getFileAccordionData(
 
   // Handle base64 content from workspace files
   let displayContent = content;
+  const mimeType = getStringField(output, "mime_type");
+  const isImage = mimeType?.startsWith("image/");
   if (output.content_base64 && typeof output.content_base64 === "string") {
-    try {
-      const bytes = Uint8Array.from(atob(output.content_base64), (c) =>
-        c.charCodeAt(0),
-      );
-      displayContent = new TextDecoder().decode(bytes);
-    } catch {
-      displayContent = "[Binary content]";
+    if (isImage) {
+      // Render image inline — handled below in the JSX
+      displayContent = null;
+    } else {
+      try {
+        const bytes = Uint8Array.from(atob(output.content_base64), (c) =>
+          c.charCodeAt(0),
+        );
+        displayContent = new TextDecoder().decode(bytes);
+      } catch {
+        displayContent = "[Binary content]";
+      }
     }
   }
 
@@ -683,6 +690,14 @@ function getFileAccordionData(
           </>
         ) : writtenContent ? (
           <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
+        ) : isImage &&
+          output.content_base64 &&
+          typeof output.content_base64 === "string" ? (
+          <img
+            src={`data:${mimeType};base64,${output.content_base64}`}
+            alt={filePath ?? "image"}
+            className="max-h-64 rounded"
+          />
         ) : displayContent ? (
           <ContentCodeBlock>{displayContent}</ContentCodeBlock>
         ) : null}

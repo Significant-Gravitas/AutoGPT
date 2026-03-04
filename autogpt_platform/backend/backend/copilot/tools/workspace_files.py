@@ -3,6 +3,7 @@
 import base64
 import logging
 import os
+import re
 from typing import Any, Optional
 
 from pydantic import BaseModel
@@ -222,6 +223,29 @@ _INLINEABLE_MIME_TYPES = _IMAGE_MIME_TYPES | {
 
 def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
+
+
+# Matches characters unsafe for filenames.
+_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+
+def _save_binary_to_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
+    """Write binary content to the SDK ephemeral directory.
+
+    Returns the absolute path of the written file.  If a file with the same
+    name already exists, a numeric suffix is added (e.g. ``photo_1.jpg``).
+    """
+    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
+    candidate = os.path.join(sdk_cwd, safe)
+    if os.path.exists(candidate):
+        base, ext = os.path.splitext(safe)
+        idx = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(sdk_cwd, f"{base}_{idx}{ext}")
+            idx += 1
+    with open(candidate, "wb") as f:
+        f.write(content)
+    return candidate
 
 
 async def get_manager(user_id: str, session_id: str) -> WorkspaceManager:
@@ -552,8 +576,40 @@ class ReadWorkspaceFileTool(BaseTool):
             )
             is_small = file_info.size_bytes <= size_limit
 
-            # Inline content for small text files and multimodal types (images, PDFs)
-            if is_small and (is_text or is_inlineable) and not force_download_url:
+            # Binary files (images, PDFs): save to SDK working directory so
+            # the CLI's built-in Read tool can view them natively (images via
+            # vision, PDFs via document support).  This avoids passing base64
+            # through MCP tool results, which the CLI binary rejects.
+            from backend.copilot.sdk.tool_adapter import BINARY_MIME_TYPES, get_sdk_cwd
+
+            is_binary = mime in BINARY_MIME_TYPES
+            if is_binary and is_small and not force_download_url:
+                sdk_cwd = get_sdk_cwd()
+                if sdk_cwd:
+                    content = cached_content or await manager.read_file_by_id(
+                        target_file_id
+                    )
+                    local_path = _save_binary_to_cwd(sdk_cwd, file_info.name, content)
+                    msg = (
+                        f"Saved {file_info.name} to {local_path} "
+                        f"({file_info.size_bytes:,} bytes, {file_info.mime_type}). "
+                        f"Use the Read tool to view this file."
+                    )
+                    if save_to_path:
+                        msg += f" Also saved to {save_to_path}."
+                    return WorkspaceFileMetadataResponse(
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        path=file_info.path,
+                        mime_type=file_info.mime_type,
+                        size_bytes=file_info.size_bytes,
+                        download_url=f"file://{local_path}",
+                        message=msg,
+                        session_id=session_id,
+                    )
+
+            # Inline content for small text files
+            if is_small and is_text and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
