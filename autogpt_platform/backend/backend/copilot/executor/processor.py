@@ -119,12 +119,12 @@ class CoPilotProcessor:
         """
         from backend.util.workspace_storage import shutdown_workspace_storage
 
+        coro = shutdown_workspace_storage()
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                shutdown_workspace_storage(), self.execution_loop
-            )
+            future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
             future.result(timeout=5)
         except Exception as e:
+            coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
             logger.warning(
                 f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
