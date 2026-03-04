@@ -10,10 +10,10 @@ import threading
 import time
 
 from backend.copilot import stream_registry
+from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
-from backend.copilot.service import stream_chat_completion_baseline
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
