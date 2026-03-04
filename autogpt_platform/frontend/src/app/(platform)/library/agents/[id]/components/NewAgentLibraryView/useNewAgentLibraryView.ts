@@ -135,13 +135,14 @@ export function useNewAgentLibraryView() {
   );
 
   function handleScheduleDeleted(deletedScheduleId: string) {
-    if (!schedules) {
-      // If we can't get the schedules list, just clear selection
-      handleClearSelectedRun();
+    // Only change selection if the deleted schedule was the currently selected one
+    if (activeItem !== deletedScheduleId) {
+      // Different schedule was deleted, keep current selection unchanged
       return;
     }
 
-    if (activeItem !== deletedScheduleId) {
+    if (!schedules) {
+      handleClearSelectedRun();
       return;
     }
 
