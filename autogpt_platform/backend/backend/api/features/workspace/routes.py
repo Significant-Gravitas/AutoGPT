@@ -218,7 +218,10 @@ async def upload_file(
 
     # Write file via WorkspaceManager
     manager = WorkspaceManager(user_id, workspace.id, session_id)
-    workspace_file = await manager.write_file(content, filename)
+    try:
+        workspace_file = await manager.write_file(content, filename)
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
 
     # Post-write storage check — eliminates TOCTOU race on the quota.
     # If a concurrent upload pushed us over the limit, undo this write.
