@@ -95,6 +95,9 @@ export function useLoginPage() {
 
       // Prefer URL's next parameter, then use backend-determined route
       router.replace(nextUrl || result.next || "/");
+      // Reset loading states after successful navigation
+      setIsLoading(false);
+      setIsLoggingIn(false);
     } catch (error) {
       toast({
         title:
