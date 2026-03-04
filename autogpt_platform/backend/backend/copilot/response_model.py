@@ -68,10 +68,6 @@ class StreamStart(StreamBaseResponse):
         default=None,
         description="Session ID for SSE reconnection.",
     )
-    startedAt: str | None = Field(
-        default=None,
-        description="ISO-8601 UTC timestamp when the turn started.",
-    )
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-protocol fields like sessionId."""
@@ -79,8 +75,6 @@ class StreamStart(StreamBaseResponse):
             "type": self.type.value,
             "messageId": self.messageId,
         }
-        if self.startedAt is not None:
-            data["startedAt"] = self.startedAt
         return f"data: {json.dumps(data)}\n\n"
 
 
@@ -88,23 +82,6 @@ class StreamFinish(StreamBaseResponse):
     """End of message/stream."""
 
     type: ResponseType = ResponseType.FINISH
-    startedAt: str | None = Field(
-        default=None,
-        description="ISO-8601 UTC timestamp when the turn started.",
-    )
-    durationMs: int | None = Field(
-        default=None,
-        description="Total turn duration in milliseconds.",
-    )
-
-    def to_sse(self) -> str:
-        """Convert to SSE format with optional timing metadata."""
-        data: dict[str, Any] = {"type": self.type.value}
-        if self.startedAt is not None:
-            data["startedAt"] = self.startedAt
-        if self.durationMs is not None:
-            data["durationMs"] = self.durationMs
-        return f"data: {json.dumps(data)}\n\n"
 
 
 class StreamStartStep(StreamBaseResponse):

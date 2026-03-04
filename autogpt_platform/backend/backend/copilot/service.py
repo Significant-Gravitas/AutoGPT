@@ -533,7 +533,6 @@ async def stream_chat_completion(
         yield StreamStart(
             messageId=message_id,
             sessionId=session.session_id,
-            startedAt=session.started_at.isoformat(),
         )
 
     # Emit start-step before each LLM call (AI SDK uses this to add step boundaries)

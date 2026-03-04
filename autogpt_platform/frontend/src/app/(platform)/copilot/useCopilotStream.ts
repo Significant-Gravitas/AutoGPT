@@ -26,112 +26,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` };
 }
 
-/**
- * Creates a fetch wrapper that intercepts SSE responses to extract turn-level
- * timing metadata (startedAt / durationMs) from `start` and `finish` events.
- * The response stream is passed through to the AI SDK completely unchanged.
- */
-/** Custom fields we add to SSE events that must be stripped before the AI SDK
- *  sees them (the SDK uses strict Zod validation and rejects unknown keys). */
-const CUSTOM_SSE_KEYS = ["startedAt", "durationMs"];
-
-function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
-  const encoder = new TextEncoder();
-
-  return function metadataFetch(
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> {
-    return fetch(input, init).then(function interceptResponse(response) {
-      if (!response.body) return response;
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      const stream = new ReadableStream({
-        async pull(controller) {
-          const { done, value } = await reader.read();
-          if (done) {
-            controller.close();
-            return;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split("\n\n");
-          buffer = events.pop() ?? "";
-
-          // Rebuild output: strip custom keys from events, pass the rest through
-          let output = "";
-          for (const event of events) {
-            const dataMatch = event.match(/^data:\s*(.+)/s);
-            if (!dataMatch) {
-              output += event + "\n\n";
-              continue;
-            }
-
-            let cleaned = event;
-            try {
-              const parsed = JSON.parse(dataMatch[1]);
-
-              // Extract metadata before stripping
-              if (parsed.type === "start" && parsed.startedAt) {
-                metadataRef.current.set(parsed.messageId, {
-                  messageId: parsed.messageId,
-                  startedAt: parsed.startedAt,
-                  durationMs: null,
-                });
-              }
-              if (
-                parsed.type === "finish" &&
-                (parsed.durationMs != null || parsed.startedAt != null)
-              ) {
-                for (const [, meta] of metadataRef.current) {
-                  if (meta.durationMs === null) {
-                    if (parsed.durationMs != null)
-                      meta.durationMs = parsed.durationMs;
-                    if (parsed.startedAt != null)
-                      meta.startedAt = parsed.startedAt;
-                    break;
-                  }
-                }
-              }
-
-              // Strip custom keys so the AI SDK doesn't reject them
-              let needsRewrite = false;
-              for (const key of CUSTOM_SSE_KEYS) {
-                if (key in parsed) {
-                  needsRewrite = true;
-                  delete parsed[key];
-                }
-              }
-              if (needsRewrite) {
-                cleaned = `data: ${JSON.stringify(parsed)}`;
-              }
-            } catch {
-              // Not valid JSON — pass through as-is
-            }
-
-            output += cleaned + "\n\n";
-          }
-
-          // Forward complete (cleaned) events to the AI SDK.
-          // The incomplete tail stays in `buffer` for the next pull.
-          if (output) {
-            controller.enqueue(encoder.encode(output));
-          }
-        },
-      });
-
-      return new Response(stream, {
-        headers: response.headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    });
-  };
-}
-
 interface UseCopilotStreamArgs {
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
@@ -147,8 +41,10 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
 
+  // Client-side turn timing: record when streaming starts, compute duration
+  // when it finishes. Keyed by the last assistant message ID.
   const turnMetadataRef = useRef<TurnMetadataMap>(new Map());
-  const metadataFetchRef = useRef(createMetadataFetch(turnMetadataRef));
+  const turnStartTimeRef = useRef<number | null>(null);
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -159,7 +55,6 @@ export function useCopilotStream({
       sessionId
         ? new DefaultChatTransport({
             api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
-            fetch: metadataFetchRef.current,
             prepareSendMessagesRequest: async ({ messages }) => {
               const last = messages[messages.length - 1];
               // Extract file_ids from FileUIPart entries on the message
@@ -389,20 +284,44 @@ export function useCopilotStream({
     isUserStoppingRef.current = false;
     hasResumedRef.current.clear();
     turnMetadataRef.current = new Map();
+    turnStartTimeRef.current = null;
     return () => {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = undefined;
     };
   }, [sessionId]);
 
-  // Invalidate session cache when stream completes
+  // Invalidate session cache when stream completes + record turn duration
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
+    const wasIdle = prev === "ready" || prev === "error";
+    const isActive = status === "streaming" || status === "submitted";
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
+
+    // Record turn start time
+    if (wasIdle && isActive) {
+      turnStartTimeRef.current = Date.now();
+    }
+
+    // Record turn duration when stream finishes
+    if (wasActive && isIdle && turnStartTimeRef.current != null) {
+      const durationMs = Date.now() - turnStartTimeRef.current;
+      turnStartTimeRef.current = null;
+      // Find the last assistant message and store duration against its ID
+      const lastAssistant = [...messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      if (lastAssistant) {
+        turnMetadataRef.current.set(lastAssistant.id, {
+          messageId: lastAssistant.id,
+          durationMs,
+        });
+      }
+    }
 
     if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
       queryClient.invalidateQueries({
@@ -413,7 +332,7 @@ export function useCopilotStream({
         hasShownDisconnectToast.current = false;
       }
     }
-  }, [status, sessionId, queryClient, isReconnectScheduled]);
+  }, [status, sessionId, queryClient, isReconnectScheduled, messages]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).

@@ -1,8 +1,7 @@
-/** Metadata extracted from StreamStart/StreamFinish events per message turn. */
+/** Client-side timing metadata recorded per assistant turn. */
 export interface TurnMetadata {
   messageId: string;
-  startedAt: string | null;
-  durationMs: number | null;
+  durationMs: number;
 }
 
 /** Map of messageId -> TurnMetadata */

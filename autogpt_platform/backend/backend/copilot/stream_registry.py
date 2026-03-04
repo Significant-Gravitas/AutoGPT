@@ -714,20 +714,6 @@ async def mark_session_completed(
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
-    # Extract created_at from meta for duration computation
-    started_at_iso: str | None = None
-    duration_ms: int | None = None
-    created_at_str = meta.get("created_at") if meta else None
-    if created_at_str:
-        try:
-            created_at = datetime.fromisoformat(created_at_str)
-            started_at_iso = created_at_str
-            duration_ms = int(
-                (datetime.now(timezone.utc) - created_at).total_seconds() * 1000
-            )
-        except (ValueError, TypeError):
-            pass
-
     # Atomic compare-and-swap: only update if status is "running"
     result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
 
@@ -749,7 +735,7 @@ async def mark_session_completed(
     try:
         await publish_chunk(
             turn_id,
-            StreamFinish(startedAt=started_at_iso, durationMs=duration_ms),
+            StreamFinish(),
         )
     except Exception as e:
         logger.error(
