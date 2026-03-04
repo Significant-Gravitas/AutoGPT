@@ -457,7 +457,7 @@ async def stream_chat_completion(
     # Check: is_user_message, no title yet, and this is the first user message
     user_messages = [m for m in session.messages if m.role == "user"]
     first_user_msg = message or (user_messages[0].content if user_messages else None)
-    if is_user_message and first_user_msg and not session.title:
+    if is_user_message and first_user_msg and not session.title and user_id:
         if len(user_messages) == 1:
             # First user message - generate title in background
             # Capture only the values we need (not the session object) to avoid
