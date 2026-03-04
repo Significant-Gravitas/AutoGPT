@@ -9,20 +9,84 @@ import itertools
 import json
 import logging
 import os
+import re
 import uuid
 from contextvars import ContextVar
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
+from backend.util.truncate import truncate
+
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+
+if TYPE_CHECKING:
+    from e2b import AsyncSandbox
 
 logger = logging.getLogger(__name__)
 
 # Allowed base directory for the Read tool (SDK saves oversized tool results here).
 # Restricted to ~/.claude/projects/ and further validated to require "tool-results"
 # in the path — prevents reading settings, credentials, or other sensitive files.
-_SDK_PROJECTS_DIR = os.path.expanduser("~/.claude/projects/")
+_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+
+# Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
+_MCP_MAX_CHARS = 500_000
+
+# Context variable holding the encoded project directory name for the current
+# session (e.g. "-private-tmp-copilot-<uuid>").  Set by set_execution_context()
+# so that path validation can scope tool-results reads to the current session.
+_current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
+
+
+def _encode_cwd_for_cli(cwd: str) -> str:
+    """Encode a working directory path the same way the Claude CLI does.
+
+    The CLI replaces all non-alphanumeric characters with ``-``.
+    """
+    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+
+
+def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
+    """Check whether *path* is an allowed host-filesystem path.
+
+    Allowed:
+    - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
+    - Files under ``~/.claude/projects/<encoded-cwd>/`` — the SDK's
+      project directory for this session (tool-results, transcripts, etc.)
+
+    Both checks are scoped to the **current session** so sessions cannot
+    read each other's data.
+    """
+    if not path:
+        return False
+
+    if path.startswith("~"):
+        resolved = os.path.realpath(os.path.expanduser(path))
+    elif not os.path.isabs(path) and sdk_cwd:
+        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
+    else:
+        resolved = os.path.realpath(path)
+
+    # Allow access within the SDK working directory
+    if sdk_cwd:
+        norm_cwd = os.path.realpath(sdk_cwd)
+        if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
+            return True
+
+    # Allow access within the current session's CLI project directory
+    # (~/.claude/projects/<encoded-cwd>/).
+    encoded = _current_project_dir.get("")
+    if encoded:
+        session_project = os.path.join(_SDK_PROJECTS_DIR, encoded)
+        if resolved == session_project or resolved.startswith(session_project + os.sep):
+            return True
+
+    return False
+
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
@@ -33,6 +97,12 @@ _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
+# E2B cloud sandbox for the current turn (None when E2B is not configured).
+# Passed to bash_exec so commands run on E2B instead of the local bwrap sandbox.
+_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
+    "_current_sandbox", default=None
+)
+
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
@@ -53,20 +123,31 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
+    sandbox: "AsyncSandbox | None" = None,
+    sdk_cwd: str | None = None,
 ) -> None:
     """Set the execution context for tool calls.
 
     This must be called before streaming begins to ensure tools have access
-    to user_id and session information.
+    to user_id, session, and (optionally) an E2B sandbox for bash execution.
 
     Args:
         user_id: Current user's ID.
         session: Current chat session.
+        sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
+        sdk_cwd: SDK working directory; used to scope tool-results reads.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
+    _current_sandbox.set(sandbox)
+    _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+
+
+def get_current_sandbox() -> "AsyncSandbox | None":
+    """Return the E2B sandbox for the current turn, or None."""
+    return _current_sandbox.get()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -182,11 +263,6 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
-    # Stash the full output before the SDK potentially truncates it.
-    pending = _pending_tool_outputs.get(None)
-    if pending is not None:
-        pending.setdefault(base_tool.name, []).append(text)
-
     content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
 
     # If the tool result contains inline image data, add an MCP image block
@@ -284,29 +360,32 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
 
 
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
-    """Read a file with optional offset/limit. Restricted to SDK working directory.
+    """Read a local file with optional offset/limit.
 
-    After reading, the file is deleted to prevent accumulation in long-running pods.
+    Only allows paths that pass :func:`is_allowed_local_path` — the current
+    session's tool-results directory and ephemeral working directory.
     """
     file_path = args.get("file_path", "")
     offset = args.get("offset", 0)
     limit = args.get("limit", 2000)
 
-    # Security: only allow reads under ~/.claude/projects/**/tool-results/
-    real_path = os.path.realpath(file_path)
-    if not real_path.startswith(_SDK_PROJECTS_DIR) or "tool-results" not in real_path:
+    if not is_allowed_local_path(file_path):
         return {
             "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
             "isError": True,
         }
 
+    resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(real_path) as f:
+        with open(resolved) as f:
             selected = list(itertools.islice(f, offset, offset + limit))
         content = "".join(selected)
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return {"content": [{"type": "text", "text": content}], "isError": False}
+        return {
+            "content": [{"type": "text", "text": content}],
+            "isError": False,
+        }
     except FileNotFoundError:
         return {
             "content": [{"type": "text", "text": f"File not found: {file_path}"}],
@@ -345,49 +424,82 @@ _READ_TOOL_SCHEMA = {
 
 
 # Create the MCP server configuration
-def create_copilot_mcp_server():
+def _text_from_mcp_result(result: dict[str, Any]) -> str:
+    """Extract concatenated text from an MCP response's content blocks."""
+    content = result.get("content", [])
+    if isinstance(content, list):
+        parts = [
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        return "".join(parts)
+    return ""
+
+
+def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    This can be passed to ClaudeAgentOptions.mcp_servers.
-
-    Note: The actual SDK MCP server creation depends on the claude-agent-sdk
-    package being available. This function returns the configuration that
-    can be used with the SDK.
+    When *use_e2b* is True, five additional MCP file tools are registered
+    that route directly to the E2B sandbox filesystem, and the caller should
+    disable the corresponding SDK built-in tools via
+    :func:`get_sdk_disallowed_tools`.
     """
-    try:
-        from claude_agent_sdk import create_sdk_mcp_server, tool
 
-        # Create decorated tool functions
-        sdk_tools = []
+    def _truncating(fn, tool_name: str):
+        """Wrap a tool handler so its response is truncated to stay under the
+        SDK's 10 MB JSON buffer, and stash the (truncated) output for the
+        response adapter before the SDK can apply its own head-truncation.
 
-        for tool_name, base_tool in TOOL_REGISTRY.items():
-            handler = create_tool_handler(base_tool)
-            decorated = tool(
-                tool_name,
-                base_tool.description,
-                _build_input_schema(base_tool),
-            )(handler)
+        Applied once to every registered tool."""
+
+        async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            result = await fn(args)
+            truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Stash the text so the response adapter can forward our
+            # middle-out truncated version to the frontend instead of the
+            # SDK's head-truncated version (for outputs >~100 KB the SDK
+            # persists to tool-results/ with a 2 KB head-only preview).
+            if not truncated.get("isError"):
+                text = _text_from_mcp_result(truncated)
+                if text:
+                    stash_pending_tool_output(tool_name, text)
+
+            return truncated
+
+        return wrapper
+
+    sdk_tools = []
+
+    for tool_name, base_tool in TOOL_REGISTRY.items():
+        handler = create_tool_handler(base_tool)
+        decorated = tool(
+            tool_name,
+            base_tool.description,
+            _build_input_schema(base_tool),
+        )(_truncating(handler, tool_name))
+        sdk_tools.append(decorated)
+
+    # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
+    if use_e2b:
+        for name, desc, schema, handler in E2B_FILE_TOOLS:
+            decorated = tool(name, desc, schema)(_truncating(handler, name))
             sdk_tools.append(decorated)
 
-        # Add the Read tool so the SDK can read back oversized tool results
-        read_tool = tool(
-            _READ_TOOL_NAME,
-            _READ_TOOL_DESCRIPTION,
-            _READ_TOOL_SCHEMA,
-        )(_read_file_handler)
-        sdk_tools.append(read_tool)
+    # Read tool for SDK-truncated tool results (always needed).
+    read_tool = tool(
+        _READ_TOOL_NAME,
+        _READ_TOOL_DESCRIPTION,
+        _READ_TOOL_SCHEMA,
+    )(_truncating(_read_file_handler, _READ_TOOL_NAME))
+    sdk_tools.append(read_tool)
 
-        server = create_sdk_mcp_server(
-            name=MCP_SERVER_NAME,
-            version="1.0.0",
-            tools=sdk_tools,
-        )
-
-        return server
-
-    except ImportError:
-        # Let ImportError propagate so service.py handles the fallback
-        raise
+    return create_sdk_mcp_server(
+        name=MCP_SERVER_NAME,
+        version="1.0.0",
+        tools=sdk_tools,
+    )
 
 
 # SDK built-in tools allowed within the workspace directory.
@@ -397,16 +509,11 @@ def create_copilot_mcp_server():
 # Task allows spawning sub-agents (rate-limited by security hooks).
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-_SDK_BUILTIN_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Task",
-    "WebSearch",
-    "TodoWrite",
-]
+# In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
+# access.  read_file also handles local tool-results and ephemeral reads.
+_SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
+_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
 # Bash: dangerous — agent uses mcp__copilot__bash_exec with kernel-level
@@ -453,11 +560,37 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
-# List of tool names for allowed_tools configuration
-# Include MCP tools, the MCP Read tool for oversized results,
-# and SDK built-in file tools for workspace operations.
+# Static tool name list for the non-E2B case (backward compatibility).
 COPILOT_TOOL_NAMES = [
     *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
     *_SDK_BUILTIN_TOOLS,
 ]
+
+
+def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
+    """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
+
+    When *use_e2b* is True the SDK built-in file tools are replaced by MCP
+    equivalents that route to the E2B sandbox.
+    """
+    if not use_e2b:
+        return list(COPILOT_TOOL_NAMES)
+
+    return [
+        *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+        f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
+        *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
+        *_SDK_BUILTIN_ALWAYS,
+    ]
+
+
+def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
+    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`.
+
+    When *use_e2b* is True the SDK built-in file tools are also disabled
+    because MCP equivalents provide direct sandbox access.
+    """
+    if not use_e2b:
+        return list(SDK_DISALLOWED_TOOLS)
+    return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]

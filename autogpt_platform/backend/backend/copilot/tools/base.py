@@ -36,6 +36,16 @@ class BaseTool:
         """Whether this tool requires authentication."""
         return False
 
+    @property
+    def is_available(self) -> bool:
+        """Whether this tool is available in the current environment.
+
+        Override to check required env vars, binaries, or other dependencies.
+        Unavailable tools are excluded from the LLM tool list so the model is
+        never offered an option that will immediately fail.
+        """
+        return True
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(

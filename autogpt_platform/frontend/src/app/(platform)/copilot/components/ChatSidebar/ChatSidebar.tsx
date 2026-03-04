@@ -27,17 +27,14 @@ import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
-import { useState } from "react";
+import { useCopilotUIStore } from "../../store";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const [sessionToDelete, setSessionToDelete] = useState<{
-    id: string;
-    title: string | null | undefined;
-  } | null>(null);
+  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
 
   const queryClient = useQueryClient();
 
@@ -48,11 +45,9 @@ export function ChatSidebar() {
     useDeleteV2DeleteSession({
       mutation: {
         onSuccess: () => {
-          // Invalidate sessions list to refetch
           queryClient.invalidateQueries({
             queryKey: getGetV2ListSessionsQueryKey(),
           });
-          // If we deleted the current session, clear selection
           if (sessionToDelete?.id === sessionId) {
             setSessionId(null);
           }
@@ -86,8 +81,8 @@ export function ChatSidebar() {
     id: string,
     title: string | null | undefined,
   ) {
-    e.stopPropagation(); // Prevent session selection
-    if (isDeleting) return; // Prevent double-click during deletion
+    e.stopPropagation();
+    if (isDeleting) return;
     setSessionToDelete({ id, title });
   }
 
