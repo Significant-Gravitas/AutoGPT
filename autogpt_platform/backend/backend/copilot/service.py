@@ -1068,6 +1068,13 @@ async def _stream_chat_chunks(
                         :128
                     ]  # OpenRouter limit
 
+                # Broadcast trace metadata — forwarded to Langfuse via
+                # OpenRouter's org-level Broadcast integration.
+                extra_body["trace"] = {
+                    "trace_name": "copilot-chat",
+                    "environment": settings.config.app_env.value,
+                }
+
                 # Enable adaptive thinking for Anthropic models via OpenRouter
                 if config.thinking_enabled and "anthropic" in model.lower():
                     extra_body["reasoning"] = {"enabled": True}
