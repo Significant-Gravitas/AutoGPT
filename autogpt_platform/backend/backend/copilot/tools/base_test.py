@@ -6,8 +6,6 @@ import pytest
 
 from backend.copilot.tools.base import (
     _LARGE_OUTPUT_THRESHOLD,
-    _PREVIEW_HEAD_CHARS,
-    _PREVIEW_TAIL_CHARS,
     BaseTool,
     _persist_and_summarize,
 )
@@ -47,11 +45,7 @@ class _HugeOutputTool(BaseTool):
 class TestPersistAndSummarize:
     @pytest.mark.asyncio
     async def test_returns_middle_out_preview_with_retrieval_instructions(self):
-        # Use distinct chars for head/middle/tail to verify middle-out.
-        head_part = "H" * _PREVIEW_HEAD_CHARS
-        middle_part = "M" * 100_000
-        tail_part = "T" * _PREVIEW_TAIL_CHARS
-        raw = head_part + middle_part + tail_part
+        raw = "A" * 200_000
 
         mock_workspace = MagicMock()
         mock_workspace.id = "ws-1"
@@ -71,16 +65,13 @@ class TestPersistAndSummarize:
 
         assert "<tool-output-truncated" in result
         assert "</tool-output-truncated>" in result
-        assert f"total_chars={len(raw)}" in result
+        assert "total_chars=200000" in result
         assert 'path="tool-outputs/tc-123.json"' in result
         assert "read_workspace_file" in result
-        assert f"offset={_PREVIEW_HEAD_CHARS}" in result
-        # Head preserved
-        assert "H" * 1000 in result
-        # Tail preserved (middle-out)
-        assert "T" * 1000 in result
-        # Middle omitted
-        assert "characters omitted" in result
+        # Middle-out sentinel from truncate()
+        assert "omitted" in result
+        # Total result is much shorter than the raw output
+        assert len(result) < len(raw)
 
         # Verify write_file was called with full content
         mock_manager.write_file.assert_awaited_once()

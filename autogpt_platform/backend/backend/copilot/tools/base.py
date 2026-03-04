@@ -8,6 +8,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.db_accessors import workspace_db
+from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
@@ -19,9 +20,8 @@ logger = logging.getLogger(__name__)
 # capture the data before model_post_init middle-out truncation discards it.
 _LARGE_OUTPUT_THRESHOLD = 80_000
 
-# Head/tail character budget for the middle-out preview.
-_PREVIEW_HEAD_CHARS = 40_000
-_PREVIEW_TAIL_CHARS = 10_000
+# Character budget for the middle-out preview (must leave room for wrapper).
+_PREVIEW_CHARS = 50_000
 
 
 async def _persist_and_summarize(
@@ -55,17 +55,17 @@ async def _persist_and_summarize(
         return raw_output  # fall back to normal truncation
 
     total = len(raw_output)
-    head = raw_output[:_PREVIEW_HEAD_CHARS]
-    tail = raw_output[-_PREVIEW_TAIL_CHARS:] if _PREVIEW_TAIL_CHARS else ""
-    omitted = total - len(head) - len(tail)
+    preview = truncate(raw_output, _PREVIEW_CHARS)
+    retrieval = (
+        f"\nFull output ({total:,} chars) saved to workspace. "
+        f"Use read_workspace_file("
+        f'path="{file_path}", offset=<char_offset>, length=50000) '
+        f"to read any section."
+    )
     return (
         f'<tool-output-truncated total_chars={total} path="{file_path}">\n'
-        f"{head}\n"
-        f"\n... [{omitted:,} characters omitted] ...\n"
-        f"Full output saved to workspace. Use read_workspace_file("
-        f'path="{file_path}", offset={len(head)}, length=50000) '
-        f"to read the next section.\n\n"
-        f"{tail}\n"
+        f"{preview}\n"
+        f"{retrieval}\n"
         f"</tool-output-truncated>"
     )
 
