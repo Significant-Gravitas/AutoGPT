@@ -280,7 +280,9 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "write_file",
         "Write or create a file in the cloud sandbox (/home/user). "
-        "Parent directories are created automatically.",
+        "Parent directories are created automatically. "
+        "To copy a workspace file into the sandbox, use "
+        "read_workspace_file with save_to_path instead.",
         {
             "type": "object",
             "properties": {
