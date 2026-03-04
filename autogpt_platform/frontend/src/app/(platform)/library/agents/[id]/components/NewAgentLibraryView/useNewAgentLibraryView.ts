@@ -141,6 +141,10 @@ export function useNewAgentLibraryView() {
       return;
     }
 
+    if (activeItem !== deletedScheduleId) {
+      return;
+    }
+
     // Find remaining schedules (excluding the deleted one)
     const remainingSchedules = schedules.filter(
       (s) => s.id !== deletedScheduleId,
