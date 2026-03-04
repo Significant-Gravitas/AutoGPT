@@ -27,9 +27,22 @@ const MAX_COUNTERS = 3;
 
 function pluralize(label: string, count: number): string {
   if (count === 1) return label;
-  // "search" -> "searches", everything else just gets "s"
-  if (label.endsWith("search")) return label + "es";
-  return label + "s";
+
+  // "agent created" -> "agents created", "agent edited" -> "agents edited"
+  const nounVerbMatch = label.match(
+    /^(\w+)\s+(created|edited|scheduled|run)$/i,
+  );
+  if (nounVerbMatch) {
+    return pluralizeWord(nounVerbMatch[1]) + " " + nounVerbMatch[2];
+  }
+
+  return pluralizeWord(label);
+}
+
+function pluralizeWord(word: string): string {
+  if (word.endsWith("ch") || word.endsWith("sh") || word.endsWith("x"))
+    return word + "es";
+  return word + "s";
 }
 
 interface WorkDoneCounter {
