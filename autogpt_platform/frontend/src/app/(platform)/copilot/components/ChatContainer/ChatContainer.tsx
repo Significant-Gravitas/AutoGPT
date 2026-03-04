@@ -7,7 +7,6 @@ import type { TurnMetadataMap } from "../../helpers/turnMetadata";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import { JobStatsBar } from "../JobStatsBar/JobStatsBar";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -70,7 +69,6 @@ export const ChatContainer = ({
                 headerSlot={headerSlot}
                 turnMetadata={turnMetadata}
               />
-              <JobStatsBar messages={messages} status={status} />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
