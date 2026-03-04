@@ -1,6 +1,7 @@
 """CustomizeAgentTool - Customizes marketplace/template agents."""
 
 import logging
+import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -24,8 +25,7 @@ class CustomizeAgentTool(BaseTool):
         return (
             "Customize a marketplace or template agent. Pass `agent_json` "
             "with the complete customized agent JSON. The tool validates, "
-            "auto-fixes, and saves.\n\n"
-            "Use agent_id in format 'creator/slug' to specify the marketplace agent."
+            "auto-fixes, and saves."
         )
 
     @property
@@ -37,13 +37,6 @@ class CustomizeAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "description": (
-                        "The marketplace agent ID in format 'creator/slug' "
-                        "(e.g., 'autogpt/newsletter-writer')."
-                    ),
-                },
                 "agent_json": {
                     "type": "object",
                     "description": (
@@ -65,7 +58,7 @@ class CustomizeAgentTool(BaseTool):
                     "default": True,
                 },
             },
-            "required": ["agent_id", "agent_json"],
+            "required": ["agent_json"],
         }
 
     async def _execute(
@@ -74,16 +67,8 @@ class CustomizeAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_id = kwargs.get("agent_id", "").strip()
         agent_json: dict[str, Any] | None = kwargs.get("agent_json")
         session_id = session.session_id if session else None
-
-        if not agent_id:
-            return ErrorResponse(
-                message="Please provide the marketplace agent ID (e.g., 'creator/agent-name').",
-                error="missing_agent_id",
-                session_id=session_id,
-            )
 
         if not agent_json:
             return ErrorResponse(
@@ -105,6 +90,9 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Ensure top-level fields before the fixer pipeline
+        if "id" not in agent_json:
+            agent_json["id"] = str(uuid.uuid4())
         agent_json.setdefault("version", 1)
         agent_json.setdefault("is_active", True)
 

@@ -27,12 +27,14 @@ def session():
 
 
 @pytest.mark.asyncio
-async def test_missing_agent_id_returns_error(tool, session):
-    """Missing agent_id returns ErrorResponse."""
-    result = await tool._execute(user_id=_TEST_USER_ID, session=session, agent_id="")
+async def test_missing_agent_json_returns_error(tool, session):
+    """Missing agent_json returns ErrorResponse."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+    )
     assert isinstance(result, ErrorResponse)
-    assert result.error is not None
-    assert "missing_agent_id" in result.error
+    assert result.error == "missing_agent_json"
 
 
 # ── Local mode tests (agent_json provided) ───────────────────────────────
@@ -44,7 +46,6 @@ async def test_local_mode_empty_nodes_returns_error(tool, session):
     result = await tool._execute(
         user_id=_TEST_USER_ID,
         session=session,
-        agent_id="creator/test-agent",
         agent_json={"nodes": [], "links": []},
     )
     assert isinstance(result, ErrorResponse)
@@ -84,7 +85,6 @@ async def test_local_mode_preview(tool, session):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
-            agent_id="creator/test-agent",
             agent_json=agent_json,
             save=False,
         )
@@ -125,7 +125,6 @@ async def test_local_mode_validation_failure(tool, session):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
-            agent_id="creator/test-agent",
             agent_json=agent_json,
         )
 
@@ -165,22 +164,9 @@ async def test_local_mode_no_auth_returns_error(tool, session):
         result = await tool._execute(
             user_id=None,
             session=session,
-            agent_id="creator/test-agent",
             agent_json=agent_json,
             save=True,
         )
 
     assert isinstance(result, ErrorResponse)
     assert "logged in" in result.message.lower()
-
-
-@pytest.mark.asyncio
-async def test_missing_agent_json_returns_error(tool, session):
-    """Missing agent_json returns ErrorResponse."""
-    result = await tool._execute(
-        user_id=_TEST_USER_ID,
-        session=session,
-        agent_id="creator/test-agent",
-    )
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "missing_agent_json"
