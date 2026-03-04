@@ -93,7 +93,7 @@ async def update_chat_session_title_if_empty(session_id: str, title: str) -> boo
         where={"id": session_id, "title": None},
         data={"title": title, "updatedAt": datetime.now(UTC)},
     )
-    return result.count > 0
+    return result > 0
 
 
 async def add_chat_message(
