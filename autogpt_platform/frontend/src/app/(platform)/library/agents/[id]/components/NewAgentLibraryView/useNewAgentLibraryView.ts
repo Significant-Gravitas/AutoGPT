@@ -1,5 +1,6 @@
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
+import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
@@ -122,6 +123,38 @@ export function useNewAgentLibraryView() {
     });
   }
 
+  // Fetch schedules to enable smart selection after deletion
+  const { data: schedules } = useGetV1ListExecutionSchedulesForAGraph(
+    agent?.graph_id || "",
+    {
+      query: {
+        enabled: !!agent?.graph_id,
+        select: okData,
+      },
+    },
+  );
+
+  function handleScheduleDeleted(deletedScheduleId: string) {
+    if (!schedules) {
+      // If we can't get the schedules list, just clear selection
+      handleClearSelectedRun();
+      return;
+    }
+
+    // Find remaining schedules (excluding the deleted one)
+    const remainingSchedules = schedules.filter(
+      (s) => s.id !== deletedScheduleId,
+    );
+
+    if (remainingSchedules.length > 0) {
+      // Auto-select the first remaining schedule
+      handleSelectRun(remainingSchedules[0].id, "scheduled");
+    } else {
+      // No schedules left, clear selection to show empty state
+      handleClearSelectedRun();
+    }
+  }
+
   function handleSetActiveTab(
     tab: "runs" | "scheduled" | "templates" | "triggers",
   ) {
@@ -205,6 +238,7 @@ export function useNewAgentLibraryView() {
     activeTab,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
+    handleScheduleDeleted,
     handleCountsChange,
     handleSelectRun,
     handleSelectSettings,
