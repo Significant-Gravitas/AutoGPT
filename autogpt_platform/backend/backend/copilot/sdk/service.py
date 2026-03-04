@@ -547,17 +547,12 @@ async def _build_query_message(
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
-    tool_call_response: str | None = None,  # noqa: ARG001
     is_user_message: bool = True,
     user_id: str | None = None,
-    retry_count: int = 0,  # noqa: ARG001
     session: ChatSession | None = None,
-    context: dict[str, str] | None = None,  # noqa: ARG001
+    **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """Stream chat completion using Claude Agent SDK.
-
-    Drop-in replacement for stream_chat_completion with improved reliability.
-    """
+    """Stream chat completion using Claude Agent SDK."""
 
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -704,495 +699,485 @@ async def stream_chat_completion_sdk(
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
         set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
-        try:
-            # Fail fast when no API credentials are available at all
-            sdk_env = _build_sdk_env()
-            if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
-                raise RuntimeError(
-                    "No API key configured. Set OPEN_ROUTER_API_KEY "
-                    "(or CHAT_API_KEY) for OpenRouter routing, "
-                    "or ANTHROPIC_API_KEY for direct Anthropic access."
-                )
 
-            mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
-
-            sdk_model = _resolve_sdk_model()
-
-            # --- Transcript capture via Stop hook ---
-            # Read the file content immediately — the SDK may clean up
-            # the file before our finally block runs.
-            def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
-                captured_transcript.path = transcript_path
-                captured_transcript.sdk_session_id = sdk_session_id
-                content = read_transcript_file(transcript_path)
-                if content:
-                    captured_transcript.raw_content = content
-                    logger.info(
-                        f"[SDK] Stop hook: captured {len(content)}B from "
-                        f"{transcript_path}"
-                    )
-                else:
-                    logger.warning(
-                        f"[SDK] Stop hook: transcript file empty/missing at "
-                        f"{transcript_path}"
-                    )
-
-            # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
-            compaction = CompactionTracker()
-
-            security_hooks = create_security_hooks(
-                user_id,
-                sdk_cwd=sdk_cwd,
-                max_subtasks=config.claude_agent_max_subtasks,
-                on_stop=_on_stop if config.claude_agent_use_resume else None,
-                on_compact=compaction.on_compact,
+        # Fail fast when no API credentials are available at all
+        sdk_env = _build_sdk_env()
+        if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError(
+                "No API key configured. Set OPEN_ROUTER_API_KEY "
+                "(or CHAT_API_KEY) for OpenRouter routing, "
+                "or ANTHROPIC_API_KEY for direct Anthropic access."
             )
 
-            # --- Resume strategy: download transcript from bucket ---
-            transcript_msg_count = 0  # watermark: session.messages length at upload
+        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-            if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-                dl = await download_transcript(user_id, session_id)
-                is_valid = bool(dl and validate_transcript(dl.content))
-                if dl and is_valid:
-                    logger.info(
-                        f"[SDK] Transcript available for session {session_id}: "
-                        f"{len(dl.content)}B, msg_count={dl.message_count}"
-                    )
-                    resume_file = write_transcript_to_tempfile(
-                        dl.content, session_id, sdk_cwd
-                    )
-                    if resume_file:
-                        use_resume = True
-                        transcript_msg_count = dl.message_count
-                        logger.debug(
-                            f"[SDK] Using --resume ({len(dl.content)}B, "
-                            f"msg_count={transcript_msg_count})"
-                        )
-                elif dl:
-                    logger.warning(
-                        f"[SDK] Transcript downloaded but invalid for {session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"[SDK] No transcript available for {session_id} "
-                        f"({len(session.messages)} messages in session)"
-                    )
+        sdk_model = _resolve_sdk_model()
 
-            allowed = get_copilot_tool_names(use_e2b=use_e2b)
-            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
-            sdk_options_kwargs: dict[str, Any] = {
-                "system_prompt": system_prompt,
-                "mcp_servers": {"copilot": mcp_server},
-                "allowed_tools": allowed,
-                "disallowed_tools": disallowed,
-                "hooks": security_hooks,
-                "cwd": sdk_cwd,
-                "max_buffer_size": config.claude_agent_max_buffer_size,
-            }
-            if sdk_env:
-                sdk_options_kwargs["model"] = sdk_model
-                sdk_options_kwargs["env"] = sdk_env
-            if use_resume and resume_file:
-                sdk_options_kwargs["resume"] = resume_file
-
-            options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
-
-            adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-
-            # Propagate user_id/session_id as OTEL context attributes so the
-            # langsmith tracing integration attaches them to every span.  This
-            # is what Langfuse (or any OTEL backend) maps to its native
-            # user/session fields.
-            _otel_ctx = propagate_attributes(
-                user_id=user_id,
-                session_id=session_id,
-                trace_name="copilot-sdk",
-                tags=["sdk"],
-                metadata={"resume": str(use_resume)},
-            )
-            _otel_ctx.__enter__()
-
-            async with ClaudeSDKClient(options=options) as client:
-                current_message = message or ""
-                if not current_message and session.messages:
-                    last_user = [m for m in session.messages if m.role == "user"]
-                    if last_user:
-                        current_message = last_user[-1].content or ""
-
-                if not current_message.strip():
-                    yield StreamError(
-                        errorText="Message cannot be empty.",
-                        code="empty_prompt",
-                    )
-                    return
-
-                query_message, was_compacted = await _build_query_message(
-                    current_message,
-                    session,
-                    use_resume,
-                    transcript_msg_count,
-                    session_id,
-                )
+        # --- Transcript capture via Stop hook ---
+        # Read the file content immediately — the SDK may clean up
+        # the file before our finally block runs.
+        def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
+            captured_transcript.path = transcript_path
+            captured_transcript.sdk_session_id = sdk_session_id
+            content = read_transcript_file(transcript_path)
+            if content:
+                captured_transcript.raw_content = content
                 logger.info(
-                    "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
-                    session_id[:12],
-                    use_resume,
-                    len(session.messages),
-                    len(query_message),
+                    f"[SDK] Stop hook: captured {len(content)}B from "
+                    f"{transcript_path}"
+                )
+            else:
+                logger.warning(
+                    f"[SDK] Stop hook: transcript file empty/missing at "
+                    f"{transcript_path}"
                 )
 
-                compaction.reset_for_query()
-                if was_compacted:
-                    for ev in compaction.emit_pre_query(session):
-                        yield ev
-                await client.query(query_message, session_id=session_id)
+        # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
+        compaction = CompactionTracker()
 
-                assistant_response = ChatMessage(role="assistant", content="")
-                accumulated_tool_calls: list[dict[str, Any]] = []
-                has_appended_assistant = False
-                has_tool_results = False
+        security_hooks = create_security_hooks(
+            user_id,
+            sdk_cwd=sdk_cwd,
+            max_subtasks=config.claude_agent_max_subtasks,
+            on_stop=_on_stop if config.claude_agent_use_resume else None,
+            on_compact=compaction.on_compact,
+        )
 
-                # Use an explicit async iterator with non-cancelling heartbeats.
-                # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
-                # (via asyncio.timeout or wait_for) corrupts the SDK's internal
-                # anyio memory stream, causing StopAsyncIteration on the next
-                # call and silently dropping all in-flight tool results.
-                # Instead, wrap __anext__() in a Task and use asyncio.wait()
-                # with a timeout.  On timeout we emit a heartbeat but keep the
-                # Task alive so it can deliver the next message.
-                msg_iter = client.receive_response().__aiter__()
-                pending_task: asyncio.Task[Any] | None = None
-                try:
-                    while not stream_completed:
-                        if pending_task is None:
+        # --- Resume strategy: download transcript from bucket ---
+        transcript_msg_count = 0  # watermark: session.messages length at upload
 
-                            async def _next_msg() -> Any:
-                                return await msg_iter.__anext__()
+        if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
+            dl = await download_transcript(user_id, session_id)
+            is_valid = bool(dl and validate_transcript(dl.content))
+            if dl and is_valid:
+                logger.info(
+                    f"[SDK] Transcript available for session {session_id}: "
+                    f"{len(dl.content)}B, msg_count={dl.message_count}"
+                )
+                resume_file = write_transcript_to_tempfile(
+                    dl.content, session_id, sdk_cwd
+                )
+                if resume_file:
+                    use_resume = True
+                    transcript_msg_count = dl.message_count
+                    logger.debug(
+                        f"[SDK] Using --resume ({len(dl.content)}B, "
+                        f"msg_count={transcript_msg_count})"
+                    )
+            elif dl:
+                logger.warning(
+                    f"[SDK] Transcript downloaded but invalid for {session_id}"
+                )
+            else:
+                logger.warning(
+                    f"[SDK] No transcript available for {session_id} "
+                    f"({len(session.messages)} messages in session)"
+                )
 
-                            pending_task = asyncio.create_task(_next_msg())
+        allowed = get_copilot_tool_names(use_e2b=use_e2b)
+        disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+        sdk_options_kwargs: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "mcp_servers": {"copilot": mcp_server},
+            "allowed_tools": allowed,
+            "disallowed_tools": disallowed,
+            "hooks": security_hooks,
+            "cwd": sdk_cwd,
+            "max_buffer_size": config.claude_agent_max_buffer_size,
+        }
+        if sdk_env:
+            sdk_options_kwargs["model"] = sdk_model
+            sdk_options_kwargs["env"] = sdk_env
+        if use_resume and resume_file:
+            sdk_options_kwargs["resume"] = resume_file
 
-                        done, _ = await asyncio.wait(
-                            {pending_task}, timeout=_HEARTBEAT_INTERVAL
-                        )
+        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
-                        if not done:
-                            await lock.refresh()
-                            for ev in compaction.emit_start_if_ready():
-                                yield ev
-                            yield StreamHeartbeat()
-                            continue
+        adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
 
-                        # Task completed — get result
-                        pending_task = None
-                        try:
-                            sdk_msg = done.pop().result()
-                        except StopAsyncIteration:
-                            logger.info(
-                                "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
-                                session_id[:12],
-                            )
-                            break
-                        except Exception as stream_err:
-                            # SDK sends {"type": "error"} which raises
-                            # Exception in receive_response() — capture it
-                            # so the session can still be saved and the
-                            # frontend gets a clean finish.
-                            logger.error(
-                                "[SDK] [%s] Stream error from SDK: %s",
-                                session_id[:12],
-                                stream_err,
-                                exc_info=True,
-                            )
-                            yield StreamError(
-                                errorText=f"SDK stream error: {stream_err}",
-                                code="sdk_stream_error",
-                            )
-                            break
+        # Propagate user_id/session_id as OTEL context attributes so the
+        # langsmith tracing integration attaches them to every span.  This
+        # is what Langfuse (or any OTEL backend) maps to its native
+        # user/session fields.
+        _otel_ctx = propagate_attributes(
+            user_id=user_id,
+            session_id=session_id,
+            trace_name="copilot-sdk",
+            tags=["sdk"],
+            metadata={"resume": str(use_resume)},
+        )
+        _otel_ctx.__enter__()
 
+        async with ClaudeSDKClient(options=options) as client:
+            current_message = message or ""
+            if not current_message and session.messages:
+                last_user = [m for m in session.messages if m.role == "user"]
+                if last_user:
+                    current_message = last_user[-1].content or ""
+
+            if not current_message.strip():
+                yield StreamError(
+                    errorText="Message cannot be empty.",
+                    code="empty_prompt",
+                )
+                return
+
+            query_message, was_compacted = await _build_query_message(
+                current_message,
+                session,
+                use_resume,
+                transcript_msg_count,
+                session_id,
+            )
+            logger.info(
+                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
+                session_id[:12],
+                use_resume,
+                len(session.messages),
+                len(query_message),
+            )
+
+            compaction.reset_for_query()
+            if was_compacted:
+                for ev in compaction.emit_pre_query(session):
+                    yield ev
+            await client.query(query_message, session_id=session_id)
+
+            assistant_response = ChatMessage(role="assistant", content="")
+            accumulated_tool_calls: list[dict[str, Any]] = []
+            has_appended_assistant = False
+            has_tool_results = False
+
+            # Use an explicit async iterator with non-cancelling heartbeats.
+            # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
+            # (via asyncio.timeout or wait_for) corrupts the SDK's internal
+            # anyio memory stream, causing StopAsyncIteration on the next
+            # call and silently dropping all in-flight tool results.
+            # Instead, wrap __anext__() in a Task and use asyncio.wait()
+            # with a timeout.  On timeout we emit a heartbeat but keep the
+            # Task alive so it can deliver the next message.
+            msg_iter = client.receive_response().__aiter__()
+            pending_task: asyncio.Task[Any] | None = None
+            try:
+                while not stream_completed:
+                    if pending_task is None:
+
+                        async def _next_msg() -> Any:
+                            return await msg_iter.__anext__()
+
+                        pending_task = asyncio.create_task(_next_msg())
+
+                    done, _ = await asyncio.wait(
+                        {pending_task}, timeout=_HEARTBEAT_INTERVAL
+                    )
+
+                    if not done:
+                        await lock.refresh()
+                        for ev in compaction.emit_start_if_ready():
+                            yield ev
+                        yield StreamHeartbeat()
+                        continue
+
+                    # Task completed — get result
+                    pending_task = None
+                    try:
+                        sdk_msg = done.pop().result()
+                    except StopAsyncIteration:
                         logger.info(
-                            "[SDK] [%s] Received: %s %s "
+                            "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
+                            session_id[:12],
+                        )
+                        break
+                    except Exception as stream_err:
+                        # SDK sends {"type": "error"} which raises
+                        # Exception in receive_response() — capture it
+                        # so the session can still be saved and the
+                        # frontend gets a clean finish.
+                        logger.error(
+                            "[SDK] [%s] Stream error from SDK: %s",
+                            session_id[:12],
+                            stream_err,
+                            exc_info=True,
+                        )
+                        yield StreamError(
+                            errorText=f"SDK stream error: {stream_err}",
+                            code="sdk_stream_error",
+                        )
+                        break
+
+                    logger.info(
+                        "[SDK] [%s] Received: %s %s "
+                        "(unresolved=%d, current=%d, resolved=%d)",
+                        session_id[:12],
+                        type(sdk_msg).__name__,
+                        getattr(sdk_msg, "subtype", ""),
+                        len(adapter.current_tool_calls)
+                        - len(adapter.resolved_tool_calls),
+                        len(adapter.current_tool_calls),
+                        len(adapter.resolved_tool_calls),
+                    )
+
+                    # Race-condition fix: SDK hooks (PostToolUse) are
+                    # executed asynchronously via start_soon() — the next
+                    # message can arrive before the hook stashes output.
+                    # wait_for_stash() awaits an asyncio.Event signaled by
+                    # stash_pending_tool_output(), completing as soon as
+                    # the hook finishes (typically <1ms).  The sleep(0)
+                    # after lets any remaining concurrent hooks complete.
+                    #
+                    # Skip for parallel tool continuations: when the SDK
+                    # sends parallel tool calls as separate
+                    # AssistantMessages (each containing only
+                    # ToolUseBlocks), we must NOT wait/flush — the prior
+                    # tools are still executing concurrently.
+                    is_parallel_continuation = isinstance(
+                        sdk_msg, AssistantMessage
+                    ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+
+                    if (
+                        adapter.has_unresolved_tool_calls
+                        and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
+                        and not is_parallel_continuation
+                    ):
+                        if await wait_for_stash(timeout=0.5):
+                            await asyncio.sleep(0)
+                        else:
+                            logger.warning(
+                                "[SDK] [%s] Timed out waiting for "
+                                "PostToolUse hook stash "
+                                "(%d unresolved tool calls)",
+                                session_id[:12],
+                                len(adapter.current_tool_calls)
+                                - len(adapter.resolved_tool_calls),
+                            )
+
+                    # Log ResultMessage details for debugging
+                    if isinstance(sdk_msg, ResultMessage):
+                        logger.info(
+                            "[SDK] [%s] Received: ResultMessage %s "
                             "(unresolved=%d, current=%d, resolved=%d)",
                             session_id[:12],
-                            type(sdk_msg).__name__,
-                            getattr(sdk_msg, "subtype", ""),
+                            sdk_msg.subtype,
                             len(adapter.current_tool_calls)
                             - len(adapter.resolved_tool_calls),
                             len(adapter.current_tool_calls),
                             len(adapter.resolved_tool_calls),
                         )
-
-                        # Race-condition fix: SDK hooks (PostToolUse) are
-                        # executed asynchronously via start_soon() — the next
-                        # message can arrive before the hook stashes output.
-                        # wait_for_stash() awaits an asyncio.Event signaled by
-                        # stash_pending_tool_output(), completing as soon as
-                        # the hook finishes (typically <1ms).  The sleep(0)
-                        # after lets any remaining concurrent hooks complete.
-                        #
-                        # Skip for parallel tool continuations: when the SDK
-                        # sends parallel tool calls as separate
-                        # AssistantMessages (each containing only
-                        # ToolUseBlocks), we must NOT wait/flush — the prior
-                        # tools are still executing concurrently.
-                        is_parallel_continuation = isinstance(
-                            sdk_msg, AssistantMessage
-                        ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
-
-                        if (
-                            adapter.has_unresolved_tool_calls
-                            and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
-                            and not is_parallel_continuation
-                        ):
-                            if await wait_for_stash(timeout=0.5):
-                                await asyncio.sleep(0)
-                            else:
-                                logger.warning(
-                                    "[SDK] [%s] Timed out waiting for "
-                                    "PostToolUse hook stash "
-                                    "(%d unresolved tool calls)",
-                                    session_id[:12],
-                                    len(adapter.current_tool_calls)
-                                    - len(adapter.resolved_tool_calls),
-                                )
-
-                        # Log ResultMessage details for debugging
-                        if isinstance(sdk_msg, ResultMessage):
-                            logger.info(
-                                "[SDK] [%s] Received: ResultMessage %s "
-                                "(unresolved=%d, current=%d, resolved=%d)",
+                        if sdk_msg.subtype in ("error", "error_during_execution"):
+                            logger.error(
+                                "[SDK] [%s] SDK execution failed with error: %s",
                                 session_id[:12],
-                                sdk_msg.subtype,
-                                len(adapter.current_tool_calls)
-                                - len(adapter.resolved_tool_calls),
-                                len(adapter.current_tool_calls),
-                                len(adapter.resolved_tool_calls),
+                                sdk_msg.result or "(no error message provided)",
                             )
-                            if sdk_msg.subtype in ("error", "error_during_execution"):
-                                logger.error(
-                                    "[SDK] [%s] SDK execution failed with error: %s",
-                                    session_id[:12],
-                                    sdk_msg.result or "(no error message provided)",
+
+                    # Emit compaction end if SDK finished compacting
+                    for ev in await compaction.emit_end_if_ready(session):
+                        yield ev
+
+                    for response in adapter.convert_message(sdk_msg):
+                        if isinstance(response, StreamStart):
+                            continue
+
+                        # Log tool events for debugging
+                        if isinstance(
+                            response,
+                            (
+                                StreamToolInputAvailable,
+                                StreamToolOutputAvailable,
+                            ),
+                        ):
+                            extra = ""
+                            if isinstance(response, StreamToolOutputAvailable):
+                                out_len = len(str(response.output))
+                                extra = f", output_len={out_len}"
+                            logger.info(
+                                "[SDK] [%s] Tool event: %s, tool=%s%s",
+                                session_id[:12],
+                                type(response).__name__,
+                                getattr(response, "toolName", "N/A"),
+                                extra,
+                            )
+
+                        # Log errors being sent to frontend
+                        if isinstance(response, StreamError):
+                            logger.error(
+                                "[SDK] [%s] Sending error to frontend: %s (code=%s)",
+                                session_id[:12],
+                                response.errorText,
+                                response.code,
+                            )
+
+                        yield response
+
+                        if isinstance(response, StreamTextDelta):
+                            delta = response.delta or ""
+                            # After tool results, start a new assistant
+                            # message for the post-tool text.
+                            if has_tool_results and has_appended_assistant:
+                                assistant_response = ChatMessage(
+                                    role="assistant", content=delta
                                 )
-
-                        # Emit compaction end if SDK finished compacting
-                        for ev in await compaction.emit_end_if_ready(session):
-                            yield ev
-
-                        for response in adapter.convert_message(sdk_msg):
-                            if isinstance(response, StreamStart):
-                                continue
-
-                            # Log tool events for debugging
-                            if isinstance(
-                                response,
-                                (
-                                    StreamToolInputAvailable,
-                                    StreamToolOutputAvailable,
-                                ),
-                            ):
-                                extra = ""
-                                if isinstance(response, StreamToolOutputAvailable):
-                                    out_len = len(str(response.output))
-                                    extra = f", output_len={out_len}"
-                                logger.info(
-                                    "[SDK] [%s] Tool event: %s, tool=%s%s",
-                                    session_id[:12],
-                                    type(response).__name__,
-                                    getattr(response, "toolName", "N/A"),
-                                    extra,
-                                )
-
-                            # Log errors being sent to frontend
-                            if isinstance(response, StreamError):
-                                logger.error(
-                                    "[SDK] [%s] Sending error to frontend: %s (code=%s)",
-                                    session_id[:12],
-                                    response.errorText,
-                                    response.code,
-                                )
-
-                            yield response
-
-                            if isinstance(response, StreamTextDelta):
-                                delta = response.delta or ""
-                                # After tool results, start a new assistant
-                                # message for the post-tool text.
-                                if has_tool_results and has_appended_assistant:
-                                    assistant_response = ChatMessage(
-                                        role="assistant", content=delta
-                                    )
-                                    accumulated_tool_calls = []
-                                    has_appended_assistant = False
-                                    has_tool_results = False
-                                    session.messages.append(assistant_response)
-                                    has_appended_assistant = True
-                                else:
-                                    assistant_response.content = (
-                                        assistant_response.content or ""
-                                    ) + delta
-                                    if not has_appended_assistant:
-                                        session.messages.append(assistant_response)
-                                        has_appended_assistant = True
-
-                            elif isinstance(response, StreamToolInputAvailable):
-                                accumulated_tool_calls.append(
-                                    {
-                                        "id": response.toolCallId,
-                                        "type": "function",
-                                        "function": {
-                                            "name": response.toolName,
-                                            "arguments": json.dumps(
-                                                response.input or {}
-                                            ),
-                                        },
-                                    }
-                                )
-                                assistant_response.tool_calls = accumulated_tool_calls
+                                accumulated_tool_calls = []
+                                has_appended_assistant = False
+                                has_tool_results = False
+                                session.messages.append(assistant_response)
+                                has_appended_assistant = True
+                            else:
+                                assistant_response.content = (
+                                    assistant_response.content or ""
+                                ) + delta
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
                                     has_appended_assistant = True
 
-                            elif isinstance(response, StreamToolOutputAvailable):
-                                session.messages.append(
-                                    ChatMessage(
-                                        role="tool",
-                                        content=(
-                                            response.output
-                                            if isinstance(response.output, str)
-                                            else str(response.output)
-                                        ),
-                                        tool_call_id=response.toolCallId,
-                                    )
-                                )
-                                has_tool_results = True
-
-                            elif isinstance(response, StreamFinish):
-                                stream_completed = True
-
-                except asyncio.CancelledError:
-                    # Task/generator was cancelled (e.g. client disconnect,
-                    # server shutdown).  Log and let the safety-net / finally
-                    # blocks handle cleanup.
-                    logger.warning(
-                        "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
-                        session_id[:12],
-                    )
-                    raise
-                finally:
-                    # Cancel the pending __anext__ task to avoid a leaked
-                    # coroutine.  This is safe even if the task already
-                    # completed.
-                    if pending_task is not None and not pending_task.done():
-                        pending_task.cancel()
-                        try:
-                            await pending_task
-                        except (asyncio.CancelledError, StopAsyncIteration):
-                            pass
-
-                # Safety net: if tools are still unresolved after the
-                # streaming loop (e.g. StopAsyncIteration before ResultMessage,
-                # or SDK not sending UserMessages for built-in tools), flush
-                # them now so the frontend stops showing spinners.
-                if adapter.has_unresolved_tool_calls:
-                    logger.warning(
-                        "[SDK] [%s] %d unresolved tool(s) after stream loop — "
-                        "flushing as safety net",
-                        session_id[:12],
-                        len(adapter.current_tool_calls)
-                        - len(adapter.resolved_tool_calls),
-                    )
-                    safety_responses: list[StreamBaseResponse] = []
-                    adapter._flush_unresolved_tool_calls(safety_responses)
-                    for response in safety_responses:
-                        if isinstance(
-                            response,
-                            (StreamToolInputAvailable, StreamToolOutputAvailable),
-                        ):
-                            logger.info(
-                                "[SDK] [%s] Safety flush: %s, tool=%s",
-                                session_id[:12],
-                                type(response).__name__,
-                                getattr(response, "toolName", "N/A"),
+                        elif isinstance(response, StreamToolInputAvailable):
+                            accumulated_tool_calls.append(
+                                {
+                                    "id": response.toolCallId,
+                                    "type": "function",
+                                    "function": {
+                                        "name": response.toolName,
+                                        "arguments": json.dumps(response.input or {}),
+                                    },
+                                }
                             )
-                        yield response
+                            assistant_response.tool_calls = accumulated_tool_calls
+                            if not has_appended_assistant:
+                                session.messages.append(assistant_response)
+                                has_appended_assistant = True
 
-                # If the stream ended without a ResultMessage, the SDK
-                # CLI exited unexpectedly or the user stopped execution.
-                # Close any open text/step so chunks are well-formed, and
-                # append a cancellation message so users see feedback.
-                # StreamFinish is published by mark_session_completed in the processor.
-                if not stream_completed:
-                    logger.info(
-                        "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
-                        session_id[:12],
-                    )
-                    closing_responses: list[StreamBaseResponse] = []
-                    adapter._end_text_if_open(closing_responses)
-                    for r in closing_responses:
-                        yield r
+                        elif isinstance(response, StreamToolOutputAvailable):
+                            session.messages.append(
+                                ChatMessage(
+                                    role="tool",
+                                    content=(
+                                        response.output
+                                        if isinstance(response.output, str)
+                                        else str(response.output)
+                                    ),
+                                    tool_call_id=response.toolCallId,
+                                )
+                            )
+                            has_tool_results = True
 
-                    # Add "Stopped by user" message so it persists after refresh
-                    # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
-                    session.messages.append(
-                        ChatMessage(
-                            role="assistant",
-                            content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+                        elif isinstance(response, StreamFinish):
+                            stream_completed = True
+
+            except asyncio.CancelledError:
+                # Task/generator was cancelled (e.g. client disconnect,
+                # server shutdown).  Log and let the safety-net / finally
+                # blocks handle cleanup.
+                logger.warning(
+                    "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
+                    session_id[:12],
+                )
+                raise
+            finally:
+                # Cancel the pending __anext__ task to avoid a leaked
+                # coroutine.  This is safe even if the task already
+                # completed.
+                if pending_task is not None and not pending_task.done():
+                    pending_task.cancel()
+                    try:
+                        await pending_task
+                    except (asyncio.CancelledError, StopAsyncIteration):
+                        pass
+
+            # Safety net: if tools are still unresolved after the
+            # streaming loop (e.g. StopAsyncIteration before ResultMessage,
+            # or SDK not sending UserMessages for built-in tools), flush
+            # them now so the frontend stops showing spinners.
+            if adapter.has_unresolved_tool_calls:
+                logger.warning(
+                    "[SDK] [%s] %d unresolved tool(s) after stream loop — "
+                    "flushing as safety net",
+                    session_id[:12],
+                    len(adapter.current_tool_calls) - len(adapter.resolved_tool_calls),
+                )
+                safety_responses: list[StreamBaseResponse] = []
+                adapter._flush_unresolved_tool_calls(safety_responses)
+                for response in safety_responses:
+                    if isinstance(
+                        response,
+                        (StreamToolInputAvailable, StreamToolOutputAvailable),
+                    ):
+                        logger.info(
+                            "[SDK] [%s] Safety flush: %s, tool=%s",
+                            session_id[:12],
+                            type(response).__name__,
+                            getattr(response, "toolName", "N/A"),
                         )
+                    yield response
+
+            # If the stream ended without a ResultMessage, the SDK
+            # CLI exited unexpectedly or the user stopped execution.
+            # Close any open text/step so chunks are well-formed, and
+            # append a cancellation message so users see feedback.
+            # StreamFinish is published by mark_session_completed in the processor.
+            if not stream_completed:
+                logger.info(
+                    "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
+                    session_id[:12],
+                )
+                closing_responses: list[StreamBaseResponse] = []
+                adapter._end_text_if_open(closing_responses)
+                for r in closing_responses:
+                    yield r
+
+                # Add "Stopped by user" message so it persists after refresh
+                # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
+                session.messages.append(
+                    ChatMessage(
+                        role="assistant",
+                        content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
                     )
+                )
 
-                if (
-                    assistant_response.content or assistant_response.tool_calls
-                ) and not has_appended_assistant:
-                    session.messages.append(assistant_response)
+            if (
+                assistant_response.content or assistant_response.tool_calls
+            ) and not has_appended_assistant:
+                session.messages.append(assistant_response)
 
-            # --- Upload transcript for next-turn --resume ---
-            # After async with the SDK task group has exited, so the Stop
-            # hook has already fired and the CLI has been SIGTERMed.  The
-            # CLI uses appendFileSync, so all writes are safely on disk.
-            if config.claude_agent_use_resume and user_id:
-                # With --resume the CLI appends to the resume file (most
-                # complete).  Otherwise use the Stop hook path.
-                if use_resume and resume_file:
-                    raw_transcript = read_transcript_file(resume_file)
-                    logger.debug("[SDK] Transcript source: resume file")
-                elif captured_transcript.path:
-                    raw_transcript = read_transcript_file(captured_transcript.path)
-                    logger.debug(
-                        "[SDK] Transcript source: stop hook (%s), read result: %s",
-                        captured_transcript.path,
-                        f"{len(raw_transcript)}B" if raw_transcript else "None",
+        # --- Upload transcript for next-turn --resume ---
+        # After async with the SDK task group has exited, so the Stop
+        # hook has already fired and the CLI has been SIGTERMed.  The
+        # CLI uses appendFileSync, so all writes are safely on disk.
+        if config.claude_agent_use_resume and user_id:
+            # With --resume the CLI appends to the resume file (most
+            # complete).  Otherwise use the Stop hook path.
+            if use_resume and resume_file:
+                raw_transcript = read_transcript_file(resume_file)
+                logger.debug("[SDK] Transcript source: resume file")
+            elif captured_transcript.path:
+                raw_transcript = read_transcript_file(captured_transcript.path)
+                logger.debug(
+                    "[SDK] Transcript source: stop hook (%s), read result: %s",
+                    captured_transcript.path,
+                    f"{len(raw_transcript)}B" if raw_transcript else "None",
+                )
+            else:
+                raw_transcript = None
+
+            if not raw_transcript:
+                logger.debug(
+                    "[SDK] No usable transcript — CLI file had no "
+                    "conversation entries (expected for first turn "
+                    "without --resume)"
+                )
+
+            if raw_transcript:
+                # Shield the upload from generator cancellation so a
+                # client disconnect / page refresh doesn't lose the
+                # transcript.  The upload must finish even if the SSE
+                # connection is torn down.
+                await asyncio.shield(
+                    _try_upload_transcript(
+                        user_id,
+                        session_id,
+                        raw_transcript,
+                        message_count=len(session.messages),
                     )
-                else:
-                    raw_transcript = None
-
-                if not raw_transcript:
-                    logger.debug(
-                        "[SDK] No usable transcript — CLI file had no "
-                        "conversation entries (expected for first turn "
-                        "without --resume)"
-                    )
-
-                if raw_transcript:
-                    # Shield the upload from generator cancellation so a
-                    # client disconnect / page refresh doesn't lose the
-                    # transcript.  The upload must finish even if the SSE
-                    # connection is torn down.
-                    await asyncio.shield(
-                        _try_upload_transcript(
-                            user_id,
-                            session_id,
-                            raw_transcript,
-                            message_count=len(session.messages),
-                        )
-                    )
-
-        except ImportError:
-            raise RuntimeError(
-                "claude-agent-sdk is not installed. "
-                "Disable SDK mode (CHAT_USE_CLAUDE_AGENT_SDK=false) "
-                "to use the OpenAI-compatible fallback."
-            )
+                )
 
         logger.info(
             "[SDK] [%s] Stream completed successfully with %d messages",
