@@ -3,12 +3,19 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageActions,
+  MessageContent,
+} from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { CopyButton } from "./components/CopyButton";
+import { TTSButton } from "./components/TTSButton";
+import { parseSpecialMarkers } from "./helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -73,6 +80,15 @@ export function ChatMessagesContainer({
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
 
+          const isAssistant = message.role === "assistant";
+
+          // Past assistant messages are always done; the last one
+          // is done only when the stream has finished.
+          const isAssistantDone =
+            isAssistant &&
+            (!isLastAssistant ||
+              (status !== "streaming" && status !== "submitted"));
+
           const fileParts = message.parts.filter(
             (p): p is FileUIPart => p.type === "file",
           );
@@ -104,6 +120,30 @@ export function ChatMessagesContainer({
                   isUser={message.role === "user"}
                 />
               )}
+              {isAssistantDone &&
+                (() => {
+                  const textParts = message.parts.filter(
+                    (p): p is Extract<typeof p, { type: "text" }> =>
+                      p.type === "text",
+                  );
+
+                  // Hide actions when the message ended with an error or cancellation
+                  const lastTextPart = textParts[textParts.length - 1];
+                  if (lastTextPart) {
+                    const { markerType } = parseSpecialMarkers(
+                      lastTextPart.text,
+                    );
+                    if (markerType === "error") return null;
+                  }
+
+                  const textContent = textParts.map((p) => p.text).join("\n");
+                  return (
+                    <MessageActions>
+                      <CopyButton text={textContent} />
+                      <TTSButton text={textContent} />
+                    </MessageActions>
+                  );
+                })()}
             </Message>
           );
         })}
