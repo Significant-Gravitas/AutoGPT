@@ -2,6 +2,7 @@
 Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,25 +11,33 @@ from prisma.errors import UniqueViolationError
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace import WorkspaceManager
 
+_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
-def _make_workspace_file(**overrides) -> WorkspaceFile:
+
+def _make_workspace_file(
+    id: str = "existing-file-id",
+    workspace_id: str = "ws-123",
+    name: str = "test.txt",
+    path: str = "/test.txt",
+    storage_path: str = "ws-123/existing-uuid/test.txt",
+    mime_type: str = "text/plain",
+    size_bytes: int = 5,
+    checksum: str = "abc123",
+) -> WorkspaceFile:
     """Create a mock WorkspaceFile with sensible defaults."""
-    defaults = dict(
-        id="existing-file-id",
-        workspaceId="ws-123",
-        fileId="existing-uuid",
-        name="test.txt",
-        path="/test.txt",
-        storagePath="ws-123/existing-uuid/test.txt",
-        mimeType="text/plain",
-        sizeBytes=5,
-        checksum="abc123",
-        metadata=None,
-        createdAt=None,
-        updatedAt=None,
+    return WorkspaceFile(
+        id=id,
+        workspace_id=workspace_id,
+        name=name,
+        path=path,
+        storage_path=storage_path,
+        mime_type=mime_type,
+        size_bytes=size_bytes,
+        checksum=checksum,
+        metadata={},
+        created_at=_NOW,
+        updated_at=_NOW,
     )
-    defaults.update(overrides)
-    return WorkspaceFile(**defaults)
 
 
 def _unique_violation() -> UniqueViolationError:
@@ -94,7 +103,7 @@ async def test_write_file_overwrite_conflict_then_retry_succeeds(
 ):
     """overwrite=True + conflict → delete existing → retry succeeds."""
     created_file = _make_workspace_file()
-    existing_file = _make_workspace_file(id="old-id", fileId="old-uuid")
+    existing_file = _make_workspace_file(id="old-id")
 
     mock_db.get_workspace_file_by_path.return_value = existing_file
     mock_db.create_workspace_file.side_effect = [_unique_violation(), created_file]

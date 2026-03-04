@@ -228,7 +228,9 @@ class WorkspaceManager:
 
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
-        async def _persist_db_record(retries: int = 2 if overwrite else 0) -> WorkspaceFile:
+        async def _persist_db_record(
+            retries: int = 2 if overwrite else 0,
+        ) -> WorkspaceFile:
             """Create DB record, retrying on conflict if overwrite=True.
 
             Cleans up the orphaned storage file on any failure.
