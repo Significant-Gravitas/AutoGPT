@@ -421,8 +421,16 @@ class AgentValidator:
 
         for link in agent.get("links", []):
             source_id = link.get("source_id")
-            source_name = link.get("source_name")
+            source_name = link.get("source_name", "")
             link_id = link.get("id", "Unknown")
+
+            if not source_name:
+                self.add_error(
+                    f"Link '{link_id}' is missing 'source_name'. "
+                    f"Every link must specify which output field to read from."
+                )
+                valid = False
+                continue
 
             # Find the source node
             source_node = next(
