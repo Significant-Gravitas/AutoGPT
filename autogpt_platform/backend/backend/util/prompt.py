@@ -364,6 +364,44 @@ def _remove_orphan_tool_responses(
     return result
 
 
+def validate_and_remove_orphan_tool_responses(
+    messages: list[dict],
+    log_warning: bool = True,
+) -> list[dict]:
+    """
+    Validate tool_call/tool_response pairs and remove orphaned responses.
+
+    Scans messages in order, tracking all tool_call IDs. Any tool response
+    referencing an ID not seen in a preceding message is considered orphaned
+    and removed. This prevents API errors like Anthropic's "unexpected tool_use_id".
+
+    Args:
+        messages: List of messages to validate (OpenAI or Anthropic format)
+        log_warning: Whether to log a warning when orphans are found
+
+    Returns:
+        A new list with orphaned tool responses removed
+    """
+    available_ids: set[str] = set()
+    orphan_ids: set[str] = set()
+
+    for msg in messages:
+        available_ids |= _extract_tool_call_ids_from_message(msg)
+        for resp_id in _extract_tool_response_ids_from_message(msg):
+            if resp_id not in available_ids:
+                orphan_ids.add(resp_id)
+
+    if not orphan_ids:
+        return messages
+
+    if log_warning:
+        logger.warning(
+            f"Removing {len(orphan_ids)} orphan tool response(s): {orphan_ids}"
+        )
+
+    return _remove_orphan_tool_responses(messages, orphan_ids)
+
+
 def _ensure_tool_pairs_intact(
     recent_messages: list[dict],
     all_messages: list[dict],
@@ -497,14 +535,18 @@ async def _summarize_messages_llm(
             {
                 "role": "system",
                 "content": (
-                    "Create a detailed summary of the conversation so far. "
+                    "Create a factual summary of the conversation so far. "
                     "This summary will be used as context when continuing the conversation.\n\n"
+                    "CRITICAL: Only include information that is EXPLICITLY present in the "
+                    "conversation. Do NOT fabricate, infer, or invent any details. "
+                    "If a section has no relevant content in the conversation, skip it entirely.\n\n"
                     "Before writing the summary, analyze each message chronologically to identify:\n"
                     "- User requests and their explicit goals\n"
-                    "- Your approach and key decisions made\n"
+                    "- Actions taken and key decisions made\n"
                     "- Technical specifics (file names, tool outputs, function signatures)\n"
                     "- Errors encountered and resolutions applied\n\n"
-                    "You MUST include ALL of the following sections:\n\n"
+                    "Include ONLY the sections below that have relevant content "
+                    "(skip sections with nothing to report):\n\n"
                     "## 1. Primary Request and Intent\n"
                     "The user's explicit goals and what they are trying to accomplish.\n\n"
                     "## 2. Key Technical Concepts\n"
@@ -512,19 +554,14 @@ async def _summarize_messages_llm(
                     "## 3. Files and Resources Involved\n"
                     "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
                     "## 4. Errors and Fixes\n"
-                    "Problems encountered, error messages, and their resolutions. "
-                    "Include any user feedback on fixes.\n\n"
-                    "## 5. Problem Solving\n"
-                    "Issues that have been resolved and how they were addressed.\n\n"
-                    "## 6. All User Messages\n"
-                    "A complete list of all user inputs (excluding tool outputs) to preserve their exact requests.\n\n"
-                    "## 7. Pending Tasks\n"
+                    "Problems encountered, error messages, and their resolutions.\n\n"
+                    "## 5. All User Messages\n"
+                    "A complete list of all user inputs (excluding tool outputs) "
+                    "to preserve their exact requests.\n\n"
+                    "## 6. Pending Tasks\n"
                     "Work items the user explicitly requested that have not yet been completed.\n\n"
-                    "## 8. Current Work\n"
-                    "Precise description of what was being worked on most recently, including relevant context.\n\n"
-                    "## 9. Next Steps\n"
-                    "What should happen next, aligned with the user's most recent requests. "
-                    "Include verbatim quotes of recent instructions if relevant."
+                    "## 7. Current State\n"
+                    "What was happening most recently in the conversation."
                 ),
             },
             {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
@@ -723,6 +760,13 @@ async def compress_context(
 
     # Filter out any None values that may have been introduced
     final_msgs: list[dict] = [m for m in msgs if m is not None]
+
+    # ---- STEP 6: Final tool-pair validation ---------------------------------
+    # After all compression steps, verify that every tool response has a
+    # matching tool_call in a preceding assistant message. Remove orphans
+    # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
+    final_msgs = validate_and_remove_orphan_tool_responses(final_msgs)
+
     final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:

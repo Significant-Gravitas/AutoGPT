@@ -9,10 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.api.features.chat.tools.agent_generator import core
-from backend.api.features.chat.tools.agent_generator.core import (
-    AgentGeneratorNotConfiguredError,
-)
+from backend.copilot.tools.agent_generator import core
+from backend.copilot.tools.agent_generator.core import AgentGeneratorNotConfiguredError
 
 
 class TestServiceNotConfigured:
@@ -111,7 +109,7 @@ class TestGenerateAgent:
             instructions = {"type": "instructions", "steps": ["Step 1"]}
             result = await core.generate_agent(instructions)
 
-            mock_external.assert_called_once_with(instructions, None, None, None)
+            mock_external.assert_called_once_with(instructions, None)
             assert result is not None
             assert result["name"] == "Test Agent"
             assert "id" in result
@@ -175,9 +173,7 @@ class TestGenerateAgentPatch:
             current_agent = {"nodes": [], "links": []}
             result = await core.generate_agent_patch("Add a node", current_agent)
 
-            mock_external.assert_called_once_with(
-                "Add a node", current_agent, None, None, None
-            )
+            mock_external.assert_called_once_with("Add a node", current_agent, None)
             assert result == expected_result
 
     @pytest.mark.asyncio

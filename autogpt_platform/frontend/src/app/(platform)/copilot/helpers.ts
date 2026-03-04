@@ -1,45 +1,59 @@
-import type { User } from "@supabase/supabase-js";
+import type { UIMessage } from "ai";
 
-export function getGreetingName(user?: User | null): string {
-  if (!user) return "there";
-  const metadata = user.user_metadata as Record<string, unknown> | undefined;
-  const fullName = metadata?.full_name;
-  const name = metadata?.name;
-  if (typeof fullName === "string" && fullName.trim()) {
-    return fullName.split(" ")[0];
-  }
-  if (typeof name === "string" && name.trim()) {
-    return name.split(" ")[0];
-  }
-  if (user.email) {
-    return user.email.split("@")[0];
-  }
-  return "there";
+/** Mark any in-progress tool parts as completed/errored so spinners stop. */
+export function resolveInProgressTools(
+  messages: UIMessage[],
+  outcome: "completed" | "cancelled",
+): UIMessage[] {
+  return messages.map((msg) => ({
+    ...msg,
+    parts: msg.parts.map((part) =>
+      "state" in part &&
+      (part.state === "input-streaming" || part.state === "input-available")
+        ? outcome === "cancelled"
+          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
+          : { ...part, state: "output-available" as const, output: "" }
+        : part,
+    ),
+  }));
 }
 
-export function buildCopilotChatUrl(prompt: string): string {
-  const trimmed = prompt.trim();
-  if (!trimmed) return "/copilot/chat";
-  const encoded = encodeURIComponent(trimmed);
-  return `/copilot/chat?prompt=${encoded}`;
-}
+/**
+ * Deduplicate messages by ID and by consecutive content fingerprint.
+ *
+ * ID dedup catches exact duplicates within the same source.
+ * Content dedup only compares each assistant message to its **immediate
+ * predecessor** — this catches hydration/stream boundary duplicates (where
+ * the same content appears under different IDs) without accidentally
+ * removing legitimately repeated assistant responses that are far apart.
+ */
+export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
+  const seenIds = new Set<string>();
+  let lastAssistantFingerprint = "";
 
-export function getQuickActions(): string[] {
-  return [
-    "I don't know where to start, just ask me stuff",
-    "I do the same thing every week and it's killing me",
-    "Help me find where I'm wasting my time",
-  ];
-}
+  return messages.filter((msg) => {
+    if (seenIds.has(msg.id)) return false;
+    seenIds.add(msg.id);
 
-export function getInputPlaceholder(width?: number) {
-  if (!width) return "What's your role and what eats up most of your day?";
+    if (msg.role === "assistant") {
+      const fingerprint = msg.parts
+        .map(
+          (p) =>
+            ("text" in p && p.text) ||
+            ("toolCallId" in p && p.toolCallId) ||
+            "",
+        )
+        .join("|");
 
-  if (width < 500) {
-    return "I'm a chef and I hate...";
-  }
-  if (width <= 1080) {
-    return "What's your role and what eats up most of your day?";
-  }
-  return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
+      // Only dedup if this assistant message is identical to the previous one
+      if (fingerprint && fingerprint === lastAssistantFingerprint) return false;
+      if (fingerprint) lastAssistantFingerprint = fingerprint;
+    } else {
+      // Reset on non-assistant messages so that identical assistant responses
+      // separated by a user message (e.g. "Done!" → user → "Done!") are kept.
+      lastAssistantFingerprint = "";
+    }
+
+    return true;
+  });
 }

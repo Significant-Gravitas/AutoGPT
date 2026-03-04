@@ -4,7 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";

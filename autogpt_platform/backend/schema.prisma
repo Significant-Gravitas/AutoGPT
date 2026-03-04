@@ -51,6 +51,7 @@ model User {
   ChatSessions         ChatSession[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
+  LibraryFolders       LibraryFolder[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -395,6 +396,9 @@ model LibraryAgent {
   creatorId String?
   Creator   Profile? @relation(fields: [creatorId], references: [id])
 
+  folderId String?
+  Folder   LibraryFolder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
   useGraphIsActiveVersion Boolean @default(false)
 
   isFavorite      Boolean @default(false)
@@ -407,6 +411,30 @@ model LibraryAgent {
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
+  @@index([folderId])
+}
+
+model LibraryFolder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name  String
+  icon  String?
+  color String?
+
+  parentId String?
+  Parent   LibraryFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  Children LibraryFolder[] @relation("FolderHierarchy")
+
+  isDeleted Boolean @default(false)
+
+  LibraryAgents LibraryAgent[]
+
+  @@unique([userId, parentId, name]) // Name unique per parent per user
 }
 
 ////////////////////////////////////////////////////////////
@@ -920,6 +948,17 @@ view mv_review_stats {
   // Refresh uses CONCURRENTLY to avoid blocking reads
 }
 
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every hour via pg_cron (with fallback to manual refresh)
+view mv_suggested_blocks {
+  block_id        String @unique
+  execution_count Int
+
+  // Pre-aggregated execution counts per block for the last 14 days
+  // Used by builder suggestions for ordering blocks by popularity
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
 model StoreListing {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -1091,9 +1130,11 @@ enum APIKeyPermission {
   IDENTITY // Info about the authenticated user
   EXECUTE_GRAPH // Can execute agent graphs
   READ_GRAPH // Can get graph versions and details
+  WRITE_GRAPH // Can create and update agent graphs
   EXECUTE_BLOCK // Can execute individual blocks
   READ_BLOCK // Can get block information
   READ_STORE // Can read store agents and creators
+  WRITE_LIBRARY // Can add agents to library
   USE_TOOLS // Can use chat tools via external API
   MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
   READ_INTEGRATIONS // Can list credentials and providers

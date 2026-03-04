@@ -8,23 +8,18 @@ from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from backend.blocks import get_block
+from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
-from backend.data.block import (
-    Block,
-    BlockCostType,
-    BlockInput,
-    BlockOutputEntry,
-    BlockType,
-    get_block,
-)
-from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.db import prisma
 
 # Import dynamic field utilities from centralized location
+from backend.data.block import BlockInput, BlockOutputEntry
+from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
@@ -35,7 +30,7 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
+from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -265,7 +260,13 @@ async def _validate_node_input_credentials(
         # Track if any credential field is missing for this node
         has_missing_credentials = False
 
+        # A credential field is optional if the node metadata says so, or if
+        # the block schema declares a default for the field.
+        required_fields = block.input_schema.get_required_fields()
+        is_creds_optional = node.credentials_optional
+
         for field_name, credentials_meta_type in credentials_fields.items():
+            field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default
                 field_value = None
@@ -278,7 +279,7 @@ async def _validate_node_input_credentials(
                 elif field_name in node.input_default:
                     # For optional credentials, don't use input_default - treat as missing
                     # This prevents stale credential IDs from failing validation
-                    if node.credentials_optional:
+                    if field_is_optional:
                         field_value = None
                     else:
                         field_value = node.input_default[field_name]
@@ -288,8 +289,8 @@ async def _validate_node_input_credentials(
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
                     has_missing_credentials = True
-                    # If node has credentials_optional flag, mark for skipping instead of error
-                    if node.credentials_optional:
+                    # If credential field is optional, skip instead of error
+                    if field_is_optional:
                         continue  # Don't add error, will be marked for skip after loop
                     else:
                         credential_errors[node.id][
@@ -339,16 +340,16 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
-        # If node has optional credentials and any are missing, mark for skipping
-        # But only if there are no other errors for this node
+        # If node has optional credentials and any are missing, allow running without.
+        # The executor will pass credentials=None to the block's run().
         if (
             has_missing_credentials
-            and node.credentials_optional
+            and is_creds_optional
             and node.id not in credential_errors
         ):
-            nodes_to_skip.add(node.id)
             logger.info(
-                f"Node #{node.id} will be skipped: optional credentials not configured"
+                f"Node #{node.id}: optional credentials not configured, "
+                "running without"
             )
 
     return credential_errors, nodes_to_skip
@@ -426,7 +427,7 @@ async def validate_graph_with_credentials(
 async def _construct_starting_node_execution_input(
     graph: GraphModel,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
@@ -438,7 +439,7 @@ async def _construct_starting_node_execution_input(
     Args:
         graph (GraphModel): The graph model to execute.
         user_id (str): The ID of the user executing the graph.
-        data (BlockInput): The input data for the graph execution.
+        data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
 
     Returns:
@@ -496,7 +497,7 @@ async def _construct_starting_node_execution_input(
 async def validate_and_construct_node_execution_input(
     graph_id: str,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
@@ -796,7 +797,7 @@ async def stop_graph_execution(
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: Optional[BlockInput] = None,
+    inputs: Optional[GraphInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,

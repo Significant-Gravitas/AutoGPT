@@ -88,20 +88,23 @@ async def require_auth(
     )
 
 
-def require_permission(permission: APIKeyPermission):
+def require_permission(*permissions: APIKeyPermission):
     """
-    Dependency function for checking specific permissions
+    Dependency function for checking required permissions.
+    All listed permissions must be present.
     (works with API keys and OAuth tokens)
     """
 
-    async def check_permission(
+    async def check_permissions(
         auth: APIAuthorizationInfo = Security(require_auth),
     ) -> APIAuthorizationInfo:
-        if permission not in auth.scopes:
+        missing = [p for p in permissions if p not in auth.scopes]
+        if missing:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission.value}",
+                detail=f"Missing required permission(s): "
+                f"{', '.join(p.value for p in missing)}",
             )
         return auth
 
-    return check_permission
+    return check_permissions
