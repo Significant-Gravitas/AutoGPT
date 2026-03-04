@@ -19,7 +19,7 @@ class _FakeFileInfo:
     size_bytes: int
 
 
-_PATCH_TARGET = "backend.copilot.tools.workspace_files.get_manager"
+_PATCH_TARGET = "backend.copilot.sdk.service.get_manager"
 
 
 class TestPrepareFileAttachments:

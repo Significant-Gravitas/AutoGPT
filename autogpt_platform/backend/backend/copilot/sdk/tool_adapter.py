@@ -278,22 +278,6 @@ async def _execute_tool_sync(
     }
 
 
-# ---------------------------------------------------------------------------
-# Binary MIME types that the workspace tool saves to disk instead of inlining.
-# The CLI's built-in Read tool handles these natively (images via vision,
-# PDFs via document support).
-# ---------------------------------------------------------------------------
-BINARY_MIME_TYPES: frozenset[str] = frozenset(
-    {
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "application/pdf",
-    }
-)
-
-
 def _mcp_error(message: str) -> dict[str, Any]:
     return {
         "content": [

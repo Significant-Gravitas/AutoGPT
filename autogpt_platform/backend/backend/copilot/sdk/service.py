@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -55,6 +56,7 @@ from ..service import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -574,6 +576,27 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
+# Matches characters unsafe for filenames.
+_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+
+def _save_to_sdk_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
+    """Write file content to the SDK ephemeral directory.
+
+    Returns the absolute path.  Adds a numeric suffix on name collisions.
+    """
+    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
+    candidate = os.path.join(sdk_cwd, safe)
+    if os.path.exists(candidate):
+        stem, ext = os.path.splitext(safe)
+        idx = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(sdk_cwd, f"{stem}_{idx}{ext}")
+            idx += 1
+    with open(candidate, "wb") as f:
+        f.write(content)
+    return candidate
+
 
 @dataclass
 class PreparedAttachments:
@@ -606,8 +629,6 @@ async def _prepare_file_attachments(
     empty = PreparedAttachments(hint="", image_blocks=[])
     if not file_ids:
         return empty
-
-    from backend.copilot.tools.workspace_files import _save_binary_to_cwd, get_manager
 
     try:
         manager = await get_manager(user_id, session_id)
@@ -648,7 +669,7 @@ async def _prepare_file_attachments(
                 )
             else:
                 # Non-image files: save to sdk_cwd for Read tool access
-                local_path = _save_binary_to_cwd(sdk_cwd, file_info.name, content)
+                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
                     f"{file_info.size_bytes:,} bytes) saved to {local_path}"
