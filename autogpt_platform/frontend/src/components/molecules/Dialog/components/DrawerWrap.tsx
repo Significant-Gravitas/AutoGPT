@@ -22,6 +22,9 @@ export function DrawerWrap({
   handleClose,
   isForceOpen,
 }: Props) {
+  const accessibleTitle = title ?? "Dialog";
+  const hasVisibleTitle = Boolean(title);
+
   const closeBtn = (
     <Button
       variant="link"
@@ -44,15 +47,19 @@ export function DrawerWrap({
       >
         <div
           className={`flex w-full shrink-0 items-center justify-between ${
-            title ? "pb-6" : "pb-0"
+            hasVisibleTitle ? "pb-6" : "pb-0"
           }`}
         >
-          {title ? (
-            <Drawer.Title className={drawerStyles.title}>{title}</Drawer.Title>
-          ) : null}
+          {hasVisibleTitle ? (
+            <Drawer.Title className={drawerStyles.title}>
+              {accessibleTitle}
+            </Drawer.Title>
+          ) : (
+            <Drawer.Title className="sr-only">{accessibleTitle}</Drawer.Title>
+          )}
 
           {!isForceOpen ? (
-            title ? (
+            hasVisibleTitle ? (
               closeBtn
             ) : (
               <div

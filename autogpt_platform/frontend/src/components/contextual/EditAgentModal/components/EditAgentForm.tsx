@@ -8,7 +8,6 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { StepHeader } from "../../PublishAgentModal/components/StepHeader";
 import { useEditAgentForm } from "./useEditAgentForm";
 
 interface EditAgentFormProps {
@@ -31,12 +30,10 @@ export function EditAgentForm({
     isSubmitting,
     handleFormSubmit,
     handleImagesChange,
-  } = useEditAgentForm({ submission, onSuccess });
+  } = useEditAgentForm({ submission, onSuccess, onClose });
 
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl">
-      <StepHeader title="Edit Agent" description="Update your agent details" />
-
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(handleFormSubmit)}
@@ -75,7 +72,7 @@ export function EditAgentForm({
           <ThumbnailImages
             agentId={submission.agent_id}
             onImagesChange={handleImagesChange}
-            initialImages={submission.image_urls || []}
+            initialImages={Array.from(new Set(submission.image_urls || []))}
             initialSelectedImage={submission.image_urls?.[0] || null}
             errorMessage={form.formState.errors.root?.message}
           />
@@ -136,7 +133,7 @@ export function EditAgentForm({
               <Input
                 id={field.name}
                 label="Changes Summary"
-                type="text"
+                type="textarea"
                 placeholder="Briefly describe what you changed"
                 error={form.formState.errors.changes_summary?.message}
                 {...field}

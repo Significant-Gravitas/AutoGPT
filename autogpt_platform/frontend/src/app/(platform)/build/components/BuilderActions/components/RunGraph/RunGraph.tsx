@@ -1,15 +1,15 @@
-import { useRunGraph } from "./useRunGraph";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
-import { useShallow } from "zustand/react/shallow";
-import { PlayIcon, StopIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
-import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { BuilderActionButton } from "../BuilderActionButton";
+import { CircleNotchIcon, PlayIcon, StopIcon } from "@phosphor-icons/react";
+import { useShallow } from "zustand/react/shallow";
+import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import { useRunGraph } from "./useRunGraph";
+import { cn } from "@/lib/utils";
 
 export const RunGraph = ({ flowID }: { flowID: string | null }) => {
   const {
@@ -25,28 +25,52 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
     useShallow((state) => state.isGraphRunning),
   );
 
+  const isLoading = isExecutingGraph || isTerminatingGraph || isSaving;
+
+  // Determine which icon to show with proper animation
+  const renderIcon = () => {
+    const iconClass = cn(
+      "size-4 transition-transform duration-200 ease-out",
+      !isLoading && "group-hover:scale-110",
+    );
+
+    if (isLoading) {
+      return (
+        <CircleNotchIcon
+          className={cn(iconClass, "animate-spin")}
+          weight="bold"
+        />
+      );
+    }
+
+    if (isGraphRunning) {
+      return <StopIcon className={iconClass} weight="fill" />;
+    }
+
+    return <PlayIcon className={iconClass} weight="fill" />;
+  };
+
   return (
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <BuilderActionButton
-            className={cn(
-              isGraphRunning &&
-                "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",
-            )}
+          <Button
+            size="icon"
+            variant={isGraphRunning ? "destructive" : "primary"}
+            data-id={isGraphRunning ? "stop-graph-button" : "run-graph-button"}
             onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
-            disabled={!flowID || isExecutingGraph || isTerminatingGraph}
-            isLoading={isExecutingGraph || isTerminatingGraph || isSaving}
+            disabled={!flowID || isLoading}
+            className="group"
           >
-            {!isGraphRunning ? (
-              <PlayIcon className="size-6 drop-shadow-sm" />
-            ) : (
-              <StopIcon className="size-6 drop-shadow-sm" />
-            )}
-          </BuilderActionButton>
+            {renderIcon()}
+          </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {isGraphRunning ? "Stop agent" : "Run agent"}
+          {isLoading
+            ? "Processing..."
+            : isGraphRunning
+              ? "Stop agent"
+              : "Run agent"}
         </TooltipContent>
       </Tooltip>
       <RunInputDialog

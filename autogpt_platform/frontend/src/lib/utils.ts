@@ -1,12 +1,14 @@
 import { type ClassValue, clsx } from "clsx";
-import { isEmpty as _isEmpty } from "lodash";
+import _isEmpty from "lodash/isEmpty";
 import { twMerge } from "tailwind-merge";
 
-import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
+  BlockIOSubSchema,
   Category,
+  GraphInputSubSchema,
+  GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -76,8 +78,8 @@ export function getTypeBgColor(type: string | null): string {
   );
 }
 
-export function getTypeColor(type: string | null): string {
-  if (type === null) return "#6b7280";
+export function getTypeColor(type: string | undefined): string {
+  if (!type) return "#6b7280";
   return (
     {
       string: "#22c55e",
@@ -88,9 +90,57 @@ export function getTypeColor(type: string | null): string {
       array: "#6366f1",
       null: "#6b7280",
       any: "#6b7280",
-      "": "#6b7280",
     }[type] || "#6b7280"
   );
+}
+
+/**
+ * Extracts the effective type from a JSON schema, handling anyOf/oneOf/allOf wrappers.
+ * Returns the first non-null type found in the schema structure.
+ */
+export function getEffectiveType(
+  schema:
+    | BlockIOSubSchema
+    | GraphInputSubSchema
+    | GraphOutputSubSchema
+    | null
+    | undefined,
+): string | undefined {
+  if (!schema) return undefined;
+
+  // Direct type property
+  if ("type" in schema && schema.type) {
+    return String(schema.type);
+  }
+
+  // Handle allOf - typically a single-item wrapper
+  if (
+    "allOf" in schema &&
+    Array.isArray(schema.allOf) &&
+    schema.allOf.length > 0
+  ) {
+    return getEffectiveType(schema.allOf[0]);
+  }
+
+  // Handle anyOf - e.g. [{ type: "string" }, { type: "null" }]
+  if ("anyOf" in schema && Array.isArray(schema.anyOf)) {
+    for (const item of schema.anyOf) {
+      if ("type" in item && item.type !== "null") {
+        return String(item.type);
+      }
+    }
+  }
+
+  // Handle oneOf
+  if ("oneOf" in schema && Array.isArray(schema.oneOf)) {
+    for (const item of schema.oneOf) {
+      if ("type" in item && item.type !== "null") {
+        return String(item.type);
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export function beautifyString(name: string): string {
@@ -281,81 +331,6 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   );
 }
 
-function rectanglesOverlap(
-  rect1: { x: number; y: number; width: number; height?: number },
-  rect2: { x: number; y: number; width: number; height?: number },
-): boolean {
-  const x1 = rect1.x,
-    y1 = rect1.y,
-    w1 = rect1.width,
-    h1 = rect1.height ?? 100;
-  const x2 = rect2.x,
-    y2 = rect2.y,
-    w2 = rect2.width,
-    h2 = rect2.height ?? 100;
-
-  // Check if the rectangles do not overlap
-  return !(x1 + w1 <= x2 || x1 >= x2 + w2 || y1 + h1 <= y2 || y1 >= y2 + h2);
-}
-
-export function findNewlyAddedBlockCoordinates(
-  nodeDimensions: NodeDimension,
-  newWidth: number,
-  margin: number,
-  zoom: number,
-) {
-  const nodeDimensionArray = Object.values(nodeDimensions);
-
-  for (let i = nodeDimensionArray.length - 1; i >= 0; i--) {
-    const lastNode = nodeDimensionArray[i];
-    const lastNodeHeight = lastNode.height ?? 100;
-
-    // Right of the last node
-    let newX = lastNode.x + lastNode.width + margin;
-    let newY = lastNode.y;
-    let newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionRight = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionRight) {
-      return { x: newX, y: newY };
-    }
-
-    // Left of the last node
-    newX = lastNode.x - newWidth - margin;
-    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionLeft = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionLeft) {
-      return { x: newX, y: newY };
-    }
-
-    // Below the last node
-    newX = lastNode.x;
-    newY = lastNode.y + lastNodeHeight + margin;
-    newRect = { x: newX, y: newY, width: newWidth, height: 100 / zoom };
-
-    const collisionBelow = nodeDimensionArray.some((node) =>
-      rectanglesOverlap(newRect, node),
-    );
-
-    if (!collisionBelow) {
-      return { x: newX, y: newY };
-    }
-  }
-
-  // Default position if no space is found
-  return {
-    x: 0,
-    y: 0,
-  };
-}
-
 export function hasNonNullNonObjectValue(obj: any): boolean {
   if (obj !== null && typeof obj === "object") {
     return Object.values(obj).some((value) => hasNonNullNonObjectValue(value));
@@ -444,4 +419,10 @@ export function validateYouTubeUrl(val: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isValidUUID(value: string): boolean {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
 }

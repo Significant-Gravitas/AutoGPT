@@ -11,7 +11,7 @@ import {
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 import React from "react";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
@@ -34,8 +34,8 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper className="border-orange-50 bg-orange-50">
-      <PauseCircleIcon size={16} className="text-orange-700" weight="bold" />
+    <IconWrapper className="border-yellow-50 bg-yellow-50">
+      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
     </IconWrapper>
   ),
   COMPLETED: (
@@ -76,7 +76,14 @@ export function TaskListItem({
     <SidebarItemCard
       icon={statusIconMap[run.status]}
       title={title}
-      description={moment(run.started_at).fromNow()}
+      description={
+        run.started_at
+          ? formatDistanceToNow(run.started_at, { addSuffix: true })
+          : "—"
+      }
+      descriptionTitle={
+        run.started_at ? new Date(run.started_at).toString() : undefined
+      }
       onClick={onClick}
       selected={selected}
       actions={

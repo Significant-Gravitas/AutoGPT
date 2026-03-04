@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckCircle, Info, Warning, XCircle } from "@phosphor-icons/react";
 import { Toaster as SonnerToaster } from "sonner";
 import styles from "./styles.module.css";
 
@@ -23,10 +22,10 @@ export function Toaster() {
       }}
       className="custom__toast"
       icons={{
-        success: <CheckCircle className="h-4 w-4" color="#fff" weight="fill" />,
-        error: <XCircle className="h-4 w-4" color="#fff" weight="fill" />,
-        warning: <Warning className="h-4 w-4" color="#fff" weight="fill" />,
-        info: <Info className="h-4 w-4" color="#fff" weight="fill" />,
+        success: null,
+        error: null,
+        warning: null,
+        info: null,
       }}
     />
   );

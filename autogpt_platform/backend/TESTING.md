@@ -108,7 +108,7 @@ import fastapi.testclient
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
-from backend.server.v2.myroute import router
+from backend.api.features.myroute import router
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -138,7 +138,7 @@ If the test doesn't need the `user_id` specifically, mocking is not necessary as
 
 #### Using Global Auth Fixtures
 
-Two global auth fixtures are provided by `backend/server/conftest.py`:
+Two global auth fixtures are provided by `backend/api/conftest.py`:
 
 - `mock_jwt_user` - Regular user with `test_user_id` ("test-user-id")
 - `mock_jwt_admin` - Admin user with `admin_user_id` ("admin-user-id")
@@ -149,7 +149,7 @@ These provide the easiest way to set up authentication mocking in test modules:
 import fastapi
 import fastapi.testclient
 import pytest
-from backend.server.v2.myroute import router
+from backend.api.features.myroute import router
 
 app = fastapi.FastAPI()
 app.include_router(router)

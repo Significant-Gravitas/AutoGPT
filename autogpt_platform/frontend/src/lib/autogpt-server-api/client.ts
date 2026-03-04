@@ -72,6 +72,18 @@ import type {
 
 const isClient = environment.isClientSide();
 
+/**
+ * Thrown when a request fails because the user is logging out.
+ * Callers can catch this specifically to silently ignore logout-related failures,
+ * rather than receiving null and crashing on property access.
+ */
+export class LogoutInterruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LogoutInterruptError";
+  }
+}
+
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -128,11 +140,15 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get("/credits");
-    } catch {
-      return Promise.resolve({ credits: 0 });
+      const response = await this._get("/credits");
+      return response ?? { credits: 0 };
+    } catch (error) {
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return { credits: 0 };
     }
   }
 
@@ -352,6 +368,10 @@ export default class BackendAPI {
     return this._get("/integrations/providers");
   }
 
+  listSystemProviders(): Promise<string[]> {
+    return this._get("/integrations/providers/system");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider
@@ -429,13 +449,14 @@ export default class BackendAPI {
   ///////////// V2 STORE API /////////////
   ////////////////////////////////////////
 
-  getStoreProfile(): Promise<ProfileDetails | null> {
+  async getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      const result = this._get("/store/profile");
-      return result;
+      return await this._get("/store/profile");
     } catch (error) {
-      console.error("Error fetching store profile:", error);
-      return Promise.resolve(null);
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return null;
     }
   }
 
@@ -910,7 +931,37 @@ export default class BackendAPI {
             reject(new Error("Invalid JSON response"));
           }
         } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          // Handle file size errors with user-friendly message
+          if (xhr.status === 413) {
+            reject(new Error("File is too large — max size is 256MB"));
+            return;
+          }
+
+          // Try to parse error response for better messages
+          let errorMessage = `Upload failed (${xhr.status})`;
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.detail) {
+              if (
+                typeof errorData.detail === "string" &&
+                errorData.detail.includes("exceeds the maximum")
+              ) {
+                const match = errorData.detail.match(
+                  /maximum allowed size of (\d+)MB/,
+                );
+                const maxSize = match ? match[1] : "256";
+                errorMessage = `File is too large — max size is ${maxSize}MB`;
+              } else if (typeof errorData.detail === "string") {
+                errorMessage = errorData.detail;
+              }
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch {
+            // Keep default message if parsing fails
+          }
+
+          reject(new Error(errorMessage));
         }
       });
 
@@ -1006,7 +1057,7 @@ export default class BackendAPI {
           "Authentication request failed during logout, ignoring:",
           error.message,
         );
-        return null;
+        throw new LogoutInterruptError("Request cancelled: logout in progress");
       }
       throw error;
     }

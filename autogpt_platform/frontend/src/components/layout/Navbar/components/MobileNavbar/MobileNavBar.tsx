@@ -7,17 +7,18 @@ import {
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { AnimatePresence, motion } from "framer-motion";
-import { usePathname } from "next/navigation";
-import * as React from "react";
-import { MenuItemGroup } from "../../helpers";
-import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
-import { Button } from "@/components/atoms/Button/Button";
-import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Button } from "@/components/atoms/Button/Button";
+import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "framer-motion";
+import { usePathname } from "next/navigation";
+import * as React from "react";
+import { MenuItemGroup } from "../../helpers";
+import { MobileNavbarLogoutItem } from "./components/MobileNavbarLogoutItem";
+import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
 
 interface MobileNavBarProps {
   userName?: string;
@@ -96,16 +97,27 @@ export function MobileNavBar({
                 <Separator className="mb-4" />
                 {menuItemGroups.map((group, groupIndex) => (
                   <React.Fragment key={groupIndex}>
-                    {group.items.map((item, itemIndex) => (
-                      <MobileNavbarMenuItem
-                        key={itemIndex}
-                        icon={item.icon}
-                        isActive={item.href === activeLink}
-                        text={item.text}
-                        onClick={item.onClick}
-                        href={item.href}
-                      />
-                    ))}
+                    {group.items.map((item, itemIndex) => {
+                      if (item.text === "Log out") {
+                        return (
+                          <MobileNavbarLogoutItem
+                            key={itemIndex}
+                            icon={item.icon}
+                            text={item.text}
+                          />
+                        );
+                      }
+                      return (
+                        <MobileNavbarMenuItem
+                          key={itemIndex}
+                          icon={item.icon}
+                          isActive={item.href === activeLink}
+                          text={item.text}
+                          onClick={item.onClick}
+                          href={item.href}
+                        />
+                      );
+                    })}
                     {groupIndex < menuItemGroups.length - 1 && (
                       <Separator className="my-4" />
                     )}

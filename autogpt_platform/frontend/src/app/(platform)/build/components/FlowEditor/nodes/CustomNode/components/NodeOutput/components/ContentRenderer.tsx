@@ -1,7 +1,7 @@
 "use client";
 
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
-import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import { globalRegistry } from "@/components/contextual/OutputRenderers";
 
 export const TextRenderer: React.FC<{
   value: any;

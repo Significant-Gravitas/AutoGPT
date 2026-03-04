@@ -8,10 +8,6 @@ export class NavBar {
     await this.page.getByRole("link", { name: "Edit profile" }).click();
   }
 
-  async clickMonitorLink() {
-    await this.page.getByTestId("navbar-link-library").click();
-  }
-
   async clickBuildLink() {
     const link = this.page.getByTestId("navbar-link-build");
     await link.waitFor({ state: "visible", timeout: 15000 });

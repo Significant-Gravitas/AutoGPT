@@ -18,6 +18,7 @@ export interface AgentTableCardProps {
   runs: number;
   rating: number;
   id: number;
+  listing_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
 }
 
@@ -32,10 +33,12 @@ export const AgentTableCard = ({
   status,
   runs,
   rating,
+  listing_id,
   onViewSubmission,
 }: AgentTableCardProps) => {
   const onView = () => {
     onViewSubmission({
+      listing_id: listing_id || "",
       agent_id,
       agent_version,
       slug: "",
@@ -62,9 +65,14 @@ export const AgentTableCard = ({
           />
         </div>
         <div className="flex-1">
-          <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
-            {agentName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+              {agentName}
+            </h3>
+            <span className="text-[13px] text-neutral-500 dark:text-neutral-400">
+              v{agent_version}
+            </span>
+          </div>
           <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
             {description}
           </p>

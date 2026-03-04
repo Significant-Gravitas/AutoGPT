@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  getGetV1ListGraphExecutionsInfiniteQueryOptions,
+  getGetV1ListGraphExecutionsQueryKey,
   usePostV1ExecuteGraphAgent,
   usePostV1StopGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -11,6 +11,7 @@ import {
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -58,9 +59,7 @@ export function useSelectedRunActions({
       toast({ title: "Run stopped" });
 
       await queryClient.invalidateQueries({
-        queryKey:
-          getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
-            .queryKey,
+        queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
       });
     } catch (error: unknown) {
       toast({
@@ -97,12 +96,10 @@ export function useSelectedRunActions({
         },
       });
 
-      const newRunId = res?.status === 200 ? (res?.data?.id ?? "") : "";
+      const newRunId = okData(res)?.id;
 
       await queryClient.invalidateQueries({
-        queryKey:
-          getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
-            .queryKey,
+        queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
       });
 
       if (newRunId && onSelectRun) onSelectRun(newRunId);

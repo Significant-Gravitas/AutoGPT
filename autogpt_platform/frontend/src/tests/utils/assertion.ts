@@ -45,8 +45,9 @@ export async function isEnabled(el: Locator) {
 }
 
 export async function hasMinCount(el: Locator, minCount: number) {
-  const count = await el.count();
-  expect(count).toBeGreaterThanOrEqual(minCount);
+  await expect
+    .poll(async () => await el.count(), { timeout: 10000 })
+    .toBeGreaterThanOrEqual(minCount);
 }
 
 export async function matchesUrl(page: Page, pattern: RegExp) {

@@ -1,29 +1,36 @@
-import React from "react";
+import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { useNewSaveControl } from "./useNewSaveControl";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
-import { ControlPanelButton } from "../ControlPanelButton";
-import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
-import { Input } from "@/components/atoms/Input/Input";
-import { Button } from "@/components/atoms/Button/Button";
+import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { ControlPanelButton } from "../ControlPanelButton";
+import { useNewSaveControl } from "./useNewSaveControl";
 
 export const NewSaveControl = () => {
   const { form, isSaving, graphVersion, handleSave } = useNewSaveControl();
-  const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
+  const { saveControlOpen, setSaveControlOpen, forceOpenSave } =
+    useControlPanelStore();
 
   return (
-    <Popover onOpenChange={setSaveControlOpen}>
+    <Popover
+      onOpenChange={(open) => {
+        if (!forceOpenSave || open) {
+          setSaveControlOpen(open);
+        }
+      }}
+      open={forceOpenSave ? true : saveControlOpen}
+    >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -33,7 +40,7 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              <FloppyDiskIcon className="h-6 w-6" />
+              <FloppyDiskIcon className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -95,6 +102,7 @@ export const NewSaveControl = () => {
                       value={graphVersion || "-"}
                       disabled
                       data-testid="save-control-version-output"
+                      data-tutorial-id="save-control-version-output"
                       label="Version"
                       wrapperClassName="!mb-0"
                     />

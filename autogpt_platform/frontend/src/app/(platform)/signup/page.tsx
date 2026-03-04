@@ -21,8 +21,16 @@ import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { useSearchParams } from "next/navigation";
 
 export default function SignupPage() {
+  const searchParams = useSearchParams();
+  const nextUrl = searchParams.get("next");
+  // Preserve next parameter when switching between login/signup
+  const loginHref = nextUrl
+    ? `/login?next=${encodeURIComponent(nextUrl)}`
+    : "/login";
+
   const {
     form,
     feedback,
@@ -186,7 +194,7 @@ export default function SignupPage() {
 
         <AuthCard.BottomText
           text="Already a member?"
-          link={{ text: "Log in", href: "/login" }}
+          link={{ text: "Log in", href: loginHref }}
         />
       </AuthCard>
       <MobileWarningBanner />

@@ -184,6 +184,11 @@ export function serializeRequestBody(
 }
 
 export async function parseApiError(response: Response): Promise<string> {
+  // Handle 413 Payload Too Large with user-friendly message
+  if (response.status === 413) {
+    return "File is too large — max size is 256MB";
+  }
+
   try {
     const errorData = await response.clone().json();
 
@@ -203,6 +208,16 @@ export async function parseApiError(response: Response): Promise<string> {
     if (typeof errorData.detail === "object" && errorData.detail !== null) {
       if (errorData.detail.message) return errorData.detail.message;
       return response.statusText; // Fallback to status text if no message
+    }
+
+    // Check for file size error from backend
+    if (
+      typeof errorData.detail === "string" &&
+      errorData.detail.includes("exceeds the maximum")
+    ) {
+      const match = errorData.detail.match(/maximum allowed size of (\d+)MB/);
+      const maxSize = match ? match[1] : "256";
+      return `File is too large — max size is ${maxSize}MB`;
     }
 
     return errorData.detail || errorData.error || response.statusText;

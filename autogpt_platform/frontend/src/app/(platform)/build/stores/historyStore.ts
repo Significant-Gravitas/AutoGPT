@@ -37,6 +37,15 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       return;
     }
 
+    const actualCurrentState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
+    if (isEqual(state, actualCurrentState)) {
+      return;
+    }
+
     set((prev) => ({
       past: [...prev.past.slice(-MAX_HISTORY + 1), state],
       future: [],
@@ -55,18 +64,25 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
 
   undo: () => {
     const { past, future } = get();
-    if (past.length <= 1) return;
+    if (past.length === 0) return;
 
-    const currentState = past[past.length - 1];
+    const actualCurrentState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
 
-    const previousState = past[past.length - 2];
+    const previousState = past[past.length - 1];
+
+    if (isEqual(actualCurrentState, previousState)) {
+      return;
+    }
 
     useNodeStore.getState().setNodes(previousState.nodes);
     useEdgeStore.getState().setEdges(previousState.edges);
 
     set({
-      past: past.slice(0, -1),
-      future: [currentState, ...future],
+      past: past.length > 1 ? past.slice(0, -1) : past,
+      future: [actualCurrentState, ...future],
     });
   },
 
@@ -74,18 +90,36 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const { past, future } = get();
     if (future.length === 0) return;
 
+    const actualCurrentState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
     const nextState = future[0];
 
     useNodeStore.getState().setNodes(nextState.nodes);
     useEdgeStore.getState().setEdges(nextState.edges);
 
+    const lastPast = past[past.length - 1];
+    const shouldPushToPast =
+      !lastPast || !isEqual(actualCurrentState, lastPast);
+
     set({
-      past: [...past, nextState],
+      past: shouldPushToPast ? [...past, actualCurrentState] : past,
       future: future.slice(1),
     });
   },
 
-  canUndo: () => get().past.length > 1,
+  canUndo: () => {
+    const { past } = get();
+    if (past.length === 0) return false;
+
+    const actualCurrentState = {
+      nodes: useNodeStore.getState().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+    return !isEqual(actualCurrentState, past[past.length - 1]);
+  },
   canRedo: () => get().future.length > 0,
 
   clear: () => set({ past: [{ nodes: [], edges: [] }], future: [] }),

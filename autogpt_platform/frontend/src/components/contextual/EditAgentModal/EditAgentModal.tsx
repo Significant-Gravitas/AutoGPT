@@ -27,6 +27,7 @@ export function EditAgentModal({
 
   return (
     <Dialog
+      title="Edit Agent"
       styling={{
         maxWidth: "45rem",
       }}

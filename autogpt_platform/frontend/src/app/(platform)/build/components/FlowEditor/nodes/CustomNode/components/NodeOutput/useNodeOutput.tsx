@@ -4,19 +4,21 @@ import { useShallow } from "zustand/react/shallow";
 import { useState } from "react";
 
 export const useNodeOutput = (nodeId: string) => {
-  const [isExpanded, setIsExpanded] = useState(true);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const nodeExecutionResult = useNodeStore(
-    useShallow((state) => state.getNodeExecutionResult(nodeId)),
+  const latestResult = useNodeStore(
+    useShallow((state) => state.getLatestNodeExecutionResult(nodeId)),
   );
 
-  const inputData = nodeExecutionResult?.input_data;
+  const latestInputData = useNodeStore(
+    useShallow((state) => state.getLatestNodeInputData(nodeId)),
+  );
 
-  const outputData: Record<string, Array<any>> = {
-    ...nodeExecutionResult?.output_data,
-  };
+  const latestOutputData: Record<string, Array<any>> = useNodeStore(
+    useShallow((state) => state.getLatestNodeOutputData(nodeId) || {}),
+  );
+
   const handleCopy = async (key: string, value: any) => {
     try {
       const text = JSON.stringify(value, null, 2);
@@ -36,14 +38,12 @@ export const useNodeOutput = (nodeId: string) => {
       });
     }
   };
+
   return {
-    outputData: outputData,
-    inputData: inputData,
-    isExpanded: isExpanded,
-    setIsExpanded: setIsExpanded,
-    copiedKey: copiedKey,
-    setCopiedKey: setCopiedKey,
-    handleCopy: handleCopy,
-    executionResultId: nodeExecutionResult?.node_exec_id,
+    latestOutputData,
+    latestInputData,
+    copiedKey,
+    handleCopy,
+    executionResultId: latestResult?.node_exec_id,
   };
 };

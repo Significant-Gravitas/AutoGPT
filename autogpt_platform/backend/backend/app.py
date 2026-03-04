@@ -24,7 +24,7 @@ def run_processes(*processes: "AppProcess", **kwargs):
         # Run the last process in the foreground.
         processes[-1].start(background=False, **kwargs)
     finally:
-        for process in processes:
+        for process in reversed(processes):
             try:
                 process.stop()
             except Exception as e:
@@ -36,10 +36,12 @@ def main(**kwargs):
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
 
-    from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+    from backend.api.rest_api import AgentServer
+    from backend.api.ws_api import WebsocketServer
+    from backend.copilot.executor.manager import CoPilotExecutor
+    from backend.data.db_manager import DatabaseManager
+    from backend.executor import ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
-    from backend.server.rest_api import AgentServer
-    from backend.server.ws_api import WebsocketServer
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
@@ -48,6 +50,7 @@ def main(**kwargs):
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
+        CoPilotExecutor(),
         **kwargs,
     )
 

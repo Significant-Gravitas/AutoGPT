@@ -1,15 +1,13 @@
 import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
   PublishAgentInfoInitialData,
-  publishAgentSchema,
+  publishAgentSchemaFactory,
 } from "./helpers";
 
 export interface Props {
@@ -18,6 +16,7 @@ export interface Props {
   selectedAgentId: string | null;
   selectedAgentVersion: number | null;
   initialData?: PublishAgentInfoInitialData;
+  isMarketplaceUpdate?: boolean;
 }
 
 export function useAgentInfoStep({
@@ -26,18 +25,19 @@ export function useAgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
+  isMarketplaceUpdate = false,
 }: Props) {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const queryClient = useQueryClient();
   const { toast } = useToast();
   const api = useBackendAPI();
 
   const form = useForm<PublishAgentFormData>({
-    resolver: zodResolver(publishAgentSchema),
+    resolver: zodResolver(publishAgentSchemaFactory(isMarketplaceUpdate)),
     defaultValues: {
+      changesSummary: "",
       title: "",
       subheader: "",
       slug: "",
@@ -51,28 +51,39 @@ export function useAgentInfoStep({
   });
 
   useEffect(() => {
-    if (initialData) {
+    if (initialData?.agent_id) {
       setAgentId(initialData.agent_id);
-      const initialImages = [
-        ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-        ...(initialData.additionalImages || []),
-      ];
-      setImages(initialImages);
-
-      // Update form with initial data
+      setImages(
+        Array.from(
+          new Set([
+            ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+            ...(initialData.additionalImages || []),
+          ]),
+        ),
+      );
       form.reset({
+        changesSummary: isMarketplaceUpdate
+          ? ""
+          : initialData.changesSummary || "",
         title: initialData.title,
         subheader: initialData.subheader,
         slug: initialData.slug.toLocaleLowerCase().trim(),
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
-        description: initialData.description,
+        description: isMarketplaceUpdate ? "" : initialData.description,
         recommendedScheduleCron: initialData.recommendedScheduleCron || "",
         instructions: initialData.instructions || "",
         agentOutputDemo: initialData.agentOutputDemo || "",
       });
     }
   }, [initialData, form]);
+
+  // Ensure agentId is set from selectedAgentId if initialData doesn't have it
+  useEffect(() => {
+    if (selectedAgentId && !agentId) {
+      setAgentId(selectedAgentId);
+    }
+  }, [selectedAgentId, agentId]);
 
   const handleImagesChange = useCallback((newImages: string[]) => {
     setImages(newImages);
@@ -84,6 +95,16 @@ export function useAgentInfoStep({
       form.setError("root", {
         type: "manual",
         message: "At least one image is required",
+      });
+      return;
+    }
+
+    // Validate that an agent is selected before submission
+    if (!selectedAgentId || !selectedAgentVersion) {
+      toast({
+        title: "Agent Selection Required",
+        description: "Please select an agent before submitting to the store.",
+        variant: "destructive",
       });
       return;
     }
@@ -102,16 +123,13 @@ export function useAgentInfoStep({
         image_urls: images,
         video_url: data.youtubeLink || "",
         agent_output_demo_url: data.agentOutputDemo || "",
-        agent_id: selectedAgentId || "",
-        agent_version: selectedAgentVersion || 0,
-        slug: data.slug.replace(/\s+/g, "-"),
+        agent_id: selectedAgentId,
+        agent_version: selectedAgentVersion,
+        slug: (data.slug || "").replace(/\s+/g, "-"),
         categories: filteredCategories,
         recommended_schedule_cron: data.recommendedScheduleCron || null,
+        changes_summary: data.changesSummary || null,
       } as any);
-
-      await queryClient.invalidateQueries({
-        queryKey: getGetV2ListMySubmissionsQueryKey(),
-      });
 
       onSuccess(response);
     } catch (error) {
@@ -134,12 +152,7 @@ export function useAgentInfoStep({
     agentId,
     images,
     isSubmitting,
-    initialImages: initialData
-      ? [
-          ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-          ...(initialData.additionalImages || []),
-        ]
-      : [],
+    initialImages: images,
     initialSelectedImage: initialData?.thumbnailSrc || null,
     handleImagesChange,
     handleSubmit: form.handleSubmit(handleFormSubmit),

@@ -6,7 +6,6 @@ import {
   useGetV2GetASpecificPreset,
   usePatchV2UpdateAnExistingPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
-import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -26,7 +25,7 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
   const query = useGetV2GetASpecificPreset(triggerId, {
     query: {
       enabled: !!triggerId,
-      select: (res) => okData<LibraryAgentPreset>(res),
+      select: okData,
     },
   });
 

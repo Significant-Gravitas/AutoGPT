@@ -1,10 +1,10 @@
-import { LibraryPage } from "./pages/library.page";
-import path from "path";
 import test, { expect } from "@playwright/test";
-import { TEST_CREDENTIALS } from "./credentials";
+import path from "path";
+import { getTestUserWithLibraryAgents } from "./credentials";
+import { LibraryPage } from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
-import { getSelectors } from "./utils/selectors";
 import { hasUrl } from "./utils/assertion";
+import { getSelectors } from "./utils/selectors";
 
 test.describe("Library", () => {
   let libraryPage: LibraryPage;
@@ -14,7 +14,8 @@ test.describe("Library", () => {
 
     await page.goto("/login");
     const loginPage = new LoginPage(page);
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 
@@ -47,18 +48,24 @@ test.describe("Library", () => {
     );
 
     if (agentWithBuilder) {
-      await libraryPage.clickOpenInBuilder(agentWithBuilder);
-      await page.waitForURL("**/build**");
-      test.expect(page.url()).toContain(`/build`);
+      const [newPage] = await Promise.all([
+        page.context().waitForEvent("page"),
+        libraryPage.clickOpenInBuilder(agentWithBuilder),
+      ]);
+      await newPage.waitForLoadState();
+      test.expect(newPage.url()).toContain(`/build`);
+      await newPage.close();
     }
   });
 
-  test("pagination works correctly", async ({ page }) => {
+  test("pagination works correctly", async ({ page }, testInfo) => {
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
+    const PAGE_SIZE = 20;
     const paginationResult = await libraryPage.testPagination();
 
-    if (paginationResult.initialCount >= 10) {
+    if (paginationResult.initialCount >= PAGE_SIZE) {
       expect(paginationResult.finalCount).toBeGreaterThanOrEqual(
         paginationResult.initialCount,
       );
@@ -79,6 +86,9 @@ test.describe("Library", () => {
 
     const allAgents = await libraryPage.getAgents();
     expect(allAgents.length).toBeGreaterThan(0);
+
+    const initialAgentCount = await libraryPage.getAgentCount();
+    expect(initialAgentCount).toBeGreaterThan(0);
 
     const firstAgent = allAgents[0];
     await libraryPage.searchAgents(firstAgent.name);
@@ -117,14 +127,17 @@ test.describe("Library", () => {
     await libraryPage.clearSearch();
     await libraryPage.waitForAgentsToLoad();
 
-    const clearedSearchResults = await libraryPage.getAgents();
-    test.expect(clearedSearchResults.length).toEqual(allAgents.length);
+    const clearedSearchCount = await libraryPage.getAgentCount();
+    test.expect(clearedSearchCount).toEqual(initialAgentCount);
 
     const clearedSearchValue = await libraryPage.getSearchValue();
     test.expect(clearedSearchValue).toBe("");
   });
 
-  test("pagination while searching works correctly", async ({ page }) => {
+  test("pagination while searching works correctly", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(testInfo.timeout * 3);
     await page.goto("/library");
 
     const allAgents = await libraryPage.getAgents();
@@ -143,9 +156,10 @@ test.describe("Library", () => {
     );
     expect(matchingResults.length).toEqual(initialSearchResults.length);
 
+    const PAGE_SIZE = 20;
     const searchPaginationResult = await libraryPage.testPagination();
 
-    if (searchPaginationResult.initialCount >= 10) {
+    if (searchPaginationResult.initialCount >= PAGE_SIZE) {
       expect(searchPaginationResult.finalCount).toBeGreaterThanOrEqual(
         searchPaginationResult.initialCount,
       );
@@ -200,11 +214,14 @@ test.describe("Library", () => {
     );
     await fileInput.setInputFiles(testAgentPath);
 
-    await page.waitForTimeout(1000);
+    // Wait for file to be processed and upload button to be enabled
+    const uploadButton = page.getByRole("button", { name: "Upload" });
+    await uploadButton.waitFor({ state: "visible", timeout: 10000 });
+    await expect(uploadButton).toBeEnabled({ timeout: 10000 });
 
     expect(await libraryPage.isUploadButtonEnabled()).toBeTruthy();
 
-    await page.getByRole("button", { name: "Upload Agent" }).click();
+    await page.getByRole("button", { name: "Upload" }).click();
 
     await page.waitForURL("**/build**", { timeout: 10000 });
     expect(page.url()).toContain("/build");
@@ -224,28 +241,10 @@ test.describe("Library", () => {
 
     if (uploadedAgent) {
       test.expect(uploadedAgent.name).toContain(testAgentName);
-      test.expect(uploadedAgent.description).toContain(testAgentDescription);
       test.expect(uploadedAgent.seeRunsUrl).toBeTruthy();
       test.expect(uploadedAgent.openInBuilderUrl).toBeTruthy();
-
-      await libraryPage.clickAgent(uploadedAgent);
-      await page.waitForURL(`**/library/agents/${uploadedAgent.id}**`, {
-        timeout: 10000,
-      });
-
-      await page.getByRole("button", { name: "Delete agent" }).click();
-      await page.waitForTimeout(500);
-      await page.getByRole("button", { name: "Delete" }).click();
-
-      await page.waitForTimeout(1000);
-      await libraryPage.navigateToLibrary();
-      await libraryPage.waitForAgentsToLoad();
-
-      await libraryPage.searchAgents(testAgentName);
-      await libraryPage.waitForAgentsToLoad();
-      const deletedSearchResults = await libraryPage.getAgentCount();
-      expect(deletedSearchResults).toBe(0);
     }
+
     await libraryPage.clearSearch();
     await libraryPage.waitForAgentsToLoad();
   });

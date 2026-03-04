@@ -160,7 +160,7 @@ pnpm storybook                      # Start component development server
 
 **Backend Entry Points:**
 
-- `backend/backend/server/server.py` - FastAPI application setup
+- `backend/backend/api/rest_api.py` - FastAPI application setup
 - `backend/backend/data/` - Database models and user management
 - `backend/blocks/` - Agent execution blocks and logic
 
@@ -219,7 +219,7 @@ Agents are built using a visual block-based system where each block performs a s
 
 ### API Development
 
-1. Update routes in `/backend/backend/server/routers/`
+1. Update routes in `/backend/backend/api/features/`
 2. Add/update Pydantic models in same directory
 3. Write tests alongside route files
 4. For `data/*.py` changes, validate user ID checks
@@ -285,7 +285,7 @@ Agents are built using a visual block-based system where each block performs a s
 
 ### Security Guidelines
 
-**Cache Protection Middleware** (`/backend/backend/server/middleware/security.py`):
+**Cache Protection Middleware** (`/backend/backend/api/middleware/security.py`):
 
 - Default: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
 - Uses allow list approach for cacheable paths (static assets, health checks, public pages)

@@ -1,4 +1,4 @@
-from backend.data.block import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import APIKeyCredentials, SchemaField
 
 from ._api import (

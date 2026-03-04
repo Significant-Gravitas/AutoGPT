@@ -102,7 +102,7 @@ export function ExpandableRow({
                   <TableRow>
                     <TableHead>Version</TableHead>
                     <TableHead>Status</TableHead>
-                    {/* <TableHead>Changes</TableHead> */}
+                    <TableHead>Changes</TableHead>
                     <TableHead>Submitted</TableHead>
                     <TableHead>Reviewed</TableHead>
                     <TableHead>External Comments</TableHead>
@@ -127,9 +127,9 @@ export function ExpandableRow({
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
-                        {/* <TableCell>
+                        <TableCell>
                           {version.changes_summary || "No summary"}
-                        </TableCell> */}
+                        </TableCell>
                         <TableCell>
                           {version.date_submitted
                             ? formatDistanceToNow(

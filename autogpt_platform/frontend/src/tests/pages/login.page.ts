@@ -37,9 +37,13 @@ export class LoginPage {
     this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
 
     // Start waiting for navigation before clicking
+    // Wait for redirect to marketplace, onboarding, library, or copilot (new landing pages)
     const leaveLoginPage = this.page
       .waitForURL(
-        (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
+        (url: URL) =>
+          /^\/(marketplace|onboarding(\/.*)?|library|copilot)?$/.test(
+            url.pathname,
+          ),
         { timeout: 10_000 },
       )
       .catch((reason) => {
@@ -61,7 +65,7 @@ export class LoginPage {
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     console.log("➡️ Navigating to /marketplace ...");
-    await this.page.goto("/marketplace", { timeout: 10_000 });
+    await this.page.goto("/marketplace", { timeout: 20_000 });
     console.log("✅ Login process complete");
 
     // If Wallet popover auto-opens, close it to avoid blocking account menu interactions

@@ -83,7 +83,7 @@ class StagehandRecommendedLlmModel(str, Enum):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
+    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
 
     @property
     def provider_name(self) -> str:
@@ -137,7 +137,7 @@ class StagehandObserveBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -182,10 +182,7 @@ class StagehandObserveBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"OBSERVE: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"OBSERVE: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"OBSERVE: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -230,7 +227,7 @@ class StagehandActBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -282,10 +279,7 @@ class StagehandActBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"ACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"ACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"ACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(
@@ -330,7 +324,7 @@ class StagehandExtractBlock(Block):
         model: StagehandRecommendedLlmModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_3_7_SONNET,
+            default=StagehandRecommendedLlmModel.CLAUDE_4_5_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -370,10 +364,7 @@ class StagehandExtractBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        logger.info(f"EXTRACT: Stagehand credentials: {stagehand_credentials}")
-        logger.info(
-            f"EXTRACT: Model credentials: {model_credentials} for provider {model_credentials.provider} secret: {model_credentials.api_key.get_secret_value()}"
-        )
+        logger.debug(f"EXTRACT: Using model provider {model_credentials.provider}")
 
         with disable_signal_handling():
             stagehand = Stagehand(

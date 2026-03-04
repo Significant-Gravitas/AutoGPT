@@ -21,7 +21,7 @@ import {
 interface InitializeParams {
   api: BackendAPI;
   router: AppRouterInstance;
-  pathname: string;
+  path: string;
 }
 
 interface LogOutParams {
@@ -32,7 +32,7 @@ interface LogOutParams {
 
 interface ValidateParams {
   force?: boolean;
-  pathname?: string;
+  path?: string;
   router?: AppRouterInstance;
 }
 
@@ -47,7 +47,7 @@ interface SupabaseStoreState {
   listenersCleanup: (() => void) | null;
   routerRef: AppRouterInstance | null;
   apiRef: BackendAPI | null;
-  currentPathname: string;
+  currentPath: string;
   initialize: (params: InitializeParams) => Promise<void>;
   logOut: (params?: LogOutParams) => Promise<void>;
   validateSession: (params?: ValidateParams) => Promise<boolean>;
@@ -60,7 +60,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     set({
       routerRef: params.router,
       apiRef: params.api,
-      currentPathname: params.pathname,
+      currentPath: params.path,
     });
 
     const supabaseClient = ensureSupabaseClient();
@@ -83,7 +83,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
           // This handles race conditions after login where cookies might not be immediately available
           if (!result.user) {
             const validationResult = await validateSessionHelper({
-              pathname: params.pathname,
+              path: params.path,
               currentUser: null,
             });
 
@@ -160,7 +160,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     params?: ValidateParams,
   ): Promise<boolean> {
     const router = params?.router ?? get().routerRef;
-    const pathname = params?.pathname ?? get().currentPathname;
+    const pathname = params?.path ?? get().currentPath;
 
     if (!router || !pathname) return true;
     if (!params?.force && get().isValidating) return true;
@@ -175,7 +175,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     try {
       const result = await validateSessionHelper({
-        pathname,
+        path: pathname,
         currentUser: get().user,
       });
 
@@ -224,7 +224,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
       event,
       api: get().apiRef,
       router: get().routerRef,
-      pathname: get().currentPathname,
+      path: get().currentPath,
     });
 
     if (!result.shouldLogout) return;
@@ -283,7 +283,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     listenersCleanup: null,
     routerRef: null,
     apiRef: null,
-    currentPathname: "",
+    currentPath: "",
     initialize,
     logOut,
     validateSession: validateSessionInternal,

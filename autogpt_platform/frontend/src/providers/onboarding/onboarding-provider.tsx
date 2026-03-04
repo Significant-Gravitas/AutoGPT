@@ -1,4 +1,12 @@
 "use client";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+  patchV1UpdateOnboardingState,
+  postV1CompleteOnboardingStep,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
+import { resolveResponse } from "@/app/api/helpers";
 import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
@@ -28,19 +36,11 @@ import {
   useState,
 } from "react";
 import {
-  updateOnboardingState,
   fromBackendUserOnboarding,
-  shouldRedirectFromOnboarding,
   LocalOnboardingStateUpdate,
+  shouldRedirectFromOnboarding,
+  updateOnboardingState,
 } from "./helpers";
-import { resolveResponse } from "@/app/api/helpers";
-import {
-  getV1IsOnboardingEnabled,
-  getV1OnboardingState,
-  patchV1UpdateOnboardingState,
-  postV1CompleteOnboardingStep,
-} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
@@ -146,7 +146,7 @@ export default function OnboardingProvider({
         if (isOnOnboardingRoute) {
           const enabled = await resolveResponse(getV1IsOnboardingEnabled());
           if (!enabled) {
-            router.push("/marketplace");
+            router.push("/");
             return;
           }
         }
@@ -158,7 +158,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/marketplace");
+          router.push("/");
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { TEST_CREDENTIALS } from "./credentials";
 import { hasUrl } from "./utils/assertion";
 import { getSelectors } from "./utils/selectors";
 
@@ -8,7 +8,8 @@ test.describe("API Keys Page", () => {
   test.beforeEach(async ({ page }) => {
     const loginPage = new LoginPage(page);
     await page.goto("/login");
-    await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+    const richUser = getTestUserWithLibraryAgents();
+    await loginPage.login(richUser.email, richUser.password);
     await hasUrl(page, "/marketplace");
   });
 
@@ -19,8 +20,8 @@ test.describe("API Keys Page", () => {
     const page = await context.newPage();
 
     try {
-      await page.goto("/profile/api_keys");
-      await hasUrl(page, "/login");
+      await page.goto("/profile/api-keys");
+      await hasUrl(page, "/login?next=%2Fprofile%2Fapi-keys");
     } finally {
       await page.close();
       await context.close();
@@ -29,7 +30,7 @@ test.describe("API Keys Page", () => {
 
   test("should create a new API key successfully", async ({ page }) => {
     const { getButton, getField } = getSelectors(page);
-    await page.goto("/profile/api_keys");
+    await page.goto("/profile/api-keys");
     await getButton("Create Key").click();
 
     await getField("Name").fill("Test Key");
@@ -45,7 +46,7 @@ test.describe("API Keys Page", () => {
 
   test("should revoke an existing API key", async ({ page }) => {
     const { getRole, getId } = getSelectors(page);
-    await page.goto("/profile/api_keys");
+    await page.goto("/profile/api-keys");
 
     const apiKeyRow = getId("api-key-row").first();
     const apiKeyContent = await apiKeyRow

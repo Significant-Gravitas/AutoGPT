@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
+import { isValidFile } from "./helpers";
 
-export interface GoogleDrivePickerInputProps {
+export interface Props {
   config: GoogleDrivePickerConfig;
   value: any;
   onChange: (value: any) => void;
@@ -21,19 +22,21 @@ export function GoogleDrivePickerInput({
   error,
   className,
   showRemoveButton = true,
-}: GoogleDrivePickerInputProps) {
+}: Props) {
   const [pickerError, setPickerError] = React.useState<string | null>(null);
   const isMultiSelect = config.multiselect || false;
   const hasAutoCredentials = !!config.auto_credentials;
 
   // Strip _credentials_id from value for display purposes
-  const currentFiles = isMultiSelect
-    ? Array.isArray(value)
-      ? value
-      : []
-    : value
-      ? [value]
-      : [];
+  // Only show files section when there are valid file objects
+  const currentFiles = React.useMemo(() => {
+    if (isMultiSelect) {
+      if (!Array.isArray(value)) return [];
+      return value.filter(isValidFile);
+    }
+    if (!value || !isValidFile(value)) return [];
+    return [value];
+  }, [value, isMultiSelect]);
 
   const handlePicked = useCallback(
     (files: any[], credentialId?: string) => {
@@ -85,23 +88,27 @@ export function GoogleDrivePickerInput({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {/* Picker Button */}
-      <GoogleDrivePicker
-        multiselect={config.multiselect || false}
-        views={config.allowed_views || ["DOCS"]}
-        scopes={config.scopes || ["https://www.googleapis.com/auth/drive.file"]}
-        disabled={false}
-        requirePlatformCredentials={hasAutoCredentials}
-        onPicked={handlePicked}
-        onCanceled={() => {
-          // User canceled - no action needed
-        }}
-        onError={handleError}
-      />
+      <div className="mb-4">
+        {/* Picker Button */}
+        <GoogleDrivePicker
+          multiselect={config.multiselect || false}
+          views={config.allowed_views || ["DOCS"]}
+          scopes={
+            config.scopes || ["https://www.googleapis.com/auth/drive.file"]
+          }
+          disabled={false}
+          requirePlatformCredentials={hasAutoCredentials}
+          onPicked={handlePicked}
+          onCanceled={() => {
+            // User canceled - no action needed
+          }}
+          onError={handleError}
+        />
+      </div>
 
       {/* Display Selected Files */}
       {currentFiles.length > 0 && (
-        <div className="space-y-1">
+        <div className="mb-8 space-y-1">
           {currentFiles.map((file: any, idx: number) => (
             <div
               key={file.id || idx}
