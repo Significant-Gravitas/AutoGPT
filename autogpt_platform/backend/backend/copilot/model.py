@@ -470,16 +470,14 @@ async def upsert_chat_session(
             db_error = e
 
         # Save to cache (best-effort, even if DB failed).
-        # If this in-memory session object has no title, preserve any title that
-        # was written to the cache by an external operation (e.g. PATCH /title or
-        # the background title generator) while streaming was in progress.
+        # Always prefer the cached title over the in-memory session's title:
+        # a concurrent PATCH /title or background title generator may have written
+        # a newer (or user-chosen) title to Redis while streaming was in progress.
+        # Overwriting with the stale in-memory title would undo that change.
         try:
-            if not session.title:
-                existing_cached = await _get_session_from_cache(session.session_id)
-                if existing_cached and existing_cached.title:
-                    session = session.model_copy(
-                        update={"title": existing_cached.title}
-                    )
+            existing_cached = await _get_session_from_cache(session.session_id)
+            if existing_cached and existing_cached.title:
+                session = session.model_copy(update={"title": existing_cached.title})
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -734,16 +732,21 @@ async def update_session_title(session_id: str, title: str) -> bool:
         return False
 
 
-async def update_session_title_if_empty(session_id: str, title: str) -> bool:
+async def update_session_title_if_empty(
+    session_id: str, user_id: str, title: str
+) -> bool:
     """Write auto-generated title only when no title has been set yet.
 
+    Scopes the DB update to the owning user to prevent cross-user mutation.
     Uses an atomic DB-level UPDATE WHERE title IS NULL, eliminating the race
     window that exists in a read-check-then-write pattern.
 
     Returns True if the title was written, False if it was already set.
     """
     try:
-        updated = await chat_db().update_chat_session_title_if_empty(session_id, title)
+        updated = await chat_db().update_chat_session_title_if_empty(
+            session_id, user_id, title
+        )
         if not updated:
             return False
 

@@ -81,8 +81,13 @@ async def update_chat_session(
     return ChatSession.from_db(session) if session else None
 
 
-async def update_chat_session_title_if_empty(session_id: str, title: str) -> bool:
+async def update_chat_session_title_if_empty(
+    session_id: str, user_id: str, title: str
+) -> bool:
     """Update title only when the current DB title is NULL (atomic guard).
+
+    Scopes the update to the owning user so callers cannot mutate another
+    user's session even when they know the session_id.
 
     Uses UPDATE WHERE title IS NULL so no separate read is needed, eliminating
     the race window between checking and writing.
@@ -90,7 +95,7 @@ async def update_chat_session_title_if_empty(session_id: str, title: str) -> boo
     Returns True if the title was written, False if it was already set.
     """
     result = await PrismaChatSession.prisma().update_many(
-        where={"id": session_id, "title": None},
+        where={"id": session_id, "userId": user_id, "title": None},
         data={"title": title, "updatedAt": datetime.now(UTC)},
     )
     return result > 0

@@ -475,7 +475,7 @@ async def stream_chat_completion(
                     )
                     if title:
                         updated = await update_session_title_if_empty(
-                            captured_session_id, title
+                            captured_session_id, captured_user_id, title
                         )
                         if updated:
                             logger.info(

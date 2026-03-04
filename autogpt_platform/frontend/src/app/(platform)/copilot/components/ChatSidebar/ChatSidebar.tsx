@@ -275,6 +275,7 @@ export function ChatSidebar() {
                         <input
                           ref={renameInputRef}
                           type="text"
+                          aria-label="Rename chat"
                           value={editingTitle}
                           onChange={(e) => setEditingTitle(e.target.value)}
                           onKeyDown={(e) => {
