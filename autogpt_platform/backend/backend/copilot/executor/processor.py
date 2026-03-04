@@ -11,8 +11,8 @@ import subprocess
 import threading
 import time
 
-from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
+from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
@@ -222,7 +222,7 @@ class CoPilotProcessor:
     ):
         """Async execution logic for a CoPilot turn.
 
-        Calls the stream_chat_completion service function and publishes
+        Calls the chat completion service (SDK or baseline) and publishes
         results to the stream registry.
 
         Args:
@@ -246,9 +246,9 @@ class CoPilotProcessor:
             stream_fn = (
                 sdk_service.stream_chat_completion_sdk
                 if use_sdk
-                else copilot_service.stream_chat_completion
+                else stream_chat_completion_baseline
             )
-            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
+            log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
             async for chunk in stream_fn(
@@ -256,7 +256,6 @@ class CoPilotProcessor:
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
-                context=entry.context,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")

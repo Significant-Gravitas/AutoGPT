@@ -26,11 +26,6 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
-    # Streaming Configuration
-    max_retries: int = Field(
-        default=3,
-        description="Max retries for fallback path (SDK handles retries internally)",
-    )
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
@@ -75,7 +70,7 @@ class ChatConfig(BaseSettings):
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,
-        description="Use Claude Agent SDK for chat completions",
+        description="Use Claude Agent SDK (True) or OpenAI-compatible LLM baseline (False)",
     )
     claude_agent_model: str | None = Field(
         default=None,
@@ -115,12 +110,6 @@ class ChatConfig(BaseSettings):
     e2b_sandbox_timeout: int = Field(
         default=43200,  # 12 hours — same as session_ttl
         description="E2B sandbox keepalive timeout in seconds.",
-    )
-
-    # Extended thinking configuration for Claude models
-    thinking_enabled: bool = Field(
-        default=True,
-        description="Enable adaptive thinking for Claude models via OpenRouter",
     )
 
     @field_validator("use_e2b_sandbox", mode="before")
