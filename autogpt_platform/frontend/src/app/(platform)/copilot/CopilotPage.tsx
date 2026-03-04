@@ -67,7 +67,6 @@ export function CopilotPage() {
     messages,
     status,
     error,
-    turnMetadata,
     stop,
     isReconnecting,
     createSession,
@@ -144,7 +143,6 @@ export function CopilotPage() {
             onSend={onSend}
             onStop={stop}
             isUploadingFiles={isUploadingFiles}
-            turnMetadata={turnMetadata}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
             headerSlot={

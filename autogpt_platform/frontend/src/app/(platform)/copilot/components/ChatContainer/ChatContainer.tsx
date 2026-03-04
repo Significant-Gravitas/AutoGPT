@@ -3,7 +3,6 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { ReactNode } from "react";
-import type { TurnMetadataMap } from "../../helpers/turnMetadata";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -23,7 +22,6 @@ export interface ChatContainerProps {
   onStop: () => void;
   isUploadingFiles?: boolean;
   headerSlot?: ReactNode;
-  turnMetadata?: TurnMetadataMap;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
@@ -43,7 +41,6 @@ export const ChatContainer = ({
   onStop,
   isUploadingFiles,
   headerSlot,
-  turnMetadata,
   droppedFiles,
   onDroppedFilesConsumed,
 }: ChatContainerProps) => {
@@ -67,7 +64,6 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 headerSlot={headerSlot}
-                turnMetadata={turnMetadata}
               />
               <motion.div
                 initial={{ opacity: 0 }}

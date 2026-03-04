@@ -11,7 +11,6 @@ import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deduplicateMessages, resolveInProgressTools } from "./helpers";
-import type { TurnMetadataMap } from "./helpers/turnMetadata";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -40,11 +39,6 @@ export function useCopilotStream({
   refetchSession,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
-
-  // Client-side turn timing: record when streaming starts, compute duration
-  // when it finishes. Keyed by the last assistant message ID.
-  const turnMetadataRef = useRef<TurnMetadataMap>(new Map());
-  const turnStartTimeRef = useRef<number | null>(null);
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -283,45 +277,20 @@ export function useCopilotStream({
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     hasResumedRef.current.clear();
-    turnMetadataRef.current = new Map();
-    turnStartTimeRef.current = null;
     return () => {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = undefined;
     };
   }, [sessionId]);
 
-  // Invalidate session cache when stream completes + record turn duration
+  // Invalidate session cache when stream completes
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
 
-    const wasIdle = prev === "ready" || prev === "error";
-    const isActive = status === "streaming" || status === "submitted";
     const wasActive = prev === "streaming" || prev === "submitted";
     const isIdle = status === "ready" || status === "error";
-
-    // Record turn start time
-    if (wasIdle && isActive) {
-      turnStartTimeRef.current = Date.now();
-    }
-
-    // Record turn duration when stream finishes
-    if (wasActive && isIdle && turnStartTimeRef.current != null) {
-      const durationMs = Date.now() - turnStartTimeRef.current;
-      turnStartTimeRef.current = null;
-      // Find the last assistant message and store duration against its ID
-      const lastAssistant = [...messages]
-        .reverse()
-        .find((m) => m.role === "assistant");
-      if (lastAssistant) {
-        turnMetadataRef.current.set(lastAssistant.id, {
-          messageId: lastAssistant.id,
-          durationMs,
-        });
-      }
-    }
 
     if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
       queryClient.invalidateQueries({
@@ -332,7 +301,7 @@ export function useCopilotStream({
         hasShownDisconnectToast.current = false;
       }
     }
-  }, [status, sessionId, queryClient, isReconnectScheduled, messages]);
+  }, [status, sessionId, queryClient, isReconnectScheduled]);
 
   // Resume an active stream AFTER hydration completes.
   // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
@@ -404,6 +373,5 @@ export function useCopilotStream({
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
     isUserStoppingRef,
-    turnMetadata: turnMetadataRef.current,
   };
 }

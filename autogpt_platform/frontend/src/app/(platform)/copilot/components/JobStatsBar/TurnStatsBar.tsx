@@ -1,29 +1,15 @@
-import { TimerIcon } from "@phosphor-icons/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useWorkDoneCounters } from "./useWorkDoneCounters";
 
 interface Props {
   /** Messages scoped to this turn (user message + assistant response) */
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
-  /** Duration in ms from backend, or null if not yet available */
-  durationMs: number | null;
 }
 
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.round(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
-export function TurnStatsBar({ turnMessages, durationMs }: Props) {
+export function TurnStatsBar({ turnMessages }: Props) {
   const { counters } = useWorkDoneCounters(turnMessages);
 
-  if (counters.length === 0 && durationMs == null) return null;
+  if (counters.length === 0) return null;
 
   return (
     <div className="mt-2 flex items-center gap-1.5">
@@ -39,19 +25,6 @@ export function TurnStatsBar({ turnMessages, durationMs }: Props) {
           </span>
         );
       })}
-
-      {counters.length > 0 && durationMs != null && (
-        <span className="text-xs text-neutral-300">&middot;</span>
-      )}
-
-      {durationMs != null && (
-        <span className="flex items-center gap-1">
-          <TimerIcon size={12} className="shrink-0 text-neutral-400" />
-          <span className="text-[11px] tabular-nums text-neutral-400">
-            Completed in {formatDuration(durationMs)}
-          </span>
-        </span>
-      )}
     </div>
   );
 }

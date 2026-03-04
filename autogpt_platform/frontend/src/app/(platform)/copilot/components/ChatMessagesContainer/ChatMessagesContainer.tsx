@@ -10,7 +10,6 @@ import {
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import type { TurnMetadataMap } from "../../helpers/turnMetadata";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
@@ -25,7 +24,6 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   headerSlot?: React.ReactNode;
-  turnMetadata?: TurnMetadataMap;
 }
 
 /** Collect all messages belonging to a turn: the user message + every
@@ -54,7 +52,6 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   headerSlot,
-  turnMetadata,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
@@ -149,9 +146,6 @@ export function ChatMessagesContainer({
                   ) && (
                     <TurnStatsBar
                       turnMessages={getTurnMessages(messages, messageIndex)}
-                      durationMs={
-                        turnMetadata?.get(message.id)?.durationMs ?? null
-                      }
                     />
                   )}
                 {isLastAssistant && showThinking && (
