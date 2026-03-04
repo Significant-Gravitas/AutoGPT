@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
@@ -9,7 +10,8 @@ from uuid import uuid4
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from prisma.models import UserWorkspaceFile
+from pydantic import BaseModel, Field
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -40,6 +42,8 @@ from backend.copilot.tools.models import (
     ErrorResponse,
     ExecutionStartedResponse,
     InputValidationErrorResponse,
+    MCPToolOutputResponse,
+    MCPToolsDiscoveredResponse,
     NeedLoginResponse,
     NoResultsResponse,
     SetupRequirementsResponse,
@@ -47,10 +51,14 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()
 
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +87,9 @@ class StreamChatRequest(BaseModel):
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    file_ids: list[str] | None = Field(
+        default=None, max_length=20
+    )  # Workspace file IDs attached to this message
 
 
 class CreateSessionResponse(BaseModel):
@@ -238,6 +249,18 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
+    # Best-effort cleanup of the E2B sandbox (if any).
+    config = ChatConfig()
+    if config.use_e2b_sandbox and config.e2b_api_key:
+        from backend.copilot.tools.e2b_sandbox import kill_sandbox
+
+        try:
+            await kill_sandbox(session_id, config.e2b_api_key)
+        except Exception:
+            logger.warning(
+                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
+            )
+
     return Response(status_code=204)
 
 
@@ -394,6 +417,38 @@ async def stream_chat_post(
         },
     )
 
+    # Enrich message with file metadata if file_ids are provided.
+    # Also sanitise file_ids so only validated, workspace-scoped IDs are
+    # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
+    sanitized_file_ids: list[str] | None = None
+    if request.file_ids and user_id:
+        # Filter to valid UUIDs only to prevent DB abuse
+        valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
+
+        if valid_ids:
+            workspace = await get_or_create_workspace(user_id)
+            # Batch query instead of N+1
+            files = await UserWorkspaceFile.prisma().find_many(
+                where={
+                    "id": {"in": valid_ids},
+                    "workspaceId": workspace.id,
+                    "isDeleted": False,
+                }
+            )
+            # Only keep IDs that actually exist in the user's workspace
+            sanitized_file_ids = [wf.id for wf in files] or None
+            file_lines: list[str] = [
+                f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
+                for wf in files
+            ]
+            if file_lines:
+                files_block = (
+                    "\n\n[Attached files]\n"
+                    + "\n".join(file_lines)
+                    + "\nUse read_workspace_file with the file_id to access file contents."
+                )
+                request.message += files_block
+
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
     # saved yet.  append_and_save_message re-fetches inside a lock to prevent
@@ -445,6 +500,7 @@ async def stream_chat_post(
         turn_id=turn_id,
         is_user_message=request.is_user_message,
         context=request.context,
+        file_ids=sanitized_file_ids,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
@@ -487,7 +543,7 @@ async def stream_chat_post(
             )
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                     chunks_yielded += 1
 
                     if not first_chunk_yielded:
@@ -640,7 +696,7 @@ async def resume_session_stream(
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                     if chunk_count < 3:
                         logger.info(
                             "Resume stream chunk",
@@ -800,6 +856,8 @@ ToolResponseUnion = (
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse
+    | MCPToolsDiscoveredResponse
+    | MCPToolOutputResponse
 )
 
 

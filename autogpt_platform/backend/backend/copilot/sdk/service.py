@@ -1,19 +1,36 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import shutil
+import sys
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
 
+import openai
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    ResultMessage,
+    ToolUseBlock,
+)
+from langfuse import propagate_attributes
+from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
+from backend.util.prompt import compress_context
+from backend.util.settings import Settings
 
 from ..config import ChatConfig
+from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -31,15 +48,21 @@ from ..response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from ..service import _build_system_prompt, _generate_session_title
+from ..service import (
+    _build_system_prompt,
+    _generate_session_title,
+    _is_langfuse_configured,
+)
+from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
-    COPILOT_TOOL_NAMES,
-    SDK_DISALLOWED_TOOLS,
     create_copilot_mcp_server,
+    get_copilot_tool_names,
+    get_sdk_disallowed_tools,
     set_execution_context,
     wait_for_stash,
 )
@@ -54,6 +77,55 @@ from .transcript import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def _setup_langfuse_otel() -> None:
+    """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
+
+    This uses LangSmith's built-in Claude Agent SDK integration to monkey-patch
+    ``ClaudeSDKClient``, capturing every tool call and model turn as OTEL spans.
+    Spans are exported via OTLP to Langfuse (or any OTEL-compatible backend).
+
+    To route traces elsewhere, override ``OTEL_EXPORTER_OTLP_ENDPOINT`` and
+    ``OTEL_EXPORTER_OTLP_HEADERS`` environment variables — no code changes needed.
+    """
+    if not _is_langfuse_configured():
+        return
+
+    try:
+        settings = Settings()
+        pk = settings.secrets.langfuse_public_key
+        sk = settings.secrets.langfuse_secret_key
+        host = settings.secrets.langfuse_host
+
+        # OTEL exporter config — these are only set if not already present,
+        # so explicit env-var overrides always win.
+        creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
+        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
+        os.environ.setdefault("LANGSMITH_TRACING", "true")
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
+        os.environ.setdefault(
+            "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
+        )
+
+        # Set the Langfuse environment via OTEL resource attributes so the
+        # Langfuse server maps it to the first-class environment field.
+        tracing_env = settings.secrets.langfuse_tracing_environment
+        os.environ.setdefault(
+            "OTEL_RESOURCE_ATTRIBUTES",
+            f"langfuse.environment={tracing_env}",
+        )
+
+        configure_claude_agent_sdk(tags=["sdk"])
+        logger.info(
+            "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
+        )
+    except Exception:
+        logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
+
+
+_setup_langfuse_otel()
 
 
 # Set to hold background tasks to prevent garbage collection
@@ -75,10 +147,6 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
-# Special message prefixes for text-based markers (parsed by frontend)
-COPILOT_ERROR_PREFIX = "[COPILOT_ERROR]"  # Renders as ErrorCard
-COPILOT_SYSTEM_PREFIX = "[COPILOT_SYSTEM]"  # Renders as system info message
-
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
@@ -87,9 +155,36 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
-def _build_sdk_tool_supplement(cwd: str) -> str:
-    """Build the SDK tool supplement with the actual working directory injected."""
-    return f"""
+_SHARED_TOOL_NOTES = """\
+
+### Sharing files with the user
+After saving a file to the persistent workspace with `write_workspace_file`,
+share it with the user by embedding the `download_url` from the response in
+your message as a Markdown link or image:
+
+- **Any file** — shows as a clickable download link:
+  `[report.csv](workspace://file_id#text/csv)`
+- **Image** — renders inline in chat:
+  `![chart](workspace://file_id#image/png)`
+- **Video** — renders inline in chat with player controls:
+  `![recording](workspace://file_id#video/mp4)`
+
+The `download_url` field in the `write_workspace_file` response is already
+in the correct format — paste it directly after the `(` in the Markdown.
+
+### Long-running tools
+Long-running tools (create_agent, edit_agent, etc.) are handled
+asynchronously.  You will receive an immediate response; the actual result
+is delivered to the user via a background stream.
+
+### Sub-agent tasks
+- When using the Task tool, NEVER set `run_in_background` to true.
+  All tasks must run in the foreground.
+"""
+
+
+_LOCAL_TOOL_SUPPLEMENT = (
+    """
 
 ## Tool notes
 
@@ -131,31 +226,57 @@ When you create or modify important files (code, configs, outputs), you MUST:
 1. Save them using `write_workspace_file` so they persist
 2. At the start of a new turn, call `list_workspace_files` to see what files
    are available from previous turns
-
-### Sharing files with the user
-After saving a file to the persistent workspace with `write_workspace_file`,
-share it with the user by embedding the `download_url` from the response in
-your message as a Markdown link or image:
-
-- **Any file** — shows as a clickable download link:
-  `[report.csv](workspace://file_id#text/csv)`
-- **Image** — renders inline in chat:
-  `![chart](workspace://file_id#image/png)`
-- **Video** — renders inline in chat with player controls:
-  `![recording](workspace://file_id#video/mp4)`
-
-The `download_url` field in the `write_workspace_file` response is already
-in the correct format — paste it directly after the `(` in the Markdown.
-
-### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
-
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
 """
+    + _SHARED_TOOL_NOTES
+)
+
+
+_E2B_TOOL_SUPPLEMENT = (
+    """
+
+## Tool notes
+
+### Shell commands
+- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
+  for shell commands — it runs in a cloud sandbox with full internet access.
+
+### Working directory
+- Your working directory is: `/home/user` (cloud sandbox)
+- All file tools (`read_file`, `write_file`, `edit_file`, `glob`, `grep`)
+  AND `bash_exec` operate on the **same cloud sandbox filesystem**.
+- Files created by `bash_exec` are immediately visible to `read_file` and
+  vice-versa — they share one filesystem.
+- Use relative paths (resolved from `/home/user`) or absolute paths.
+
+### Two storage systems — CRITICAL to understand
+
+1. **Cloud sandbox** (`/home/user`):
+   - Shared by all file tools AND `bash_exec` — same filesystem
+   - Files **persist across turns** within the current session
+   - Full Linux environment with internet access
+   - Lost when the session expires (12 h inactivity)
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across sessions indefinitely**
+   - Use `write_workspace_file` to save important files permanently
+   - Use `read_workspace_file` to retrieve previously saved files
+   - Use `list_workspace_files` to see what files you've saved before
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from
+     all sessions
+
+### Moving files between sandbox and persistent storage
+- **Sandbox → Persistent**: Use `write_workspace_file` with `source_path`
+  to copy from the sandbox to permanent storage
+- **Persistent → Sandbox**: Use `read_workspace_file` with `save_to_path`
+  to download into the sandbox for processing
+
+### File persistence workflow
+Important files that must survive beyond this session should be saved with
+`write_workspace_file`.  Sandbox files persist across turns but are lost
+when the session expires.
+"""
+    + _SHARED_TOOL_NOTES
+)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -230,8 +351,6 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
-    import shutil
-
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
@@ -247,23 +366,20 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-async def _compress_conversation_history(
-    session: ChatSession,
-) -> list[ChatMessage]:
-    """Compress prior conversation messages if they exceed the token threshold.
+async def _compress_messages(
+    messages: list[ChatMessage],
+) -> tuple[list[ChatMessage], bool]:
+    """Compress a list of messages if they exceed the token threshold.
 
     Uses the shared compress_context() from prompt.py which supports:
     - LLM summarization of old messages (keeps recent ones intact)
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
-
-    Returns the compressed prior messages (everything except the current message).
     """
-    messages = session.messages[:-1]
-    if len(messages) < 2:
-        return messages
+    messages = filter_compaction_messages(messages)
 
-    from backend.util.prompt import compress_context
+    if len(messages) < 2:
+        return messages, False
 
     # Convert ChatMessages to dicts for compress_context
     messages_dict = []
@@ -278,8 +394,6 @@ async def _compress_conversation_history(
         messages_dict.append(msg_dict)
 
     try:
-        import openai
-
         async with openai.AsyncOpenAI(
             api_key=config.api_key, base_url=config.base_url, timeout=30.0
         ) as client:
@@ -313,9 +427,9 @@ async def _compress_conversation_history(
                 tool_call_id=m.get("tool_call_id"),
             )
             for m in result.messages
-        ]
+        ], True
 
-    return messages
+    return messages, False
 
 
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
@@ -329,6 +443,9 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """
     if not messages:
         return None
+
+    # Filter out compaction messages first, then format
+    messages = filter_compaction_messages(messages)
 
     lines: list[str] = []
     for msg in messages:
@@ -385,36 +502,46 @@ async def _build_query_message(
     use_resume: bool,
     transcript_msg_count: int,
     session_id: str,
-) -> str:
+) -> tuple[str, bool]:
     """Build the query message with appropriate context.
 
-    With --resume the CLI already has full context, so only the new message
-    is needed.  Without resume, compress history into a context prefix.
-    Hybrid mode: if the transcript is stale, compress only the gap.
+    Returns:
+        Tuple of (query_message, was_compacted).
     """
     msg_count = len(session.messages)
 
     if use_resume and transcript_msg_count > 0:
         if transcript_msg_count < msg_count - 1:
             gap = session.messages[transcript_msg_count:-1]
-            gap_context = _format_conversation_context(gap)
+            compressed, was_compressed = await _compress_messages(gap)
+            gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
-                    f"[SDK] Transcript stale: covers {transcript_msg_count} "
-                    f"of {msg_count} messages, compressing {len(gap)} missed"
+                    "[SDK] Transcript stale: covers %d of %d messages, "
+                    "gap=%d (compressed=%s)",
+                    transcript_msg_count,
+                    msg_count,
+                    len(gap),
+                    was_compressed,
                 )
-                return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    was_compressed,
+                )
     elif not use_resume and msg_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
             f"{session_id} ({msg_count} messages) — no transcript for --resume"
         )
-        compressed = await _compress_conversation_history(session)
+        compressed, was_compressed = await _compress_messages(session.messages[:-1])
         history_context = _format_conversation_context(compressed)
         if history_context:
-            return f"{history_context}\n\nNow, the user says:\n{current_message}"
+            return (
+                f"{history_context}\n\nNow, the user says:\n{current_message}",
+                was_compressed,
+            )
 
-    return current_message
+    return current_message, False
 
 
 async def stream_chat_completion_sdk(
@@ -489,6 +616,7 @@ async def stream_chat_completion_sdk(
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
     stream_completed = False
+    e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
@@ -515,7 +643,10 @@ async def stream_chat_completion_sdk(
         )
         return
 
-    # Make sure there is no more code between the lock acquitition and try-block.
+    # OTEL context manager — initialized inside the try and cleaned up in finally.
+    _otel_ctx: Any = None
+
+    # Make sure there is no more code between the lock acquisition and try-block.
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
         # Pre-compute the cwd here so the exact working directory path can be
@@ -533,17 +664,47 @@ async def stream_chat_completion_sdk(
                 code="sdk_cwd_error",
             )
             return
+        # Set up E2B sandbox for persistent cloud execution when configured.
+        # When active, MCP file tools route directly to the sandbox filesystem
+        # so bash_exec and file tools share the same /home/user directory.
+        if config.use_e2b_sandbox and not config.e2b_api_key:
+            logger.warning(
+                "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
+                session_id[:12],
+            )
+        if config.use_e2b_sandbox and config.e2b_api_key:
+            try:
+                e2b_sandbox = await get_or_create_sandbox(
+                    session_id,
+                    api_key=config.e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                )
+            except Exception as e2b_err:
+                logger.error(
+                    "[E2B] [%s] Setup failed: %s",
+                    session_id[:12],
+                    e2b_err,
+                    exc_info=True,
+                )
+                e2b_sandbox = None
+
+        use_e2b = e2b_sandbox is not None
+
         system_prompt, _ = await _build_system_prompt(
             user_id, has_conversation_history=has_history
         )
-        system_prompt += _build_sdk_tool_supplement(sdk_cwd)
+        system_prompt += (
+            _E2B_TOOL_SUPPLEMENT
+            if use_e2b
+            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        set_execution_context(user_id, session)
+        set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
         try:
-            from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-
             # Fail fast when no API credentials are available at all
             sdk_env = _build_sdk_env()
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -553,7 +714,7 @@ async def stream_chat_completion_sdk(
                     "or ANTHROPIC_API_KEY for direct Anthropic access."
                 )
 
-            mcp_server = create_copilot_mcp_server()
+            mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
             sdk_model = _resolve_sdk_model()
 
@@ -576,11 +737,15 @@ async def stream_chat_completion_sdk(
                         f"{transcript_path}"
                     )
 
+            # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
+            compaction = CompactionTracker()
+
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
+                on_compact=compaction.on_compact,
             )
 
             # --- Resume strategy: download transcript from bucket ---
@@ -614,11 +779,13 @@ async def stream_chat_completion_sdk(
                         f"({len(session.messages)} messages in session)"
                     )
 
+            allowed = get_copilot_tool_names(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
             sdk_options_kwargs: dict[str, Any] = {
                 "system_prompt": system_prompt,
                 "mcp_servers": {"copilot": mcp_server},
-                "allowed_tools": COPILOT_TOOL_NAMES,
-                "disallowed_tools": SDK_DISALLOWED_TOOLS,
+                "allowed_tools": allowed,
+                "disallowed_tools": disallowed,
                 "hooks": security_hooks,
                 "cwd": sdk_cwd,
                 "max_buffer_size": config.claude_agent_max_buffer_size,
@@ -632,6 +799,19 @@ async def stream_chat_completion_sdk(
             options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
 
             adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+
+            # Propagate user_id/session_id as OTEL context attributes so the
+            # langsmith tracing integration attaches them to every span.  This
+            # is what Langfuse (or any OTEL backend) maps to its native
+            # user/session fields.
+            _otel_ctx = propagate_attributes(
+                user_id=user_id,
+                session_id=session_id,
+                trace_name="copilot-sdk",
+                tags=["sdk"],
+                metadata={"resume": str(use_resume)},
+            )
+            _otel_ctx.__enter__()
 
             async with ClaudeSDKClient(options=options) as client:
                 current_message = message or ""
@@ -647,7 +827,7 @@ async def stream_chat_completion_sdk(
                     )
                     return
 
-                query_message = await _build_query_message(
+                query_message, was_compacted = await _build_query_message(
                     current_message,
                     session,
                     use_resume,
@@ -661,6 +841,11 @@ async def stream_chat_completion_sdk(
                     len(session.messages),
                     len(query_message),
                 )
+
+                compaction.reset_for_query()
+                if was_compacted:
+                    for ev in compaction.emit_pre_query(session):
+                        yield ev
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -676,7 +861,7 @@ async def stream_chat_completion_sdk(
                 # Instead, wrap __anext__() in a Task and use asyncio.wait()
                 # with a timeout.  On timeout we emit a heartbeat but keep the
                 # Task alive so it can deliver the next message.
-                msg_iter = client.receive_messages().__aiter__()
+                msg_iter = client.receive_response().__aiter__()
                 pending_task: asyncio.Task[Any] | None = None
                 try:
                     while not stream_completed:
@@ -692,9 +877,9 @@ async def stream_chat_completion_sdk(
                         )
 
                         if not done:
-                            # Timeout — emit heartbeat but keep the task alive
-                            # Also refresh lock TTL to keep it alive
                             await lock.refresh()
+                            for ev in compaction.emit_start_if_ready():
+                                yield ev
                             yield StreamHeartbeat()
                             continue
 
@@ -710,7 +895,7 @@ async def stream_chat_completion_sdk(
                             break
                         except Exception as stream_err:
                             # SDK sends {"type": "error"} which raises
-                            # Exception in receive_messages() — capture it
+                            # Exception in receive_response() — capture it
                             # so the session can still be saved and the
                             # frontend gets a clean finish.
                             logger.error(
@@ -750,12 +935,6 @@ async def stream_chat_completion_sdk(
                         # AssistantMessages (each containing only
                         # ToolUseBlocks), we must NOT wait/flush — the prior
                         # tools are still executing concurrently.
-                        from claude_agent_sdk import (
-                            AssistantMessage,
-                            ResultMessage,
-                            ToolUseBlock,
-                        )
-
                         is_parallel_continuation = isinstance(
                             sdk_msg, AssistantMessage
                         ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
@@ -795,6 +974,10 @@ async def stream_chat_completion_sdk(
                                     session_id[:12],
                                     sdk_msg.result or "(no error message provided)",
                                 )
+
+                        # Emit compaction end if SDK finished compacting
+                        for ev in await compaction.emit_end_if_ready(session):
+                            yield ev
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
@@ -1060,6 +1243,13 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
+        # --- Close OTEL context ---
+        if _otel_ctx is not None:
+            try:
+                _otel_ctx.__exit__(*sys.exc_info())
+            except Exception:
+                logger.warning("OTEL context teardown failed", exc_info=True)
+
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).
