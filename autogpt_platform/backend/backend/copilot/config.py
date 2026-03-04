@@ -66,7 +66,7 @@ class ChatConfig(BaseSettings):
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,
-        description="Use Claude Agent SDK (True) or simple LLM baseline for testing (False)",
+        description="Use Claude Agent SDK (True) or OpenAI-compatible LLM baseline (False)",
     )
     claude_agent_model: str | None = Field(
         default=None,

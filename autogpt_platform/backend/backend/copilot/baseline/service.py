@@ -44,6 +44,7 @@ from backend.copilot.service import (
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
+from backend.util.prompt import compress_context
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,56 @@ async def _update_title_async(
             await update_session_title(session_id, title)
     except Exception as e:
         logger.warning("[Baseline] Failed to update session title: %s", e)
+
+
+async def _compress_session_messages(
+    messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Compress session messages if they exceed the model's token limit.
+
+    Uses the shared compress_context() utility which supports LLM-based
+    summarization of older messages while keeping recent ones intact,
+    with progressive truncation and middle-out deletion as fallbacks.
+    """
+    if len(messages) < 2:
+        return messages
+
+    messages_dict = []
+    for msg in messages:
+        msg_dict: dict[str, Any] = {"role": msg.role}
+        if msg.content:
+            msg_dict["content"] = msg.content
+        messages_dict.append(msg_dict)
+
+    try:
+        result = await compress_context(
+            messages=messages_dict,
+            model=config.model,
+            client=client,
+        )
+    except Exception as e:
+        logger.warning("[Baseline] Context compression with LLM failed: %s", e)
+        result = await compress_context(
+            messages=messages_dict,
+            model=config.model,
+            client=None,
+        )
+
+    if result.was_compacted:
+        logger.info(
+            "[Baseline] Context compacted: %d -> %d tokens "
+            "(%d summarized, %d dropped)",
+            result.original_token_count,
+            result.token_count,
+            result.messages_summarized,
+            result.messages_dropped,
+        )
+        return [
+            ChatMessage(role=m["role"], content=m.get("content"))
+            for m in result.messages
+        ]
+
+    return messages
 
 
 async def stream_chat_completion_baseline(
@@ -123,17 +174,26 @@ async def stream_chat_completion_baseline(
 
     message_id = str(uuid.uuid4())
 
-    # Build system prompt
-    has_history = len(session.messages) > 1
-    system_prompt, _ = await _build_system_prompt(
-        user_id, has_conversation_history=has_history
-    )
+    # Build system prompt only on the first turn to avoid mid-conversation
+    # changes from concurrent chats updating business understanding.
+    is_first_turn = len(session.messages) <= 1
+    if is_first_turn:
+        system_prompt, _ = await _build_system_prompt(
+            user_id, has_conversation_history=False
+        )
+    else:
+        system_prompt, _ = await _build_system_prompt(
+            user_id=None, has_conversation_history=True
+        )
+
+    # Compress context if approaching the model's token limit
+    messages_for_context = await _compress_session_messages(session.messages)
 
     # Build OpenAI message list from session history
     openai_messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt}
     ]
-    for msg in session.messages:
+    for msg in messages_for_context:
         if msg.role in ("user", "assistant") and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
