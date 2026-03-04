@@ -23,7 +23,7 @@ import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
  * for workspace video files (detected via "video:" alt-text prefix).
  * Falls back to <video> when an <img> fails to load for workspace files.
  */
-function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
+export function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
   const [imgFailed, setImgFailed] = useState(false);
   const isWorkspace = src?.includes("/workspace/files/") ?? false;

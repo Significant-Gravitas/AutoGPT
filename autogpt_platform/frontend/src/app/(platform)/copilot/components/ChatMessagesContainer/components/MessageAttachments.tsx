@@ -9,10 +9,52 @@ import {
   ContentCardTitle,
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
+import { WorkspaceMediaImage } from "./MessagePartRenderer";
 
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
+}
+
+function isImageMime(mime?: string): boolean {
+  return !!mime && mime.startsWith("image/");
+}
+
+function ImageAttachment({
+  file,
+  isUser,
+}: {
+  file: FileUIPart;
+  isUser?: boolean;
+}) {
+  const borderClass = isUser
+    ? "border-purple-300 bg-purple-50"
+    : "border-neutral-200 bg-neutral-50";
+  const nameClass = isUser ? "text-zinc-600" : "text-neutral-500";
+  return (
+    <div className={`inline-block rounded-lg border ${borderClass} p-1.5`}>
+      <WorkspaceMediaImage
+        src={file.url}
+        alt={file.filename || "image"}
+        className="max-h-48 rounded"
+      />
+      <div
+        className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${nameClass}`}
+      >
+        <span className="truncate">{file.filename || "image"}</span>
+        {file.url && (
+          <a
+            href={file.url}
+            download
+            aria-label="Download file"
+            className="ml-auto shrink-0 opacity-50 hover:opacity-100"
+          >
+            <DownloadIcon className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function MessageAttachments({ files, isUser }: Props) {
@@ -21,7 +63,13 @@ export function MessageAttachments({ files, isUser }: Props) {
   return (
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) =>
-        isUser ? (
+        isImageMime(file.mediaType) && file.url ? (
+          <ImageAttachment
+            key={`${file.filename}-${i}`}
+            file={file}
+            isUser={isUser}
+          />
+        ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
             className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
