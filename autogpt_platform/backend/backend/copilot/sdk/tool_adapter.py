@@ -292,7 +292,7 @@ async def _execute_tool_sync(
 # To support a new file type, add a single entry here.
 # ---------------------------------------------------------------------------
 
-_IMAGE_MAX_B64 = 27_000_000  # ~20 MB raw
+_IMAGE_MAX_B64 = 28_000_000  # ~20 MB raw → ceil(20*1024*1024 * 4/3) ≈ 27_962_028
 _DOCUMENT_MAX_B64 = 43_000_000  # ~32 MB raw
 
 _MULTIMODAL_TYPES: dict[str, tuple[str, int]] = {
@@ -337,13 +337,15 @@ def _extract_content_block(text: str) -> dict[str, Any] | None:
     if not isinstance(data, dict):
         return None
 
-    mime_type = data.get("mime_type", "")
+    raw_mime = data.get("mime_type", "")
     base64_content = data.get("content_base64", "")
-    if not isinstance(mime_type, str) or not isinstance(base64_content, str):
+    if not isinstance(raw_mime, str) or not isinstance(base64_content, str):
         return None
-    if not mime_type or not base64_content:
+    if not raw_mime or not base64_content:
         return None
 
+    # Normalise: strip parameters (e.g. "application/pdf; charset=binary").
+    mime_type = raw_mime.split(";", 1)[0].strip().lower()
     entry = _MULTIMODAL_TYPES.get(mime_type)
     if entry is None:
         return None

@@ -220,7 +220,7 @@ class TestExtractContentBlock:
         assert _extract_content_block("[1, 2, 3]") is None
 
     def test_oversized_image_base64_returns_none(self):
-        huge = "A" * 27_000_001  # exceeds _IMAGE_MAX_B64
+        huge = "A" * (_MCP_MAX_CHARS + 1_000_000)  # exceeds _IMAGE_MAX_B64
         payload = json.dumps(
             {
                 "content_base64": huge,
@@ -236,6 +236,30 @@ class TestExtractContentBlock:
     def test_non_string_content_base64_returns_none(self):
         payload = json.dumps({"content_base64": 456, "mime_type": "image/png"})
         assert _extract_content_block(payload) is None
+
+    def test_mime_with_parameters_normalized(self):
+        payload = json.dumps(
+            {
+                "content_base64": "iVBORw0KGgo=",
+                "mime_type": "image/png; charset=binary",
+            }
+        )
+        block = _extract_content_block(payload)
+        assert block is not None
+        assert block["type"] == "image"
+        assert block["mimeType"] == "image/png"
+
+    def test_pdf_mime_with_parameters_normalized(self):
+        payload = json.dumps(
+            {
+                "content_base64": "JVBERi0=",
+                "mime_type": "application/pdf; charset=binary",
+            }
+        )
+        block = _extract_content_block(payload)
+        assert block is not None
+        assert block["type"] == "document"
+        assert block["source"]["media_type"] == "application/pdf"
 
 
 # ---------------------------------------------------------------------------
