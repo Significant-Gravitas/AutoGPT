@@ -524,7 +524,7 @@ class ReadWorkspaceFileTool(BaseTool):
         path: Optional[str] = kwargs.get("path")
         save_to_path: Optional[str] = kwargs.get("save_to_path")
         force_download_url: bool = kwargs.get("force_download_url", False)
-        char_offset: int = kwargs.get("offset", 0)
+        char_offset: int = max(0, kwargs.get("offset", 0))
         char_length: Optional[int] = kwargs.get("length")
 
         if not file_id and not path:

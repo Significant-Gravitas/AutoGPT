@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 # capture the data before model_post_init middle-out truncation discards it.
 _LARGE_OUTPUT_THRESHOLD = 80_000
 
-# Number of head characters included in the preview that replaces the output.
-_PREVIEW_HEAD_CHARS = 50_000
+# Head/tail character budget for the middle-out preview.
+_PREVIEW_HEAD_CHARS = 40_000
+_PREVIEW_TAIL_CHARS = 10_000
 
 
 async def _persist_and_summarize(
@@ -29,7 +30,7 @@ async def _persist_and_summarize(
     session_id: str,
     tool_call_id: str,
 ) -> str:
-    """Persist full output to workspace and return a head preview with retrieval instructions.
+    """Persist full output to workspace and return a middle-out preview with retrieval instructions.
 
     On failure, returns the original ``raw_output`` unchanged so that the
     existing ``model_post_init`` middle-out truncation handles it as before.
@@ -54,15 +55,17 @@ async def _persist_and_summarize(
         return raw_output  # fall back to normal truncation
 
     total = len(raw_output)
-    preview = raw_output[:_PREVIEW_HEAD_CHARS]
-    remaining = total - len(preview)
+    head = raw_output[:_PREVIEW_HEAD_CHARS]
+    tail = raw_output[-_PREVIEW_TAIL_CHARS:] if _PREVIEW_TAIL_CHARS else ""
+    omitted = total - len(head) - len(tail)
     return (
         f'<tool-output-truncated total_chars={total} path="{file_path}">\n'
-        f"{preview}\n"
-        f"... [{remaining:,} more characters]\n\n"
+        f"{head}\n"
+        f"\n... [{omitted:,} characters omitted] ...\n"
         f"Full output saved to workspace. Use read_workspace_file("
-        f'path="{file_path}", offset={len(preview)}, length=50000) '
-        f"to read the next section.\n"
+        f'path="{file_path}", offset={len(head)}, length=50000) '
+        f"to read the next section.\n\n"
+        f"{tail}\n"
         f"</tool-output-truncated>"
     )
 
