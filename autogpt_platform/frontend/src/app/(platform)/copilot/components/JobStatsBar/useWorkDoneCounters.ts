@@ -45,26 +45,16 @@ function pluralizeWord(word: string): string {
   return word + "s";
 }
 
-export interface ToolInvocation {
-  toolName: string;
-  category: string;
-  argsSummary: string;
-}
-
 export interface WorkDoneCounter {
   label: string;
   count: number;
   category: string;
-  invocations: ToolInvocation[];
 }
 
 export function useWorkDoneCounters(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ) {
-  const categoryData = new Map<
-    string,
-    { count: number; invocations: ToolInvocation[] }
-  >();
+  const categoryCounts = new Map<string, number>();
 
   for (const message of messages) {
     if (message.role !== "assistant") continue;
@@ -76,28 +66,16 @@ export function useWorkDoneCounters(
       const category = TOOL_TO_CATEGORY[toolName];
       if (!category) continue;
 
-      const argsSummary =
-        "input" in part && part.input
-          ? summarizeToolArgs(toolName, part.input as Record<string, unknown>)
-          : "";
-
-      const existing = categoryData.get(category) ?? {
-        count: 0,
-        invocations: [],
-      };
-      existing.count += 1;
-      existing.invocations.push({ toolName, category, argsSummary });
-      categoryData.set(category, existing);
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
     }
   }
 
-  const counters: WorkDoneCounter[] = Array.from(categoryData.entries())
-    .map(function toCounter([category, data]) {
+  const counters: WorkDoneCounter[] = Array.from(categoryCounts.entries())
+    .map(function toCounter([category, count]) {
       return {
-        label: pluralize(category, data.count),
-        count: data.count,
+        label: pluralize(category, count),
+        count,
         category,
-        invocations: data.invocations,
       };
     })
     .sort(function byCountDesc(a, b) {
@@ -106,19 +84,4 @@ export function useWorkDoneCounters(
     .slice(0, MAX_COUNTERS);
 
   return { counters };
-}
-
-function summarizeToolArgs(
-  toolName: string,
-  args: Record<string, unknown>,
-): string {
-  const keyArgs: string[] = [];
-  for (const [key, value] of Object.entries(args)) {
-    if (value == null || value === "") continue;
-    const str = typeof value === "string" ? value : JSON.stringify(value);
-    const truncated = str.length > 60 ? str.slice(0, 57) + "..." : str;
-    keyArgs.push(`${key}="${truncated}"`);
-    if (keyArgs.length >= 2) break;
-  }
-  return keyArgs.join(", ");
 }
