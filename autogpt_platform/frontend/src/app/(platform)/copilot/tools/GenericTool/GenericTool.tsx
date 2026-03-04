@@ -26,9 +26,26 @@ import {
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 
 interface Props {
   part: ToolUIPart;
+}
+
+function RenderMedia({
+  value,
+  metadata,
+}: {
+  value: string;
+  metadata: OutputMetadata;
+}) {
+  const renderer = globalRegistry.getRenderer(value, metadata);
+  if (!renderer) return null;
+  return <OutputItem value={value} metadata={metadata} renderer={renderer} />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -707,10 +724,13 @@ function getFileAccordionData(
         ) : isImage &&
           output.content_base64 &&
           typeof output.content_base64 === "string" ? (
-          <img
-            src={`data:${mimeType};base64,${output.content_base64}`}
-            alt={filePath ?? "image"}
-            className="max-h-64 rounded"
+          <RenderMedia
+            value={`data:${mimeType};base64,${output.content_base64}`}
+            metadata={{
+              type: "image",
+              mimeType: mimeType ?? undefined,
+              filename: filePath ?? undefined,
+            }}
           />
         ) : displayContent ? (
           <ContentCodeBlock>{displayContent}</ContentCodeBlock>

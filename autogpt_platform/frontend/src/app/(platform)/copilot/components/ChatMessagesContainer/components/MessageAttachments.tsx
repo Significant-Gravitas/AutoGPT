@@ -4,56 +4,37 @@ import {
 } from "@phosphor-icons/react";
 import type { FileUIPart } from "ai";
 import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import {
   ContentCard,
   ContentCardHeader,
   ContentCardTitle,
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
-import { WorkspaceMediaImage } from "./MessagePartRenderer";
 
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
 }
 
-function isImageMime(mime?: string): boolean {
-  return !!mime && mime.startsWith("image/");
-}
-
-function ImageAttachment({
-  file,
-  isUser,
-}: {
-  file: FileUIPart;
-  isUser?: boolean;
-}) {
-  const borderClass = isUser
-    ? "border-purple-300 bg-purple-50"
-    : "border-neutral-200 bg-neutral-50";
-  const nameClass = isUser ? "text-zinc-600" : "text-neutral-500";
+function renderFileContent(file: FileUIPart): React.ReactNode | null {
+  if (!file.url) return null;
+  const metadata: OutputMetadata = {
+    mimeType: file.mediaType,
+    filename: file.filename,
+    type: file.mediaType?.startsWith("image/")
+      ? "image"
+      : file.mediaType?.startsWith("video/")
+        ? "video"
+        : undefined,
+  };
+  const renderer = globalRegistry.getRenderer(file.url, metadata);
+  if (!renderer) return null;
   return (
-    <div className={`inline-block rounded-lg border ${borderClass} p-1.5`}>
-      <WorkspaceMediaImage
-        src={file.url}
-        alt={file.filename || "image"}
-        className="max-h-48 rounded"
-      />
-      <div
-        className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${nameClass}`}
-      >
-        <span className="truncate">{file.filename || "image"}</span>
-        {file.url && (
-          <a
-            href={file.url}
-            download
-            aria-label="Download file"
-            className="ml-auto shrink-0 opacity-50 hover:opacity-100"
-          >
-            <DownloadIcon className="h-3.5 w-3.5" />
-          </a>
-        )}
-      </div>
-    </div>
+    <OutputItem value={file.url} metadata={metadata} renderer={renderer} />
   );
 }
 
@@ -62,13 +43,36 @@ export function MessageAttachments({ files, isUser }: Props) {
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      {files.map((file, i) =>
-        isImageMime(file.mediaType) && file.url ? (
-          <ImageAttachment
+      {files.map((file, i) => {
+        const rendered = renderFileContent(file);
+        return rendered ? (
+          <div
             key={`${file.filename}-${i}`}
-            file={file}
-            isUser={isUser}
-          />
+            className={`inline-block rounded-lg border p-1.5 ${
+              isUser
+                ? "border-purple-300 bg-purple-50"
+                : "border-neutral-200 bg-neutral-50"
+            }`}
+          >
+            {rendered}
+            <div
+              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
+                isUser ? "text-zinc-600" : "text-neutral-500"
+              }`}
+            >
+              <span className="truncate">{file.filename || "file"}</span>
+              {file.url && (
+                <a
+                  href={file.url}
+                  download
+                  aria-label="Download file"
+                  className="ml-auto shrink-0 opacity-50 hover:opacity-100"
+                >
+                  <DownloadIcon className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
         ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
@@ -125,8 +129,8 @@ export function MessageAttachments({ files, isUser }: Props) {
               </div>
             </ContentCardHeader>
           </ContentCard>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
