@@ -627,7 +627,7 @@ async def _prepare_file_attachments(
     content blocks.
     """
     empty = PreparedAttachments(hint="", image_blocks=[])
-    if not file_ids:
+    if not file_ids or not user_id:
         return empty
 
     try:
