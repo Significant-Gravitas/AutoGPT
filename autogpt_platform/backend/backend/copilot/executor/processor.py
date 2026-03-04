@@ -6,6 +6,8 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import logging
+import os
+import subprocess
 import threading
 import time
 
@@ -108,7 +110,33 @@ class CoPilotProcessor:
         )
         self.execution_thread.start()
 
+        # Skip the SDK's per-request CLI version check — the bundled CLI is
+        # already version-matched to the SDK package.
+        os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+
+        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
+        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
+        self._prewarm_cli()
+
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+
+    def _prewarm_cli(self) -> None:
+        """Run the bundled CLI binary once to warm OS page caches."""
+        try:
+            from claude_agent_sdk._internal.transport.subprocess_cli import (
+                SubprocessCLITransport,
+            )
+
+            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+            if cli_path:
+                subprocess.run(
+                    [cli_path, "-v"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+        except Exception as e:
+            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.

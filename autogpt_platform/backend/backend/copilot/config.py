@@ -67,6 +67,10 @@ class ChatConfig(BaseSettings):
         default="CoPilot Prompt",
         description="Name of the prompt in Langfuse to fetch",
     )
+    langfuse_prompt_cache_ttl: int = Field(
+        default=300,
+        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+    )
 
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(

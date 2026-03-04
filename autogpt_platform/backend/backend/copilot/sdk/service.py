@@ -664,42 +664,86 @@ async def stream_chat_completion_sdk(
                 code="sdk_cwd_error",
             )
             return
-        # Set up E2B sandbox for persistent cloud execution when configured.
-        # When active, MCP file tools route directly to the sandbox filesystem
-        # so bash_exec and file tools share the same /home/user directory.
-        if config.use_e2b_sandbox and not config.e2b_api_key:
-            logger.warning(
-                "[E2B] [%s] E2B sandbox enabled but no API key configured "
-                "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
-                session_id[:12],
-            )
-        if config.use_e2b_sandbox and config.e2b_api_key:
-            try:
-                e2b_sandbox = await get_or_create_sandbox(
-                    session_id,
-                    api_key=config.e2b_api_key,
-                    template=config.e2b_sandbox_template,
-                    timeout=config.e2b_sandbox_timeout,
-                )
-            except Exception as e2b_err:
-                logger.error(
-                    "[E2B] [%s] Setup failed: %s",
+        # --- Run independent async I/O operations in parallel ---
+        # E2B sandbox setup, system prompt build (Langfuse + DB), and transcript
+        # download are independent network calls.  Running them concurrently
+        # saves ~200-500ms compared to sequential execution.
+
+        async def _setup_e2b():
+            """Set up E2B sandbox if configured, return sandbox or None."""
+            if config.use_e2b_sandbox and not config.e2b_api_key:
+                logger.warning(
+                    "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                    "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
                     session_id[:12],
-                    e2b_err,
-                    exc_info=True,
                 )
-                e2b_sandbox = None
+                return None
+            if config.use_e2b_sandbox and config.e2b_api_key:
+                try:
+                    return await get_or_create_sandbox(
+                        session_id,
+                        api_key=config.e2b_api_key,
+                        template=config.e2b_sandbox_template,
+                        timeout=config.e2b_sandbox_timeout,
+                    )
+                except Exception as e2b_err:
+                    logger.error(
+                        "[E2B] [%s] Setup failed: %s",
+                        session_id[:12],
+                        e2b_err,
+                        exc_info=True,
+                    )
+            return None
+
+        async def _fetch_transcript():
+            """Download transcript for --resume if applicable."""
+            if not (
+                config.claude_agent_use_resume and user_id and len(session.messages) > 1
+            ):
+                return None
+            return await download_transcript(user_id, session_id)
+
+        e2b_sandbox, (base_system_prompt, _), dl = await asyncio.gather(
+            _setup_e2b(),
+            _build_system_prompt(user_id, has_conversation_history=has_history),
+            _fetch_transcript(),
+        )
 
         use_e2b = e2b_sandbox is not None
-
-        system_prompt, _ = await _build_system_prompt(
-            user_id, has_conversation_history=has_history
-        )
-        system_prompt += (
+        system_prompt = base_system_prompt + (
             _E2B_TOOL_SUPPLEMENT
             if use_e2b
             else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
         )
+
+        # Process transcript download result
+        transcript_msg_count = 0
+        if dl:
+            is_valid = validate_transcript(dl.content)
+            if is_valid:
+                logger.info(
+                    f"[SDK] Transcript available for session {session_id}: "
+                    f"{len(dl.content)}B, msg_count={dl.message_count}"
+                )
+                resume_file = write_transcript_to_tempfile(
+                    dl.content, session_id, sdk_cwd
+                )
+                if resume_file:
+                    use_resume = True
+                    transcript_msg_count = dl.message_count
+                    logger.debug(
+                        f"[SDK] Using --resume ({len(dl.content)}B, "
+                        f"msg_count={transcript_msg_count})"
+                    )
+            else:
+                logger.warning(
+                    f"[SDK] Transcript downloaded but invalid for {session_id}"
+                )
+        elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
+            logger.warning(
+                f"[SDK] No transcript available for {session_id} "
+                f"({len(session.messages)} messages in session)"
+            )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
@@ -747,37 +791,6 @@ async def stream_chat_completion_sdk(
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
                 on_compact=compaction.on_compact,
             )
-
-            # --- Resume strategy: download transcript from bucket ---
-            transcript_msg_count = 0  # watermark: session.messages length at upload
-
-            if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-                dl = await download_transcript(user_id, session_id)
-                is_valid = bool(dl and validate_transcript(dl.content))
-                if dl and is_valid:
-                    logger.info(
-                        f"[SDK] Transcript available for session {session_id}: "
-                        f"{len(dl.content)}B, msg_count={dl.message_count}"
-                    )
-                    resume_file = write_transcript_to_tempfile(
-                        dl.content, session_id, sdk_cwd
-                    )
-                    if resume_file:
-                        use_resume = True
-                        transcript_msg_count = dl.message_count
-                        logger.debug(
-                            f"[SDK] Using --resume ({len(dl.content)}B, "
-                            f"msg_count={transcript_msg_count})"
-                        )
-                elif dl:
-                    logger.warning(
-                        f"[SDK] Transcript downloaded but invalid for {session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"[SDK] No transcript available for {session_id} "
-                        f"({len(session.messages)} messages in session)"
-                    )
 
             allowed = get_copilot_tool_names(use_e2b=use_e2b)
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
