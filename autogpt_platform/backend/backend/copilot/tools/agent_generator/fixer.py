@@ -1065,9 +1065,11 @@ class AgentFixer:
             difference = abs(sink_x - source_x)
             if difference < 800:
                 required_x = source_x + 800
-                sink_node.setdefault("metadata", {}).setdefault("position", {})[
-                    "x"
-                ] = required_x
+                if sink_node.get("metadata") is None:
+                    sink_node["metadata"] = {}
+                if sink_node["metadata"].get("position") is None:
+                    sink_node["metadata"]["position"] = {}
+                sink_node["metadata"]["position"]["x"] = required_x
                 self.add_fix_log(
                     f"Adjusted x-coordinate for node {sink_id}: "
                     f"{sink_x} -> {required_x} (source node {source_id} "
