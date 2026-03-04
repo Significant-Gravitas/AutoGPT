@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import openai
+import orjson
 from langfuse import get_client
 
 from backend.data.db_accessors import understanding_db
@@ -34,7 +35,11 @@ from .response_model import (
     StreamFinish,
     StreamStart,
     StreamTextDelta,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
 )
+from .tools import execute_tool, get_available_tools
 from .tracking import track_user_message
 
 logger = logging.getLogger(__name__)
@@ -324,8 +329,8 @@ async def assign_user_to_session(
 # Baseline LLM streaming (used when CHAT_USE_CLAUDE_AGENT_SDK=false)
 # ---------------------------------------------------------------------------
 
-# Heartbeat interval — keep SSE alive through proxies/LBs.
-_BASELINE_HEARTBEAT_INTERVAL = 10.0  # seconds
+# Maximum number of tool-call rounds before forcing a text response.
+_MAX_TOOL_ROUNDS = 30
 
 
 async def _update_title_async(
@@ -345,11 +350,13 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """Simple single-call LLM baseline — no tools, no retries.
+    """Baseline LLM with tool calling via OpenAI-compatible API.
 
-    Designed as a lightweight testing path when the Claude Agent SDK is disabled.
-    Sends the full conversation history in a single streaming OpenAI-compatible
-    request (works with any model via OpenRouter).
+    Designed as a fallback when the Claude Agent SDK is unavailable.
+    Uses the same tool registry as the SDK path but routes through any
+    OpenAI-compatible provider (e.g. OpenRouter).
+
+    Flow: stream response → if tool_calls, execute them → feed results back → repeat.
     """
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -398,29 +405,142 @@ async def stream_chat_completion_baseline(
         user_id, has_conversation_history=has_history
     )
 
-    # Convert session messages to OpenAI format
-    openai_messages: list[dict[str, str]] = [
+    # Build OpenAI message list from session history
+    openai_messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt}
     ]
     for msg in session.messages:
         if msg.role in ("user", "assistant") and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
+    tools = get_available_tools()
+
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     assistant_text = ""
     try:
-        stream = await client.chat.completions.create(
-            model=config.model,
-            messages=openai_messages,  # type: ignore[arg-type]
-            stream=True,
-        )
+        for _round in range(_MAX_TOOL_ROUNDS):
+            # Stream a response from the model
+            create_kwargs: dict[str, Any] = dict(
+                model=config.model,
+                messages=openai_messages,
+                stream=True,
+            )
+            if tools:
+                create_kwargs["tools"] = tools
+            response = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]
 
-        async for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta and delta.content:
-                assistant_text += delta.content
-                yield StreamTextDelta(id=message_id, delta=delta.content)
+            # Accumulate streamed response (text + tool calls)
+            round_text = ""
+            tool_calls_by_index: dict[int, dict[str, str]] = {}
+
+            async for chunk in response:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+
+                # Text content
+                if delta.content:
+                    round_text += delta.content
+                    yield StreamTextDelta(id=message_id, delta=delta.content)
+
+                # Tool call fragments (streamed incrementally)
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        entry = tool_calls_by_index[idx]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+
+            # Accumulate text for session persistence
+            assistant_text += round_text
+
+            # No tool calls → model is done
+            if not tool_calls_by_index:
+                break
+
+            # Append the assistant message with tool_calls to context
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
+            if round_text:
+                assistant_msg["content"] = round_text
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": tc["arguments"],
+                    },
+                }
+                for tc in tool_calls_by_index.values()
+            ]
+            openai_messages.append(assistant_msg)
+
+            # Execute each tool call and stream events
+            for tc in tool_calls_by_index.values():
+                tool_call_id = tc["id"]
+                tool_name = tc["name"]
+                try:
+                    tool_args = orjson.loads(tc["arguments"]) if tc["arguments"] else {}
+                except Exception:
+                    tool_args = {}
+
+                yield StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
+                yield StreamToolInputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    input=tool_args,
+                )
+
+                # Execute via shared tool registry
+                try:
+                    result: StreamToolOutputAvailable = await execute_tool(
+                        tool_name=tool_name,
+                        parameters=tool_args,
+                        user_id=user_id,
+                        session=session,
+                        tool_call_id=tool_call_id,
+                    )
+                    yield result
+                    tool_output = (
+                        result.output
+                        if isinstance(result.output, str)
+                        else str(result.output)
+                    )
+                except Exception as e:
+                    error_output = f"Tool execution error: {e}"
+                    logger.error(
+                        "[Baseline] Tool %s failed: %s",
+                        tool_name,
+                        error_output,
+                        exc_info=True,
+                    )
+                    yield StreamToolOutputAvailable(
+                        toolCallId=tool_call_id,
+                        toolName=tool_name,
+                        output=error_output,
+                        success=False,
+                    )
+                    tool_output = error_output
+
+                # Append tool result to context for next round
+                openai_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": tool_output,
+                    }
+                )
 
     except Exception as e:
         error_msg = str(e) or type(e).__name__
