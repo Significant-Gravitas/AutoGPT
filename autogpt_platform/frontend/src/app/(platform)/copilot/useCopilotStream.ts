@@ -31,7 +31,13 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
  * timing metadata (startedAt / durationMs) from `start` and `finish` events.
  * The response stream is passed through to the AI SDK completely unchanged.
  */
+/** Custom fields we add to SSE events that must be stripped before the AI SDK
+ *  sees them (the SDK uses strict Zod validation and rejects unknown keys). */
+const CUSTOM_SSE_KEYS = ["startedAt", "durationMs"];
+
 function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
+  const encoder = new TextEncoder();
+
   return function metadataFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -51,19 +57,24 @@ function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
             return;
           }
 
-          // Pass through to AI SDK unchanged
-          controller.enqueue(value);
-
-          // Parse for our custom timing fields
           buffer += decoder.decode(value, { stream: true });
           const events = buffer.split("\n\n");
           buffer = events.pop() ?? "";
 
+          // Rebuild output: strip custom keys from events, pass the rest through
+          let output = "";
           for (const event of events) {
             const dataMatch = event.match(/^data:\s*(.+)/s);
-            if (!dataMatch) continue;
+            if (!dataMatch) {
+              output += event + "\n\n";
+              continue;
+            }
+
+            let cleaned = event;
             try {
               const parsed = JSON.parse(dataMatch[1]);
+
+              // Extract metadata before stripping
               if (parsed.type === "start" && parsed.startedAt) {
                 metadataRef.current.set(parsed.messageId, {
                   messageId: parsed.messageId,
@@ -75,7 +86,6 @@ function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
                 parsed.type === "finish" &&
                 (parsed.durationMs != null || parsed.startedAt != null)
               ) {
-                // Update the most recent entry that has no duration yet
                 for (const [, meta] of metadataRef.current) {
                   if (meta.durationMs === null) {
                     if (parsed.durationMs != null)
@@ -86,9 +96,29 @@ function createMetadataFetch(metadataRef: { current: TurnMetadataMap }) {
                   }
                 }
               }
+
+              // Strip custom keys so the AI SDK doesn't reject them
+              let needsRewrite = false;
+              for (const key of CUSTOM_SSE_KEYS) {
+                if (key in parsed) {
+                  needsRewrite = true;
+                  delete parsed[key];
+                }
+              }
+              if (needsRewrite) {
+                cleaned = `data: ${JSON.stringify(parsed)}`;
+              }
             } catch {
-              // Not valid JSON — ignore
+              // Not valid JSON — pass through as-is
             }
+
+            output += cleaned + "\n\n";
+          }
+
+          // Forward complete (cleaned) events to the AI SDK.
+          // The incomplete tail stays in `buffer` for the next pull.
+          if (output) {
+            controller.enqueue(encoder.encode(output));
           }
         },
       });
