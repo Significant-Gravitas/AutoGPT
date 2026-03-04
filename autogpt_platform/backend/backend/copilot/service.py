@@ -365,6 +365,14 @@ async def stream_chat_completion(
         },
     )
 
+    if file_ids:
+        logger.warning(
+            "file_ids=%s passed to non-SDK stream_chat_completion; "
+            "file attachments are only supported in the SDK path",
+            [fid[:12] for fid in file_ids],
+            extra={"json_fields": log_meta},
+        )
+
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
         fetch_start = time.monotonic()

@@ -573,8 +573,8 @@ async def stream_chat_completion_sdk(
 
     Args:
         file_ids: Optional workspace file IDs attached to the user's message.
-            When provided, files are fetched, base64-encoded, and attached as
-            multimodal content blocks (images, PDFs, etc.) to the query.
+            When provided, a hint is appended to the user message so Claude
+            can fetch each file via the ``read_workspace_file`` tool.
     """
 
     if session is None:

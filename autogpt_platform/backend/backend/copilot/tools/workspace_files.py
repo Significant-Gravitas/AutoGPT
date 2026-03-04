@@ -539,8 +539,12 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
-            is_text = _is_text_mime(file_info.mime_type)
-            is_inlineable = file_info.mime_type in _INLINEABLE_MIME_TYPES
+            # Normalise MIME type: strip parameters (e.g. "text/html; charset=utf-8"
+            # → "text/html") so exact matches against _INLINEABLE_MIME_TYPES work.
+            mime = (file_info.mime_type or "").split(";", 1)[0].strip().lower()
+
+            is_text = _is_text_mime(mime)
+            is_inlineable = mime in _INLINEABLE_MIME_TYPES
             size_limit = (
                 self.MAX_INLINE_MULTIMODAL_SIZE_BYTES
                 if is_inlineable

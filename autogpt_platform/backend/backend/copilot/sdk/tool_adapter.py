@@ -264,11 +264,15 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
-    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
-
     # If the tool result contains inline multimodal data, add a content block
     # so Claude can "see" images or read documents (e.g. read_workspace_file).
+    # When successful, strip the (potentially huge) base64 from the text block
+    # to avoid duplicating the payload — the multimodal block carries it.
     content_block = _extract_content_block(text)
+    if content_block:
+        text = _strip_base64_from_text(text)
+
+    content_blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
     if content_block:
         content_blocks.append(content_block)
 
@@ -333,8 +337,10 @@ def _extract_content_block(text: str) -> dict[str, Any] | None:
     if not isinstance(data, dict):
         return None
 
-    mime_type: str = data.get("mime_type", "")
-    base64_content: str = data.get("content_base64", "")
+    mime_type = data.get("mime_type", "")
+    base64_content = data.get("content_base64", "")
+    if not isinstance(mime_type, str) or not isinstance(base64_content, str):
+        return None
     if not mime_type or not base64_content:
         return None
 
@@ -351,6 +357,23 @@ def _extract_content_block(text: str) -> dict[str, Any] | None:
         return None
 
     return builder(mime_type, base64_content)
+
+
+def _strip_base64_from_text(text: str) -> str:
+    """Replace ``content_base64`` in a JSON string with a short placeholder.
+
+    Called when a multimodal content block has already been created from the
+    base64 data, so the text block only needs the metadata (file name, MIME
+    type, etc.) for Claude to reference.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    if isinstance(data, dict) and "content_base64" in data:
+        data["content_base64"] = "(see attached content block)"
+        return json.dumps(data)
+    return text
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -490,7 +513,34 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
             result = await fn(args)
-            truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Separate non-text content blocks (images, documents) before
+            # truncation — truncate() recursively shortens ALL strings,
+            # which would corrupt base64 data in multimodal blocks.
+            content = result.get("content", [])
+            non_text_blocks: list[dict[str, Any]] = []
+            text_only_content: list[dict[str, Any]] = []
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") != "text":
+                        non_text_blocks.append(block)
+                    else:
+                        text_only_content.append(block)
+            else:
+                text_only_content = content  # type: ignore[assignment]
+
+            # Truncate only the text portion of the result.
+            truncated = truncate(
+                {**result, "content": text_only_content}, _MCP_MAX_CHARS
+            )
+
+            # Re-attach non-text blocks (images, documents) intact.
+            if non_text_blocks:
+                truncated_content = truncated.get("content", [])
+                if isinstance(truncated_content, list):
+                    truncated["content"] = truncated_content + non_text_blocks
+                else:
+                    truncated["content"] = non_text_blocks
 
             # Stash the text so the response adapter can forward our
             # middle-out truncated version to the frontend instead of the
