@@ -334,11 +334,15 @@ def _build_sdk_env(
         # The ``x-session-id`` header is *required* for the Anthropic-native
         # ``/messages`` endpoint — without it broadcast silently drops the
         # trace even when org-level Langfuse integration is configured.
+        def _safe(value: str) -> str:
+            """Strip CR/LF to prevent header injection, then truncate."""
+            return value.replace("\r", "").replace("\n", "").strip()[:128]
+
         headers: list[str] = []
         if session_id:
-            headers.append(f"x-session-id: {session_id[:128]}")
+            headers.append(f"x-session-id: {_safe(session_id)}")
         if user_id:
-            headers.append(f"x-user-id: {user_id[:128]}")
+            headers.append(f"x-user-id: {_safe(user_id)}")
         if headers:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
     return env
