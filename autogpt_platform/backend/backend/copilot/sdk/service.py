@@ -297,12 +297,20 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-def _build_sdk_env() -> dict[str, str]:
+def _build_sdk_env(
+    session_id: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, str]:
     """Build env vars for the SDK CLI process.
 
     Routes API calls through OpenRouter (or a custom base_url) using
     the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
     This gives per-call token and cost tracking on the OpenRouter dashboard.
+
+    When *session_id* is provided, an ``x-session-id`` custom header is
+    injected via ``ANTHROPIC_CUSTOM_HEADERS`` so that OpenRouter Broadcast
+    forwards traces (including cost/usage) to Langfuse for the
+    ``/api/v1/messages`` endpoint.
 
     Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
     token are both present — otherwise returns an empty dict so the SDK
@@ -321,6 +329,18 @@ def _build_sdk_env() -> dict[str, str]:
         env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
         # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
         env["ANTHROPIC_API_KEY"] = ""
+
+        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        # The ``x-session-id`` header is *required* for the Anthropic-native
+        # ``/messages`` endpoint — without it broadcast silently drops the
+        # trace even when org-level Langfuse integration is configured.
+        headers: list[str] = []
+        if session_id:
+            headers.append(f"x-session-id: {session_id[:128]}")
+        if user_id:
+            headers.append(f"x-user-id: {user_id[:128]}")
+        if headers:
+            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
     return env
 
 
@@ -706,7 +726,7 @@ async def stream_chat_completion_sdk(
         set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
         try:
             # Fail fast when no API credentials are available at all
-            sdk_env = _build_sdk_env()
+            sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
             if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
                 raise RuntimeError(
                     "No API key configured. Set OPEN_ROUTER_API_KEY "
