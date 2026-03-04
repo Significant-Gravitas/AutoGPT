@@ -120,6 +120,7 @@ export function ChatSidebar() {
     title: string | null | undefined,
   ) {
     e.stopPropagation();
+    renameCancelledRef.current = false;
     setEditingSessionId(id);
     setEditingTitle(title || "");
   }

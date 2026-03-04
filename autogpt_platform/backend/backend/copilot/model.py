@@ -724,6 +724,40 @@ async def update_session_title(session_id: str, title: str) -> bool:
         return False
 
 
+async def update_session_title_if_empty(session_id: str, title: str) -> bool:
+    """Write auto-generated title only when no title has been set yet.
+
+    Uses an atomic DB-level UPDATE WHERE title IS NULL, eliminating the race
+    window that exists in a read-check-then-write pattern.
+
+    Returns True if the title was written, False if it was already set.
+    """
+    try:
+        updated = await chat_db().update_chat_session_title_if_empty(
+            session_id, title
+        )
+        if not updated:
+            return False
+
+        # Only update cache when the DB write actually happened
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.title = title
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache title update failed for session {session_id} (non-critical): {e}"
+            )
+
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to conditionally update title for session {session_id}: {e}"
+        )
+        return False
+
+
 # ==================== Chat session locks ==================== #
 
 _session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
