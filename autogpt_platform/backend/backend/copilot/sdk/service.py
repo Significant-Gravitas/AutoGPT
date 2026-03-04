@@ -30,6 +30,7 @@ from backend.util.prompt import compress_context
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
+from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -55,6 +56,7 @@ from ..service import (
 from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -145,15 +147,9 @@ class CapturedTranscript:
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
-# Special message prefixes for text-based markers (parsed by frontend).
-# The hex suffix makes accidental LLM generation of these strings virtually
-# impossible, avoiding false-positive marker detection in normal conversation.
-COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]"  # Renders as ErrorCard
-COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]"  # Renders as system info message
-
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
-_HEARTBEAT_INTERVAL = 3.0  # seconds
+_HEARTBEAT_INTERVAL = 10.0  # seconds
 
 
 # Appended to the system prompt to inform the agent about available tools.
@@ -370,21 +366,20 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         pass
 
 
-async def _compress_conversation_history(
-    session: ChatSession,
-) -> list[ChatMessage]:
-    """Compress prior conversation messages if they exceed the token threshold.
+async def _compress_messages(
+    messages: list[ChatMessage],
+) -> tuple[list[ChatMessage], bool]:
+    """Compress a list of messages if they exceed the token threshold.
 
     Uses the shared compress_context() from prompt.py which supports:
     - LLM summarization of old messages (keeps recent ones intact)
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
-
-    Returns the compressed prior messages (everything except the current message).
     """
-    messages = session.messages[:-1]
+    messages = filter_compaction_messages(messages)
+
     if len(messages) < 2:
-        return messages
+        return messages, False
 
     # Convert ChatMessages to dicts for compress_context
     messages_dict = []
@@ -432,9 +427,9 @@ async def _compress_conversation_history(
                 tool_call_id=m.get("tool_call_id"),
             )
             for m in result.messages
-        ]
+        ], True
 
-    return messages
+    return messages, False
 
 
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
@@ -448,6 +443,9 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """
     if not messages:
         return None
+
+    # Filter out compaction messages first, then format
+    messages = filter_compaction_messages(messages)
 
     lines: list[str] = []
     for msg in messages:
@@ -504,36 +502,46 @@ async def _build_query_message(
     use_resume: bool,
     transcript_msg_count: int,
     session_id: str,
-) -> str:
+) -> tuple[str, bool]:
     """Build the query message with appropriate context.
 
-    With --resume the CLI already has full context, so only the new message
-    is needed.  Without resume, compress history into a context prefix.
-    Hybrid mode: if the transcript is stale, compress only the gap.
+    Returns:
+        Tuple of (query_message, was_compacted).
     """
     msg_count = len(session.messages)
 
     if use_resume and transcript_msg_count > 0:
         if transcript_msg_count < msg_count - 1:
             gap = session.messages[transcript_msg_count:-1]
-            gap_context = _format_conversation_context(gap)
+            compressed, was_compressed = await _compress_messages(gap)
+            gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
-                    f"[SDK] Transcript stale: covers {transcript_msg_count} "
-                    f"of {msg_count} messages, compressing {len(gap)} missed"
+                    "[SDK] Transcript stale: covers %d of %d messages, "
+                    "gap=%d (compressed=%s)",
+                    transcript_msg_count,
+                    msg_count,
+                    len(gap),
+                    was_compressed,
                 )
-                return f"{gap_context}\n\nNow, the user says:\n{current_message}"
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    was_compressed,
+                )
     elif not use_resume and msg_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
             f"{session_id} ({msg_count} messages) — no transcript for --resume"
         )
-        compressed = await _compress_conversation_history(session)
+        compressed, was_compressed = await _compress_messages(session.messages[:-1])
         history_context = _format_conversation_context(compressed)
         if history_context:
-            return f"{history_context}\n\nNow, the user says:\n{current_message}"
+            return (
+                f"{history_context}\n\nNow, the user says:\n{current_message}",
+                was_compressed,
+            )
 
-    return current_message
+    return current_message, False
 
 
 async def stream_chat_completion_sdk(
@@ -729,11 +737,15 @@ async def stream_chat_completion_sdk(
                         f"{transcript_path}"
                     )
 
+            # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
+            compaction = CompactionTracker()
+
             security_hooks = create_security_hooks(
                 user_id,
                 sdk_cwd=sdk_cwd,
                 max_subtasks=config.claude_agent_max_subtasks,
                 on_stop=_on_stop if config.claude_agent_use_resume else None,
+                on_compact=compaction.on_compact,
             )
 
             # --- Resume strategy: download transcript from bucket ---
@@ -815,7 +827,7 @@ async def stream_chat_completion_sdk(
                     )
                     return
 
-                query_message = await _build_query_message(
+                query_message, was_compacted = await _build_query_message(
                     current_message,
                     session,
                     use_resume,
@@ -829,6 +841,11 @@ async def stream_chat_completion_sdk(
                     len(session.messages),
                     len(query_message),
                 )
+
+                compaction.reset_for_query()
+                if was_compacted:
+                    for ev in compaction.emit_pre_query(session):
+                        yield ev
                 await client.query(query_message, session_id=session_id)
 
                 assistant_response = ChatMessage(role="assistant", content="")
@@ -860,9 +877,9 @@ async def stream_chat_completion_sdk(
                         )
 
                         if not done:
-                            # Timeout — emit heartbeat but keep the task alive
-                            # Also refresh lock TTL to keep it alive
                             await lock.refresh()
+                            for ev in compaction.emit_start_if_ready():
+                                yield ev
                             yield StreamHeartbeat()
                             continue
 
@@ -957,6 +974,10 @@ async def stream_chat_completion_sdk(
                                     session_id[:12],
                                     sdk_msg.result or "(no error message provided)",
                                 )
+
+                        # Emit compaction end if SDK finished compacting
+                        for ev in await compaction.emit_end_if_ready(session):
+                            yield ev
 
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):

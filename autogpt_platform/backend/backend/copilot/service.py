@@ -33,6 +33,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
+from .constants import COMPACTION_TOOL_NAME
 from .model import (
     ChatMessage,
     ChatSession,
@@ -545,6 +546,31 @@ async def stream_chat_completion(
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
+            # Pass through out-of-band events (e.g. compaction notices)
+            # without contaminating the primary text stream state.
+            if isinstance(chunk, (StreamStartStep, StreamFinishStep)):
+                yield chunk
+                continue
+            if (
+                isinstance(
+                    chunk,
+                    (
+                        StreamToolInputStart,
+                        StreamToolInputAvailable,
+                        StreamToolOutputAvailable,
+                    ),
+                )
+                and getattr(chunk, "toolName", None) == COMPACTION_TOOL_NAME
+            ):
+                yield chunk
+                continue
+            if (
+                isinstance(chunk, (StreamTextStart, StreamTextDelta, StreamTextEnd))
+                and getattr(chunk, "id", None) != text_block_id
+            ):
+                yield chunk
+                continue
+
             if isinstance(chunk, StreamTextStart):
                 # Emit text-start before first text delta
                 if not has_received_text:
@@ -994,6 +1020,10 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
+        from .sdk.compaction import emit_compaction
+
+        for ev in emit_compaction(session):
+            yield ev
 
     # Loop to handle tool calls and continue conversation
     while True:
