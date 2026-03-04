@@ -17,9 +17,19 @@ import {
 
 interface Props {
   output: SetupRequirementsResponse;
+  /** Override the message sent to the chat when the user clicks Proceed after connecting credentials.
+   * Defaults to "Please re-run the block now." */
+  retryInstruction?: string;
+  /** Override the label shown above the credentials section.
+   * Defaults to "Block credentials". */
+  credentialsLabel?: string;
 }
 
-export function SetupRequirementsCard({ output }: Props) {
+export function SetupRequirementsCard({
+  output,
+  retryInstruction,
+  credentialsLabel,
+}: Props) {
   const { onSend } = useCopilotChatActions();
 
   const [inputCredentials, setInputCredentials] = useState<
@@ -81,7 +91,7 @@ export function SetupRequirementsCard({ output }: Props) {
         `Run the block with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
       );
     } else {
-      parts.push("Please re-run the block now.");
+      parts.push(retryInstruction ?? "Please re-run the block now.");
     }
 
     onSend(parts.join(" "));
@@ -95,7 +105,7 @@ export function SetupRequirementsCard({ output }: Props) {
       {needsCredentials && (
         <div className="rounded-2xl border bg-background p-3">
           <Text variant="small" className="w-fit border-b text-zinc-500">
-            Block credentials
+            {credentialsLabel ?? "Block credentials"}
           </Text>
           <div className="mt-6">
             <CredentialsGroupedView
