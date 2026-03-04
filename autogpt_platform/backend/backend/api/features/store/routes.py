@@ -11,6 +11,7 @@ import prisma.enums
 
 import backend.data.graph
 import backend.util.json
+from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
@@ -35,21 +36,14 @@ router = fastapi.APIRouter()
     summary="Get user profile",
     tags=["store", "private"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
-    response_model=store_model.ProfileDetails,
 )
 async def get_profile(
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
-):
-    """
-    Get the profile details for the authenticated user.
-    Cached for 1 hour per user.
-    """
+) -> store_model.ProfileDetails:
+    """Get the profile details for the authenticated user."""
     profile = await store_db.get_user_profile(user_id)
     if profile is None:
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Profile not found"},
-        )
+        raise NotFoundError("User does not have a profile yet")
     return profile
 
 
@@ -58,12 +52,11 @@ async def get_profile(
     summary="Update user profile",
     tags=["store", "private"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
-    response_model=store_model.CreatorDetails,
 )
 async def update_or_create_profile(
     profile: store_model.Profile,
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
-):
+) -> store_model.ProfileDetails:
     """
     Update the store profile for the authenticated user.
 
@@ -72,7 +65,7 @@ async def update_or_create_profile(
         user_id (str): ID of the authenticated user
 
     Returns:
-        CreatorDetails: The updated profile
+        ProfileDetails: The updated profile
 
     Raises:
         HTTPException: If there is an error updating the profile
@@ -530,8 +523,8 @@ async def create_submission(
     """
     result = await store_db.create_store_submission(
         user_id=user_id,
-        agent_id=submission_request.agent_id,
-        agent_version=submission_request.agent_version,
+        graph_id=submission_request.graph_id,
+        graph_version=submission_request.graph_version,
         slug=submission_request.slug,
         name=submission_request.name,
         video_url=submission_request.video_url,

@@ -5590,7 +5590,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreListingsWithVersionsResponse"
+                  "$ref": "#/components/schemas/StoreListingsWithVersionsAdminViewResponse"
                 }
               }
             }
@@ -5678,7 +5678,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+                "schema": {
+                  "$ref": "#/components/schemas/StoreSubmissionAdminView"
+                }
               }
             }
           },
@@ -6183,7 +6185,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
+        "description": "Get the profile details for the authenticated user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -6203,7 +6205,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
-        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    ProfileDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
         "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
@@ -6218,7 +6220,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorDetails" }
+                "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
           },
@@ -8078,43 +8080,24 @@
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
       },
-      "Creator": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "num_agents": { "type": "integer", "title": "Num Agents" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
-          "agent_runs": { "type": "integer", "title": "Agent Runs" },
-          "is_featured": { "type": "boolean", "title": "Is Featured" }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "username",
-          "description",
-          "avatar_url",
-          "num_agents",
-          "agent_rating",
-          "agent_runs",
-          "is_featured"
-        ],
-        "title": "Creator"
-      },
       "CreatorDetails": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
           "links": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Links"
           },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
+          "is_featured": { "type": "boolean", "title": "Is Featured" },
+          "num_agents": { "type": "integer", "title": "Num Agents" },
           "agent_runs": { "type": "integer", "title": "Agent Runs" },
+          "agent_rating": { "type": "number", "title": "Agent Rating" },
           "top_categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -8123,21 +8106,24 @@
         },
         "type": "object",
         "required": [
-          "name",
           "username",
+          "name",
           "description",
-          "links",
           "avatar_url",
-          "agent_rating",
+          "links",
+          "is_featured",
+          "num_agents",
           "agent_runs",
+          "agent_rating",
           "top_categories"
         ],
-        "title": "CreatorDetails"
+        "title": "CreatorDetails",
+        "description": "Marketplace creator profile details, including aggregated stats"
       },
       "CreatorsResponse": {
         "properties": {
           "creators": {
-            "items": { "$ref": "#/components/schemas/Creator" },
+            "items": { "$ref": "#/components/schemas/CreatorDetails" },
             "type": "array",
             "title": "Creators"
           },
@@ -11173,43 +11159,51 @@
       },
       "Profile": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "is_featured": {
-            "type": "boolean",
-            "title": "Is Featured",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["name", "username", "description", "links", "avatar_url"],
-        "title": "Profile"
-      },
-      "ProfileDetails": {
-        "properties": {
           "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
           "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
-        "required": ["name", "username", "description", "links"],
-        "title": "ProfileDetails"
+        "required": ["username", "name", "description", "avatar_url", "links"],
+        "title": "Profile",
+        "description": "Marketplace user profile (only attributes that the user can update)"
+      },
+      "ProfileDetails": {
+        "properties": {
+          "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
+          },
+          "is_featured": { "type": "boolean", "title": "Is Featured" }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "name",
+          "description",
+          "avatar_url",
+          "links",
+          "is_featured"
+        ],
+        "title": "ProfileDetails",
+        "description": "Marketplace user profile (including read-only fields)"
       },
       "Provider": {
         "properties": {
@@ -11885,12 +11879,12 @@
             "type": "array",
             "title": "Versions"
           },
-          "agentGraphVersions": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_versions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Agentgraphversions"
+            "title": "Graph Versions"
           },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -11901,13 +11895,12 @@
             "title": "Recommended Schedule Cron"
           },
           "active_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Active Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
-            "title": "Has Approved Version",
-            "default": false
+            "title": "Has Approved Version"
           },
           "changelog": {
             "anyOf": [
@@ -11936,9 +11929,11 @@
           "runs",
           "rating",
           "versions",
-          "agentGraphVersions",
-          "agentGraphId",
-          "last_updated"
+          "graph_id",
+          "graph_versions",
+          "last_updated",
+          "active_version_id",
+          "has_approved_version"
         ],
         "title": "StoreAgentDetails"
       },
@@ -11955,15 +11950,14 @@
         "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
       },
-      "StoreListingWithVersions": {
+      "StoreListingWithVersionsAdminView": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
-          "active_version_id": {
+          "active_listing_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Active Version Id"
+            "title": "Active Listing Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
@@ -11976,27 +11970,29 @@
           },
           "latest_version": {
             "anyOf": [
-              { "$ref": "#/components/schemas/StoreSubmission" },
+              { "$ref": "#/components/schemas/StoreSubmissionAdminView" },
               { "type": "null" }
             ]
           },
           "versions": {
-            "items": { "$ref": "#/components/schemas/StoreSubmission" },
+            "items": {
+              "$ref": "#/components/schemas/StoreSubmissionAdminView"
+            },
             "type": "array",
             "title": "Versions",
             "default": []
           }
         },
         "type": "object",
-        "required": ["listing_id", "slug", "agent_id", "agent_version"],
-        "title": "StoreListingWithVersions",
+        "required": ["listing_id", "graph_id", "slug"],
+        "title": "StoreListingWithVersionsAdminView",
         "description": "A store listing with its version history"
       },
-      "StoreListingsWithVersionsResponse": {
+      "StoreListingsWithVersionsAdminViewResponse": {
         "properties": {
           "listings": {
             "items": {
-              "$ref": "#/components/schemas/StoreListingWithVersions"
+              "$ref": "#/components/schemas/StoreListingWithVersionsAdminView"
             },
             "type": "array",
             "title": "Listings"
@@ -12005,7 +12001,7 @@
         },
         "type": "object",
         "required": ["listings", "pagination"],
-        "title": "StoreListingsWithVersionsResponse",
+        "title": "StoreListingsWithVersionsAdminViewResponse",
         "description": "Response model for listings with version history"
       },
       "StoreReview": {
@@ -12039,59 +12035,31 @@
       "StoreSubmission": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
-          "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Instructions"
           },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Image Urls"
-          },
-          "date_submitted": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Date Submitted"
-          },
-          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
-          "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id"
-          },
-          "version": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Version"
-          },
-          "reviewer_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewer Id"
-          },
-          "review_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Review Comments"
-          },
-          "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Internal Comments"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed At"
-          },
-          "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Changes Summary"
           },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -12101,29 +12069,179 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agent Output Demo Url"
           },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories",
-            "default": []
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
           }
         },
         "type": "object",
         "required": [
           "listing_id",
-          "agent_id",
-          "agent_version",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
           "name",
           "sub_heading",
-          "slug",
           "description",
+          "instructions",
+          "categories",
           "image_urls",
-          "date_submitted",
-          "status",
-          "runs",
-          "rating"
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionAdminView": {
+        "properties": {
+          "listing_id": { "type": "string", "title": "Listing Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
+          },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "listing_id",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
+          "name",
+          "sub_heading",
+          "description",
+          "instructions",
+          "categories",
+          "image_urls",
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status",
+          "internal_comments"
+        ],
+        "title": "StoreSubmissionAdminView"
       },
       "StoreSubmissionEditRequest": {
         "properties": {
@@ -12173,16 +12291,16 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": {
+          "graph_id": {
             "type": "string",
             "minLength": 1,
-            "title": "Agent Id",
+            "title": "Graph Id",
             "description": "Agent ID cannot be empty"
           },
-          "agent_version": {
+          "graph_version": {
             "type": "integer",
             "exclusiveMinimum": 0.0,
-            "title": "Agent Version",
+            "title": "Graph Version",
             "description": "Agent version must be greater than 0"
           },
           "slug": { "type": "string", "title": "Slug" },
@@ -12228,8 +12346,8 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "slug",
           "name",
           "sub_heading"

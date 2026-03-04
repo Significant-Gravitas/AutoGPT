@@ -8,7 +8,6 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.api.features.store.exceptions as store_exceptions
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
@@ -251,7 +250,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         The requested LibraryAgent.
 
     Raises:
-        AgentNotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent does not exist.
         DatabaseError: If there's an error during retrieval.
     """
     library_agent = await prisma.models.LibraryAgent.prisma().find_first(
@@ -414,7 +413,7 @@ async def create_library_agent(
         If the graph has sub-graphs, the parent graph will always be the first entry in the list.
 
     Raises:
-        AgentNotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent does not exist.
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
@@ -817,7 +816,7 @@ async def add_store_agent_to_library(
         The newly created LibraryAgent if successfully added, the existing corresponding one if any.
 
     Raises:
-        AgentNotFoundError: If the store listing or associated agent is not found.
+        NotFoundError: If the store listing or associated agent is not found.
         DatabaseError: If there's an issue creating the LibraryAgent record.
     """
     logger.debug(
@@ -832,7 +831,7 @@ async def add_store_agent_to_library(
     )
     if not store_listing_version or not store_listing_version.AgentGraph:
         logger.warning(f"Store listing version not found: {store_listing_version_id}")
-        raise store_exceptions.AgentNotFoundError(
+        raise NotFoundError(
             f"Store listing version {store_listing_version_id} not found or invalid"
         )
 
@@ -846,7 +845,7 @@ async def add_store_agent_to_library(
         include_subgraphs=False,
     )
     if not graph_model:
-        raise store_exceptions.AgentNotFoundError(
+        raise NotFoundError(
             f"Graph #{graph.id} v{graph.version} not found or accessible"
         )
 

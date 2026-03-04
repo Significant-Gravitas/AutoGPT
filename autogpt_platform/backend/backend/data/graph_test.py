@@ -250,8 +250,8 @@ async def test_clean_graph(server: SpinTestServer):
                     "_test_id": "node_with_secrets",
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
-                    "api_key": "secret_api_key_123",  # Should be filtered
-                    "password": "secret_password_456",  # Should be filtered
+                    "api_key": "secret_api_key_123",  # Should be filtered # pragma: allowlist secret # noqa
+                    "password": "secret_password_456",  # Should be filtered # pragma: allowlist secret # noqa
                     "token": "secret_token_789",  # Should be filtered
                     "credentials": {  # Should be filtered
                         "id": "fake-github-credentials-id",
@@ -355,8 +355,8 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     )
 
     store_submission_request = store.StoreSubmissionRequest(
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=created_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
@@ -385,8 +385,8 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         assert False, "Failed to create store listing"
 
     slv_id = (
-        store_listing.store_listing_version_id
-        if store_listing.store_listing_version_id is not None
+        store_listing.listing_version_id
+        if store_listing.listing_version_id is not None
         else None
     )
 

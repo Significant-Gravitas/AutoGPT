@@ -498,8 +498,8 @@ async def test_store_listing_graph(server: SpinTestServer):
     test_graph = await create_graph(server, create_test_graph(), test_user)
 
     store_submission_request = backend.api.features.store.model.StoreSubmissionRequest(
-        agent_id=test_graph.id,
-        agent_version=test_graph.version,
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
         slug=test_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
@@ -517,8 +517,8 @@ async def test_store_listing_graph(server: SpinTestServer):
         assert False, "Failed to create store listing"
 
     slv_id = (
-        store_listing.store_listing_version_id
-        if store_listing.store_listing_version_id is not None
+        store_listing.listing_version_id
+        if store_listing.listing_version_id is not None
         else None
     )
 

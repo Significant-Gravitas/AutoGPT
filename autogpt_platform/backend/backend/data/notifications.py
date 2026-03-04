@@ -177,8 +177,8 @@ class RefundRequestData(BaseNotificationData):
 
 class AgentApprovalData(BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str
@@ -195,8 +195,8 @@ class AgentApprovalData(BaseNotificationData):
 
 class AgentRejectionData(BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str

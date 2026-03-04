@@ -129,11 +129,11 @@ export function usePublishAgentModal({
     const publishedSubmissionData = submissionsData.submissions
       ?.filter(
         (s: StoreSubmission) =>
-          s.status === "APPROVED" && s.agent_id === preSelectedAgentId,
+          s.status === "APPROVED" && s.graph_id === preSelectedAgentId,
       )
       .sort(
         (a: StoreSubmission, b: StoreSubmission) =>
-          b.agent_version - a.agent_version,
+          b.graph_version - a.graph_version,
       )[0];
 
     // Populate initial data (same logic as handleNextFromSelect)
