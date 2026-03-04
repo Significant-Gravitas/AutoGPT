@@ -9,6 +9,7 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _extract_content_block,
+    _split_content_blocks,
     _strip_base64_from_text,
     _text_from_mcp_result,
     pop_pending_tool_output,
@@ -302,15 +303,7 @@ class TestStripBase64FromText:
 
 def _simulate_truncating(result: dict) -> dict:
     """Simulate the _truncating wrapper logic for multimodal-safe truncation."""
-    content = result.get("content", [])
-    non_text_blocks: list[dict] = []
-    text_only_content: list[dict] = []
-    if isinstance(content, list):
-        for block in content:
-            if isinstance(block, dict) and block.get("type") != "text":
-                non_text_blocks.append(block)
-            else:
-                text_only_content.append(block)
+    text_only_content, non_text_blocks = _split_content_blocks(result)
 
     truncated = truncate({**result, "content": text_only_content}, _MCP_MAX_CHARS)
 

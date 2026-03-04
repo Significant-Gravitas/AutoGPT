@@ -483,18 +483,42 @@ _READ_TOOL_SCHEMA = {
 }
 
 
-# Create the MCP server configuration
+# ---------------------------------------------------------------------------
+# MCP result helpers
+# ---------------------------------------------------------------------------
+
+
+def _split_content_blocks(
+    result: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split an MCP result's content into text blocks and non-text blocks.
+
+    Returns ``(text_blocks, non_text_blocks)`` so callers can truncate only
+    the text portion without corrupting binary data (base64 images/documents).
+    """
+    content = result.get("content", [])
+    text_blocks: list[dict[str, Any]] = []
+    non_text_blocks: list[dict[str, Any]] = []
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") != "text":
+                non_text_blocks.append(block)
+            else:
+                text_blocks.append(block)
+    else:
+        # Unexpected shape — treat the whole thing as text-like.
+        text_blocks = content  # type: ignore[assignment]
+    return text_blocks, non_text_blocks
+
+
 def _text_from_mcp_result(result: dict[str, Any]) -> str:
     """Extract concatenated text from an MCP response's content blocks."""
-    content = result.get("content", [])
-    if isinstance(content, list):
-        parts = [
-            b.get("text", "")
-            for b in content
-            if isinstance(b, dict) and b.get("type") == "text"
-        ]
-        return "".join(parts)
-    return ""
+    text_blocks, _ = _split_content_blocks(result)
+    return "".join(
+        b.get("text", "")
+        for b in text_blocks
+        if isinstance(b, dict) and b.get("type") == "text"
+    )
 
 
 def create_copilot_mcp_server(*, use_e2b: bool = False):
@@ -519,17 +543,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             # Separate non-text content blocks (images, documents) before
             # truncation — truncate() recursively shortens ALL strings,
             # which would corrupt base64 data in multimodal blocks.
-            content = result.get("content", [])
-            non_text_blocks: list[dict[str, Any]] = []
-            text_only_content: list[dict[str, Any]] = []
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") != "text":
-                        non_text_blocks.append(block)
-                    else:
-                        text_only_content.append(block)
-            else:
-                text_only_content = content  # type: ignore[assignment]
+            text_only_content, non_text_blocks = _split_content_blocks(result)
 
             # Truncate only the text portion of the result.
             truncated = truncate(
