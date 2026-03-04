@@ -337,9 +337,12 @@ async def _update_title_async(
     session_id: str, message: str, user_id: str | None
 ) -> None:
     """Generate and persist a session title in the background."""
-    title = await _generate_session_title(message, user_id, session_id)
-    if title:
-        await update_session_title(session_id, title)
+    try:
+        title = await _generate_session_title(message, user_id, session_id)
+        if title:
+            await update_session_title(session_id, title)
+    except Exception as e:
+        logger.warning("[Baseline] Failed to update session title: %s", e)
 
 
 async def stream_chat_completion_baseline(
@@ -490,10 +493,28 @@ async def stream_chat_completion_baseline(
             for tc in tool_calls_by_index.values():
                 tool_call_id = tc["id"]
                 tool_name = tc["name"]
+                raw_args = tc["arguments"] or "{}"
                 try:
-                    tool_args = orjson.loads(tc["arguments"]) if tc["arguments"] else {}
-                except Exception:
-                    tool_args = {}
+                    tool_args = orjson.loads(raw_args)
+                except orjson.JSONDecodeError as parse_err:
+                    parse_error = (
+                        f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
+                    )
+                    logger.warning("[Baseline] %s", parse_error)
+                    yield StreamToolOutputAvailable(
+                        toolCallId=tool_call_id,
+                        toolName=tool_name,
+                        output=parse_error,
+                        success=False,
+                    )
+                    openai_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": parse_error,
+                        }
+                    )
+                    continue
 
                 yield StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
                 yield StreamToolInputAvailable(
@@ -541,6 +562,17 @@ async def stream_chat_completion_baseline(
                         "content": tool_output,
                     }
                 )
+        else:
+            # for-loop exhausted without break → tool-round limit hit
+            limit_msg = (
+                f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
+                "without a final response."
+            )
+            logger.error("[Baseline] %s", limit_msg)
+            yield StreamError(
+                errorText=limit_msg,
+                code="baseline_tool_round_limit",
+            )
 
     except Exception as e:
         error_msg = str(e) or type(e).__name__

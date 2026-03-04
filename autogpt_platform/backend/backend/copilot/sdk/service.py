@@ -785,8 +785,9 @@ async def stream_chat_completion_sdk(
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
         }
-        if sdk_env:
+        if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+        if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
         if use_resume and resume_file:
             sdk_options_kwargs["resume"] = resume_file
@@ -847,6 +848,7 @@ async def stream_chat_completion_sdk(
             accumulated_tool_calls: list[dict[str, Any]] = []
             has_appended_assistant = False
             has_tool_results = False
+            ended_with_stream_error = False
 
             # Use an explicit async iterator with non-cancelling heartbeats.
             # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
@@ -899,6 +901,7 @@ async def stream_chat_completion_sdk(
                             stream_err,
                             exc_info=True,
                         )
+                        ended_with_stream_error = True
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
                             code="sdk_stream_error",
@@ -1117,7 +1120,7 @@ async def stream_chat_completion_sdk(
             # Close any open text/step so chunks are well-formed, and
             # append a cancellation message so users see feedback.
             # StreamFinish is published by mark_session_completed in the processor.
-            if not stream_completed:
+            if not stream_completed and not ended_with_stream_error:
                 logger.info(
                     "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
                     session_id[:12],
