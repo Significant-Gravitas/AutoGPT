@@ -1082,7 +1082,7 @@ async def stream_chat_completion_sdk(
                         await pending_task
                     except (asyncio.CancelledError, StopAsyncIteration):
                         # Expected: task was cancelled or exhausted during cleanup
-                        logger.debug(
+                        logger.info(
                             "[SDK] Pending __anext__ task completed during cleanup"
                         )
 
