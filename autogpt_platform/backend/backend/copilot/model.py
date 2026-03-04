@@ -743,9 +743,7 @@ async def update_session_title_if_empty(session_id: str, title: str) -> bool:
     Returns True if the title was written, False if it was already set.
     """
     try:
-        updated = await chat_db().update_chat_session_title_if_empty(
-            session_id, title
-        )
+        updated = await chat_db().update_chat_session_title_if_empty(session_id, title)
         if not updated:
             return False
 

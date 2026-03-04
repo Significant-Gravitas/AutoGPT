@@ -41,7 +41,6 @@ from .model import (
     Usage,
     cache_chat_session,
     get_chat_session,
-    update_session_title,
     update_session_title_if_empty,
     upsert_chat_session,
 )

@@ -81,9 +81,7 @@ async def update_chat_session(
     return ChatSession.from_db(session) if session else None
 
 
-async def update_chat_session_title_if_empty(
-    session_id: str, title: str
-) -> bool:
+async def update_chat_session_title_if_empty(session_id: str, title: str) -> bool:
     """Update title only when the current DB title is NULL (atomic guard).
 
     Uses UPDATE WHERE title IS NULL so no separate read is needed, eliminating
