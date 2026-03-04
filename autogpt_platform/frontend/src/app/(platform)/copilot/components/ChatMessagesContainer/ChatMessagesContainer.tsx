@@ -5,11 +5,15 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { ReasoningCollapse } from "./components/ReasoningCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+
+type MessagePart = UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -18,6 +22,133 @@ interface Props {
   isLoading: boolean;
   headerSlot?: React.ReactNode;
   sessionID?: string | null;
+}
+
+function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
+  return (
+    part.type.startsWith("tool-") &&
+    "state" in part &&
+    (part.state === "output-available" || part.state === "output-error")
+  );
+}
+
+type RenderSegment =
+  | { kind: "part"; part: MessagePart; index: number }
+  | { kind: "collapsed-group"; parts: ToolUIPart[] };
+
+// Tool types that have custom renderers and should NOT be collapsed
+const CUSTOM_TOOL_TYPES = new Set([
+  "tool-find_block",
+  "tool-find_agent",
+  "tool-find_library_agent",
+  "tool-search_docs",
+  "tool-get_doc_page",
+  "tool-run_block",
+  "tool-run_mcp_tool",
+  "tool-run_agent",
+  "tool-schedule_agent",
+  "tool-create_agent",
+  "tool-edit_agent",
+  "tool-view_agent_output",
+  "tool-search_feature_requests",
+  "tool-create_feature_request",
+]);
+
+/**
+ * Groups consecutive completed generic tool parts into collapsed segments.
+ * Non-generic tools (those with custom renderers) and active/streaming tools
+ * are left as individual parts.
+ */
+function buildRenderSegments(parts: MessagePart[]): RenderSegment[] {
+  const segments: RenderSegment[] = [];
+  let pendingGroup: ToolUIPart[] | null = null;
+
+  function flushGroup() {
+    if (!pendingGroup) return;
+    if (pendingGroup.length >= 2) {
+      segments.push({ kind: "collapsed-group", parts: pendingGroup });
+    } else {
+      for (const p of pendingGroup) {
+        const idx = parts.indexOf(p);
+        segments.push({ kind: "part", part: p, index: idx });
+      }
+    }
+    pendingGroup = null;
+  }
+
+  parts.forEach((part, i) => {
+    const isGenericCompletedTool =
+      isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
+
+    if (isGenericCompletedTool) {
+      if (!pendingGroup) pendingGroup = [];
+      pendingGroup.push(part as ToolUIPart);
+    } else {
+      flushGroup();
+      segments.push({ kind: "part", part, index: i });
+    }
+  });
+
+  flushGroup();
+  return segments;
+}
+
+/**
+ * For finalized assistant messages, split parts into "reasoning" (intermediate
+ * text + tools before the final response) and "response" (final text after the
+ * last tool). If there are no tools, everything is response.
+ */
+function splitReasoningAndResponse(parts: MessagePart[]): {
+  reasoning: MessagePart[];
+  response: MessagePart[];
+} {
+  // Find the index of the last tool part
+  let lastToolIndex = -1;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type.startsWith("tool-")) {
+      lastToolIndex = i;
+      break;
+    }
+  }
+
+  // No tools → everything is response
+  if (lastToolIndex === -1) {
+    return { reasoning: [], response: parts };
+  }
+
+  // Check if there's any text after the last tool
+  const hasResponseAfterTools = parts
+    .slice(lastToolIndex + 1)
+    .some((p) => p.type === "text");
+
+  if (!hasResponseAfterTools) {
+    // No final text response → don't collapse anything
+    return { reasoning: [], response: parts };
+  }
+
+  return {
+    reasoning: parts.slice(0, lastToolIndex + 1),
+    response: parts.slice(lastToolIndex + 1),
+  };
+}
+
+function renderSegments(
+  segments: RenderSegment[],
+  messageID: string,
+): React.ReactNode[] {
+  return segments.map((seg, segIdx) => {
+    if (seg.kind === "collapsed-group") {
+      return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    return (
+      <MessagePartRenderer
+        key={`${messageID}-${seg.index}`}
+        part={seg.part}
+        messageID={messageID}
+        partIndex={seg.index}
+      />
+    );
+  });
 }
 
 export function ChatMessagesContainer({
@@ -92,6 +223,21 @@ export function ChatMessagesContainer({
             (p): p is FileUIPart => p.type === "file",
           );
 
+          // For finalized assistant messages, split into reasoning + response.
+          // During streaming, show everything normally with tool collapsing.
+          const isFinalized =
+            message.role === "assistant" && !isCurrentlyStreaming;
+          const { reasoning, response } = isFinalized
+            ? splitReasoningAndResponse(message.parts)
+            : { reasoning: [] as MessagePart[], response: message.parts };
+          const hasReasoning = reasoning.length > 0;
+
+          const responseSegments =
+            message.role === "assistant" ? buildRenderSegments(response) : null;
+          const reasoningSegments = hasReasoning
+            ? buildRenderSegments(reasoning)
+            : null;
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -101,14 +247,21 @@ export function ChatMessagesContainer({
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
-                {message.parts.map((part, i) => (
-                  <MessagePartRenderer
-                    key={`${message.id}-${i}`}
-                    part={part}
-                    messageID={message.id}
-                    partIndex={i}
-                  />
-                ))}
+                {hasReasoning && reasoningSegments && (
+                  <ReasoningCollapse>
+                    {renderSegments(reasoningSegments, message.id)}
+                  </ReasoningCollapse>
+                )}
+                {responseSegments
+                  ? renderSegments(responseSegments, message.id)
+                  : message.parts.map((part, i) => (
+                      <MessagePartRenderer
+                        key={`${message.id}-${i}`}
+                        part={part}
+                        messageID={message.id}
+                        partIndex={i}
+                      />
+                    ))}
                 {isLastAssistant && showThinking && (
                   <ThinkingIndicator active={showThinking} />
                 )}
