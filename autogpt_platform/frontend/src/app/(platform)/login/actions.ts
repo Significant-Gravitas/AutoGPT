@@ -4,6 +4,7 @@ import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
+import { revalidatePath } from "next/cache";
 import { getOnboardingStatus } from "../../api/helpers";
 
 export async function login(email: string, password: string) {
@@ -39,6 +40,8 @@ export async function login(email: string, password: string) {
     // Get onboarding status from backend (includes chat flag evaluated for this user)
     const { shouldShowOnboarding } = await getOnboardingStatus();
     const next = shouldShowOnboarding ? "/onboarding" : "/";
+
+    revalidatePath(next, "layout");
 
     return {
       success: true,
