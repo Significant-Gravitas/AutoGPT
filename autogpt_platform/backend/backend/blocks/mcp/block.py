@@ -6,7 +6,6 @@ and execute them. Works like AgentExecutorBlock — the user selects a tool from
 dropdown and the input/output schema adapts dynamically.
 """
 
-import json
 import logging
 from typing import Any, Literal
 
@@ -20,6 +19,11 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.helpers import (
+    auto_lookup_mcp_credential,
+    normalize_mcp_url,
+    parse_mcp_content,
+)
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
@@ -179,31 +183,7 @@ class MCPToolBlock(Block):
                 f"{error_text or 'Unknown error'}"
             )
 
-        # Extract text content from the result
-        output_parts = []
-        for item in result.content:
-            if item.get("type") == "text":
-                text = item.get("text", "")
-                # Try to parse as JSON for structured output
-                try:
-                    output_parts.append(json.loads(text))
-                except (json.JSONDecodeError, ValueError):
-                    output_parts.append(text)
-            elif item.get("type") == "image":
-                output_parts.append(
-                    {
-                        "type": "image",
-                        "data": item.get("data"),
-                        "mimeType": item.get("mimeType"),
-                    }
-                )
-            elif item.get("type") == "resource":
-                output_parts.append(item.get("resource", {}))
-
-        # If single result, unwrap
-        if len(output_parts) == 1:
-            return output_parts[0]
-        return output_parts if output_parts else None
+        return parse_mcp_content(result.content)
 
     @staticmethod
     async def _auto_lookup_credential(
@@ -211,37 +191,10 @@ class MCPToolBlock(Block):
     ) -> "OAuth2Credentials | None":
         """Auto-lookup stored MCP credential for a server URL.
 
-        This is a fallback for nodes that don't have ``credentials`` explicitly
-        set (e.g. nodes created before the credential field was wired up).
+        Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
+        The caller should pass a normalized URL.
         """
-        from backend.integrations.creds_manager import IntegrationCredentialsManager
-        from backend.integrations.providers import ProviderName
-
-        try:
-            mgr = IntegrationCredentialsManager()
-            mcp_creds = await mgr.store.get_creds_by_provider(
-                user_id, ProviderName.MCP.value
-            )
-            best: OAuth2Credentials | None = None
-            for cred in mcp_creds:
-                if (
-                    isinstance(cred, OAuth2Credentials)
-                    and (cred.metadata or {}).get("mcp_server_url") == server_url
-                ):
-                    if best is None or (
-                        (cred.access_token_expires_at or 0)
-                        > (best.access_token_expires_at or 0)
-                    ):
-                        best = cred
-            if best:
-                best = await mgr.refresh_if_needed(user_id, best)
-                logger.info(
-                    "Auto-resolved MCP credential %s for %s", best.id, server_url
-                )
-            return best
-        except Exception:
-            logger.warning("Auto-lookup MCP credential failed", exc_info=True)
-            return None
+        return await auto_lookup_mcp_credential(user_id, server_url)
 
     async def run(
         self,
@@ -278,7 +231,7 @@ class MCPToolBlock(Block):
         # the stored MCP credential for this server URL.
         if credentials is None:
             credentials = await self._auto_lookup_credential(
-                user_id, input_data.server_url
+                user_id, normalize_mcp_url(input_data.server_url)
             )
 
         auth_token = (

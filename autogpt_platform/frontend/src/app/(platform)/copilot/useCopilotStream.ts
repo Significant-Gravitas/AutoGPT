@@ -8,7 +8,7 @@ import { environment } from "@/services/environment";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
-import type { UIMessage } from "ai";
+import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deduplicateMessages, resolveInProgressTools } from "./helpers";
 
@@ -51,6 +51,15 @@ export function useCopilotStream({
             api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
             prepareSendMessagesRequest: async ({ messages }) => {
               const last = messages[messages.length - 1];
+              // Extract file_ids from FileUIPart entries on the message
+              const fileIds = last.parts
+                ?.filter((p): p is FileUIPart => p.type === "file")
+                .map((p) => {
+                  // URL is like /api/proxy/api/workspace/files/{id}/download
+                  const match = p.url.match(/\/workspace\/files\/([^/]+)\//);
+                  return match?.[1];
+                })
+                .filter(Boolean) as string[] | undefined;
               return {
                 body: {
                   message: (
@@ -59,6 +68,7 @@ export function useCopilotStream({
                   ).join(""),
                   is_user_message: last.role === "user",
                   context: null,
+                  file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
                 },
                 headers: await getAuthHeaders(),
               };

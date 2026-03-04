@@ -986,7 +986,11 @@
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" }
+                    { "$ref": "#/components/schemas/DocPageResponse" },
+                    {
+                      "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
+                    },
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -2039,7 +2043,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                }
               }
             }
           },
@@ -4653,6 +4659,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/mcp/token": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Store a bearer token for an MCP server",
+        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "operationId": "postV2Store a bearer token for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPStoreTokenRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -6497,6 +6543,59 @@
         }
       }
     },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload file to workspace",
+        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
+        "operationId": "postWorkspaceUpload file to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/{file_id}/download": {
       "get": {
         "tags": ["workspace"],
@@ -6529,6 +6628,30 @@
             }
           }
         }
+      }
+    },
+    "/api/workspace/storage/usage": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Get workspace storage usage",
+        "description": "Get storage usage information for the user's workspace.",
+        "operationId": "getWorkspaceGet workspace storage usage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/health": {
@@ -7767,6 +7890,14 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
+      },
+      "Body_postWorkspaceUpload_file_to_workspace": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postWorkspaceUpload file to workspace"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -9976,6 +10107,63 @@
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
+      "MCPStoreTokenRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "MCP server URL the token authenticates against"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "format": "password",
+            "title": "Token",
+            "description": "Bearer token / API key for the MCP server",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": ["server_url", "token"],
+        "title": "MCPStoreTokenRequest",
+        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+      },
+      "MCPToolInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolInfo",
+        "description": "Information about a single MCP tool discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
       "MCPToolResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -9990,6 +10178,29 @@
         "required": ["name", "description", "input_schema"],
         "title": "MCPToolResponse",
         "description": "A single MCP tool returned by discovery."
+      },
+      "MCPToolsDiscoveredResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tools_discovered"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolInfo" },
+            "type": "array",
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tools"],
+        "title": "MCPToolsDiscoveredResponse",
+        "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
       "MarketplaceListing": {
         "properties": {
@@ -11167,10 +11378,15 @@
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
+          "browser_navigate",
+          "browser_act",
+          "browser_screenshot",
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
-          "suggested_goal"
+          "suggested_goal",
+          "mcp_tools_discovered",
+          "mcp_tool_output"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -11591,6 +11807,17 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StorageUsageResponse": {
+        "properties": {
+          "used_bytes": { "type": "integer", "title": "Used Bytes" },
+          "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
+          "used_percent": { "type": "number", "title": "Used Percent" },
+          "file_count": { "type": "integer", "title": "File Count" }
+        },
+        "type": "object",
+        "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
+        "title": "StorageUsageResponse"
       },
       "StoreAgent": {
         "properties": {
@@ -12039,6 +12266,17 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
           }
         },
         "type": "object",
@@ -13620,24 +13858,6 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
-      "UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -13966,6 +14186,36 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "backend__api__features__workspace__routes__UploadFileResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "UploadFileResponse"
+      },
+      "backend__api__model__UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

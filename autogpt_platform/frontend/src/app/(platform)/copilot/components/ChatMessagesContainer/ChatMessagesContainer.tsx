@@ -9,10 +9,13 @@ import {
   MessageContent,
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { CopyButton } from "./components/CopyButton";
 import { TTSButton } from "./components/TTSButton";
+import { parseSpecialMarkers } from "./helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -86,6 +89,10 @@ export function ChatMessagesContainer({
             (!isLastAssistant ||
               (status !== "streaming" && status !== "submitted"));
 
+          const fileParts = message.parts.filter(
+            (p): p is FileUIPart => p.type === "file",
+          );
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -107,19 +114,36 @@ export function ChatMessagesContainer({
                   <ThinkingIndicator active={showThinking} />
                 )}
               </MessageContent>
-              {isAssistantDone && (
-                <MessageActions>
-                  <TTSButton
-                    text={message.parts
-                      .filter(
-                        (p): p is Extract<typeof p, { type: "text" }> =>
-                          p.type === "text",
-                      )
-                      .map((p) => p.text)
-                      .join("\n")}
-                  />
-                </MessageActions>
+              {fileParts.length > 0 && (
+                <MessageAttachments
+                  files={fileParts}
+                  isUser={message.role === "user"}
+                />
               )}
+              {isAssistantDone &&
+                (() => {
+                  const textParts = message.parts.filter(
+                    (p): p is Extract<typeof p, { type: "text" }> =>
+                      p.type === "text",
+                  );
+
+                  // Hide actions when the message ended with an error or cancellation
+                  const lastTextPart = textParts[textParts.length - 1];
+                  if (lastTextPart) {
+                    const { markerType } = parseSpecialMarkers(
+                      lastTextPart.text,
+                    );
+                    if (markerType === "error") return null;
+                  }
+
+                  const textContent = textParts.map((p) => p.text).join("\n");
+                  return (
+                    <MessageActions>
+                      <CopyButton text={textContent} />
+                      <TTSButton text={textContent} />
+                    </MessageActions>
+                  );
+                })()}
             </Message>
           );
         })}
