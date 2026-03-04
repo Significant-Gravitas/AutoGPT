@@ -159,7 +159,7 @@ async def stream_chat_completion_baseline(
             )
             if tools:
                 create_kwargs["tools"] = tools
-            response = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]
+            response = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
             # Accumulate streamed response (text + tool calls)
             round_text = ""

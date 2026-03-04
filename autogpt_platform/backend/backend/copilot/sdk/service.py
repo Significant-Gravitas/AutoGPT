@@ -816,7 +816,7 @@ async def stream_chat_completion_sdk(
         if use_resume and resume_file:
             sdk_options_kwargs["resume"] = resume_file
 
-        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]
+        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
         adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
 
