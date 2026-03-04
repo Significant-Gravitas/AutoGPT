@@ -11,8 +11,8 @@ import logging
 import os
 import re
 import uuid
-from contextvars import ContextVar
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -297,9 +297,6 @@ _MULTIMODAL_TYPES: dict[str, tuple[str, int]] = {
     "image/jpeg": ("image", _IMAGE_MAX_B64),
     "image/gif": ("image", _IMAGE_MAX_B64),
     "image/webp": ("image", _IMAGE_MAX_B64),
-    "image/svg+xml": ("image", _IMAGE_MAX_B64),
-    "image/bmp": ("image", _IMAGE_MAX_B64),
-    "image/tiff": ("image", _IMAGE_MAX_B64),
     # Documents
     "application/pdf": ("document", _DOCUMENT_MAX_B64),
 }

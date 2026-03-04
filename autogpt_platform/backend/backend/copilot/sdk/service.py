@@ -850,10 +850,8 @@ async def stream_chat_completion_sdk(
                 )
 
                 # If files are attached, hint Claude to read them via tools.
-                if file_ids:
-                    file_hint = _build_file_attachment_hint(file_ids)
-                    if file_hint:
-                        query_message = f"{query_message}\n\n{file_hint}"
+                if file_ids and (file_hint := _build_file_attachment_hint(file_ids)):
+                    query_message = f"{query_message}\n\n{file_hint}"
 
                 logger.info(
                     "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "

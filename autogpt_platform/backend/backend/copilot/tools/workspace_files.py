@@ -216,9 +216,6 @@ _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 # Superset of types that should be returned inline as base64 (not just metadata+URL).
 # Includes images + documents that Claude can process as multimodal content blocks.
 _INLINEABLE_MIME_TYPES = _IMAGE_MIME_TYPES | {
-    "image/svg+xml",
-    "image/bmp",
-    "image/tiff",
     "application/pdf",
 }
 
@@ -441,7 +438,8 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 20 * 1024 * 1024  # 20MB (Claude vision/document limit)
+    MAX_INLINE_TEXT_SIZE_BYTES = 32 * 1024  # 32KB for text files
+    MAX_INLINE_MULTIMODAL_SIZE_BYTES = 20 * 1024 * 1024  # 20MB for images/PDFs
     PREVIEW_SIZE = 500
 
     @property
@@ -541,9 +539,14 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
-            is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
             is_inlineable = file_info.mime_type in _INLINEABLE_MIME_TYPES
+            size_limit = (
+                self.MAX_INLINE_MULTIMODAL_SIZE_BYTES
+                if is_inlineable
+                else self.MAX_INLINE_TEXT_SIZE_BYTES
+            )
+            is_small = file_info.size_bytes <= size_limit
 
             # Inline content for small text files and multimodal types (images, PDFs)
             if is_small and (is_text or is_inlineable) and not force_download_url:
