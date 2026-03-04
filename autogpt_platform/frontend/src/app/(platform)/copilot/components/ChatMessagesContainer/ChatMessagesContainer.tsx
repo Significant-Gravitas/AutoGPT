@@ -28,17 +28,24 @@ interface Props {
   turnMetadata?: TurnMetadataMap;
 }
 
+/** Collect all messages belonging to a turn: the user message + every
+ *  assistant message up to (but not including) the next user message. */
 function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-  assistantIndex: number,
+  lastAssistantIndex: number,
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
-  let userIndex = assistantIndex - 1;
+  // Walk back to find the user message that started this turn
+  let userIndex = lastAssistantIndex - 1;
   while (userIndex >= 0 && messages[userIndex].role !== "user") {
     userIndex--;
   }
-  return userIndex >= 0
-    ? messages.slice(userIndex, assistantIndex + 1)
-    : [messages[assistantIndex]];
+  // Walk forward to find the end of the turn (next user message or end)
+  let endIndex = lastAssistantIndex + 1;
+  while (endIndex < messages.length && messages[endIndex].role !== "user") {
+    endIndex++;
+  }
+  const start = userIndex >= 0 ? userIndex : lastAssistantIndex;
+  return messages.slice(start, endIndex);
 }
 
 export function ChatMessagesContainer({
@@ -106,6 +113,13 @@ export function ChatMessagesContainer({
             (!isLastAssistant ||
               (status !== "streaming" && status !== "submitted"));
 
+          // True when this is the last assistant message in its turn
+          // (next message is a user message or end of list).
+          const isLastAssistantInTurn =
+            isAssistant &&
+            (messageIndex === messages.length - 1 ||
+              messages[messageIndex + 1].role === "user");
+
           const fileParts = message.parts.filter(
             (p): p is FileUIPart => p.type === "file",
           );
@@ -127,8 +141,8 @@ export function ChatMessagesContainer({
                     partIndex={i}
                   />
                 ))}
-                {/* Per-turn stats — shown at end of completed assistant messages */}
-                {message.role === "assistant" &&
+                {/* Per-turn stats — shown only on the final assistant message of each turn */}
+                {isLastAssistantInTurn &&
                   !(
                     isLastAssistant &&
                     (status === "streaming" || status === "submitted")
