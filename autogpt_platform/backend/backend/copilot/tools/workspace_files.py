@@ -486,6 +486,20 @@ class ReadWorkspaceFileTool(BaseTool):
                         "Default is false (auto-selects based on file size/type)."
                     ),
                 },
+                "offset": {
+                    "type": "integer",
+                    "description": (
+                        "Character offset to start reading from (0-based). "
+                        "Use with 'length' for paginated reads of large files."
+                    ),
+                },
+                "length": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of characters to return. "
+                        "Defaults to full file. Use with 'offset' for paginated reads."
+                    ),
+                },
             },
             "required": [],  # At least one must be provided
         }
@@ -510,6 +524,8 @@ class ReadWorkspaceFileTool(BaseTool):
         path: Optional[str] = kwargs.get("path")
         save_to_path: Optional[str] = kwargs.get("save_to_path")
         force_download_url: bool = kwargs.get("force_download_url", False)
+        char_offset: int = kwargs.get("offset", 0)
+        char_length: Optional[int] = kwargs.get("length")
 
         if not file_id and not path:
             return ErrorResponse(
@@ -531,6 +547,34 @@ class ReadWorkspaceFileTool(BaseTool):
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
+
+            # Ranged read: return a character slice directly.
+            if char_offset > 0 or char_length is not None:
+                raw = cached_content or await manager.read_file_by_id(target_file_id)
+                text = raw.decode("utf-8", errors="replace")
+                total_chars = len(text)
+                end = (
+                    char_offset + char_length
+                    if char_length is not None
+                    else total_chars
+                )
+                slice_text = text[char_offset:end]
+                return WorkspaceFileContentResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type="text/plain",
+                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
+                        "utf-8"
+                    ),
+                    message=(
+                        f"Read chars {char_offset}–"
+                        f"{char_offset + len(slice_text)} "
+                        f"of {total_chars:,} total "
+                        f"from {file_info.name}"
+                    ),
+                    session_id=session_id,
+                )
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)

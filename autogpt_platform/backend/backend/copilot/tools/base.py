@@ -7,10 +7,64 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.data.db_accessors import workspace_db
+from backend.util.workspace import WorkspaceManager
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+# Persist full tool output to workspace when it exceeds this threshold.
+# Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
+# capture the data before model_post_init middle-out truncation discards it.
+_LARGE_OUTPUT_THRESHOLD = 80_000
+
+# Number of head characters included in the preview that replaces the output.
+_PREVIEW_HEAD_CHARS = 50_000
+
+
+async def _persist_and_summarize(
+    raw_output: str,
+    user_id: str,
+    session_id: str,
+    tool_call_id: str,
+) -> str:
+    """Persist full output to workspace and return a head preview with retrieval instructions.
+
+    On failure, returns the original ``raw_output`` unchanged so that the
+    existing ``model_post_init`` middle-out truncation handles it as before.
+    """
+    file_path = f"tool-outputs/{tool_call_id}.json"
+    try:
+        workspace = await workspace_db().get_or_create_workspace(user_id)
+        manager = WorkspaceManager(user_id, workspace.id, session_id)
+        await manager.write_file(
+            content=raw_output.encode("utf-8"),
+            filename=f"{tool_call_id}.json",
+            path=file_path,
+            mime_type="application/json",
+            overwrite=True,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to persist large tool output for %s",
+            tool_call_id,
+            exc_info=True,
+        )
+        return raw_output  # fall back to normal truncation
+
+    total = len(raw_output)
+    preview = raw_output[:_PREVIEW_HEAD_CHARS]
+    remaining = total - len(preview)
+    return (
+        f'<tool-output-truncated total_chars={total} path="{file_path}">\n'
+        f"{preview}\n"
+        f"... [{remaining:,} more characters]\n\n"
+        f"Full output saved to workspace. Use read_workspace_file("
+        f'path="{file_path}", offset={len(preview)}, length=50000) '
+        f"to read the next section.\n"
+        f"</tool-output-truncated>"
+    )
 
 
 class BaseTool:
@@ -91,10 +145,21 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **kwargs)
+            raw_output = result.model_dump_json()
+
+            if (
+                len(raw_output) > _LARGE_OUTPUT_THRESHOLD
+                and user_id
+                and session.session_id
+            ):
+                raw_output = await _persist_and_summarize(
+                    raw_output, user_id, session.session_id, tool_call_id
+                )
+
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
-                output=result.model_dump_json(),
+                output=raw_output,
             )
         except Exception as e:
             logger.error(f"Error in {self.name}: {e}", exc_info=True)
