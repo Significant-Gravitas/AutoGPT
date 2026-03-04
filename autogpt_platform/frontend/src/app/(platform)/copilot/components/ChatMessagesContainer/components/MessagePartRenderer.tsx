@@ -14,6 +14,7 @@ import { FindBlocksTool } from "../../../tools/FindBlocks/FindBlocks";
 import { GenericTool } from "../../../tools/GenericTool/GenericTool";
 import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
+import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
@@ -129,6 +130,8 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
       return <SearchDocsTool key={key} part={part as ToolUIPart} />;
     case "tool-run_block":
       return <RunBlockTool key={key} part={part as ToolUIPart} />;
+    case "tool-run_mcp_tool":
+      return <RunMCPToolComponent key={key} part={part as ToolUIPart} />;
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;

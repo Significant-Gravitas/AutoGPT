@@ -33,6 +33,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
+from .constants import COMPACTION_TOOL_NAME
 from .model import (
     ChatMessage,
     ChatSession,
@@ -107,6 +108,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
    - **Always check the user's library first** with `find_library_agent` (these may be customized to their needs)
    - Search the marketplace with `find_agent` for pre-built automations
    - Find reusable components with `find_block`
+   - **For live integrations** (read a GitHub repo, query a database, post to Slack, etc.) consider `run_mcp_tool` — it connects directly to external services without building a full agent
    - Create custom solutions with `create_agent` if nothing suitable exists
    - Modify existing library agents with `edit_agent`
    - **When `create_agent` returns `suggested_goal`**: Present the suggestion to the user and ask "Would you like me to proceed with this refined goal?" If they accept, call `create_agent` again with the suggested goal.
@@ -137,6 +139,31 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - `run_block`: Test or run a specific block independently
 - `agent_output`: View results from previous agent runs
 
+**MCP (Model Context Protocol) Servers:**
+- `run_mcp_tool`: Connect to any MCP server to discover and run its tools
+
+  **Two-step flow:**
+  1. `run_mcp_tool(server_url)` → returns a list of available tools. Each tool has `name`, `description`, and `input_schema` (JSON Schema). Read `input_schema.properties` to understand what arguments are needed.
+  2. `run_mcp_tool(server_url, tool_name, tool_arguments)` → executes the tool. Build `tool_arguments` as a flat `{{key: value}}` object matching the tool's `input_schema.properties`.
+
+  **Authentication:** If the MCP server requires credentials, the UI will show an OAuth connect button. Once the user connects and clicks Proceed, they will automatically send you a message confirming credentials are ready (e.g. "I've connected the MCP server credentials. Please retry run_mcp_tool..."). When you receive that confirmation, **immediately** call `run_mcp_tool` again with the exact same `server_url` — and the same `tool_name`/`tool_arguments` if you were already mid-execution. Do not ask the user what to do next; just retry.
+
+  **Finding server URLs (fastest → slowest):**
+  1. **Known hosted servers** — use directly, no lookup:
+     - Notion: `https://mcp.notion.com/mcp`
+     - Linear: `https://mcp.linear.app/mcp`
+     - Stripe: `https://mcp.stripe.com`
+     - Intercom: `https://mcp.intercom.com/mcp`
+     - Cloudflare: `https://mcp.cloudflare.com/mcp`
+     - Atlassian (Jira/Confluence): `https://mcp.atlassian.com/mcp`
+  2. **`web_search`** — use `web_search("{{service}} MCP server URL")` for any service not in the list above. This is the fastest way to find unlisted servers.
+  3. **Registry API** — `web_fetch("https://registry.modelcontextprotocol.io/v0.1/servers?search={{query}}&limit=10")` to browse what's available. Returns names + GitHub repo URLs but NOT the endpoint URL; follow up with `web_search` to find the actual endpoint.
+  - **Never** `web_fetch` the registry homepage — it is JavaScript-rendered and returns a blank page.
+
+  **When to use:** Use `run_mcp_tool` when the user wants to interact with an external service (GitHub, Slack, a database, a SaaS tool, etc.) via its MCP integration. Unlike `web_fetch` (which just retrieves a raw URL), MCP servers expose structured typed tools — prefer `run_mcp_tool` for any service with an MCP server, and `web_fetch` only for plain URL retrieval with no MCP server involved.
+
+  **CRITICAL**: `run_mcp_tool` is **always available** in your tool list. If the user explicitly provides an MCP server URL or asks you to call `run_mcp_tool`, you MUST use it — never claim it is unavailable, and never substitute `web_fetch` for an explicit MCP request.
+
 ## BEHAVIORAL GUIDELINES
 
 **Be Concise:**
@@ -156,6 +183,7 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - **Always check `find_library_agent` before searching the marketplace**
 - Use `add_understanding` to capture valuable business context
 - When tool calls fail, try alternative approaches
+- **For MCP integrations**: Known URL (see list) or `web_search("{{service}} MCP server URL")` → `run_mcp_tool(server_url)` → `run_mcp_tool(server_url, tool_name, tool_arguments)`. If credentials needed, UI prompts automatically; when user confirms, retry immediately with same arguments.
 
 **Handle Feedback Loops:**
 - When a tool returns a suggested alternative (like a refined goal), present it clearly and ask the user for confirmation before proceeding
@@ -527,6 +555,31 @@ async def stream_chat_completion(
             system_prompt=system_prompt,
             text_block_id=text_block_id,
         ):
+            # Pass through out-of-band events (e.g. compaction notices)
+            # without contaminating the primary text stream state.
+            if isinstance(chunk, (StreamStartStep, StreamFinishStep)):
+                yield chunk
+                continue
+            if (
+                isinstance(
+                    chunk,
+                    (
+                        StreamToolInputStart,
+                        StreamToolInputAvailable,
+                        StreamToolOutputAvailable,
+                    ),
+                )
+                and getattr(chunk, "toolName", None) == COMPACTION_TOOL_NAME
+            ):
+                yield chunk
+                continue
+            if (
+                isinstance(chunk, (StreamTextStart, StreamTextDelta, StreamTextEnd))
+                and getattr(chunk, "id", None) != text_block_id
+            ):
+                yield chunk
+                continue
+
             if isinstance(chunk, StreamTextStart):
                 # Emit text-start before first text delta
                 if not has_received_text:
@@ -976,6 +1029,10 @@ async def _stream_chat_chunks(
         logger.info(
             f"Context compacted for streaming: {context_result.token_count} tokens"
         )
+        from .sdk.compaction import emit_compaction
+
+        for ev in emit_compaction(session):
+            yield ev
 
     # Loop to handle tool calls and continue conversation
     while True:
@@ -1012,6 +1069,13 @@ async def _stream_chat_chunks(
                     extra_body["session_id"] = session.session_id[
                         :128
                     ]  # OpenRouter limit
+
+                # Broadcast trace metadata — forwarded to Langfuse via
+                # OpenRouter's org-level Broadcast integration.
+                extra_body["trace"] = {
+                    "trace_name": "copilot-chat",
+                    "environment": settings.config.app_env.value,
+                }
 
                 # Enable adaptive thinking for Anthropic models via OpenRouter
                 if config.thinking_enabled and "anthropic" in model.lower():
