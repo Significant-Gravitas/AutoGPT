@@ -76,9 +76,6 @@ async def _compress_session_messages(
     summarization of older messages while keeping recent ones intact,
     with progressive truncation and middle-out deletion as fallbacks.
     """
-    if len(messages) < 2:
-        return messages
-
     messages_dict = []
     for msg in messages:
         msg_dict: dict[str, Any] = {"role": msg.role}
