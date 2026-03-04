@@ -391,6 +391,43 @@ inputs or see outputs. NEVER skip them.
   `graph_version` in input_default, and wire inputs/outputs to match
   the sub-agent's schema.
 
+### Using Sub-Agents (AgentExecutorBlock)
+
+To compose agents using other agents as sub-agents:
+1. Call `find_library_agent` to find the sub-agent — the response includes
+   `graph_id`, `graph_version`, `input_schema`, and `output_schema`
+2. Create an `AgentExecutorBlock` node (ID: `e189baac-8c20-45a1-94a7-55177ea42565`)
+3. Set `input_default`:
+   - `graph_id`: from the library agent's `graph_id`
+   - `graph_version`: from the library agent's `graph_version`
+   - `input_schema`: from the library agent's `input_schema` (JSON Schema)
+   - `output_schema`: from the library agent's `output_schema` (JSON Schema)
+   - `user_id`: leave as `""` (filled at runtime)
+   - `inputs`: `{}` (populated by links at runtime)
+4. Wire inputs: link to sink names matching the sub-agent's `input_schema`
+   property names (e.g., if input_schema has a `"url"` property, use
+   `"url"` as the sink_name)
+5. Wire outputs: link from source names matching the sub-agent's
+   `output_schema` property names
+6. Pass `library_agent_ids` to `create_agent`/`customize_agent` with
+   the library agent IDs used, so the fixer can validate schemas
+
+### Using MCP Tools (MCPToolBlock)
+
+To use an MCP (Model Context Protocol) tool as a node in the agent:
+1. The user must specify which MCP server URL and tool name they want
+2. Create an `MCPToolBlock` node (ID: `a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4`)
+3. Set `input_default`:
+   - `server_url`: the MCP server URL (e.g. `"https://mcp.example.com/sse"`)
+   - `selected_tool`: the tool name on that server
+   - `tool_input_schema`: JSON Schema for the tool's inputs
+   - `tool_arguments`: `{}` (populated by links or hardcoded values)
+4. The block requires MCP credentials — the user configures these in the
+   platform UI after the agent is saved
+5. Wire inputs to tool_arguments sub-fields using nested property notation:
+   `tool_arguments_#_<field_name>` as the sink_name
+6. Output: `result` (the tool's return value) and `status` ("success"/"error")
+
 ### Example: Simple AI Text Processor
 
 A minimal agent with input, processing, and output:
@@ -425,6 +462,11 @@ _AGENT_GEN_KEYWORDS = frozenset(
         "agentinputblock",
         "agentoutputblock",
         "agent executor",
+        "mcp",
+        "sub-agent",
+        "subagent",
+        "sub agent",
+        "library agent",
     }
 )
 

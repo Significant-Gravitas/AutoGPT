@@ -9,6 +9,7 @@ from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
+    MCP_TOOL_BLOCK_ID,
     are_types_compatible,
     get_defined_property_type,
 )
@@ -791,6 +792,49 @@ class AgentValidator:
 
         return valid
 
+    def validate_mcp_tool_blocks(self, agent: dict[str, Any]) -> bool:
+        """Validate that MCPToolBlock nodes have required fields.
+
+        Checks that each MCPToolBlock node has:
+        1. A non-empty `server_url` in input_default
+        2. A non-empty `selected_tool` in input_default
+
+        Returns True if all MCPToolBlock nodes are valid, False otherwise.
+        """
+        valid = True
+        nodes = agent.get("nodes", [])
+
+        for node in nodes:
+            if node.get("block_id") != MCP_TOOL_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            input_default = node.get("input_default", {})
+            customized_name = (node.get("metadata") or {}).get(
+                "customized_name", node_id
+            )
+
+            server_url = input_default.get("server_url")
+            if not server_url:
+                self.add_error(
+                    f"MCPToolBlock node '{customized_name}' ({node_id}) is "
+                    f"missing required 'server_url' in input_default. "
+                    f"Set this to the MCP server URL "
+                    f"(e.g. 'https://mcp.example.com/sse')."
+                )
+                valid = False
+
+            selected_tool = input_default.get("selected_tool")
+            if not selected_tool:
+                self.add_error(
+                    f"MCPToolBlock node '{customized_name}' ({node_id}) is "
+                    f"missing required 'selected_tool' in input_default. "
+                    f"Set this to the name of the MCP tool to execute."
+                )
+                valid = False
+
+        return valid
+
     def validate(
         self,
         agent: dict[str, Any],
@@ -847,6 +891,10 @@ class AgentValidator:
             (
                 "AgentExecutorBlock schemas",
                 self.validate_agent_executor_block_schemas(agent),
+            ),
+            (
+                "MCP tool blocks",
+                self.validate_mcp_tool_blocks(agent),
             ),
         ]
 

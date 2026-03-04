@@ -88,6 +88,15 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    graph_version: int | None = None
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",
+    )
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's outputs (for AgentExecutorBlock)",
+    )
     inputs: dict[str, Any] | None = Field(
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",

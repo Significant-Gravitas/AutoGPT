@@ -4,6 +4,7 @@ from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
+    MCP_TOOL_BLOCK_ID,
     generate_uuid,
 )
 from .validator import AgentValidator
@@ -584,3 +585,63 @@ class TestValidate:
         assert error_message is not None
         assert "AgentInputBlock" in error_message
         assert "AgentOutputBlock" in error_message
+
+
+class TestValidateMCPToolBlocks:
+    """Tests for validate_mcp_tool_blocks."""
+
+    def test_missing_server_url_reports_error(self):
+        v = AgentValidator()
+        node = _make_node(
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={"selected_tool": "my_tool"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = v.validate_mcp_tool_blocks(agent)
+
+        assert result is False
+        assert any("server_url" in e for e in v.errors)
+
+    def test_missing_selected_tool_reports_error(self):
+        v = AgentValidator()
+        node = _make_node(
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={"server_url": "https://mcp.example.com/sse"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = v.validate_mcp_tool_blocks(agent)
+
+        assert result is False
+        assert any("selected_tool" in e for e in v.errors)
+
+    def test_valid_mcp_block_passes(self):
+        v = AgentValidator()
+        node = _make_node(
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {"properties": {"query": {"type": "string"}}},
+                "tool_arguments": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = v.validate_mcp_tool_blocks(agent)
+
+        assert result is True
+        assert len(v.errors) == 0
+
+    def test_both_missing_reports_two_errors(self):
+        v = AgentValidator()
+        node = _make_node(
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={},
+        )
+        agent = _make_agent(nodes=[node])
+
+        v.validate_mcp_tool_blocks(agent)
+
+        assert len(v.errors) == 2

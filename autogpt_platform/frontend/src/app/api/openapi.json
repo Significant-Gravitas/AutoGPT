@@ -7034,6 +7034,26 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id"
           },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "input_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "JSON Schema for the agent's inputs (for AgentExecutorBlock)"
+          },
+          "output_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Output Schema",
+            "description": "JSON Schema for the agent's outputs (for AgentExecutorBlock)"
+          },
           "inputs": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },

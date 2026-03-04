@@ -9,6 +9,7 @@ from .fixer import (
     _STORE_VALUE_BLOCK_ID,
     _TEXT_REPLACE_BLOCK_ID,
     AGENT_EXECUTOR_BLOCK_ID,
+    MCP_TOOL_BLOCK_ID,
     AgentFixer,
 )
 from .helpers import generate_uuid
@@ -598,3 +599,86 @@ class TestApplyAllFixes:
         agent = _make_agent()
         result = fixer.apply_all_fixes(agent)
         assert result is agent
+
+
+class TestFixMCPToolBlocks:
+    """Tests for fix_mcp_tool_blocks."""
+
+    def test_adds_missing_tool_arguments(self):
+        fixer = AgentFixer()
+        node = _make_node(
+            node_id="n1",
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = fixer.fix_mcp_tool_blocks(agent)
+
+        assert result["nodes"][0]["input_default"]["tool_arguments"] == {}
+        assert any("tool_arguments" in f for f in fixer.fixes_applied)
+
+    def test_adds_missing_tool_input_schema(self):
+        fixer = AgentFixer()
+        node = _make_node(
+            node_id="n1",
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_arguments": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = fixer.fix_mcp_tool_blocks(agent)
+
+        assert result["nodes"][0]["input_default"]["tool_input_schema"] == {}
+        assert any("tool_input_schema" in f for f in fixer.fixes_applied)
+
+    def test_populates_tool_arguments_from_schema(self):
+        fixer = AgentFixer()
+        node = _make_node(
+            node_id="n1",
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {
+                        "query": {"type": "string", "default": "hello"},
+                        "limit": {"type": "integer"},
+                    }
+                },
+                "tool_arguments": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        result = fixer.fix_mcp_tool_blocks(agent)
+
+        tool_args = result["nodes"][0]["input_default"]["tool_arguments"]
+        assert tool_args["query"] == "hello"
+        assert tool_args["limit"] is None
+
+    def test_no_op_when_already_complete(self):
+        fixer = AgentFixer()
+        node = _make_node(
+            node_id="n1",
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {},
+                "tool_arguments": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        fixer.fix_mcp_tool_blocks(agent)
+
+        assert len(fixer.fixes_applied) == 0
