@@ -20,8 +20,12 @@ logger = logging.getLogger(__name__)
 # capture the data before model_post_init middle-out truncation discards it.
 _LARGE_OUTPUT_THRESHOLD = 80_000
 
-# Character budget for the middle-out preview (must leave room for wrapper).
-_PREVIEW_CHARS = 50_000
+# Character budget for the middle-out preview.  The total preview + wrapper
+# must stay below BOTH:
+#   - _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py (our own truncation)
+#   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
+# to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
+_PREVIEW_CHARS = 95_000
 
 
 async def _persist_and_summarize(
