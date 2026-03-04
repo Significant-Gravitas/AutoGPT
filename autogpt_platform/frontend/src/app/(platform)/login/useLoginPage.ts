@@ -21,8 +21,14 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
-  // Get redirect destination from 'next' query parameter
-  const nextUrl = searchParams.get("next");
+  // Get redirect destination from 'next' query parameter.
+  // Only allow relative paths to prevent open redirect attacks
+  // (e.g., /login?next=https://phishing.site).
+  const rawNext = searchParams.get("next");
+  const nextUrl =
+    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
+      ? rawNext
+      : null;
 
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
