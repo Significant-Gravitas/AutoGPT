@@ -155,7 +155,7 @@ class BaseTool:
         """Execute the tool with authentication check.
 
         Args:
-            user_id: User ID (may be anonymous like "anon_123")
+            user_id: User ID (None for anonymous users)
             session_id: Chat session ID
             **kwargs: Tool-specific parameters
 

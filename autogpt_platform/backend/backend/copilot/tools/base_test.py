@@ -106,7 +106,12 @@ class TestBaseToolExecuteLargeOutput:
         session = MagicMock()
         session.session_id = "s-1"
 
-        result = await tool.execute("user-1", session, "tc-small")
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute("user-1", session, "tc-small")
+        persist_mock.assert_not_awaited()
         assert "<tool-output-truncated" not in str(result.output)
 
     @pytest.mark.asyncio
@@ -143,7 +148,12 @@ class TestBaseToolExecuteLargeOutput:
         session.session_id = "s-1"
 
         # user_id=None → should not attempt persistence
-        result = await tool.execute(None, session, "tc-anon")
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute(None, session, "tc-anon")
+        persist_mock.assert_not_awaited()
         # Output is set but not wrapped in <tool-output-truncated> tags
         # (it will be middle-out truncated by model_post_init instead)
         assert "<tool-output-truncated" not in str(result.output)
