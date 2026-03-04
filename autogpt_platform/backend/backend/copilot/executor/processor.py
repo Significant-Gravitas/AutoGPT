@@ -129,12 +129,19 @@ class CoPilotProcessor:
 
             cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
             if cli_path:
-                subprocess.run(
+                result = subprocess.run(
                     [cli_path, "-v"],
                     capture_output=True,
                     timeout=10,
                 )
-                logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                if result.returncode == 0:
+                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                else:
+                    logger.warning(
+                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
+                        result.returncode,  # type: ignore[reportCallIssue]
+                        cli_path,
+                    )
         except Exception as e:
             logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 

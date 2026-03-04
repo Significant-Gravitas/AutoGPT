@@ -720,7 +720,16 @@ async def stream_chat_completion_sdk(
                 config.claude_agent_use_resume and user_id and len(session.messages) > 1
             ):
                 return None
-            return await download_transcript(user_id, session_id)
+            try:
+                return await download_transcript(user_id, session_id)
+            except Exception as transcript_err:
+                logger.warning(
+                    "[SDK] [%s] Transcript download failed, continuing without "
+                    "--resume: %s",
+                    session_id[:12],
+                    transcript_err,
+                )
+                return None
 
         e2b_sandbox, (base_system_prompt, _), dl = await asyncio.gather(
             _setup_e2b(),
