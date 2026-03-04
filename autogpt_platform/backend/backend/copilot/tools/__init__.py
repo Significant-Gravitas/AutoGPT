@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
+from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
@@ -30,6 +32,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
     from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_doc_page": GetDocPageTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
+    # Agent-browser multi-step automation (navigate, act, screenshot)
+    "browser_navigate": BrowserNavigateTool(),
+    "browser_act": BrowserActTool(),
+    "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
@@ -67,10 +74,17 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
-# Generated from registry for OpenAI API
-tools: list[ChatCompletionToolParam] = [
-    tool.as_openai_tool() for tool in TOOL_REGISTRY.values()
-]
+
+def get_available_tools() -> list[ChatCompletionToolParam]:
+    """Return OpenAI tool schemas for tools available in the current environment.
+
+    Called per-request so that env-var or binary availability is evaluated
+    fresh each time (e.g. browser_* tools are excluded when agent-browser
+    CLI is not installed).
+    """
+    return [
+        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
+    ]
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

@@ -45,8 +45,8 @@ export const MessageContent = ({
     className={cn(
       "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
       "group-[.is-user]:w-fit",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950 dark:group-[.is-user]:bg-neutral-800 dark:group-[.is-user]:text-neutral-50",
-      "group-[.is-assistant]:text-neutral-950 dark:group-[.is-assistant]:text-neutral-50",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
+      "group-[.is-assistant]:text-neutral-950",
       className,
     )}
     {...props}
@@ -291,7 +291,7 @@ export const MessageBranchPage = ({
   return (
     <ButtonGroupText
       className={cn(
-        "border-none bg-transparent text-neutral-500 shadow-none dark:text-neutral-400",
+        "border-none bg-transparent text-neutral-500 shadow-none",
         className,
       )}
       {...props}
