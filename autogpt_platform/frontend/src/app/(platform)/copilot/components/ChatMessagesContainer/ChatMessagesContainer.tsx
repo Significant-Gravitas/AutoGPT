@@ -164,15 +164,22 @@ export function ChatMessagesContainer({
                   isUser={message.role === "user"}
                 />
               )}
-              {isAssistantDone &&
+              {isLastAssistantInTurn &&
+                isAssistantDone &&
                 (() => {
-                  const textParts = message.parts.filter(
-                    (p): p is Extract<typeof p, { type: "text" }> =>
-                      p.type === "text",
-                  );
+                  // Collect text from ALL assistant messages in this turn
+                  const turnMsgs = getTurnMessages(messages, messageIndex);
+                  const allTextParts = turnMsgs
+                    .filter((m) => m.role === "assistant")
+                    .flatMap((m) =>
+                      m.parts.filter(
+                        (p): p is Extract<typeof p, { type: "text" }> =>
+                          p.type === "text",
+                      ),
+                    );
 
-                  // Hide actions when the message ended with an error or cancellation
-                  const lastTextPart = textParts[textParts.length - 1];
+                  // Hide actions when the turn ended with an error or cancellation
+                  const lastTextPart = allTextParts[allTextParts.length - 1];
                   if (lastTextPart) {
                     const { markerType } = parseSpecialMarkers(
                       lastTextPart.text,
@@ -180,7 +187,9 @@ export function ChatMessagesContainer({
                     if (markerType === "error") return null;
                   }
 
-                  const textContent = textParts.map((p) => p.text).join("\n");
+                  const textContent = allTextParts
+                    .map((p) => p.text)
+                    .join("\n");
                   return (
                     <MessageActions>
                       <CopyButton text={textContent} />
