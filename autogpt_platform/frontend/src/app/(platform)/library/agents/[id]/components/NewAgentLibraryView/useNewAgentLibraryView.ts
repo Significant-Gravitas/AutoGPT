@@ -123,7 +123,6 @@ export function useNewAgentLibraryView() {
     });
   }
 
-  // Fetch schedules to enable smart selection after deletion
   const { data: schedules } = useGetV1ListExecutionSchedulesForAGraph(
     agent?.graph_id || "",
     {
@@ -135,9 +134,7 @@ export function useNewAgentLibraryView() {
   );
 
   function handleScheduleDeleted(deletedScheduleId: string) {
-    // Only change selection if the deleted schedule was the currently selected one
     if (activeItem !== deletedScheduleId) {
-      // Different schedule was deleted, keep current selection unchanged
       return;
     }
 
@@ -146,16 +143,13 @@ export function useNewAgentLibraryView() {
       return;
     }
 
-    // Find remaining schedules (excluding the deleted one)
     const remainingSchedules = schedules.filter(
       (s) => s.id !== deletedScheduleId,
     );
 
     if (remainingSchedules.length > 0) {
-      // Auto-select the first remaining schedule
       handleSelectRun(remainingSchedules[0].id, "scheduled");
     } else {
-      // No schedules left, clear selection to show empty state
       handleClearSelectedRun();
     }
   }
