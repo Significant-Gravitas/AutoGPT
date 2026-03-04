@@ -1,5 +1,6 @@
 """Base classes and shared utilities for chat tools."""
 
+import json
 import logging
 from typing import Any
 
@@ -26,6 +27,32 @@ _LARGE_OUTPUT_THRESHOLD = 80_000
 #   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
 # to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
 _PREVIEW_CHARS = 95_000
+
+
+# Fields whose values are binary/base64 data — truncating them produces
+# garbage, so we replace them with a human-readable size summary instead.
+_BINARY_FIELD_NAMES = {"content_base64"}
+
+
+def _summarize_binary_fields(raw_json: str) -> str:
+    """Replace known binary fields with a size summary so truncate() doesn't
+    produce garbled base64 in the middle-out preview."""
+    try:
+        data = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError):
+        return raw_json
+
+    if not isinstance(data, dict):
+        return raw_json
+
+    changed = False
+    for key in _BINARY_FIELD_NAMES:
+        if key in data and isinstance(data[key], str) and len(data[key]) > 1_000:
+            byte_size = len(data[key]) * 3 // 4  # approximate decoded size
+            data[key] = f"<binary, ~{byte_size:,} bytes>"
+            changed = True
+
+    return json.dumps(data, ensure_ascii=False) if changed else raw_json
 
 
 async def _persist_and_summarize(
@@ -59,7 +86,7 @@ async def _persist_and_summarize(
         return raw_output  # fall back to normal truncation
 
     total = len(raw_output)
-    preview = truncate(raw_output, _PREVIEW_CHARS)
+    preview = truncate(_summarize_binary_fields(raw_output), _PREVIEW_CHARS)
     retrieval = (
         f"\nFull output ({total:,} chars) saved to workspace. "
         f"Use read_workspace_file("

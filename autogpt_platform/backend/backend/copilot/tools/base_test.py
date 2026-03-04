@@ -8,6 +8,7 @@ from backend.copilot.tools.base import (
     _LARGE_OUTPUT_THRESHOLD,
     BaseTool,
     _persist_and_summarize,
+    _summarize_binary_fields,
 )
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 
@@ -146,3 +147,38 @@ class TestBaseToolExecuteLargeOutput:
         # Output is set but not wrapped in <tool-output-truncated> tags
         # (it will be middle-out truncated by model_post_init instead)
         assert "<tool-output-truncated" not in str(result.output)
+
+
+# ---------------------------------------------------------------------------
+# _summarize_binary_fields
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizeBinaryFields:
+    def test_replaces_large_content_base64(self):
+        import json
+
+        data = {"content_base64": "A" * 10_000, "name": "file.png"}
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert result["name"] == "file.png"
+        assert "<binary" in result["content_base64"]
+        assert "bytes>" in result["content_base64"]
+
+    def test_preserves_small_content_base64(self):
+        import json
+
+        data = {"content_base64": "AQID", "name": "tiny.bin"}
+        result_str = _summarize_binary_fields(json.dumps(data))
+        result = json.loads(result_str)
+        assert result["content_base64"] == "AQID"  # unchanged
+
+    def test_non_json_passthrough(self):
+        raw = "not json at all"
+        assert _summarize_binary_fields(raw) == raw
+
+    def test_no_binary_fields_unchanged(self):
+        import json
+
+        data = {"message": "hello", "type": "info"}
+        raw = json.dumps(data)
+        assert _summarize_binary_fields(raw) == raw
