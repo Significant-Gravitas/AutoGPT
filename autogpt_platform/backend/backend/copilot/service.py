@@ -33,8 +33,12 @@ from .response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
@@ -421,8 +425,15 @@ async def stream_chat_completion_baseline(
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     assistant_text = ""
+    text_block_id = str(uuid.uuid4())
+    text_started = False
+    step_open = False
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
+            # Open a new step for each LLM round
+            yield StreamStartStep()
+            step_open = True
+
             # Stream a response from the model
             create_kwargs: dict[str, Any] = dict(
                 model=config.model,
@@ -444,8 +455,11 @@ async def stream_chat_completion_baseline(
 
                 # Text content
                 if delta.content:
+                    if not text_started:
+                        yield StreamTextStart(id=text_block_id)
+                        text_started = True
                     round_text += delta.content
-                    yield StreamTextDelta(id=message_id, delta=delta.content)
+                    yield StreamTextDelta(id=text_block_id, delta=delta.content)
 
                 # Tool call fragments (streamed incrementally)
                 if delta.tool_calls:
@@ -465,12 +479,24 @@ async def stream_chat_completion_baseline(
                         if tc.function and tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
 
+            # Close text block if we had one this round
+            if text_started:
+                yield StreamTextEnd(id=text_block_id)
+                text_started = False
+                text_block_id = str(uuid.uuid4())
+
             # Accumulate text for session persistence
             assistant_text += round_text
 
             # No tool calls → model is done
             if not tool_calls_by_index:
+                yield StreamFinishStep()
+                step_open = False
                 break
+
+            # Close step before tool execution
+            yield StreamFinishStep()
+            step_open = False
 
             # Append the assistant message with tool_calls to context
             assistant_msg: dict[str, Any] = {"role": "assistant"}
@@ -577,6 +603,11 @@ async def stream_chat_completion_baseline(
     except Exception as e:
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
+        # Close any open text/step before emitting error
+        if text_started:
+            yield StreamTextEnd(id=text_block_id)
+        if step_open:
+            yield StreamFinishStep()
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
