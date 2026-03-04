@@ -739,7 +739,9 @@ class AgentValidator:
 
             node_id = node.get("id")
             input_default = node.get("input_default", {})
-            customized_name = node.get("metadata", {}).get("customized_name", "Unknown")
+            customized_name = (node.get("metadata") or {}).get(
+                "customized_name", "Unknown"
+            )
 
             # Check input_schema
             input_schema = input_default.get("input_schema")
