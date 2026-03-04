@@ -153,3 +153,41 @@ async def test_write_file_overwrite_true_double_conflict_raises_and_cleans_up(
 
     # Storage file should be cleaned up
     mock_storage.delete.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_write_file_overwrite_true_conflict_no_existing_still_retries(
+    manager, mock_storage
+):
+    """overwrite=True + conflict + no existing file → retry succeeds, no delete/cleanup."""
+    created_file = _make_workspace_file()
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch(
+            "backend.util.workspace.get_workspace_file_by_path",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.util.workspace.create_workspace_file",
+            new_callable=AsyncMock,
+            side_effect=[_unique_violation(), created_file],
+        ),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch.object(manager, "delete_file", new_callable=AsyncMock) as mock_delete,
+    ):
+        result = await manager.write_file(
+            filename="test.txt", content=b"hello", overwrite=True
+        )
+
+    # Second attempt should succeed and return the created file.
+    assert result == created_file
+
+    # No existing file was found, so delete_file must not be called.
+    mock_delete.assert_not_called()
+
+    # Overall write succeeded, so storage cleanup must not be called.
+    mock_storage.delete.assert_not_called()
