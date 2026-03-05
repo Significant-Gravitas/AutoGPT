@@ -398,7 +398,9 @@ def _build_sdk_env(
         headers.append(f"x-session-id: {_safe(session_id)}")
     if user_id:
         headers.append(f"x-user-id: {_safe(user_id)}")
-    if headers:
+    # Only inject headers when routing through OpenRouter/proxy — they're
+    # meaningless (and leak internal IDs) when using subscription mode.
+    if headers and env.get("ANTHROPIC_BASE_URL"):
         env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
 
     return env
@@ -835,11 +837,7 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
-        if (
-            not sdk_env
-            and not config.api_key
-            and not config.use_claude_code_subscription
-        ):
+        if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
                 "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
