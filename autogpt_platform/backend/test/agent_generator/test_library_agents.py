@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.features.chat.tools.agent_generator import core
+from backend.copilot.tools.agent_generator import core
 
 
 class TestGetLibraryAgentsForGeneration:
@@ -31,18 +31,20 @@ class TestGetLibraryAgentsForGeneration:
         mock_response = MagicMock()
         mock_response.agents = [mock_agent]
 
+        mock_db = MagicMock()
+        mock_db.list_library_agents = AsyncMock(return_value=mock_response)
+
         with patch.object(
-            core.library_db,
-            "list_library_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ) as mock_list:
+            core,
+            "library_db",
+            return_value=mock_db,
+        ):
             result = await core.get_library_agents_for_generation(
                 user_id="user-123",
                 search_query="send email",
             )
 
-            mock_list.assert_called_once_with(
+            mock_db.list_library_agents.assert_called_once_with(
                 user_id="user-123",
                 search_term="send email",
                 page=1,
@@ -80,11 +82,13 @@ class TestGetLibraryAgentsForGeneration:
             ),
         ]
 
+        mock_db = MagicMock()
+        mock_db.list_library_agents = AsyncMock(return_value=mock_response)
+
         with patch.object(
-            core.library_db,
-            "list_library_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
+            core,
+            "library_db",
+            return_value=mock_db,
         ):
             result = await core.get_library_agents_for_generation(
                 user_id="user-123",
@@ -101,18 +105,20 @@ class TestGetLibraryAgentsForGeneration:
         mock_response = MagicMock()
         mock_response.agents = []
 
+        mock_db = MagicMock()
+        mock_db.list_library_agents = AsyncMock(return_value=mock_response)
+
         with patch.object(
-            core.library_db,
-            "list_library_agents",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ) as mock_list:
+            core,
+            "library_db",
+            return_value=mock_db,
+        ):
             await core.get_library_agents_for_generation(
                 user_id="user-123",
                 max_results=5,
             )
 
-            mock_list.assert_called_once_with(
+            mock_db.list_library_agents.assert_called_once_with(
                 user_id="user-123",
                 search_term=None,
                 page=1,
@@ -144,24 +150,24 @@ class TestSearchMarketplaceAgentsForGeneration:
         mock_graph.input_schema = {"type": "object"}
         mock_graph.output_schema = {"type": "object"}
 
+        mock_store_db = MagicMock()
+        mock_store_db.get_store_agents = AsyncMock(return_value=mock_response)
+
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_store_listed_graphs = AsyncMock(
+            return_value={"graph-123": mock_graph}
+        )
+
         with (
-            patch(
-                "backend.api.features.store.db.get_store_agents",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ) as mock_search,
-            patch(
-                "backend.api.features.chat.tools.agent_generator.core.get_store_listed_graphs",
-                new_callable=AsyncMock,
-                return_value={"graph-123": mock_graph},
-            ),
+            patch.object(core, "store_db", return_value=mock_store_db),
+            patch.object(core, "graph_db", return_value=mock_graph_db),
         ):
             result = await core.search_marketplace_agents_for_generation(
                 search_query="automation",
                 max_results=10,
             )
 
-            mock_search.assert_called_once_with(
+            mock_store_db.get_store_agents.assert_called_once_with(
                 search_query="automation",
                 page=1,
                 page_size=10,
@@ -707,7 +713,7 @@ class TestExtractUuidsFromText:
 
 
 class TestGetLibraryAgentById:
-    """Test get_library_agent_by_id function (and its alias get_library_agent_by_graph_id)."""
+    """Test get_library_agent_by_id function (alias: get_library_agent_by_graph_id)."""
 
     @pytest.mark.asyncio
     async def test_returns_agent_when_found_by_graph_id(self):
@@ -720,12 +726,10 @@ class TestGetLibraryAgentById:
         mock_agent.input_schema = {"properties": {}}
         mock_agent.output_schema = {"properties": {}}
 
-        with patch.object(
-            core.library_db,
-            "get_library_agent_by_graph_id",
-            new_callable=AsyncMock,
-            return_value=mock_agent,
-        ):
+        mock_db = MagicMock()
+        mock_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
+
+        with patch.object(core, "library_db", return_value=mock_db):
             result = await core.get_library_agent_by_id("user-123", "agent-123")
 
         assert result is not None
@@ -743,20 +747,11 @@ class TestGetLibraryAgentById:
         mock_agent.input_schema = {"properties": {}}
         mock_agent.output_schema = {"properties": {}}
 
-        with (
-            patch.object(
-                core.library_db,
-                "get_library_agent_by_graph_id",
-                new_callable=AsyncMock,
-                return_value=None,  # Not found by graph_id
-            ),
-            patch.object(
-                core.library_db,
-                "get_library_agent",
-                new_callable=AsyncMock,
-                return_value=mock_agent,  # Found by library ID
-            ),
-        ):
+        mock_db = MagicMock()
+        mock_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+        mock_db.get_library_agent = AsyncMock(return_value=mock_agent)
+
+        with patch.object(core, "library_db", return_value=mock_db):
             result = await core.get_library_agent_by_id("user-123", "library-id-123")
 
         assert result is not None
@@ -766,20 +761,13 @@ class TestGetLibraryAgentById:
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found_by_either_method(self):
         """Test that None is returned when agent not found by either method."""
-        with (
-            patch.object(
-                core.library_db,
-                "get_library_agent_by_graph_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch.object(
-                core.library_db,
-                "get_library_agent",
-                new_callable=AsyncMock,
-                side_effect=core.NotFoundError("Not found"),
-            ),
-        ):
+        mock_db = MagicMock()
+        mock_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+        mock_db.get_library_agent = AsyncMock(
+            side_effect=core.NotFoundError("Not found")
+        )
+
+        with patch.object(core, "library_db", return_value=mock_db):
             result = await core.get_library_agent_by_id("user-123", "nonexistent")
 
         assert result is None
@@ -787,27 +775,20 @@ class TestGetLibraryAgentById:
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self):
         """Test that None is returned when exception occurs in both lookups."""
-        with (
-            patch.object(
-                core.library_db,
-                "get_library_agent_by_graph_id",
-                new_callable=AsyncMock,
-                side_effect=Exception("Database error"),
-            ),
-            patch.object(
-                core.library_db,
-                "get_library_agent",
-                new_callable=AsyncMock,
-                side_effect=Exception("Database error"),
-            ),
-        ):
+        mock_db = MagicMock()
+        mock_db.get_library_agent_by_graph_id = AsyncMock(
+            side_effect=Exception("Database error")
+        )
+        mock_db.get_library_agent = AsyncMock(side_effect=Exception("Database error"))
+
+        with patch.object(core, "library_db", return_value=mock_db):
             result = await core.get_library_agent_by_id("user-123", "agent-123")
 
         assert result is None
 
     @pytest.mark.asyncio
     async def test_alias_works(self):
-        """Test that get_library_agent_by_graph_id is an alias for get_library_agent_by_id."""
+        """Test that get_library_agent_by_graph_id is an alias."""
         assert core.get_library_agent_by_graph_id is core.get_library_agent_by_id
 
 
@@ -828,20 +809,11 @@ class TestGetAllRelevantAgentsWithUuids:
         mock_response = MagicMock()
         mock_response.agents = []
 
-        with (
-            patch.object(
-                core.library_db,
-                "get_library_agent_by_graph_id",
-                new_callable=AsyncMock,
-                return_value=mock_agent,
-            ),
-            patch.object(
-                core.library_db,
-                "list_library_agents",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ),
-        ):
+        mock_db = MagicMock()
+        mock_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
+        mock_db.list_library_agents = AsyncMock(return_value=mock_response)
+
+        with patch.object(core, "library_db", return_value=mock_db):
             result = await core.get_all_relevant_agents_for_generation(
                 user_id="user-123",
                 search_query="Use agent 46631191-e8a8-486f-ad90-84f89738321d",

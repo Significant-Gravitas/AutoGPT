@@ -82,9 +82,10 @@ async def test_block_handler_get_missing_items(mocker):
     mock_block_instance.description = "Performs calculations"
     mock_block_instance.categories = [MagicMock(value="MATH")]
     mock_block_instance.disabled = False
-    mock_block_instance.input_schema.model_json_schema.return_value = {
-        "properties": {"expression": {"description": "Math expression to evaluate"}}
-    }
+    mock_field = MagicMock()
+    mock_field.description = "Math expression to evaluate"
+    mock_block_instance.input_schema.model_fields = {"expression": mock_field}
+    mock_block_instance.input_schema.get_credentials_fields_info.return_value = {}
     mock_block_class.return_value = mock_block_instance
 
     mock_blocks = {"block-uuid-1": mock_block_class}
@@ -93,7 +94,7 @@ async def test_block_handler_get_missing_items(mocker):
     mock_existing = []
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -135,7 +136,7 @@ async def test_block_handler_get_stats(mocker):
     mock_embedded = [{"count": 2}]
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -309,25 +310,25 @@ async def test_content_handlers_registry():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_block_handler_handles_missing_attributes():
-    """Test BlockHandler gracefully handles blocks with missing attributes."""
+async def test_block_handler_handles_empty_attributes():
+    """Test BlockHandler handles blocks with empty/falsy attribute values."""
     handler = BlockHandler()
 
-    # Mock block with minimal attributes
+    # Mock block with empty values (all attributes exist but are falsy)
     mock_block_class = MagicMock()
     mock_block_instance = MagicMock()
     mock_block_instance.name = "Minimal Block"
     mock_block_instance.disabled = False
-    # No description, categories, or schema
-    del mock_block_instance.description
-    del mock_block_instance.categories
-    del mock_block_instance.input_schema
+    mock_block_instance.description = ""
+    mock_block_instance.categories = set()
+    mock_block_instance.input_schema.model_fields = {}
+    mock_block_instance.input_schema.get_credentials_fields_info.return_value = {}
     mock_block_class.return_value = mock_block_instance
 
     mock_blocks = {"block-minimal": mock_block_class}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(
@@ -352,6 +353,8 @@ async def test_block_handler_skips_failed_blocks():
     good_instance.description = "Works fine"
     good_instance.categories = []
     good_instance.disabled = False
+    good_instance.input_schema.model_fields = {}
+    good_instance.input_schema.get_credentials_fields_info.return_value = {}
     good_block.return_value = good_instance
 
     bad_block = MagicMock()
@@ -360,7 +363,7 @@ async def test_block_handler_skips_failed_blocks():
     mock_blocks = {"good-block": good_block, "bad-block": bad_block}
 
     with patch(
-        "backend.data.block.get_blocks",
+        "backend.blocks.get_blocks",
         return_value=mock_blocks,
     ):
         with patch(

@@ -10,7 +10,7 @@ from typing_extensions import TypedDict
 
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.model as store_model
-import backend.data.block
+import backend.blocks
 from backend.api.external.middleware import require_permission
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -18,6 +18,7 @@ from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.executor.utils import add_graph_execution
+from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.settings import Settings
 
 from .integrations import integrations_router
@@ -67,7 +68,7 @@ async def get_user_info(
     dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in backend.data.block.get_blocks().values()]
+    blocks = [block() for block in backend.blocks.get_blocks().values()]
     return [b.to_dict() for b in blocks if not b.disabled]
 
 
@@ -83,7 +84,7 @@ async def execute_graph_block(
         require_permission(APIKeyPermission.EXECUTE_BLOCK)
     ),
 ) -> CompletedBlockOutput:
-    obj = backend.data.block.get_block(block_id)
+    obj = backend.blocks.get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
@@ -93,6 +94,43 @@ async def execute_graph_block(
     async for name, data in obj.execute(data):
         output[name].append(data)
     return output
+
+
+@v1_router.post(
+    path="/graphs",
+    tags=["graphs"],
+    status_code=201,
+    dependencies=[
+        Security(
+            require_permission(
+                APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
+            )
+        )
+    ],
+)
+async def create_graph(
+    graph: graph_db.Graph,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+    ),
+) -> graph_db.GraphModel:
+    """
+    Create a new agent graph.
+
+    The graph will be validated and assigned a new ID.
+    It is automatically added to the user's library.
+    """
+    from backend.api.features.library import db as library_db
+
+    graph_model = graph_db.make_graph_model(graph, auth.user_id)
+    graph_model.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
+    graph_model.validate_graph(for_run=False)
+
+    await graph_db.create_graph(graph_model, user_id=auth.user_id)
+    await library_db.create_library_agent(graph_model, auth.user_id)
+    activated_graph = await on_graph_activate(graph_model, user_id=auth.user_id)
+
+    return activated_graph
 
 
 @v1_router.post(

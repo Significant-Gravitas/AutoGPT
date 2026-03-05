@@ -56,12 +56,16 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [File Store](block-integrations/basic.md#file-store) | Downloads and stores a file from a URL, data URI, or local path |
 | [Find In Dictionary](block-integrations/basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
 | [Find In List](block-integrations/basic.md#find-in-list) | Finds the index of the value in the list |
+| [Flatten List](block-integrations/basic.md#flatten-list) | Flattens a nested list structure into a single flat list |
 | [Get All Memories](block-integrations/basic.md#get-all-memories) | Retrieve all memories from Mem0 with optional conversation filtering |
 | [Get Latest Memory](block-integrations/basic.md#get-latest-memory) | Retrieve the latest memory from Mem0 with optional key filtering |
 | [Get List Item](block-integrations/basic.md#get-list-item) | Returns the element at the given index |
 | [Get Store Agent Details](block-integrations/system/store_operations.md#get-store-agent-details) | Get detailed information about an agent from the store |
 | [Get Weather Information](block-integrations/basic.md#get-weather-information) | Retrieves weather information for a specified location using OpenWeatherMap API |
-| [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution and wait for human approval or modification of data |
+| [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution for human review |
+| [Interleave Lists](block-integrations/basic.md#interleave-lists) | Interleaves elements from multiple lists in round-robin fashion, alternating between sources |
+| [List Difference](block-integrations/basic.md#list-difference) | Computes the difference between two lists |
+| [List Intersection](block-integrations/basic.md#list-intersection) | Computes the intersection of two lists, returning only elements present in both |
 | [List Is Empty](block-integrations/basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](block-integrations/system/library_operations.md#list-library-agents) | List all agents in your personal library |
 | [Note](block-integrations/basic.md#note) | A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes |
@@ -84,6 +88,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Store Value](block-integrations/basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
+| [Zip Lists](block-integrations/basic.md#zip-lists) | Zips multiple lists together into a list of grouped elements |
 
 ## Data Processing
 
@@ -300,10 +305,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Create Reddit Post](block-integrations/misc.md#create-reddit-post) | Create a new post on a subreddit |
 | [Delete Reddit Comment](block-integrations/misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
 | [Delete Reddit Post](block-integrations/misc.md#delete-reddit-post) | Delete a Reddit post that you own |
+| [Delete Telegram Message](block-integrations/telegram/blocks.md#delete-telegram-message) | Delete a message from a Telegram chat |
 | [Discord Channel Info](block-integrations/discord/bot_blocks.md#discord-channel-info) | Resolves Discord channel names to IDs and vice versa |
 | [Discord Get Current User](block-integrations/discord/oauth_blocks.md#discord-get-current-user) | Gets information about the currently authenticated Discord user using OAuth2 credentials |
 | [Discord User Info](block-integrations/discord/bot_blocks.md#discord-user-info) | Gets information about a Discord user by their ID |
 | [Edit Reddit Post](block-integrations/misc.md#edit-reddit-post) | Edit the body text of an existing Reddit post that you own |
+| [Edit Telegram Message](block-integrations/telegram/blocks.md#edit-telegram-message) | Edit the text of an existing message sent by the bot |
 | [Get Linkedin Profile](block-integrations/enrichlayer/linkedin.md#get-linkedin-profile) | Fetch LinkedIn profile data using Enrichlayer |
 | [Get Linkedin Profile Picture](block-integrations/enrichlayer/linkedin.md#get-linkedin-profile-picture) | Get LinkedIn profile pictures using Enrichlayer |
 | [Get Reddit Comment](block-integrations/misc.md#get-reddit-comment) | Get details about a specific Reddit comment by its ID |
@@ -316,6 +323,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Subreddit Flairs](block-integrations/misc.md#get-subreddit-flairs) | Get available link flair options for a subreddit |
 | [Get Subreddit Info](block-integrations/misc.md#get-subreddit-info) | Get information about a subreddit including subscriber count, description, and rules |
 | [Get Subreddit Rules](block-integrations/misc.md#get-subreddit-rules) | Get the rules for a subreddit to ensure compliance before posting |
+| [Get Telegram File](block-integrations/telegram/blocks.md#get-telegram-file) | Download a file from Telegram using its file_id |
 | [Get User Posts](block-integrations/misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
@@ -338,12 +346,21 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
+| [Reply To Telegram Message](block-integrations/telegram/blocks.md#reply-to-telegram-message) | Reply to a specific message in a Telegram chat |
 | [Search Reddit](block-integrations/misc.md#search-reddit) | Search Reddit for posts matching a query |
 | [Send Discord DM](block-integrations/discord/bot_blocks.md#send-discord-dm) | Sends a direct message to a Discord user using their user ID |
 | [Send Discord Embed](block-integrations/discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
+| [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
+| [Send Telegram Document](block-integrations/telegram/blocks.md#send-telegram-document) | Send a document (any file type) to a Telegram chat |
+| [Send Telegram Message](block-integrations/telegram/blocks.md#send-telegram-message) | Send a text message to a Telegram chat |
+| [Send Telegram Photo](block-integrations/telegram/blocks.md#send-telegram-photo) | Send a photo to a Telegram chat |
+| [Send Telegram Video](block-integrations/telegram/blocks.md#send-telegram-video) | Send a video to a Telegram chat |
+| [Send Telegram Voice](block-integrations/telegram/blocks.md#send-telegram-voice) | Send a voice message to a Telegram chat |
+| [Telegram Message Reaction Trigger](block-integrations/telegram/triggers.md#telegram-message-reaction-trigger) | Triggers when a reaction to a message is changed |
+| [Telegram Message Trigger](block-integrations/telegram/triggers.md#telegram-message-trigger) | Triggers when a message is received or edited in your Telegram bot |
 | [Transcribe Youtube Video](block-integrations/misc.md#transcribe-youtube-video) | Transcribes a YouTube video using a proxy |
 | [Twitter Add List Member](block-integrations/twitter/list_members.md#twitter-add-list-member) | This block adds a specified user to a Twitter List owned by the authenticated user |
 | [Twitter Bookmark Tweet](block-integrations/twitter/bookmark.md#twitter-bookmark-tweet) | This block bookmarks a tweet on Twitter |
@@ -467,6 +484,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
 | [Github Update File](block-integrations/github/repo.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
+| [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation

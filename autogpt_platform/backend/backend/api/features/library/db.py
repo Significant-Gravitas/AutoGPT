@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import logging
 from typing import Literal, Optional
 
@@ -12,19 +13,26 @@ import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
 import backend.data.integrations as integrations_db
-from backend.data.block import BlockInput
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
+)
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
 from backend.data.graph import GraphSettings
-from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
-from backend.data.model import CredentialsMetaInput
+from backend.data.includes import (
+    AGENT_PRESET_INCLUDE,
+    LIBRARY_FOLDER_INCLUDE,
+    library_agent_include,
+)
+from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -43,6 +51,8 @@ async def list_library_agents(
     page: int = 1,
     page_size: int = 50,
     include_executions: bool = False,
+    folder_id: Optional[str] = None,
+    include_root_only: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -53,6 +63,8 @@ async def list_library_agents(
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
+        folder_id: Filter by folder ID. If provided, only returns agents in this folder.
+        include_root_only: If True, only returns agents without a folder (root-level).
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
             Set to True when accurate status/metrics are needed (e.g., agent generator).
@@ -83,6 +95,13 @@ async def list_library_agents(
         "isArchived": False,
     }
 
+    # Apply folder filter (skip when searching — search spans all folders)
+    if folder_id is not None and not search_term:
+        where_clause["folderId"] = folder_id
+    elif include_root_only and not search_term:
+        where_clause["folderId"] = None
+
+    # Build search filter if applicable
     if search_term:
         where_clause["OR"] = [
             {
@@ -106,52 +125,41 @@ async def list_library_agents(
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
 
-    try:
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=where_clause,
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=include_executions
-            ),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-        agent_count = await prisma.models.LibraryAgent.prisma().count(
-            where=where_clause
-        )
+    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where=where_clause,
+        include=library_agent_include(
+            user_id, include_nodes=False, include_executions=include_executions
+        ),
+        order=order_by,
+        skip=(page - 1) * page_size,
+        take=page_size,
+    )
+    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
 
-        logger.debug(
-            f"Retrieved {len(library_agents)} library agents for user #{user_id}"
-        )
+    logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
-        # Only pass valid agents to the response
-        valid_library_agents: list[library_model.LibraryAgent] = []
+    # Only pass valid agents to the response
+    valid_library_agents: list[library_model.LibraryAgent] = []
 
-        for agent in library_agents:
-            try:
-                library_agent = library_model.LibraryAgent.from_db(agent)
-                valid_library_agents.append(library_agent)
-            except Exception as e:
-                # Skip this agent if there was an error
-                logger.error(
-                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
-                )
-                continue
+    for agent in library_agents:
+        try:
+            library_agent = library_model.LibraryAgent.from_db(agent)
+            valid_library_agents.append(library_agent)
+        except Exception as e:
+            # Skip this agent if there was an error
+            logger.error(f"Error parsing LibraryAgent #{agent.id} from DB item: {e}")
+            continue
 
-        # Return the response with only valid agents
-        return library_model.LibraryAgentResponse(
-            agents=valid_library_agents,
-            pagination=Pagination(
-                total_items=agent_count,
-                total_pages=(agent_count + page_size - 1) // page_size,
-                current_page=page,
-                page_size=page_size,
-            ),
-        )
-
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching library agents: {e}")
-        raise DatabaseError("Failed to fetch library agents") from e
+    # Return the response with only valid agents
+    return library_model.LibraryAgentResponse(
+        agents=valid_library_agents,
+        pagination=Pagination(
+            total_items=agent_count,
+            total_pages=(agent_count + page_size - 1) // page_size,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def list_favorite_library_agents(
@@ -192,52 +200,43 @@ async def list_favorite_library_agents(
     # Sort favorites by updated date descending
     order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
 
-    try:
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=where_clause,
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
-            ),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-        agent_count = await prisma.models.LibraryAgent.prisma().count(
-            where=where_clause
-        )
+    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where=where_clause,
+        include=library_agent_include(
+            user_id, include_nodes=False, include_executions=False
+        ),
+        order=order_by,
+        skip=(page - 1) * page_size,
+        take=page_size,
+    )
+    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
 
-        logger.debug(
-            f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
-        )
+    logger.debug(
+        f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
+    )
 
-        # Only pass valid agents to the response
-        valid_library_agents: list[library_model.LibraryAgent] = []
+    # Only pass valid agents to the response
+    valid_library_agents: list[library_model.LibraryAgent] = []
 
-        for agent in library_agents:
-            try:
-                library_agent = library_model.LibraryAgent.from_db(agent)
-                valid_library_agents.append(library_agent)
-            except Exception as e:
-                # Skip this agent if there was an error
-                logger.error(
-                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
-                )
-                continue
+    for agent in library_agents:
+        try:
+            library_agent = library_model.LibraryAgent.from_db(agent)
+            valid_library_agents.append(library_agent)
+        except Exception as e:
+            # Skip this agent if there was an error
+            logger.error(f"Error parsing LibraryAgent #{agent.id} from DB item: {e}")
+            continue
 
-        # Return the response with only valid agents
-        return library_model.LibraryAgentResponse(
-            agents=valid_library_agents,
-            pagination=Pagination(
-                total_items=agent_count,
-                total_pages=(agent_count + page_size - 1) // page_size,
-                current_page=page,
-                page_size=page_size,
-            ),
-        )
-
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching favorite library agents: {e}")
-        raise DatabaseError("Failed to fetch favorite library agents") from e
+    # Return the response with only valid agents
+    return library_model.LibraryAgentResponse(
+        agents=valid_library_agents,
+        pagination=Pagination(
+            total_items=agent_count,
+            total_pages=(agent_count + page_size - 1) // page_size,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
@@ -255,57 +254,48 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         AgentNotFoundError: If the specified agent does not exist.
         DatabaseError: If there's an error during retrieval.
     """
-    try:
-        library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={
+            "id": id,
+            "userId": user_id,
+            "isDeleted": False,
+        },
+        include=library_agent_include(user_id),
+    )
+
+    if not library_agent:
+        raise NotFoundError(f"Library agent #{id} not found")
+
+    # Fetch marketplace listing if the agent has been published
+    store_listing = None
+    profile = None
+    if library_agent.AgentGraph:
+        store_listing = await prisma.models.StoreListing.prisma().find_first(
             where={
-                "id": id,
-                "userId": user_id,
+                "agentGraphId": library_agent.AgentGraph.id,
                 "isDeleted": False,
+                "hasApprovedVersion": True,
             },
-            include=library_agent_include(user_id),
+            include={
+                "ActiveVersion": True,
+            },
         )
-
-        if not library_agent:
-            raise NotFoundError(f"Library agent #{id} not found")
-
-        # Fetch marketplace listing if the agent has been published
-        store_listing = None
-        profile = None
-        if library_agent.AgentGraph:
-            store_listing = await prisma.models.StoreListing.prisma().find_first(
-                where={
-                    "agentGraphId": library_agent.AgentGraph.id,
-                    "isDeleted": False,
-                    "hasApprovedVersion": True,
-                },
-                include={
-                    "ActiveVersion": True,
-                },
+        if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
+            # Fetch Profile separately since User doesn't have a direct Profile relation
+            profile = await prisma.models.Profile.prisma().find_first(
+                where={"userId": store_listing.owningUserId}
             )
-            if (
-                store_listing
-                and store_listing.ActiveVersion
-                and store_listing.owningUserId
-            ):
-                # Fetch Profile separately since User doesn't have a direct Profile relation
-                profile = await prisma.models.Profile.prisma().find_first(
-                    where={"userId": store_listing.owningUserId}
-                )
 
-        return library_model.LibraryAgent.from_db(
-            library_agent,
-            sub_graphs=(
-                await graph_db.get_sub_graphs(library_agent.AgentGraph)
-                if library_agent.AgentGraph
-                else None
-            ),
-            store_listing=store_listing,
-            profile=profile,
-        )
-
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching library agent: {e}")
-        raise DatabaseError("Failed to fetch library agent") from e
+    return library_model.LibraryAgent.from_db(
+        library_agent,
+        sub_graphs=(
+            await graph_db.get_sub_graphs(library_agent.AgentGraph)
+            if library_agent.AgentGraph
+            else None
+        ),
+        store_listing=store_listing,
+        profile=profile,
+    )
 
 
 async def get_library_agent_by_store_version_id(
@@ -348,29 +338,25 @@ async def get_library_agent_by_graph_id(
     graph_id: str,
     graph_version: Optional[int] = None,
 ) -> library_model.LibraryAgent | None:
-    try:
-        filter: prisma.types.LibraryAgentWhereInput = {
-            "agentGraphId": graph_id,
-            "userId": user_id,
-            "isDeleted": False,
-        }
-        if graph_version is not None:
-            filter["agentGraphVersion"] = graph_version
+    filter: prisma.types.LibraryAgentWhereInput = {
+        "agentGraphId": graph_id,
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    if graph_version is not None:
+        filter["agentGraphVersion"] = graph_version
 
-        agent = await prisma.models.LibraryAgent.prisma().find_first(
-            where=filter,
-            include=library_agent_include(user_id),
-        )
-        if not agent:
-            return None
+    agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where=filter,
+        include=library_agent_include(user_id),
+    )
+    if not agent:
+        return None
 
-        assert agent.AgentGraph  # make type checker happy
-        # Include sub-graphs so we can make a full credentials input schema
-        sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-        return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching library agent by graph ID: {e}")
-        raise DatabaseError("Failed to fetch library agent") from e
+    assert agent.AgentGraph  # make type checker happy
+    # Include sub-graphs so we can make a full credentials input schema
+    sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
+    return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
 
 
 async def add_generated_agent_image(
@@ -635,6 +621,7 @@ async def update_library_agent(
     is_archived: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
+    folder_id: Optional[str] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -647,6 +634,7 @@ async def update_library_agent(
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
         settings: User-specific settings for this library agent.
+        folder_id: Folder ID to move agent to (None to skip).
 
     Returns:
         The updated LibraryAgent.
@@ -681,37 +669,44 @@ async def update_library_agent(
         new_settings = settings.model_dump(exclude_unset=True)
         merged_settings = {**current_settings_dict, **new_settings}
         update_fields["settings"] = SafeJson(merged_settings)
+    if folder_id is not None:
+        # Authorization: FK only checks existence, not ownership.
+        # Verify the folder belongs to this user to prevent cross-user nesting.
+        await get_folder(folder_id, user_id)
+        update_fields["folderId"] = folder_id
 
-    try:
-        # If graph_version is provided, update to that specific version
-        if graph_version is not None:
-            # Get the current agent to find its graph_id
-            agent = await get_library_agent(id=library_agent_id, user_id=user_id)
-            # Update to the specified version using existing function
-            return await update_agent_version_in_library(
-                user_id=user_id,
-                agent_graph_id=agent.graph_id,
-                agent_graph_version=graph_version,
+    # If graph_version is provided, update to that specific version
+    if graph_version is not None:
+        # Apply any other field updates first so they aren't lost
+        if update_fields:
+            await prisma.models.LibraryAgent.prisma().update_many(
+                where={"id": library_agent_id, "userId": user_id},
+                data=update_fields,
             )
-
-        # Otherwise, just update the simple fields
-        if not update_fields:
-            raise ValueError("No values were passed to update")
-
-        n_updated = await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id},
-            data=update_fields,
-        )
-        if n_updated < 1:
-            raise NotFoundError(f"Library agent {library_agent_id} not found")
-
-        return await get_library_agent(
-            id=library_agent_id,
+        # Get the current agent to find its graph_id
+        agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        # Update to the specified version using existing function
+        return await update_agent_version_in_library(
             user_id=user_id,
+            agent_graph_id=agent.graph_id,
+            agent_graph_version=graph_version,
         )
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating library agent: {str(e)}")
-        raise DatabaseError("Failed to update library agent") from e
+
+    # Otherwise, just update the simple fields
+    if not update_fields:
+        raise ValueError("No values were passed to update")
+
+    n_updated = await prisma.models.LibraryAgent.prisma().update_many(
+        where={"id": library_agent_id, "userId": user_id},
+        data=update_fields,
+    )
+    if n_updated < 1:
+        raise NotFoundError(f"Library agent {library_agent_id} not found")
+
+    return await get_library_agent(
+        id=library_agent_id,
+        user_id=user_id,
+    )
 
 
 async def delete_library_agent(
@@ -803,13 +798,9 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     """
     Deletes a library agent for the given user
     """
-    try:
-        await prisma.models.LibraryAgent.prisma().delete_many(
-            where={"agentGraphId": graph_id, "userId": user_id}
-        )
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error deleting library agent: {e}")
-        raise DatabaseError("Failed to delete library agent") from e
+    await prisma.models.LibraryAgent.prisma().delete_many(
+        where={"agentGraphId": graph_id, "userId": user_id}
+    )
 
 
 async def add_store_agent_to_library(
@@ -834,89 +825,660 @@ async def add_store_agent_to_library(
         f"to library for user #{user_id}"
     )
 
-    try:
-        store_listing_version = (
-            await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}, include={"AgentGraph": True}
-            )
+    store_listing_version = (
+        await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}, include={"AgentGraph": True}
         )
-        if not store_listing_version or not store_listing_version.AgentGraph:
-            logger.warning(
-                f"Store listing version not found: {store_listing_version_id}"
-            )
-            raise store_exceptions.AgentNotFoundError(
-                f"Store listing version {store_listing_version_id} not found or invalid"
-            )
-
-        graph = store_listing_version.AgentGraph
-
-        # Convert to GraphModel to check for HITL blocks
-        graph_model = await graph_db.get_graph(
-            graph_id=graph.id,
-            version=graph.version,
-            user_id=user_id,
-            include_subgraphs=False,
+    )
+    if not store_listing_version or not store_listing_version.AgentGraph:
+        logger.warning(f"Store listing version not found: {store_listing_version_id}")
+        raise store_exceptions.AgentNotFoundError(
+            f"Store listing version {store_listing_version_id} not found or invalid"
         )
-        if not graph_model:
-            raise store_exceptions.AgentNotFoundError(
-                f"Graph #{graph.id} v{graph.version} not found or accessible"
-            )
 
-        # Check if user already has this agent
-        existing_library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-            where={
-                "userId_agentGraphId_agentGraphVersion": {
-                    "userId": user_id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
+    graph = store_listing_version.AgentGraph
+
+    # Convert to GraphModel to check for HITL blocks
+    graph_model = await graph_db.get_graph(
+        graph_id=graph.id,
+        version=graph.version,
+        user_id=user_id,
+        include_subgraphs=False,
+    )
+    if not graph_model:
+        raise store_exceptions.AgentNotFoundError(
+            f"Graph #{graph.id} v{graph.version} not found or accessible"
+        )
+
+    # Check if user already has this agent (non-deleted)
+    if existing := await get_library_agent_by_graph_id(
+        user_id, graph.id, graph.version
+    ):
+        return existing
+
+    # Check for soft-deleted version and restore it
+    deleted_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={
+            "userId_agentGraphId_agentGraphVersion": {
+                "userId": user_id,
+                "agentGraphId": graph.id,
+                "agentGraphVersion": graph.version,
+            }
+        },
+    )
+    if deleted_agent and deleted_agent.isDeleted:
+        return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
+
+    # Create LibraryAgent entry
+    added_agent = await prisma.models.LibraryAgent.prisma().create(
+        data={
+            "User": {"connect": {"id": user_id}},
+            "AgentGraph": {
+                "connect": {
+                    "graphVersionId": {"id": graph.id, "version": graph.version}
                 }
             },
-            include={"AgentGraph": True},
-        )
-        if existing_library_agent:
-            if existing_library_agent.isDeleted:
-                # Even if agent exists it needs to be marked as not deleted
-                await update_library_agent(
-                    existing_library_agent.id, user_id, is_deleted=False
-                )
-            else:
-                logger.debug(
-                    f"User #{user_id} already has graph #{graph.id} "
-                    f"v{graph.version} in their library"
-                )
-            return library_model.LibraryAgent.from_db(existing_library_agent)
+            "isCreatedByUser": False,
+            "useGraphIsActiveVersion": False,
+            "settings": SafeJson(GraphSettings.from_graph(graph_model).model_dump()),
+        },
+        include=library_agent_include(
+            user_id, include_nodes=False, include_executions=False
+        ),
+    )
+    logger.debug(
+        f"Added graph #{graph.id} v{graph.version}"
+        f"for store listing version #{store_listing_version.id} "
+        f"to library for user #{user_id}"
+    )
+    return library_model.LibraryAgent.from_db(added_agent)
 
-        # Create LibraryAgent entry
-        added_agent = await prisma.models.LibraryAgent.prisma().create(
+
+##############################################
+############ Folder DB Functions #############
+##############################################
+
+
+async def _fetch_user_folders(
+    user_id: str,
+    extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
+    include_relations: bool = True,
+) -> list[prisma.models.LibraryFolder]:
+    """
+    Shared helper to fetch folders for a user with consistent query params.
+
+    Args:
+        user_id: The ID of the user.
+        extra_where: Additional where-clause filters to merge in.
+        include_relations: Whether to include LibraryAgents and Children relations
+            (used to derive counts via len(); Prisma Python has no _count include).
+
+    Returns:
+        A list of raw Prisma LibraryFolder records.
+    """
+    where_clause: prisma.types.LibraryFolderWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    if extra_where:
+        where_clause.update(extra_where)
+
+    return await prisma.models.LibraryFolder.prisma().find_many(
+        where=where_clause,
+        order={"createdAt": "asc"},
+        include=LIBRARY_FOLDER_INCLUDE if include_relations else None,
+    )
+
+
+async def list_folders(
+    user_id: str,
+    parent_id: Optional[str] = None,
+    include_relations: bool = True,
+) -> list[library_model.LibraryFolder]:
+    """
+    Lists folders for a user, optionally filtered by parent.
+
+    Args:
+        user_id: The ID of the user.
+        parent_id: If provided, only returns folders with this parent.
+                   If None, returns root-level folders.
+        include_relations: Whether to include agent and subfolder relations for counts.
+
+    Returns:
+        A list of LibraryFolder objects.
+    """
+    logger.debug(f"Listing folders for user #{user_id}, parent_id={parent_id}")
+
+    folders = await _fetch_user_folders(
+        user_id,
+        extra_where={"parentId": parent_id},
+        include_relations=include_relations,
+    )
+
+    return [
+        library_model.LibraryFolder.from_db(
+            folder,
+            agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
+            subfolder_count=len(folder.Children) if folder.Children else 0,
+        )
+        for folder in folders
+    ]
+
+
+async def get_folder_tree(
+    user_id: str,
+) -> list[library_model.LibraryFolderTree]:
+    """
+    Gets the full folder tree for a user.
+
+    Args:
+        user_id: The ID of the user.
+
+    Returns:
+        A list of LibraryFolderTree objects (root folders with nested children).
+    """
+    logger.debug(f"Getting folder tree for user #{user_id}")
+
+    # Fetch all folders for the user
+    all_folders = await _fetch_user_folders(user_id)
+
+    # Build a map of folder ID to folder data
+    folder_map: dict[str, library_model.LibraryFolderTree] = {
+        folder.id: library_model.LibraryFolderTree(
+            **library_model.LibraryFolder.from_db(
+                folder,
+                agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
+                subfolder_count=len(folder.Children) if folder.Children else 0,
+            ).model_dump(),
+            children=[],
+        )
+        for folder in all_folders
+    }
+
+    # Build the tree structure
+    root_folders: list[library_model.LibraryFolderTree] = []
+    for folder in all_folders:
+        tree_folder = folder_map[folder.id]
+        if folder.parentId and folder.parentId in folder_map:
+            folder_map[folder.parentId].children.append(tree_folder)
+        else:
+            root_folders.append(tree_folder)
+
+    return root_folders
+
+
+async def get_folder(
+    folder_id: str,
+    user_id: str,
+) -> library_model.LibraryFolder:
+    """
+    Gets a single folder by ID.
+
+    Args:
+        folder_id: The ID of the folder.
+        user_id: The ID of the user (for ownership verification).
+
+    Returns:
+        The LibraryFolder object.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist or doesn't belong to the user.
+    """
+    folder = await prisma.models.LibraryFolder.prisma().find_first(
+        where={
+            "id": folder_id,
+            "userId": user_id,
+            "isDeleted": False,
+        },
+        include=LIBRARY_FOLDER_INCLUDE,
+    )
+
+    if not folder:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+
+    return library_model.LibraryFolder.from_db(
+        folder,
+        agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
+        subfolder_count=len(folder.Children) if folder.Children else 0,
+    )
+
+
+async def _is_descendant_of(
+    folder_id: str,
+    potential_ancestor_id: str,
+    user_id: str,
+) -> bool:
+    """
+    Check if folder_id is a descendant of (or equal to) potential_ancestor_id.
+
+    Fetches all user folders in a single query and walks the parent chain
+    in memory to avoid N database round-trips.
+
+    Args:
+        folder_id: The ID of the folder to check.
+        potential_ancestor_id: The ID of the potential ancestor.
+        user_id: The ID of the user.
+
+    Returns:
+        True if folder_id is a descendant of (or equal to) potential_ancestor_id.
+    """
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
+    )
+    parent_map = {f.id: f.parentId for f in all_folders}
+
+    visited: set[str] = set()
+    current_id: str | None = folder_id
+    while current_id:
+        if current_id == potential_ancestor_id:
+            return True
+        if current_id in visited:
+            break  # cycle detected
+        visited.add(current_id)
+        current_id = parent_map.get(current_id)
+
+    return False
+
+
+async def create_folder(
+    user_id: str,
+    name: str,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Creates a new folder for the user.
+
+    Args:
+        user_id: The ID of the user.
+        name: The folder name.
+        parent_id: Optional parent folder ID.
+        icon: Optional icon identifier.
+        color: Optional hex color code.
+
+    Returns:
+        The created LibraryFolder.
+
+    Raises:
+        FolderAlreadyExistsError: If a folder with this name already exists.
+        NotFoundError: If the parent folder doesn't exist.
+    """
+    logger.debug(f"Creating folder '{name}' for user #{user_id}")
+
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the parent belongs to this user to prevent cross-user nesting.
+    if parent_id:
+        await get_folder(parent_id, user_id)
+
+    # Build data dict conditionally - don't include Parent key if no parent_id
+    create_data: dict = {
+        "name": name,
+        "User": {"connect": {"id": user_id}},
+    }
+    if icon is not None:
+        create_data["icon"] = icon
+    if color is not None:
+        create_data["color"] = color
+    if parent_id:
+        create_data["Parent"] = {"connect": {"id": parent_id}}
+
+    try:
+        folder = await prisma.models.LibraryFolder.prisma().create(data=create_data)
+    except prisma.errors.UniqueViolationError:
+        raise FolderAlreadyExistsError(
+            "A folder with this name already exists in this location"
+        )
+
+    return library_model.LibraryFolder.from_db(folder)
+
+
+async def create_folder_with_unique_name(
+    user_id: str,
+    base_name: str,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Creates a folder, appending (2), (3), etc. if name exists.
+
+    Args:
+        user_id: The ID of the user.
+        base_name: The base folder name.
+        parent_id: Optional parent folder ID.
+        icon: Optional icon identifier.
+        color: Optional hex color code.
+
+    Returns:
+        The created LibraryFolder.
+    """
+    for i in itertools.count():
+        name = base_name if i == 0 else f"{base_name} ({i + 1})"
+        try:
+            return await create_folder(
+                user_id=user_id,
+                name=name,
+                parent_id=parent_id,
+                icon=icon,
+                color=color,
+            )
+        except FolderAlreadyExistsError:
+            continue
+
+    raise RuntimeError("Unreachable")
+
+
+async def update_folder(
+    folder_id: str,
+    user_id: str,
+    name: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+) -> library_model.LibraryFolder:
+    """
+    Updates a folder's properties.
+
+    Args:
+        folder_id: The ID of the folder to update.
+        user_id: The ID of the user.
+        name: New folder name.
+        icon: New icon identifier.
+        color: New hex color code.
+
+    Returns:
+        The updated LibraryFolder.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Updating folder #{folder_id} for user #{user_id}")
+
+    # Authorization: update uses where={"id": ...} without userId,
+    # so we must verify ownership first.
+    await get_folder(folder_id, user_id)
+
+    update_data: prisma.types.LibraryFolderUpdateInput = {}
+    if name is not None:
+        update_data["name"] = name
+    if icon is not None:
+        update_data["icon"] = icon
+    if color is not None:
+        update_data["color"] = color
+
+    if not update_data:
+        return await get_folder(folder_id, user_id)
+
+    try:
+        folder = await prisma.models.LibraryFolder.prisma().update(
+            where={"id": folder_id},
+            data=update_data,
+            include=LIBRARY_FOLDER_INCLUDE,
+        )
+    except prisma.errors.UniqueViolationError:
+        raise FolderAlreadyExistsError(
+            "A folder with this name already exists in this location"
+        )
+
+    if not folder:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+
+    return library_model.LibraryFolder.from_db(
+        folder,
+        agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
+        subfolder_count=len(folder.Children) if folder.Children else 0,
+    )
+
+
+async def move_folder(
+    folder_id: str,
+    user_id: str,
+    target_parent_id: Optional[str],
+) -> library_model.LibraryFolder:
+    """
+    Moves a folder to a new parent.
+
+    Args:
+        folder_id: The ID of the folder to move.
+        user_id: The ID of the user.
+        target_parent_id: The target parent ID (None for root).
+
+    Returns:
+        The moved LibraryFolder.
+
+    Raises:
+        FolderValidationError: If the move is invalid.
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Moving folder #{folder_id} to parent #{target_parent_id}")
+
+    # Authorization: update uses where={"id": ...} without userId,
+    # so we must verify ownership first.
+    await get_folder(folder_id, user_id)
+
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the target parent belongs to this user to prevent cross-user nesting.
+    if target_parent_id:
+        await get_folder(target_parent_id, user_id)
+
+    # Validate no circular reference
+    if target_parent_id:
+        if await _is_descendant_of(target_parent_id, folder_id, user_id):
+            raise FolderValidationError("Cannot move folder into its own descendant")
+
+    try:
+        folder = await prisma.models.LibraryFolder.prisma().update(
+            where={"id": folder_id},
             data={
-                "User": {"connect": {"id": user_id}},
-                "AgentGraph": {
-                    "connect": {
-                        "graphVersionId": {"id": graph.id, "version": graph.version}
-                    }
-                },
-                "isCreatedByUser": False,
-                "useGraphIsActiveVersion": False,
-                "settings": SafeJson(
-                    GraphSettings.from_graph(graph_model).model_dump()
-                ),
+                "parentId": target_parent_id,
             },
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
-            ),
+            include=LIBRARY_FOLDER_INCLUDE,
         )
-        logger.debug(
-            f"Added graph #{graph.id} v{graph.version}"
-            f"for store listing version #{store_listing_version.id} "
-            f"to library for user #{user_id}"
+    except prisma.errors.UniqueViolationError:
+        raise FolderAlreadyExistsError(
+            "A folder with this name already exists in this location"
         )
-        return library_model.LibraryAgent.from_db(added_agent)
-    except store_exceptions.AgentNotFoundError:
-        # Reraise for external handling.
-        raise
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error adding agent to library: {e}")
-        raise DatabaseError("Failed to add agent to library") from e
+
+    if not folder:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+
+    return library_model.LibraryFolder.from_db(
+        folder,
+        agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
+        subfolder_count=len(folder.Children) if folder.Children else 0,
+    )
+
+
+async def delete_folder(
+    folder_id: str,
+    user_id: str,
+    soft_delete: bool = True,
+) -> None:
+    """
+    Deletes a folder and all its contents (cascade).
+
+    Args:
+        folder_id: The ID of the folder to delete.
+        user_id: The ID of the user.
+        soft_delete: If True, soft-deletes; otherwise hard-deletes.
+
+    Raises:
+        NotFoundError: If the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Deleting folder #{folder_id} for user #{user_id}")
+
+    # Authorization: verify folder exists and belongs to user.
+    await get_folder(folder_id, user_id)
+
+    # Collect all folder IDs (target + descendants) — single query, in-memory walk
+    descendant_ids = await _get_descendant_folder_ids(folder_id, user_id)
+    all_folder_ids = [folder_id] + descendant_ids
+
+    async with transaction() as tx:
+        if soft_delete:
+            # Move agents to root so they aren't lost when the folder is deleted
+            await prisma.models.LibraryAgent.prisma(tx).update_many(
+                where={
+                    "folderId": {"in": all_folder_ids},
+                    "userId": user_id,
+                },
+                data={"folderId": None},
+            )
+
+            # Soft-delete all folders
+            await prisma.models.LibraryFolder.prisma(tx).update_many(
+                where={
+                    "id": {"in": all_folder_ids},
+                    "userId": user_id,
+                },
+                data={"isDeleted": True},
+            )
+        else:
+            # Move agents to root (or could hard-delete them)
+            await prisma.models.LibraryAgent.prisma(tx).update_many(
+                where={
+                    "folderId": {"in": all_folder_ids},
+                    "userId": user_id,
+                },
+                data={"folderId": None},
+            )
+
+            # Hard-delete folders (children first due to FK constraints)
+            for fid in reversed(all_folder_ids):
+                await prisma.models.LibraryFolder.prisma(tx).delete(where={"id": fid})
+
+
+async def _get_descendant_folder_ids(
+    folder_id: str,
+    user_id: str,
+) -> list[str]:
+    """
+    Get all descendant folder IDs in a single query + in-memory walk,
+    same approach as _is_descendant_of to avoid N recursive DB round-trips.
+
+    Args:
+        folder_id: The ID of the parent folder.
+        user_id: The ID of the user.
+
+    Returns:
+        A list of descendant folder IDs.
+    """
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
+    )
+
+    # Build children map: parent_id -> [child_ids]
+    children_map: dict[str, list[str]] = {}
+    for f in all_folders:
+        if f.parentId:
+            children_map.setdefault(f.parentId, []).append(f.id)
+
+    # Walk the tree in memory
+    result: list[str] = []
+    visited: set[str] = set()
+    stack = list(children_map.get(folder_id, []))
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue  # cycle guard
+        visited.add(current)
+        result.append(current)
+        stack.extend(children_map.get(current, []))
+
+    return result
+
+
+async def move_agent_to_folder(
+    library_agent_id: str,
+    folder_id: Optional[str],
+    user_id: str,
+) -> library_model.LibraryAgent:
+    """
+    Moves a library agent to a folder.
+
+    Args:
+        library_agent_id: The ID of the library agent.
+        folder_id: The target folder ID (None for root).
+        user_id: The ID of the user.
+
+    Returns:
+        The updated LibraryAgent.
+
+    Raises:
+        NotFoundError: If the agent or folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Moving agent #{library_agent_id} to folder #{folder_id}")
+
+    # Authorization: verify agent belongs to user before updating.
+    # update() uses where={"id": ...} without userId, so check ownership first.
+    await get_library_agent(library_agent_id, user_id)
+
+    # Authorization: folderId is set directly, FK only checks existence
+    # not ownership, so verify the folder belongs to the user.
+    if folder_id:
+        await get_folder(folder_id, user_id)
+
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent_id},
+        data={"folderId": folder_id},
+    )
+
+    return await get_library_agent(library_agent_id, user_id)
+
+
+async def bulk_move_agents_to_folder(
+    agent_ids: list[str],
+    folder_id: Optional[str],
+    user_id: str,
+) -> list[library_model.LibraryAgent]:
+    """
+    Moves multiple library agents to a folder.
+
+    Args:
+        agent_ids: The IDs of the library agents.
+        folder_id: The target folder ID (None for root).
+        user_id: The ID of the user.
+
+    Returns:
+        The updated LibraryAgents.
+
+    Raises:
+        NotFoundError: If any agent or the folder doesn't exist.
+        DatabaseError: If there's a database error.
+    """
+    logger.debug(f"Bulk moving {len(agent_ids)} agents to folder #{folder_id}")
+
+    # Authorization: folderId is set directly, FK only checks existence
+    # not ownership, so verify the folder belongs to the user.
+    if folder_id:
+        await get_folder(folder_id, user_id)
+
+    # Update all agents
+    await prisma.models.LibraryAgent.prisma().update_many(
+        where={
+            "id": {"in": agent_ids},
+            "userId": user_id,
+            "isDeleted": False,
+        },
+        data={"folderId": folder_id},
+    )
+
+    # Fetch and return updated agents
+    agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "id": {"in": agent_ids},
+            "userId": user_id,
+        },
+        include=library_agent_include(
+            user_id, include_nodes=False, include_executions=False
+        ),
+    )
+
+    return [library_model.LibraryAgent.from_db(agent) for agent in agents]
 
 
 ##############################################
@@ -950,7 +1512,7 @@ async def list_presets(
         logger.warning(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
-        raise DatabaseError("Invalid pagination parameters")
+        raise InvalidInputError("Invalid pagination parameters")
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -959,34 +1521,28 @@ async def list_presets(
     if graph_id:
         query_filter["agentGraphId"] = graph_id
 
-    try:
-        presets_records = await prisma.models.AgentPreset.prisma().find_many(
-            where=query_filter,
-            skip=(page - 1) * page_size,
-            take=page_size,
-            include=AGENT_PRESET_INCLUDE,
-        )
-        total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
-        total_pages = (total_items + page_size - 1) // page_size
+    presets_records = await prisma.models.AgentPreset.prisma().find_many(
+        where=query_filter,
+        skip=(page - 1) * page_size,
+        take=page_size,
+        include=AGENT_PRESET_INCLUDE,
+    )
+    total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
+    total_pages = (total_items + page_size - 1) // page_size
 
-        presets = [
-            library_model.LibraryAgentPreset.from_db(preset)
-            for preset in presets_records
-        ]
+    presets = [
+        library_model.LibraryAgentPreset.from_db(preset) for preset in presets_records
+    ]
 
-        return library_model.LibraryAgentPresetResponse(
-            presets=presets,
-            pagination=Pagination(
-                total_items=total_items,
-                total_pages=total_pages,
-                current_page=page,
-                page_size=page_size,
-            ),
-        )
-
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error getting presets: {e}")
-        raise DatabaseError("Failed to fetch presets") from e
+    return library_model.LibraryAgentPresetResponse(
+        presets=presets,
+        pagination=Pagination(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_preset(
@@ -1006,17 +1562,13 @@ async def get_preset(
         DatabaseError: If there's a database error during the fetch.
     """
     logger.debug(f"Fetching preset #{preset_id} for user #{user_id}")
-    try:
-        preset = await prisma.models.AgentPreset.prisma().find_unique(
-            where={"id": preset_id},
-            include=AGENT_PRESET_INCLUDE,
-        )
-        if not preset or preset.userId != user_id or preset.isDeleted:
-            return None
-        return library_model.LibraryAgentPreset.from_db(preset)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error getting preset: {e}")
-        raise DatabaseError("Failed to fetch preset") from e
+    preset = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": preset_id},
+        include=AGENT_PRESET_INCLUDE,
+    )
+    if not preset or preset.userId != user_id or preset.isDeleted:
+        return None
+    return library_model.LibraryAgentPreset.from_db(preset)
 
 
 async def create_preset(
@@ -1039,34 +1591,30 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    try:
-        new_preset = await prisma.models.AgentPreset.prisma().create(
-            data=prisma.types.AgentPresetCreateInput(
-                userId=user_id,
-                name=preset.name,
-                description=preset.description,
-                agentGraphId=preset.graph_id,
-                agentGraphVersion=preset.graph_version,
-                isActive=preset.is_active,
-                webhookId=preset.webhook_id,
-                InputPresets={
-                    "create": [
-                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=SafeJson(data)
-                        )
-                        for name, data in {
-                            **preset.inputs,
-                            **preset.credentials,
-                        }.items()
-                    ]
-                },
-            ),
-            include=AGENT_PRESET_INCLUDE,
-        )
-        return library_model.LibraryAgentPreset.from_db(new_preset)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating preset: {e}")
-        raise DatabaseError("Failed to create preset") from e
+    new_preset = await prisma.models.AgentPreset.prisma().create(
+        data=prisma.types.AgentPresetCreateInput(
+            userId=user_id,
+            name=preset.name,
+            description=preset.description,
+            agentGraphId=preset.graph_id,
+            agentGraphVersion=preset.graph_version,
+            isActive=preset.is_active,
+            webhookId=preset.webhook_id,
+            InputPresets={
+                "create": [
+                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                        name=name, data=SafeJson(data)
+                    )
+                    for name, data in {
+                        **preset.inputs,
+                        **preset.credentials,
+                    }.items()
+                ]
+            },
+        ),
+        include=AGENT_PRESET_INCLUDE,
+    )
+    return library_model.LibraryAgentPreset.from_db(new_preset)
 
 
 async def create_preset_from_graph_execution(
@@ -1130,7 +1678,7 @@ async def create_preset_from_graph_execution(
 async def update_preset(
     user_id: str,
     preset_id: str,
-    inputs: Optional[BlockInput] = None,
+    inputs: Optional[GraphInput] = None,
     credentials: Optional[dict[str, CredentialsMetaInput]] = None,
     name: Optional[str] = None,
     description: Optional[str] = None,
@@ -1161,50 +1709,46 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
-    try:
-        async with transaction() as tx:
-            update_data: prisma.types.AgentPresetUpdateInput = {}
-            if name:
-                update_data["name"] = name
-            if description:
-                update_data["description"] = description
-            if is_active is not None:
-                update_data["isActive"] = is_active
-            if inputs or credentials:
-                if not (inputs and credentials):
-                    raise ValueError(
-                        "Preset inputs and credentials must be provided together"
+    async with transaction() as tx:
+        update_data: prisma.types.AgentPresetUpdateInput = {}
+        if name:
+            update_data["name"] = name
+        if description:
+            update_data["description"] = description
+        if is_active is not None:
+            update_data["isActive"] = is_active
+        if inputs or credentials:
+            if not (inputs and credentials):
+                raise ValueError(
+                    "Preset inputs and credentials must be provided together"
+                )
+            update_data["InputPresets"] = {
+                "create": [
+                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                        name=name, data=SafeJson(data)
                     )
-                update_data["InputPresets"] = {
-                    "create": [
-                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                            name=name, data=SafeJson(data)
-                        )
-                        for name, data in {
-                            **inputs,
-                            **{
-                                key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in credentials.items()
-                            },
-                        }.items()
-                    ],
-                }
-                # Existing InputPresets must be deleted, in a separate query
-                await prisma.models.AgentNodeExecutionInputOutput.prisma(
-                    tx
-                ).delete_many(where={"agentPresetId": preset_id})
-
-            updated = await prisma.models.AgentPreset.prisma(tx).update(
-                where={"id": preset_id},
-                data=update_data,
-                include=AGENT_PRESET_INCLUDE,
+                    for name, data in {
+                        **inputs,
+                        **{
+                            key: creds_meta.model_dump(exclude_none=True)
+                            for key, creds_meta in credentials.items()
+                        },
+                    }.items()
+                ],
+            }
+            # Existing InputPresets must be deleted, in a separate query
+            await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).delete_many(
+                where={"agentPresetId": preset_id}
             )
-        if not updated:
-            raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
-        return library_model.LibraryAgentPreset.from_db(updated)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating preset: {e}")
-        raise DatabaseError("Failed to update preset") from e
+
+        updated = await prisma.models.AgentPreset.prisma(tx).update(
+            where={"id": preset_id},
+            data=update_data,
+            include=AGENT_PRESET_INCLUDE,
+        )
+    if not updated:
+        raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
+    return library_model.LibraryAgentPreset.from_db(updated)
 
 
 async def set_preset_webhook(
@@ -1243,14 +1787,10 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         DatabaseError: If there's a database error during deletion.
     """
     logger.debug(f"Setting preset #{preset_id} for user #{user_id} to deleted")
-    try:
-        await prisma.models.AgentPreset.prisma().update_many(
-            where={"id": preset_id, "userId": user_id},
-            data={"isDeleted": True},
-        )
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error deleting preset: {e}")
-        raise DatabaseError("Failed to delete preset") from e
+    await prisma.models.AgentPreset.prisma().update_many(
+        where={"id": preset_id, "userId": user_id},
+        data={"isDeleted": True},
+    )
 
 
 async def fork_library_agent(
@@ -1270,33 +1810,30 @@ async def fork_library_agent(
         DatabaseError: If there's an error during the forking process.
     """
     logger.debug(f"Forking library agent {library_agent_id} for user {user_id}")
-    try:
-        # Fetch the original agent
-        original_agent = await get_library_agent(library_agent_id, user_id)
 
-        # Check if user owns the library agent
-        # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
-        # + update library/agents/[id]/page.tsx agent actions
-        # if not original_agent.can_access_graph:
-        #     raise DatabaseError(
-        #         f"User {user_id} cannot access library agent graph {library_agent_id}"
-        #     )
+    # Fetch the original agent
+    original_agent = await get_library_agent(library_agent_id, user_id)
 
-        # Fork the underlying graph and nodes
-        new_graph = await graph_db.fork_graph(
-            original_agent.graph_id, original_agent.graph_version, user_id
+    # Check if user owns the library agent
+    # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
+    # + update library/agents/[id]/page.tsx agent actions
+    # if not original_agent.can_access_graph:
+    #     raise DatabaseError(
+    #         f"User {user_id} cannot access library agent graph {library_agent_id}"
+    #     )
+
+    # Fork the underlying graph and nodes
+    new_graph = await graph_db.fork_graph(
+        original_agent.graph_id, original_agent.graph_version, user_id
+    )
+    new_graph = await on_graph_activate(new_graph, user_id=user_id)
+
+    # Create a library agent for the new graph, preserving safe mode settings
+    return (
+        await create_library_agent(
+            new_graph,
+            user_id,
+            hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
         )
-        new_graph = await on_graph_activate(new_graph, user_id=user_id)
-
-        # Create a library agent for the new graph, preserving safe mode settings
-        return (
-            await create_library_agent(
-                new_graph,
-                user_id,
-                hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
-                sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
-            )
-        )[0]
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error cloning library agent: {e}")
-        raise DatabaseError("Failed to fork library agent") from e
+    )[0]

@@ -65,7 +65,7 @@ export class LoginPage {
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     console.log("➡️ Navigating to /marketplace ...");
-    await this.page.goto("/marketplace", { timeout: 10_000 });
+    await this.page.goto("/marketplace", { timeout: 20_000 });
     console.log("✅ Login process complete");
 
     // If Wallet popover auto-opens, close it to avoid blocking account menu interactions

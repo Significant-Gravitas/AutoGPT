@@ -101,7 +101,7 @@ class HostResolver(abc.AbstractResolver):
     def __init__(self, ssl_hostname: str, ip_addresses: list[str]):
         self.ssl_hostname = ssl_hostname
         self.ip_addresses = ip_addresses
-        self._default = aiohttp.AsyncResolver()
+        self._default = aiohttp.ThreadedResolver()
 
     async def resolve(self, host, port=0, family=socket.AF_INET):
         if host == self.ssl_hostname:
@@ -219,8 +219,11 @@ def parse_url(url: str) -> URL:
     """Canonicalizes and parses a URL string."""
     url = url.strip("/ ").replace("\\", "/")
 
-    # Ensure scheme is present for proper parsing
-    if not re.match(r"[a-z0-9+.\-]+://", url):
+    # Ensure scheme is present for proper parsing.
+    # Avoid regex to sidestep CodeQL py/polynomial-redos on user-controlled
+    # input.  We only need to detect "scheme://"; urlparse() and the
+    # ALLOWED_SCHEMES check downstream handle full validation.
+    if "://" not in url:
         url = f"http://{url}"
 
     return urlparse(url)
@@ -467,7 +470,7 @@ class Requests:
             resolver = HostResolver(ssl_hostname=hostname, ip_addresses=ip_addresses)
             ssl_context = ssl.create_default_context()
             connector = aiohttp.TCPConnector(resolver=resolver, ssl=ssl_context)
-        session_kwargs = {}
+        session_kwargs: dict = {}
         if connector:
             session_kwargs["connector"] = connector
 

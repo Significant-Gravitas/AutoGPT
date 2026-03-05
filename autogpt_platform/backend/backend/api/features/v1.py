@@ -40,10 +40,11 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.blocks import get_block, get_blocks
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -125,6 +126,9 @@ v1_router = APIRouter()
 ########################################################
 
 
+_tally_background_tasks: set[asyncio.Task] = set()
+
+
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
@@ -133,6 +137,24 @@ v1_router = APIRouter()
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     user = await get_or_create_user(user_data)
+
+    # Fire-and-forget: populate business understanding from Tally form.
+    # We use created_at proximity instead of an is_new flag because
+    # get_or_create_user is cached — a separate is_new return value would be
+    # unreliable on repeated calls within the cache TTL.
+    age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
+    if age_seconds < 30:
+        try:
+            from backend.data.tally import populate_understanding_from_tally
+
+            task = asyncio.create_task(
+                populate_understanding_from_tally(user.id, user.email)
+            )
+            _tally_background_tasks.add(task)
+            task.add_done_callback(_tally_background_tasks.discard)
+        except Exception:
+            logger.debug("Failed to start Tally population task", exc_info=True)
+
     return user.model_dump()
 
 

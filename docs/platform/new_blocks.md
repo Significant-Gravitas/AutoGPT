@@ -20,13 +20,13 @@ Follow these steps to create and test a new block:
    Every block should contain the following:
 
    ```python
-   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    from backend.utils.get_request import GetRequest
    import requests
 
@@ -237,7 +237,7 @@ from backend.data.model import (
     Credentials,
 )
 
-from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
@@ -496,8 +496,8 @@ To create a webhook-triggered block, follow these additional steps on top of the
    <details>
    <summary><code>BlockWebhookConfig</code> definition</summary>
 
-   ```python title="backend/data/block.py"
-   --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
+   ```python title="backend/blocks/_base.py"
+   --8<-- "autogpt_platform/backend/backend/blocks/_base.py:BlockWebhookConfig"
    ```
 
    </details>
