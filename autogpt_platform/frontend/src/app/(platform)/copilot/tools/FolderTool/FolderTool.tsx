@@ -162,7 +162,7 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
 }
 
 function FolderTreeNodes({ element }: { element: TreeNode }) {
-  if ((element as TreeNode).isAgent) {
+  if (element.isAgent) {
     return (
       <TreeFile
         value={element.id}

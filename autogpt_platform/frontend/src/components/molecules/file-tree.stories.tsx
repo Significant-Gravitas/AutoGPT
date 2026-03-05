@@ -1,4 +1,5 @@
 import type { Meta } from "@storybook/nextjs";
+import type { ComponentProps } from "react";
 import { Tree, Folder, File, type TreeViewElement } from "./file-tree";
 
 const meta: Meta<typeof Tree> = {
@@ -32,23 +33,32 @@ const SIMPLE_ELEMENTS: TreeViewElement[] = [
   { id: "readme", name: "README.md" },
 ];
 
+function SimpleFileTree(props: Omit<ComponentProps<typeof Tree>, "children">) {
+  return (
+    <Tree {...props}>
+      <Folder value="src" element="src">
+        <Folder value="app" element="app">
+          <File value="page">page.tsx</File>
+        </Folder>
+        <Folder value="components" element="components">
+          <File value="button">Button.tsx</File>
+          <File value="input">Input.tsx</File>
+        </Folder>
+        <File value="utils">utils.ts</File>
+      </Folder>
+      <File value="package">package.json</File>
+      <File value="readme">README.md</File>
+    </Tree>
+  );
+}
+
 export function Default() {
   return (
     <div className="w-72">
-      <Tree elements={SIMPLE_ELEMENTS} initialExpandedItems={["src"]}>
-        <Folder value="src" element="src">
-          <Folder value="app" element="app">
-            <File value="page">page.tsx</File>
-          </Folder>
-          <Folder value="components" element="components">
-            <File value="button">Button.tsx</File>
-            <File value="input">Input.tsx</File>
-          </Folder>
-          <File value="utils">utils.ts</File>
-        </Folder>
-        <File value="package">package.json</File>
-        <File value="readme">README.md</File>
-      </Tree>
+      <SimpleFileTree
+        elements={SIMPLE_ELEMENTS}
+        initialExpandedItems={["src"]}
+      />
     </div>
   );
 }
@@ -56,23 +66,10 @@ export function Default() {
 export function AllExpanded() {
   return (
     <div className="w-72">
-      <Tree
+      <SimpleFileTree
         elements={SIMPLE_ELEMENTS}
         initialExpandedItems={["src", "app", "components"]}
-      >
-        <Folder value="src" element="src">
-          <Folder value="app" element="app">
-            <File value="page">page.tsx</File>
-          </Folder>
-          <Folder value="components" element="components">
-            <File value="button">Button.tsx</File>
-            <File value="input">Input.tsx</File>
-          </Folder>
-          <File value="utils">utils.ts</File>
-        </Folder>
-        <File value="package">package.json</File>
-        <File value="readme">README.md</File>
-      </Tree>
+      />
     </div>
   );
 }
@@ -115,24 +112,11 @@ export function FoldersOnly() {
 export function WithInitialSelection() {
   return (
     <div className="w-72">
-      <Tree
+      <SimpleFileTree
         elements={SIMPLE_ELEMENTS}
         initialSelectedId="button"
         initialExpandedItems={["src", "components"]}
-      >
-        <Folder value="src" element="src">
-          <Folder value="app" element="app">
-            <File value="page">page.tsx</File>
-          </Folder>
-          <Folder value="components" element="components">
-            <File value="button">Button.tsx</File>
-            <File value="input">Input.tsx</File>
-          </Folder>
-          <File value="utils">utils.ts</File>
-        </Folder>
-        <File value="package">package.json</File>
-        <File value="readme">README.md</File>
-      </Tree>
+      />
     </div>
   );
 }
@@ -140,24 +124,11 @@ export function WithInitialSelection() {
 export function NoIndicator() {
   return (
     <div className="w-72">
-      <Tree
+      <SimpleFileTree
         elements={SIMPLE_ELEMENTS}
         indicator={false}
         initialExpandedItems={["src", "components"]}
-      >
-        <Folder value="src" element="src">
-          <Folder value="app" element="app">
-            <File value="page">page.tsx</File>
-          </Folder>
-          <Folder value="components" element="components">
-            <File value="button">Button.tsx</File>
-            <File value="input">Input.tsx</File>
-          </Folder>
-          <File value="utils">utils.ts</File>
-        </Folder>
-        <File value="package">package.json</File>
-        <File value="readme">README.md</File>
-      </Tree>
+      />
     </div>
   );
 }

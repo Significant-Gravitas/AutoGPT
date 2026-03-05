@@ -1,5 +1,6 @@
 """Folder management tools for the copilot."""
 
+import asyncio
 from typing import Any
 
 from backend.api.features.library import model as library_model
@@ -69,18 +70,41 @@ async def _fetch_agents_for_folder(
 async def _fetch_agents_map(
     user_id: str, folder_ids: list[str]
 ) -> dict[str, list[FolderAgentSummary]]:
-    result: dict[str, list[FolderAgentSummary]] = {}
-    for fid in folder_ids:
-        result[fid] = await _fetch_agents_for_folder(user_id, fid)
-    return result
+    results = await asyncio.gather(
+        *(_fetch_agents_for_folder(user_id, fid) for fid in folder_ids)
+    )
+    return dict(zip(folder_ids, results))
 
 
-def _collect_tree_ids(nodes: list[library_model.LibraryFolderTree]) -> list[str]:
-    return [nid for n in nodes for nid in [n.id, *_collect_tree_ids(n.children)]]
+def _collect_tree_ids(
+    nodes: list[library_model.LibraryFolderTree],
+    visited: set[str] | None = None,
+) -> list[str]:
+    if visited is None:
+        visited = set()
+    ids: list[str] = []
+    for n in nodes:
+        if n.id in visited:
+            continue
+        visited.add(n.id)
+        ids.append(n.id)
+        ids.extend(_collect_tree_ids(n.children, visited))
+    return ids
 
 
-def _count_tree(nodes: list[library_model.LibraryFolderTree]) -> int:
-    return sum(1 + _count_tree(n.children) for n in nodes)
+def _count_tree(
+    nodes: list[library_model.LibraryFolderTree],
+    visited: set[str] | None = None,
+) -> int:
+    if visited is None:
+        visited = set()
+    count = 0
+    for n in nodes:
+        if n.id in visited:
+            continue
+        visited.add(n.id)
+        count += 1 + _count_tree(n.children, visited)
+    return count
 
 
 class CreateFolderTool(BaseTool):
@@ -404,9 +428,9 @@ class MoveFolderTool(BaseTool):
                 session_id=session_id,
             )
 
-        dest = f"folder '{folder.name}'" if target_parent_id else "root level"
+        dest = "a subfolder" if target_parent_id else "root level"
         return FolderMovedResponse(
-            message=f"Folder moved to {dest}.",
+            message=f"Folder '{folder.name}' moved to {dest}.",
             folder=_folder_to_info(folder),
             target_parent_id=target_parent_id,
             session_id=session_id,

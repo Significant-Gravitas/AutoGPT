@@ -9,7 +9,11 @@ import React, {
   useState,
 } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { FileIcon, FolderIcon, FolderOpenIcon } from "lucide-react";
+import {
+  File as PhFileIcon,
+  Folder as PhFolderIcon,
+  FolderOpen as PhFolderOpenIcon,
+} from "@phosphor-icons/react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -253,8 +257,8 @@ const Folder = forwardRef<
           onClick={() => handleExpand(value)}
         >
           {expandedItems?.includes(value)
-            ? (openIcon ?? <FolderOpenIcon className="size-4" />)
-            : (closeIcon ?? <FolderIcon className="size-4" />)}
+            ? (openIcon ?? <PhFolderOpenIcon className="size-4" />)
+            : (closeIcon ?? <PhFolderIcon className="size-4" />)}
           <span>{element}</span>
         </AccordionPrimitive.Trigger>
         <AccordionPrimitive.Content className="relative h-full overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
@@ -321,7 +325,7 @@ const File = forwardRef<
         onClick={() => selectItem(value)}
         {...props}
       >
-        {fileIcon ?? <FileIcon className="size-4" />}
+        {fileIcon ?? <PhFileIcon className="size-4" />}
         {children}
       </button>
     );
@@ -360,7 +364,6 @@ const CollapseButton = forwardRef<
     }, []);
 
     useEffect(() => {
-      console.log(expandAll);
       if (expandAll) {
         expendAllTree(elements);
       }
