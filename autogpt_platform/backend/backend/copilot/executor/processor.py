@@ -6,11 +6,13 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import logging
+import os
+import subprocess
 import threading
 import time
 
-from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
+from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
@@ -108,7 +110,40 @@ class CoPilotProcessor:
         )
         self.execution_thread.start()
 
+        # Skip the SDK's per-request CLI version check — the bundled CLI is
+        # already version-matched to the SDK package.
+        os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+
+        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
+        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
+        self._prewarm_cli()
+
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+
+    def _prewarm_cli(self) -> None:
+        """Run the bundled CLI binary once to warm OS page caches."""
+        try:
+            from claude_agent_sdk._internal.transport.subprocess_cli import (
+                SubprocessCLITransport,
+            )
+
+            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+            if cli_path:
+                result = subprocess.run(
+                    [cli_path, "-v"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                else:
+                    logger.warning(
+                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
+                        result.returncode,  # type: ignore[reportCallIssue]
+                        cli_path,
+                    )
+        except Exception as e:
+            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -119,13 +154,16 @@ class CoPilotProcessor:
         """
         from backend.util.workspace_storage import shutdown_workspace_storage
 
+        coro = shutdown_workspace_storage()
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                shutdown_workspace_storage(), self.execution_loop
-            )
+            future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
             future.result(timeout=5)
         except Exception as e:
-            logger.warning(f"[CoPilotExecutor] Worker {self.tid} cleanup error: {e}")
+            coro.close()  # Prevent "coroutine was never awaited" warning
+            error_msg = str(e) or type(e).__name__
+            logger.warning(
+                f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
+            )
 
         # Stop the event loop
         self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
@@ -157,47 +195,30 @@ class CoPilotProcessor:
 
         start_time = time.monotonic()
 
-        try:
-            # Run the async execution in our event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._execute_async(entry, cancel, cluster_lock, log),
-                self.execution_loop,
-            )
+        # Run the async execution in our event loop
+        future = asyncio.run_coroutine_threadsafe(
+            self._execute_async(entry, cancel, cluster_lock, log),
+            self.execution_loop,
+        )
 
-            # Wait for completion, checking cancel periodically
-            while not future.done():
-                try:
-                    future.result(timeout=1.0)
-                except asyncio.TimeoutError:
-                    if cancel.is_set():
-                        log.info("Cancellation requested")
-                        future.cancel()
-                        break
-                    # Refresh cluster lock to maintain ownership
-                    cluster_lock.refresh()
-
-            if not future.cancelled():
-                # Get result to propagate any exceptions
-                future.result()
-
-            elapsed = time.monotonic() - start_time
-            log.info(f"Execution completed in {elapsed:.2f}s")
-
-        except BaseException as e:
-            elapsed = time.monotonic() - start_time
-            log.error(f"Execution failed after {elapsed:.2f}s: {e}")
-            # Safety net: if _execute_async's error handler failed to mark
-            # the session (e.g. RuntimeError from SDK cleanup), do it here.
+        # Wait for completion, checking cancel periodically
+        while not future.done():
             try:
-                asyncio.run_coroutine_threadsafe(
-                    stream_registry.mark_session_completed(
-                        entry.session_id, error_message=str(e) or "Unknown error"
-                    ),
-                    self.execution_loop,
-                ).result(timeout=5.0)
-            except Exception as cleanup_err:
-                log.error(f"Safety net mark_session_completed failed: {cleanup_err}")
-            raise
+                future.result(timeout=1.0)
+            except asyncio.TimeoutError:
+                if cancel.is_set():
+                    log.info("Cancellation requested")
+                    future.cancel()
+                    break
+                # Refresh cluster lock to maintain ownership
+                cluster_lock.refresh()
+
+        if not future.cancelled():
+            # Get result to propagate any exceptions
+            future.result()
+
+        elapsed = time.monotonic() - start_time
+        log.info(f"Execution completed in {elapsed:.2f}s")
 
     async def _execute_async(
         self,
@@ -208,7 +229,7 @@ class CoPilotProcessor:
     ):
         """Async execution logic for a CoPilot turn.
 
-        Calls the stream_chat_completion service function and publishes
+        Calls the chat completion service (SDK or baseline) and publishes
         results to the stream registry.
 
         Args:
@@ -219,11 +240,13 @@ class CoPilotProcessor:
         """
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
+        error_msg = None
 
         try:
-            # Choose service based on LaunchDarkly flag
+            # Choose service based on LaunchDarkly flag.
+            # Claude Code subscription forces SDK mode (CLI subprocess auth).
             config = ChatConfig()
-            use_sdk = await is_feature_enabled(
+            use_sdk = config.use_claude_code_subscription or await is_feature_enabled(
                 Flag.COPILOT_SDK,
                 entry.user_id or "anonymous",
                 default=config.use_claude_agent_sdk,
@@ -231,9 +254,9 @@ class CoPilotProcessor:
             stream_fn = (
                 sdk_service.stream_chat_completion_sdk
                 if use_sdk
-                else copilot_service.stream_chat_completion
+                else stream_chat_completion_baseline
             )
-            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
+            log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
             async for chunk in stream_fn(
@@ -242,6 +265,7 @@ class CoPilotProcessor:
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
+                file_ids=entry.file_ids,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
@@ -264,17 +288,26 @@ class CoPilotProcessor:
                         exc_info=True,
                     )
 
-            error_message = "Operation cancelled" if cancel.is_set() else None
-            await stream_registry.mark_session_completed(
-                entry.session_id, error_message=error_message
-            )
+            # Stream loop completed
+            if cancel.is_set():
+                log.info("Stream cancelled by user")
 
         except BaseException as e:
-            log.error(f"Turn failed: {e}")
+            # Handle all exceptions (including CancelledError) with appropriate logging
+            if isinstance(e, asyncio.CancelledError):
+                log.info("Turn cancelled")
+                error_msg = "Operation cancelled"
+            else:
+                error_msg = str(e) or type(e).__name__
+                log.error(f"Turn failed: {error_msg}")
+            raise
+        finally:
+            # If no exception but user cancelled, still mark as cancelled
+            if not error_msg and cancel.is_set():
+                error_msg = "Operation cancelled"
             try:
                 await stream_registry.mark_session_completed(
-                    entry.session_id, error_message=str(e) or "Unknown error"
+                    entry.session_id, error_message=error_msg
                 )
             except Exception as mark_err:
-                log.error(f"mark_session_completed also failed: {mark_err}")
-            raise
+                log.error(f"Failed to mark session completed: {mark_err}")

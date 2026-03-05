@@ -92,7 +92,7 @@ export function Input({
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem] rounded-3xl",
+            "-mb-1 h-auto min-h-[2.875rem] rounded-xl",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum

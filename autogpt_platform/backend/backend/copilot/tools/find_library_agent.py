@@ -19,9 +19,10 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for agents in the user's library. Use this to find agents "
-            "the user has already added to their library, including agents they "
-            "created or added from the marketplace."
+            "Search for or list agents in the user's library. Use this to find "
+            "agents the user has already added to their library, including agents "
+            "they created or added from the marketplace. "
+            "Omit the query to list all agents."
         )
 
     @property
@@ -31,10 +32,13 @@ class FindLibraryAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query to find agents by name or description.",
+                    "description": (
+                        "Search query to find agents by name or description. "
+                        "Omit to list all agents in the library."
+                    ),
                 },
             },
-            "required": ["query"],
+            "required": [],
         }
 
     @property
@@ -45,7 +49,7 @@ class FindLibraryAgentTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         return await search_agents(
-            query=kwargs.get("query", "").strip(),
+            query=(kwargs.get("query") or "").strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,

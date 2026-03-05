@@ -72,6 +72,18 @@ import type {
 
 const isClient = environment.isClientSide();
 
+/**
+ * Thrown when a request fails because the user is logging out.
+ * Callers can catch this specifically to silently ignore logout-related failures,
+ * rather than receiving null and crashing on property access.
+ */
+export class LogoutInterruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LogoutInterruptError";
+  }
+}
+
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -128,11 +140,15 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get("/credits");
-    } catch {
-      return Promise.resolve({ credits: 0 });
+      const response = await this._get("/credits");
+      return response ?? { credits: 0 };
+    } catch (error) {
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return { credits: 0 };
     }
   }
 
@@ -433,13 +449,14 @@ export default class BackendAPI {
   ///////////// V2 STORE API /////////////
   ////////////////////////////////////////
 
-  getStoreProfile(): Promise<ProfileDetails | null> {
+  async getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      const result = this._get("/store/profile");
-      return result;
+      return await this._get("/store/profile");
     } catch (error) {
-      console.error("Error fetching store profile:", error);
-      return Promise.resolve(null);
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return null;
     }
   }
 
@@ -1040,7 +1057,7 @@ export default class BackendAPI {
           "Authentication request failed during logout, ignoring:",
           error.message,
         );
-        return null;
+        throw new LogoutInterruptError("Request cancelled: logout in progress");
       }
       throw error;
     }

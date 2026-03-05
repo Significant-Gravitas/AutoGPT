@@ -6,7 +6,6 @@ ensuring multi-user isolation and preventing unauthorized operations.
 
 import json
 import logging
-import os
 import re
 from collections.abc import Callable
 from typing import Any, cast
@@ -16,6 +15,7 @@ from .tool_adapter import (
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
+    is_allowed_local_path,
     stash_pending_tool_output,
 )
 
@@ -38,40 +38,20 @@ def _validate_workspace_path(
 ) -> dict[str, Any]:
     """Validate that a workspace-scoped tool only accesses allowed paths.
 
-    Allowed directories:
+    Delegates to :func:`is_allowed_local_path` which permits:
     - The SDK working directory (``/tmp/copilot-<session>/``)
-    - The SDK tool-results directory (``~/.claude/projects/…/tool-results/``)
+    - The current session's tool-results directory
+      (``~/.claude/projects/<encoded-cwd>/tool-results/``)
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
 
-    # Resolve relative paths against sdk_cwd (the SDK sets cwd so the LLM
-    # naturally uses relative paths like "test.txt" instead of absolute ones).
-    # Tilde paths (~/) are home-dir references, not relative — expand first.
-    if path.startswith("~"):
-        resolved = os.path.realpath(os.path.expanduser(path))
-    elif not os.path.isabs(path) and sdk_cwd:
-        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
-    else:
-        resolved = os.path.realpath(path)
-
-    # Allow access within the SDK working directory
-    if sdk_cwd:
-        norm_cwd = os.path.realpath(sdk_cwd)
-        if resolved.startswith(norm_cwd + os.sep) or resolved == norm_cwd:
-            return {}
-
-    # Allow access to ~/.claude/projects/*/tool-results/ (big tool results)
-    claude_dir = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-    tool_results_seg = os.sep + "tool-results" + os.sep
-    if resolved.startswith(claude_dir + os.sep) and tool_results_seg in resolved:
+    if is_allowed_local_path(path, sdk_cwd):
         return {}
 
-    logger.warning(
-        f"Blocked {tool_name} outside workspace: {path} (resolved={resolved})"
-    )
+    logger.warning(f"Blocked {tool_name} outside workspace: {path}")
     workspace_hint = f" Allowed workspace: {sdk_cwd}" if sdk_cwd else ""
     return _deny(
         f"[SECURITY] Tool '{tool_name}' can only access files within the workspace "
@@ -146,6 +126,7 @@ def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
+    on_compact: Callable[[], None] | None = None,
     on_stop: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
@@ -160,7 +141,7 @@ def create_security_hooks(
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
-        max_subtasks: Maximum Task (sub-agent) spawns allowed per session
+        max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
         on_stop: Callback ``(transcript_path, sdk_session_id)`` invoked when
             the SDK finishes processing — used to read the JSONL transcript
             before the CLI process exits.
@@ -172,8 +153,9 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
-        # Per-session counter for Task sub-agent spawns
-        task_spawn_count = 0
+        # Per-session tracking for Task sub-agent concurrency.
+        # Set of tool_use_ids that consumed a slot — len() is the active count.
+        task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -181,7 +163,6 @@ def create_security_hooks(
             context: HookContext,
         ) -> SyncHookJSONOutput:
             """Combined pre-tool-use validation hook."""
-            nonlocal task_spawn_count
             _ = context  # unused but required by signature
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
@@ -200,18 +181,18 @@ def create_security_hooks(
                             "(remove the run_in_background parameter)."
                         ),
                     )
-                if task_spawn_count >= max_subtasks:
+                if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
                     )
                     return cast(
                         SyncHookJSONOutput,
                         _deny(
-                            f"Maximum {max_subtasks} sub-tasks per session. "
-                            "Please continue in the main conversation."
+                            f"Maximum {max_subtasks} concurrent sub-tasks. "
+                            "Wait for running sub-tasks to finish, "
+                            "or continue in the main conversation."
                         ),
                     )
-                task_spawn_count += 1
 
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
@@ -229,8 +210,23 @@ def create_security_hooks(
             if result:
                 return cast(SyncHookJSONOutput, result)
 
+            # Reserve the Task slot only after all validations pass
+            if tool_name == "Task" and tool_use_id is not None:
+                task_tool_use_ids.add(tool_use_id)
+
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
+
+        def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
+            """Release a Task concurrency slot if one was reserved."""
+            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
+                task_tool_use_ids.discard(tool_use_id)
+                logger.info(
+                    "[SDK] Task slot released, active=%d/%d, user=%s",
+                    len(task_tool_use_ids),
+                    max_subtasks,
+                    user_id,
+                )
 
         async def post_tool_use_hook(
             input_data: HookInput,
@@ -246,6 +242,8 @@ def create_security_hooks(
             """
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
+
+            _release_task_slot(tool_name, tool_use_id)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
             logger.info(
                 "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
@@ -289,6 +287,9 @@ def create_security_hooks(
                 f"[SDK] Tool failed: {tool_name}, error={error}, "
                 f"user={user_id}, tool_use_id={tool_use_id}"
             )
+
+            _release_task_slot(tool_name, tool_use_id)
+
             return cast(SyncHookJSONOutput, {})
 
         async def pre_compact_hook(
@@ -306,6 +307,8 @@ def create_security_hooks(
             logger.info(
                 f"[SDK] Context compaction triggered: {trigger}, user={user_id}"
             )
+            if on_compact is not None:
+                on_compact()
             return cast(SyncHookJSONOutput, {})
 
         # --- Stop hook: capture transcript path for stateless resume ---

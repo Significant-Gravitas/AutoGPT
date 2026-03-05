@@ -11,9 +11,11 @@ import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
+from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
+from backend.data.model import OAuth2Credentials
 from backend.util.request import HTTPClientError
 
 app = fastapi.FastAPI()
@@ -26,6 +28,16 @@ async def client():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ssrf_validation():
+    """Bypass validate_url in all route tests (test URLs don't resolve)."""
+    with patch(
+        "backend.api.features.mcp.routes.validate_url",
+        new_callable=AsyncMock,
+    ):
+        yield
 
 
 class TestDiscoverTools:
@@ -56,9 +68,12 @@ class TestDiscoverTools:
 
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={
@@ -107,10 +122,6 @@ class TestDiscoverTools:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auto_uses_stored_credential(self, client):
         """When no explicit token is given, stored MCP credentials are used."""
-        from pydantic import SecretStr
-
-        from backend.data.model import OAuth2Credentials
-
         stored_cred = OAuth2Credentials(
             provider="mcp",
             title="MCP: example.com",
@@ -124,10 +135,12 @@ class TestDiscoverTools:
 
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=stored_cred,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[stored_cred])
-            mock_cm.refresh_if_needed = AsyncMock(return_value=stored_cred)
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
@@ -149,9 +162,12 @@ class TestDiscoverTools:
     async def test_discover_tools_mcp_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
@@ -169,9 +185,12 @@ class TestDiscoverTools:
     async def test_discover_tools_generic_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
@@ -187,9 +206,12 @@ class TestDiscoverTools:
     async def test_discover_tools_auth_required(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
@@ -207,9 +229,12 @@ class TestDiscoverTools:
     async def test_discover_tools_forbidden(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             instance = MockClient.return_value
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
@@ -331,10 +356,6 @@ class TestOAuthLogin:
 class TestOAuthCallback:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_callback_success(self, client):
-        from pydantic import SecretStr
-
-        from backend.data.model import OAuth2Credentials
-
         mock_creds = OAuth2Credentials(
             provider="mcp",
             title=None,
@@ -434,3 +455,118 @@ class TestOAuthCallback:
 
         assert response.status_code == 400
         assert "token exchange failed" in response.json()["detail"].lower()
+
+
+class TestStoreToken:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_success(self, client):
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "mcp"
+        assert data["type"] == "oauth2"
+        assert data["host"] == "mcp.example.com"
+        mock_cm.create.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_blank_rejected(self, client):
+        """Blank token string (after stripping) should return 422."""
+        response = await client.post(
+            "/token",
+            json={
+                "server_url": "https://mcp.example.com/mcp",
+                "token": "   ",
+            },
+        )
+        # Pydantic min_length=1 catches the whitespace-only token
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_replaces_old_credential(self, client):
+        old_cred = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("old-token"),
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
+            mock_cm.create = AsyncMock()
+            mock_cm.store.delete_creds_by_id = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "new-token",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.store.delete_creds_by_id.assert_called_once_with(
+            "test-user-id", old_cred.id
+        )
+
+
+class TestSSRFValidation:
+    """Verify that validate_url is enforced on all endpoints."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_discover_tools_ssrf_blocked(self, client):
+        with patch(
+            "backend.api.features.mcp.routes.validate_url",
+            new_callable=AsyncMock,
+            side_effect=ValueError("blocked loopback"),
+        ):
+            response = await client.post(
+                "/discover-tools",
+                json={"server_url": "http://localhost/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "blocked loopback" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_ssrf_blocked(self, client):
+        with patch(
+            "backend.api.features.mcp.routes.validate_url",
+            new_callable=AsyncMock,
+            side_effect=ValueError("blocked private IP"),
+        ):
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "http://10.0.0.1/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "blocked private ip" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_ssrf_blocked(self, client):
+        with patch(
+            "backend.api.features.mcp.routes.validate_url",
+            new_callable=AsyncMock,
+            side_effect=ValueError("blocked loopback"),
+        ):
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "http://127.0.0.1/mcp",
+                    "token": "some-token",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "blocked loopback" in response.json()["detail"].lower()
