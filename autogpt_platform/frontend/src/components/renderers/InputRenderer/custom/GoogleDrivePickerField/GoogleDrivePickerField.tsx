@@ -27,14 +27,6 @@ export const GoogleDrivePickerField = (props: FieldProps) => {
   if (uiType === BlockUIType.INPUT) {
     return (
       <div className="flex flex-col gap-2">
-        <TitleFieldTemplate
-          id={titleId(fieldPathId)}
-          title={schema.title || ""}
-          required={false}
-          schema={schema}
-          uiSchema={updatedUiSchema}
-          registry={registry}
-        />
         {!isConnected && (
           <div className="rounded-3xl border border-gray-200 p-2 pl-4 text-xs text-gray-500 hover:cursor-not-allowed">
             Select files when you run the graph
