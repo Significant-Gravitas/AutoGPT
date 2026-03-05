@@ -18,7 +18,7 @@ from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     get_chat_session,
-    update_session_title_if_empty,
+    update_session_title,
     upsert_chat_session,
 )
 from backend.copilot.response_model import (
@@ -62,7 +62,7 @@ async def _update_title_async(
     try:
         title = await _generate_session_title(message, user_id, session_id)
         if title and user_id:
-            await update_session_title_if_empty(session_id, user_id, title)
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
     except Exception as e:
         logger.warning("[Baseline] Failed to update session title: %s", e)
 
