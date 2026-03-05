@@ -244,7 +244,10 @@ def _clean_and_split(text: str) -> list[str]:
 
 
 def _calculate_points(
-    agent, categories: list[str], custom: list[str], integrations: list[str]
+    agent: prisma.models.StoreAgent,
+    categories: list[str],
+    custom: list[str],
+    integrations: list[str],
 ) -> int:
     """
     Calculates the total points for an agent based on the specified criteria.
@@ -420,7 +423,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         )
 
     # Calculate points for the first X agents and choose the top 2
-    agent_points = []
+    agent_points: list[tuple[prisma.models.StoreAgent, int]] = []
     for agent in storeAgents[:POINTS_AGENT_COUNT]:
         points = _calculate_points(
             agent, categories, custom, user_onboarding.integrations
@@ -430,30 +433,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     agent_points.sort(key=lambda x: x[1], reverse=True)
     recommended_agents = [agent for agent, _ in agent_points[:2]]
 
-    return [
-        StoreAgentDetails(
-            store_listing_version_id=agent.storeListingVersionId,
-            slug=agent.slug,
-            agent_name=agent.agent_name,
-            agent_video=agent.agent_video or "",
-            agent_output_demo=agent.agent_output_demo or "",
-            agent_image=agent.agent_image,
-            creator=agent.creator_username,
-            creator_avatar=agent.creator_avatar,
-            sub_heading=agent.sub_heading,
-            description=agent.description,
-            categories=agent.categories,
-            runs=agent.runs,
-            rating=agent.rating,
-            versions=agent.versions,
-            graph_id=agent.graph_id,
-            graph_versions=agent.graph_versions,
-            last_updated=agent.updated_at,
-            active_version_id=agent.storeListingVersionId,
-            has_approved_version=True,
-        )
-        for agent in recommended_agents
-    ]
+    return [StoreAgentDetails.from_db(agent) for agent in recommended_agents]
 
 
 @cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
