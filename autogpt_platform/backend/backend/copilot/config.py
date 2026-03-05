@@ -126,7 +126,7 @@ class ChatConfig(BaseSettings):
     @classmethod
     def get_e2b_api_key(cls, v):
         """Get E2B API key from environment if not provided."""
-        if v is None:
+        if not v:
             v = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
         return v
 
@@ -134,7 +134,7 @@ class ChatConfig(BaseSettings):
     @classmethod
     def get_api_key(cls, v):
         """Get API key from environment if not provided."""
-        if v is None:
+        if not v:
             # Try to get from environment variables
             # First check for CHAT_API_KEY (Pydantic prefix)
             v = os.getenv("CHAT_API_KEY")
@@ -153,7 +153,7 @@ class ChatConfig(BaseSettings):
     @classmethod
     def get_base_url(cls, v):
         """Get base URL from environment if not provided."""
-        if v is None:
+        if not v:
             # Check for OpenRouter or custom base URL
             v = os.getenv("CHAT_BASE_URL")
             if not v:

@@ -290,9 +290,15 @@ def _resolve_sdk_model() -> str | None:
     Uses ``config.claude_agent_model`` if set, otherwise derives from
     ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
     ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+
+    When ``use_claude_code_subscription`` is enabled and no explicit
+    ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
+    default model for the user's subscription plan.
     """
     if config.claude_agent_model:
         return config.claude_agent_model
+    if config.use_claude_code_subscription:
+        return None
     model = config.model
     if "/" in model:
         return model.split("/", 1)[1]
@@ -360,9 +366,12 @@ def _build_sdk_env(
 
     if config.use_claude_code_subscription:
         # Claude Code subscription: let the CLI use its own logged-in auth.
-        # No API key or base URL overrides — the subprocess inherits
-        # credentials from `claude login`.
+        # Explicitly clear API key env vars so the subprocess doesn't pick
+        # them up from the parent process and bypass subscription auth.
         _validate_claude_code_subscription()
+        env["ANTHROPIC_API_KEY"] = ""
+        env["ANTHROPIC_AUTH_TOKEN"] = ""
+        env["ANTHROPIC_BASE_URL"] = ""
     elif config.api_key and config.base_url:
         # Strip /v1 suffix — SDK expects the base URL without a version path
         base = config.base_url.rstrip("/")
@@ -376,21 +385,22 @@ def _build_sdk_env(
         # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
         env["ANTHROPIC_API_KEY"] = ""
 
-        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-        # The ``x-session-id`` header is *required* for the Anthropic-native
-        # ``/messages`` endpoint — without it broadcast silently drops the
-        # trace even when org-level Langfuse integration is configured.
-        def _safe(value: str) -> str:
-            """Strip CR/LF to prevent header injection, then truncate."""
-            return value.replace("\r", "").replace("\n", "").strip()[:128]
+    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+    # The ``x-session-id`` header is *required* for the Anthropic-native
+    # ``/messages`` endpoint — without it broadcast silently drops the
+    # trace even when org-level Langfuse integration is configured.
+    def _safe(value: str) -> str:
+        """Strip CR/LF to prevent header injection, then truncate."""
+        return value.replace("\r", "").replace("\n", "").strip()[:128]
 
-        headers: list[str] = []
-        if session_id:
-            headers.append(f"x-session-id: {_safe(session_id)}")
-        if user_id:
-            headers.append(f"x-user-id: {_safe(user_id)}")
-        if headers:
-            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+    headers: list[str] = []
+    if session_id:
+        headers.append(f"x-session-id: {_safe(session_id)}")
+    if user_id:
+        headers.append(f"x-user-id: {_safe(user_id)}")
+    if headers:
+        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+
     return env
 
 
@@ -770,7 +780,7 @@ async def stream_chat_completion_sdk(
 
         set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
 
-        # Fail fast when no API credentials are available at all
+        # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
         if (
             not sdk_env
@@ -778,8 +788,8 @@ async def stream_chat_completion_sdk(
             and not config.use_claude_code_subscription
         ):
             raise RuntimeError(
-                "No API key configured. Set OPEN_ROUTER_API_KEY "
-                "(or CHAT_API_KEY / ANTHROPIC_API_KEY) for API access, "
+                "No API key configured. Set OPEN_ROUTER_API_KEY, "
+                "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
                 "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
                 "Claude Code CLI subscription (requires `claude login`)."
             )
