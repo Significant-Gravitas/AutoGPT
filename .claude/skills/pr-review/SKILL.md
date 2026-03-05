@@ -21,7 +21,7 @@ metadata:
    - Read referenced code, make the fix (or reply if you disagree/need info)
    - **Inline review comments** (`pulls/{N}/comments`):
      - React: `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` (or `-1`)
-     - Reply: `gh api repos/.../pulls/comments/{ID}/replies -f body="..."`
+     - Reply: `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="..."`
    - **PR conversation comments** (`issues/{N}/comments`):
      - React: `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` (or `-1`)
      - No threaded replies — post a new issue comment if needed
