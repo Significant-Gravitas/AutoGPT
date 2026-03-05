@@ -426,7 +426,7 @@ async def create_library_agent(
     )
 
     async with transaction() as tx:
-        library_agents = []
+        create_data_list = []
         for i, graph_entry in enumerate(graph_entries):
             create_data = prisma.types.LibraryAgentCreateInput(
                 isCreatedByUser=(user_id == user_id),
@@ -451,14 +451,19 @@ async def create_library_agent(
             # Only assign folder to the main graph, not sub-graphs
             if i == 0 and folder_id:
                 create_data["folderId"] = folder_id
+            create_data_list.append(create_data)
 
-            agent = await prisma.models.LibraryAgent.prisma(tx).create(
-                data=create_data,
-                include=library_agent_include(
-                    user_id, include_nodes=False, include_executions=False
-                ),
+        library_agents = await asyncio.gather(
+            *(
+                prisma.models.LibraryAgent.prisma(tx).create(
+                    data=data,
+                    include=library_agent_include(
+                        user_id, include_nodes=False, include_executions=False
+                    ),
+                )
+                for data in create_data_list
             )
-            library_agents.append(agent)
+        )
 
     # Generate images for the main graph and sub-graphs
     for agent, graph in zip(library_agents, graph_entries):
