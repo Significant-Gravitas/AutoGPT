@@ -4,6 +4,11 @@ import {
 } from "@phosphor-icons/react";
 import type { FileUIPart } from "ai";
 import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import {
   ContentCard,
   ContentCardHeader,
   ContentCardTitle,
@@ -15,13 +20,60 @@ interface Props {
   isUser?: boolean;
 }
 
+function renderFileContent(file: FileUIPart): React.ReactNode | null {
+  if (!file.url) return null;
+  const metadata: OutputMetadata = {
+    mimeType: file.mediaType,
+    filename: file.filename,
+    type: file.mediaType?.startsWith("image/")
+      ? "image"
+      : file.mediaType?.startsWith("video/")
+        ? "video"
+        : undefined,
+  };
+  const renderer = globalRegistry.getRenderer(file.url, metadata);
+  if (!renderer) return null;
+  return (
+    <OutputItem value={file.url} metadata={metadata} renderer={renderer} />
+  );
+}
+
 export function MessageAttachments({ files, isUser }: Props) {
   if (files.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      {files.map((file, i) =>
-        isUser ? (
+      {files.map((file, i) => {
+        const rendered = renderFileContent(file);
+        return rendered ? (
+          <div
+            key={`${file.filename}-${i}`}
+            className={`inline-block rounded-lg border p-1.5 ${
+              isUser
+                ? "border-purple-300 bg-purple-50"
+                : "border-neutral-200 bg-neutral-50"
+            }`}
+          >
+            {rendered}
+            <div
+              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
+                isUser ? "text-zinc-600" : "text-neutral-500"
+              }`}
+            >
+              <span className="truncate">{file.filename || "file"}</span>
+              {file.url && (
+                <a
+                  href={file.url}
+                  download
+                  aria-label="Download file"
+                  className="ml-auto shrink-0 opacity-50 hover:opacity-100"
+                >
+                  <DownloadIcon className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
+        ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
             className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
@@ -77,8 +129,8 @@ export function MessageAttachments({ files, isUser }: Props) {
               </div>
             </ContentCardHeader>
           </ContentCard>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

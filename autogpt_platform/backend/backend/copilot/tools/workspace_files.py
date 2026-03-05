@@ -432,7 +432,7 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB
+    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
     PREVIEW_SIZE = 500
 
     @property
@@ -448,8 +448,10 @@ class ReadWorkspaceFileTool(BaseTool):
             "Specify either file_id or path to identify the file. "
             "For small text files, returns content directly. "
             "For large or binary files, returns metadata and a download URL. "
-            "Optionally use 'save_to_path' to copy the file to the ephemeral "
-            "working directory for processing with bash_exec or SDK tools. "
+            "Use 'save_to_path' to copy the file to the working directory "
+            "(sandbox or ephemeral) for processing with bash_exec or file tools. "
+            "Use 'offset' and 'length' for paginated reads of large files "
+            "(e.g., persisted tool outputs). "
             "Paths are scoped to the current session by default. "
             "Use /sessions/<session_id>/... for cross-session access."
         )
@@ -473,9 +475,10 @@ class ReadWorkspaceFileTool(BaseTool):
                 "save_to_path": {
                     "type": "string",
                     "description": (
-                        "If provided, save the file to this path in the ephemeral "
-                        "working directory (e.g., '/tmp/copilot-.../data.csv') "
-                        "so it can be processed with bash_exec or SDK tools. "
+                        "If provided, save the file to this path in the working "
+                        "directory (cloud sandbox when E2B is active, or "
+                        "ephemeral dir otherwise) so it can be processed with "
+                        "bash_exec or file tools. "
                         "The file content is still returned in the response."
                     ),
                 },
@@ -484,6 +487,20 @@ class ReadWorkspaceFileTool(BaseTool):
                     "description": (
                         "If true, always return metadata+URL instead of inline content. "
                         "Default is false (auto-selects based on file size/type)."
+                    ),
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": (
+                        "Character offset to start reading from (0-based). "
+                        "Use with 'length' for paginated reads of large files."
+                    ),
+                },
+                "length": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of characters to return. "
+                        "Defaults to full file. Use with 'offset' for paginated reads."
                     ),
                 },
             },
@@ -510,6 +527,8 @@ class ReadWorkspaceFileTool(BaseTool):
         path: Optional[str] = kwargs.get("path")
         save_to_path: Optional[str] = kwargs.get("save_to_path")
         force_download_url: bool = kwargs.get("force_download_url", False)
+        char_offset: int = max(0, kwargs.get("offset", 0))
+        char_length: Optional[int] = kwargs.get("length")
 
         if not file_id and not path:
             return ErrorResponse(
@@ -531,6 +550,34 @@ class ReadWorkspaceFileTool(BaseTool):
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
+
+            # Ranged read: return a character slice directly.
+            if char_offset > 0 or char_length is not None:
+                raw = cached_content or await manager.read_file_by_id(target_file_id)
+                text = raw.decode("utf-8", errors="replace")
+                total_chars = len(text)
+                end = (
+                    char_offset + char_length
+                    if char_length is not None
+                    else total_chars
+                )
+                slice_text = text[char_offset:end]
+                return WorkspaceFileContentResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type="text/plain",
+                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
+                        "utf-8"
+                    ),
+                    message=(
+                        f"Read chars {char_offset}–"
+                        f"{char_offset + len(slice_text)} "
+                        f"of {total_chars:,} total "
+                        f"from {file_info.name}"
+                    ),
+                    session_id=session_id,
+                )
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
