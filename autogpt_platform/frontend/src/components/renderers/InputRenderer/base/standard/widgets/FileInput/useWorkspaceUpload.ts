@@ -2,16 +2,29 @@ import {
   usePostWorkspaceUploadFileToWorkspace,
   useDeleteWorkspaceDeleteAWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   parseWorkspaceFileID,
   buildWorkspaceURI,
 } from "@/lib/workspace-uri";
 
 export function useWorkspaceUpload() {
+  const { toast } = useToast();
+
   const { mutateAsync: uploadMutation } =
     usePostWorkspaceUploadFileToWorkspace();
 
-  const { mutate: deleteMutation } = useDeleteWorkspaceDeleteAWorkspaceFile();
+  const { mutate: deleteMutation } = useDeleteWorkspaceDeleteAWorkspaceFile({
+    mutation: {
+      onError: () => {
+        toast({
+          title: "Failed to delete file",
+          description: "The file could not be removed from storage.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   async function handleUploadFile(file: File) {
     const response = await uploadMutation({ data: { file } });
