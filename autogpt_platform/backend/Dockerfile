@@ -95,7 +95,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
-# for the bash_exec MCP tool.
+# for the bash_exec MCP tool (fallback when E2B is not configured).
 # Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
