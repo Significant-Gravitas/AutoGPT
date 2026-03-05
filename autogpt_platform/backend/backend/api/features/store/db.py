@@ -936,16 +936,13 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
+            # Filter for unpublished agents only:
             "AgentGraph": {
                 "is": {
-                    "StoreListing": {
-                        "is_not": {
-                            "isDeleted": False,
-                            "Versions": {
-                                "some": {
-                                    "isAvailable": True,
-                                }
-                            },
+                    "StoreListingVersions": {
+                        "none": {
+                            "isAvailable": True,
+                            "StoreListing": {"is": {"isDeleted": False}},
                         }
                     }
                 }

@@ -281,7 +281,6 @@ model AgentGraph {
 
   Presets              AgentPreset[]
   LibraryAgents        LibraryAgent[]
-  StoreListing         StoreListing?         @relation(fields: [id], references: [agentGraphId], onDelete: NoAction)
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
@@ -990,7 +989,6 @@ model StoreListing {
 
   // The agent link here is only so we can do lookup on agentId
   agentGraphId String       @unique
-  AgentGraph   AgentGraph[]
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])

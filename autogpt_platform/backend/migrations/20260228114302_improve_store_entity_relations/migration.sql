@@ -1,11 +1,9 @@
 BEGIN;
 
 -- Drop illogical column StoreListing.agentGraphVersion;
--- Update StoreListing:AgentGraph relation to be 1:+ instead of 1:1 (based on agentGraphId)
 ALTER TABLE "StoreListing" DROP CONSTRAINT "StoreListing_agentGraphId_agentGraphVersion_fkey";
 DROP INDEX "StoreListing_agentGraphId_agentGraphVersion_idx";
 ALTER TABLE "StoreListing" DROP COLUMN "agentGraphVersion";
-ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_id_fkey" FOREIGN KEY ("id") REFERENCES "StoreListing"("agentGraphId") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- Add uniqueness constraint to Profile.userId and remove invalid data
 --

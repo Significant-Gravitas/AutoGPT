@@ -5,6 +5,7 @@
 --   b. Update `mv_agent_run_counts` and its index
 --   c. Restore `StoreAgent` and `Creator` views
 -- 2. Update `StoreSubmission` view
+-- 3. Update `StoreListingReview` indices to make `StoreSubmission` query more efficient
 
 BEGIN;
 
@@ -195,5 +196,11 @@ JOIN      "StoreListingVersion" slv     ON slv."storeListingId" = sl.id
 LEFT JOIN review_stats                  ON review_stats.version_id = slv.id
 LEFT JOIN mv_agent_run_counts run_stats ON run_stats.graph_id = slv."agentGraphId"
 WHERE     sl."isDeleted" = false;
+
+
+-- Drop unused index on StoreListingReview.reviewByUserId
+DROP INDEX "StoreListingReview_reviewByUserId_idx";
+-- Add index on storeListingVersionId to make StoreSubmission query faster
+CREATE INDEX "StoreListingReview_storeListingVersionId_idx" ON "StoreListingReview"("storeListingVersionId");
 
 COMMIT;
