@@ -16,9 +16,9 @@ class ChangelogEntry(pydantic.BaseModel):
     date: datetime.datetime
 
 
-class MyAgent(pydantic.BaseModel):
-    agent_id: str
-    agent_version: int
+class MyUnpublishedAgent(pydantic.BaseModel):
+    graph_id: str
+    graph_version: int
     agent_name: str
     agent_image: str | None = None
     description: str
@@ -26,8 +26,8 @@ class MyAgent(pydantic.BaseModel):
     recommended_schedule_cron: str | None = None
 
 
-class MyAgentsResponse(pydantic.BaseModel):
-    agents: list[MyAgent]
+class MyUnpublishedAgentsResponse(pydantic.BaseModel):
+    agents: list[MyUnpublishedAgent]
     pagination: Pagination
 
 

@@ -6139,7 +6139,7 @@
         }
       }
     },
-    "/api/store/myagents": {
+    "/api/store/my-unpublished-agents": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
@@ -6175,7 +6175,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/MyUnpublishedAgentsResponse"
+                }
               }
             }
           },
@@ -10297,10 +10299,10 @@
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
       },
-      "MyAgent": {
+      "MyUnpublishedAgent": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_image": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -10319,18 +10321,18 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "agent_name",
           "description",
           "last_edited"
         ],
-        "title": "MyAgent"
+        "title": "MyUnpublishedAgent"
       },
-      "MyAgentsResponse": {
+      "MyUnpublishedAgentsResponse": {
         "properties": {
           "agents": {
-            "items": { "$ref": "#/components/schemas/MyAgent" },
+            "items": { "$ref": "#/components/schemas/MyUnpublishedAgent" },
             "type": "array",
             "title": "Agents"
           },
@@ -10338,7 +10340,7 @@
         },
         "type": "object",
         "required": ["agents", "pagination"],
-        "title": "MyAgentsResponse"
+        "title": "MyUnpublishedAgentsResponse"
       },
       "NeedLoginResponse": {
         "properties": {

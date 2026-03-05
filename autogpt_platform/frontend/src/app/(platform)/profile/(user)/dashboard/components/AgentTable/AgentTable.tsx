@@ -55,8 +55,8 @@ export const AgentTable: React.FC<AgentTableProps> = ({
       {/* Table body */}
       {storeAgentSubmissions.length > 0 ? (
         <div className="flex flex-col">
-          {storeAgentSubmissions.map((agentSubmission, index) => (
-            <div key={index} className="md:block">
+          {storeAgentSubmissions.map((agentSubmission) => (
+            <div key={agentSubmission.listing_version_id} className="md:block">
               <AgentTableRow
                 storeAgentSubmission={agentSubmission}
                 onViewSubmission={onViewSubmission}

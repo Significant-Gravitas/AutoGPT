@@ -326,16 +326,16 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
 
 
 @router.get(
-    "/myagents",
+    "/my-unpublished-agents",
     summary="Get my agents",
     tags=["store", "private"],
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
-async def get_my_agents(
+async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
-) -> store_model.MyAgentsResponse:
+) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
     agents = await store_db.get_my_agents(user_id, page=page, page_size=page_size)
     return agents

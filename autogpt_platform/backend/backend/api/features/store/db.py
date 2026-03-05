@@ -966,7 +966,7 @@ async def get_my_agents(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
-) -> store_model.MyAgentsResponse:
+) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(f"Getting my agents for user {user_id}, page={page}")
 
@@ -1000,9 +1000,9 @@ async def get_my_agents(
         total_pages = (total + page_size - 1) // page_size
 
         my_agents = [
-            store_model.MyAgent(
-                agent_id=graph.id,
-                agent_version=graph.version,
+            store_model.MyUnpublishedAgent(
+                graph_id=graph.id,
+                graph_version=graph.version,
                 agent_name=graph.name or "",
                 last_edited=graph.updatedAt or graph.createdAt,
                 description=graph.description or "",
@@ -1013,7 +1013,7 @@ async def get_my_agents(
             if (graph := library_agent.AgentGraph)
         ]
 
-        return store_model.MyAgentsResponse(
+        return store_model.MyUnpublishedAgentsResponse(
             agents=my_agents,
             pagination=store_model.Pagination(
                 current_page=page,

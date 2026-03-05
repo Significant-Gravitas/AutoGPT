@@ -20,8 +20,8 @@ CREATE MATERIALIZED VIEW "mv_agent_run_counts" AS
 SELECT
     run."agentGraphId" AS graph_id,
     COUNT(*)           AS run_count
-FROM      "AgentGraphExecution" run
-LEFT JOIN "AgentGraph"          graph ON graph.id = run."agentGraphId"
+FROM "AgentGraphExecution" run
+JOIN "AgentGraph"          graph ON graph.id = run."agentGraphId"
 -- Exclude runs by the agent's creator to avoid inflating run counts
 WHERE graph."userId" != run."userId"
 GROUP BY run."agentGraphId";
@@ -38,7 +38,7 @@ CREATE OR REPLACE VIEW "StoreAgent" AS
 WITH store_agent_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT version::text ORDER BY version::text) AS versions
+        array_agg(DISTINCT version::text ORDER BY version) AS versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
@@ -46,7 +46,7 @@ WITH store_agent_versions AS (
 agent_graph_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion"::text) AS graph_versions
+        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion") AS graph_versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
