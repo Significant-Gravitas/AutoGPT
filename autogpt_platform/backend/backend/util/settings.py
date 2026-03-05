@@ -413,6 +413,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_workspace_storage_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum total workspace storage per user in MB.",
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,
@@ -722,6 +729,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+    langfuse_tracing_environment: str = Field(
+        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics

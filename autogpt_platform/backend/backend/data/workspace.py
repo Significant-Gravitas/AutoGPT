@@ -327,11 +327,16 @@ async def get_workspace_total_size(workspace_id: str) -> int:
     """
     Get the total size of all files in a workspace.
 
+    Queries Prisma directly (skipping Pydantic model conversion) and only
+    fetches the ``sizeBytes`` column to minimise data transfer.
+
     Args:
         workspace_id: The workspace ID
 
     Returns:
         Total size in bytes
     """
-    files = await list_workspace_files(workspace_id)
-    return sum(file.size_bytes for file in files)
+    files = await UserWorkspaceFile.prisma().find_many(
+        where={"workspaceId": workspace_id, "isDeleted": False},
+    )
+    return sum(f.sizeBytes for f in files)
