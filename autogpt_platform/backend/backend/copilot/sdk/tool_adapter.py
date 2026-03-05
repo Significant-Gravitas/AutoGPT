@@ -102,6 +102,9 @@ _current_session: ContextVar[ChatSession | None] = ContextVar(
 _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
     "_current_sandbox", default=None
 )
+# Raw SDK working directory path (e.g. /tmp/copilot-<session_id>).
+# Used by workspace tools to save binary files for the CLI's built-in Read.
+_current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -140,6 +143,7 @@ def set_execution_context(
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_sandbox.set(sandbox)
+    _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
@@ -148,6 +152,11 @@ def set_execution_context(
 def get_current_sandbox() -> "AsyncSandbox | None":
     """Return the E2B sandbox for the current turn, or None."""
     return _current_sandbox.get()
+
+
+def get_sdk_cwd() -> str:
+    """Return the SDK ephemeral working directory for the current turn."""
+    return _current_sdk_cwd.get()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -263,59 +272,10 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
-    content_blocks: list[dict[str, str]] = [{"type": "text", "text": text}]
-
-    # If the tool result contains inline image data, add an MCP image block
-    # so Claude can "see" the image (e.g. read_workspace_file on a small PNG).
-    image_block = _extract_image_block(text)
-    if image_block:
-        content_blocks.append(image_block)
-
     return {
-        "content": content_blocks,
+        "content": [{"type": "text", "text": text}],
         "isError": not result.success,
     }
-
-
-# MIME types that Claude can process as image content blocks.
-_SUPPORTED_IMAGE_TYPES = frozenset(
-    {"image/png", "image/jpeg", "image/gif", "image/webp"}
-)
-
-
-def _extract_image_block(text: str) -> dict[str, str] | None:
-    """Extract an MCP image content block from a tool result JSON string.
-
-    Detects workspace file responses with ``content_base64`` and an image
-    MIME type, returning an MCP-format image block that allows Claude to
-    "see" the image.  Returns ``None`` if the result is not an inline image.
-    """
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-    if not isinstance(data, dict):
-        return None
-
-    mime_type = data.get("mime_type", "")
-    base64_content = data.get("content_base64", "")
-
-    # Only inline small images — large ones would exceed Claude's limits.
-    # 32 KB raw ≈ ~43 KB base64.
-    _MAX_IMAGE_BASE64_BYTES = 43_000
-    if (
-        mime_type in _SUPPORTED_IMAGE_TYPES
-        and base64_content
-        and len(base64_content) <= _MAX_IMAGE_BASE64_BYTES
-    ):
-        return {
-            "type": "image",
-            "data": base64_content,
-            "mimeType": mime_type,
-        }
-
-    return None
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -423,18 +383,21 @@ _READ_TOOL_SCHEMA = {
 }
 
 
-# Create the MCP server configuration
+# ---------------------------------------------------------------------------
+# MCP result helpers
+# ---------------------------------------------------------------------------
+
+
 def _text_from_mcp_result(result: dict[str, Any]) -> str:
     """Extract concatenated text from an MCP response's content blocks."""
     content = result.get("content", [])
-    if isinstance(content, list):
-        parts = [
-            b.get("text", "")
-            for b in content
-            if isinstance(b, dict) and b.get("type") == "text"
-        ]
-        return "".join(parts)
-    return ""
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        b.get("text", "")
+        for b in content
+        if isinstance(b, dict) and b.get("type") == "text"
+    )
 
 
 def create_copilot_mcp_server(*, use_e2b: bool = False):
