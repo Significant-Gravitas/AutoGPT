@@ -1,5 +1,6 @@
 "use server";
 
+import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -55,6 +56,19 @@ export async function signup(
 
     if (data.session) {
       await supabase.auth.setSession(data.session);
+    }
+
+    // Create the user in the backend (matches OAuth callback flow)
+    try {
+      const api = new BackendAPI();
+      await api.createUser();
+    } catch (createUserError) {
+      console.error("Error creating user during signup:", createUserError);
+      Sentry.captureException(createUserError);
+      return {
+        success: false,
+        error: "Failed to complete account setup. Please try again.",
+      };
     }
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)
