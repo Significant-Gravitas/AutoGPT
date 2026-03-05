@@ -194,10 +194,7 @@ export function FileInput(props: Props) {
     setIsUploading(true);
     setUploadError(null);
 
-    // Delete the old file before uploading the replacement to avoid orphans
-    if (value && onDeleteFile) {
-      onDeleteFile(value);
-    }
+    const oldURI = value;
 
     try {
       const result = await onUploadFile(file);
@@ -209,6 +206,11 @@ export function FileInput(props: Props) {
       });
 
       onChange(result.file_uri);
+
+      // Delete the old file only after the new upload succeeds
+      if (oldURI && onDeleteFile) {
+        onDeleteFile(oldURI);
+      }
     } catch (error) {
       console.error("Upload failed:", error);
       setUploadError(error instanceof Error ? error.message : "Upload failed");
