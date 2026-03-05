@@ -42,6 +42,8 @@ from backend.copilot.tools.models import (
     ErrorResponse,
     ExecutionStartedResponse,
     InputValidationErrorResponse,
+    MCPToolOutputResponse,
+    MCPToolsDiscoveredResponse,
     NeedLoginResponse,
     NoResultsResponse,
     SetupRequirementsResponse,
@@ -854,6 +856,8 @@ ToolResponseUnion = (
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse
+    | MCPToolsDiscoveredResponse
+    | MCPToolOutputResponse
 )
 
 

@@ -1,6 +1,5 @@
 import {
   PromptInputBody,
-  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -8,10 +7,10 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { FileChips } from "./components/FileChips";
+import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -153,24 +152,13 @@ export function ChatInput({
               disabled={isBusy}
             />
             {showMicButton && (
-              <PromptInputButton
-                aria-label={isRecording ? "Stop recording" : "Start recording"}
-                onClick={toggleRecording}
+              <RecordingButton
+                isRecording={isRecording}
+                isTranscribing={isTranscribing}
+                isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
-                className={cn(
-                  "size-[2.625rem] rounded-[96px] border border-zinc-300 bg-transparent text-black hover:border-zinc-600 hover:bg-zinc-100",
-                  isRecording &&
-                    "animate-pulse border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600",
-                  isTranscribing && "bg-zinc-100 text-zinc-400",
-                  isStreaming && "opacity-40",
-                )}
-              >
-                {isTranscribing ? (
-                  <CircleNotchIcon className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MicrophoneIcon className="h-4 w-4" weight="bold" />
-                )}
-              </PromptInputButton>
+                onClick={toggleRecording}
+              />
             )}
           </PromptInputTools>
 
