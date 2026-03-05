@@ -11,8 +11,10 @@ import asyncio
 import logging
 from typing import Any
 
-import openai
 from langfuse import get_client
+from langfuse.openai import (
+    AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
+)
 
 from backend.data.db_accessors import understanding_db
 from backend.data.understanding import format_understanding_for_prompt
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
-client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
 langfuse = get_client()
