@@ -11,8 +11,8 @@ metadata:
 
 ## Steps
 
-1. **Create worktree**: `git worktree add ../<RepoName><N> <branch-name>` (check existing sibling dirs for next N)
-2. **Copy .env files** (gitignored, won't exist in new worktree):
+1. **Create worktree**: Use `branchlet create` (npm: `branchlet`) if available — it auto-copies config files. Otherwise: `git worktree add ../<RepoName><N> <branch-name>`
+2. **Copy .env files** (gitignored — branchlet handles this automatically, otherwise copy manually):
    - `autogpt_platform/backend/.env`
    - `autogpt_platform/frontend/.env`
    - `autogpt_platform/.env` (if exists)
