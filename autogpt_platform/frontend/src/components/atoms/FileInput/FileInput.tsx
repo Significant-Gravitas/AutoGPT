@@ -69,7 +69,7 @@ export function FileInput(props: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const storageNote =
-    "Files are stored securely and will be automatically deleted at most 24 hours after upload.";
+    "Files are stored securely in your workspace.";
 
   function acceptToString(a?: string | string[]) {
     if (!a) return "*/*";
