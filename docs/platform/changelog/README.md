@@ -10,4 +10,5 @@ AutoPilot was previously called CoPilot. References to CoPilot in older entries 
 
 | Date | Highlights |
 | ---- | ---------- |
+| [February 26 – March 4](february-26-march-4-2026.md) | File uploads, cloud sandboxes, browser automation, MCP tools, text-to-speech |
 | [January 29 – February 11](january-29-february-11-2026.md) | Voice input, persistent file workspace, Claude Opus 4.6, marketplace agent customization, rebuilt chat streaming |
