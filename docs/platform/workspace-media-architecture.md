@@ -113,6 +113,7 @@ manager.read_file("/sessions/other-session/file.txt")  # Works
 | `delete_file(file_id)` | Soft-delete a file |
 | `get_download_url(file_id, expires_in?)` | Get signed download URL |
 | `get_file_info(file_id)` | Get file metadata |
+| `get_file_info_by_path(path)` | Get file metadata by path |
 | `get_file_count(path?, include_all_sessions?)` | Count files |
 
 ### Storage Backends
@@ -217,7 +218,7 @@ Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager
 
 ## Decision Tree: WorkspaceManager vs store_media_file
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │ What do you need to do with the file?               │
 └─────────────────────────────────────────────────────┘
@@ -235,13 +236,19 @@ Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager
            │                           
     ┌──────┴──────┐                    
     ▼             ▼                    
- "for_local_   "for_block_             
- processing"   output"                 
-    │             │                    
-    ▼             ▼                    
- Get local    Auto-saves to            
- path for     workspace in             
- tools        CoPilot context          
+ "for_local_   "for_block_
+ processing"   output"
+    │             │
+    ▼             ▼
+ Get local    Auto-saves to
+ path for     workspace in
+ tools        CoPilot context
+
+Store for user access
+    │
+    ├── write_file() ─── Upload + persist (scans internally)
+    ├── read_file() / get_download_url() ─── Retrieve
+    └── list_files() / delete_file() ─── Manage
 ```
 
 ### Quick Reference
@@ -251,7 +258,7 @@ Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager
 | Block needs to process a file with ffmpeg | `store_media_file(..., return_format="for_local_processing")` |
 | Block needs to send file to external API | `store_media_file(..., return_format="for_external_api")` |
 | Block returning a generated file | `store_media_file(..., return_format="for_block_output")` |
-| API endpoint handling file upload | `WorkspaceManager.write_file()` (after virus scan) |
+| API endpoint handling file upload | `WorkspaceManager.write_file()` (handles virus scanning internally) |
 | API endpoint serving file download | `WorkspaceManager.get_download_url()` |
 | Listing user's files | `WorkspaceManager.list_files()` |
 
@@ -298,16 +305,25 @@ async def run(self, input_data, *, execution_context, **kwargs):
 ### API Upload Endpoint
 
 ```python
+from backend.util.virus_scanner import VirusDetectedError, VirusScanError
+
 async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
     content = await file.read()
-    
-    # write_file handles virus scanning
+
+    # write_file handles virus scanning internally
     manager = WorkspaceManager(user_id, workspace_id)
-    workspace_file = await manager.write_file(
-        content=content,
-        filename=file.filename,
-    )
-    
+    try:
+        workspace_file = await manager.write_file(
+            content=content,
+            filename=file.filename,
+        )
+    except VirusDetectedError:
+        raise HTTPException(status_code=400, detail="File rejected: virus detected")
+    except VirusScanError:
+        raise HTTPException(status_code=503, detail="Virus scanning unavailable")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     return {"file_id": workspace_file.id}
 ```
 
@@ -323,3 +339,5 @@ async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
 | `clamav_service_enabled` | Enable virus scanning | true |
 | `clamav_service_host` | ClamAV daemon host | localhost |
 | `clamav_service_port` | ClamAV daemon port | 3310 |
+| `clamav_max_concurrency` | Max concurrent scans to ClamAV daemon | 5 |
+| `clamav_mark_failed_scans_as_clean` | If true, scan failures pass content through instead of rejecting (⚠️ security risk if ClamAV is unreachable) | false |
