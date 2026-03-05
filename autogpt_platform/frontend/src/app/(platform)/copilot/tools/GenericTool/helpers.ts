@@ -124,8 +124,11 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "TodoWrite": {
       const todos = Array.isArray(inp.todos) ? inp.todos : [];
       const active = todos.find(
-        (t: Record<string, unknown>) => t.status === "in_progress",
-      );
+        (t: unknown) =>
+          t !== null &&
+          typeof t === "object" &&
+          (t as Record<string, unknown>).status === "in_progress",
+      ) as Record<string, unknown> | undefined;
       if (active && typeof active.activeForm === "string")
         return active.activeForm;
       if (active && typeof active.content === "string") return active.content;
