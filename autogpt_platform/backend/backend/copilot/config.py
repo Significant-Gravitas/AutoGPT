@@ -144,6 +144,9 @@ class ChatConfig(BaseSettings):
             if not v:
                 # Fall back to OPENAI_API_KEY
                 v = os.getenv("OPENAI_API_KEY")
+            if not v:
+                # Fall back to ANTHROPIC_API_KEY (used by SDK CLI directly)
+                v = os.getenv("ANTHROPIC_API_KEY")
         return v
 
     @field_validator("base_url", mode="before")

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import functools
 import json
 import logging
 import os
@@ -298,18 +299,13 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
+@functools.cache
 def _validate_claude_code_subscription() -> None:
     """Validate Claude CLI is installed and authenticated (once per process).
 
-    No-ops when ``use_claude_code_subscription`` is disabled. On first call
-    with subscription enabled, checks that the ``claude`` binary exists and
-    responds to ``--version``. If the CLI is not logged in, attempts to run
-    ``claude login`` interactively.
+    Cached via ``lru_cache`` so the subprocess check only runs once.
+    Checks that the ``claude`` binary exists and responds to ``--version``.
     """
-    if not config.use_claude_code_subscription:
-        return
-    if getattr(_validate_claude_code_subscription, "_done", False):
-        return
     claude_path = shutil.which("claude")
     if not claude_path:
         raise RuntimeError(
@@ -339,7 +335,6 @@ def _validate_claude_code_subscription() -> None:
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError("Claude CLI timed out during version check")
-    _validate_claude_code_subscription._done = True  # type: ignore[attr-defined]
 
 
 def _build_sdk_env(
@@ -363,14 +358,12 @@ def _build_sdk_env(
     """
     env: dict[str, str] = {}
 
-    # Claude Code subscription mode: let the CLI use its own logged-in auth.
-    # No API key or base URL overrides — the subprocess inherits credentials
-    # from `claude login`.
     if config.use_claude_code_subscription:
+        # Claude Code subscription: let the CLI use its own logged-in auth.
+        # No API key or base URL overrides — the subprocess inherits
+        # credentials from `claude login`.
         _validate_claude_code_subscription()
-        return env
-
-    if config.api_key and config.base_url:
+    elif config.api_key and config.base_url:
         # Strip /v1 suffix — SDK expects the base URL without a version path
         base = config.base_url.rstrip("/")
         if base.endswith("/v1"):
@@ -781,13 +774,12 @@ async def stream_chat_completion_sdk(
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
         if (
             not sdk_env
-            and not os.environ.get("ANTHROPIC_API_KEY")
+            and not config.api_key
             and not config.use_claude_code_subscription
         ):
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY "
-                "(or CHAT_API_KEY) for OpenRouter routing, "
-                "ANTHROPIC_API_KEY for direct Anthropic access, "
+                "(or CHAT_API_KEY / ANTHROPIC_API_KEY) for API access, "
                 "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
                 "Claude Code CLI subscription (requires `claude login`)."
             )
