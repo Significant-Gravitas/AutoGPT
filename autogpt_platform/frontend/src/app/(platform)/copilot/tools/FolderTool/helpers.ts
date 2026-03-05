@@ -72,7 +72,6 @@ export type FolderToolOutput =
 
 export type { FolderInfo, FolderTreeInfo };
 
-
 function parseOutput(output: unknown): FolderToolOutput | null {
   if (!output) return null;
   if (typeof output === "string") {
@@ -99,10 +98,7 @@ export function getFolderToolOutput(part: {
   return parseOutput(part.output);
 }
 
-
-export function isFolderCreated(
-  o: FolderToolOutput,
-): o is FolderCreatedOutput {
+export function isFolderCreated(o: FolderToolOutput): o is FolderCreatedOutput {
   return o.type === "folder_created";
 }
 
@@ -110,9 +106,7 @@ export function isFolderList(o: FolderToolOutput): o is FolderListOutput {
   return o.type === "folder_list";
 }
 
-export function isFolderUpdated(
-  o: FolderToolOutput,
-): o is FolderUpdatedOutput {
+export function isFolderUpdated(o: FolderToolOutput): o is FolderUpdatedOutput {
   return o.type === "folder_updated";
 }
 
@@ -120,9 +114,7 @@ export function isFolderMoved(o: FolderToolOutput): o is FolderMovedOutput {
   return o.type === "folder_moved";
 }
 
-export function isFolderDeleted(
-  o: FolderToolOutput,
-): o is FolderDeletedOutput {
+export function isFolderDeleted(o: FolderToolOutput): o is FolderDeletedOutput {
   return o.type === "folder_deleted";
 }
 
@@ -133,7 +125,6 @@ export function isAgentsMoved(o: FolderToolOutput): o is AgentsMovedOutput {
 export function isErrorOutput(o: FolderToolOutput): o is ErrorOutput {
   return o.type === "error";
 }
-
 
 export function getAnimationText(part: {
   type: string;

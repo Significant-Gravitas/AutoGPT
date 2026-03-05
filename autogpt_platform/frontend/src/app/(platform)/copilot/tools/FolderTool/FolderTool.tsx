@@ -57,9 +57,7 @@ function ToolStatusIcon({
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return (
-    <FolderIcon size={14} weight="regular" className="text-neutral-400" />
-  );
+  return <FolderIcon size={14} weight="regular" className="text-neutral-400" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,11 +171,7 @@ function AccordionContent({ output }: { output: FolderToolOutput }) {
   }
 
   if (isAgentsMoved(output)) {
-    return (
-      <ContentMessage>
-        {output.message}
-      </ContentMessage>
-    );
+    return <ContentMessage>{output.message}</ContentMessage>;
   }
 
   return null;
@@ -189,7 +183,8 @@ function AccordionContent({ output }: { output: FolderToolOutput }) {
 
 function getAccordionTitle(output: FolderToolOutput): string {
   if (isFolderCreated(output)) return `Created "${output.folder.name}"`;
-  if (isFolderList(output)) return `${output.count} folder${output.count !== 1 ? "s" : ""}`;
+  if (isFolderList(output))
+    return `${output.count} folder${output.count !== 1 ? "s" : ""}`;
   if (isFolderUpdated(output)) return `Updated "${output.folder.name}"`;
   if (isFolderMoved(output)) return `Moved "${output.folder.name}"`;
   if (isFolderDeleted(output)) return "Folder deleted";
