@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -22,6 +23,7 @@ from claude_agent_sdk import (
 )
 from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -55,6 +57,7 @@ from ..service import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -575,15 +578,142 @@ async def _build_query_message(
     return current_message, False
 
 
+# Claude API vision-supported image types.
+_VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
+# Max size for embedding images directly in the user message (20 MiB raw).
+_MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
+
+# Matches characters unsafe for filenames.
+_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+
+def _save_to_sdk_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
+    """Write file content to the SDK ephemeral directory.
+
+    Returns the absolute path.  Adds a numeric suffix on name collisions.
+    """
+    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
+    candidate = os.path.join(sdk_cwd, safe)
+    if os.path.exists(candidate):
+        stem, ext = os.path.splitext(safe)
+        idx = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(sdk_cwd, f"{stem}_{idx}{ext}")
+            idx += 1
+    with open(candidate, "wb") as f:
+        f.write(content)
+    return candidate
+
+
+class PreparedAttachments(BaseModel):
+    """Result of preparing file attachments for a query."""
+
+    hint: str = ""
+    """Text hint describing the files (appended to the user message)."""
+
+    image_blocks: list[dict[str, Any]] = []
+    """Claude API image content blocks to embed in the user message."""
+
+
+async def _prepare_file_attachments(
+    file_ids: list[str],
+    user_id: str,
+    session_id: str,
+    sdk_cwd: str,
+) -> PreparedAttachments:
+    """Download workspace files and prepare them for Claude.
+
+    Images (PNG/JPEG/GIF/WebP) are embedded directly as vision content blocks
+    in the user message so Claude can see them without tool calls.
+
+    Non-image files (PDFs, text, etc.) are saved to *sdk_cwd* so the CLI's
+    built-in Read tool can access them.
+
+    Returns a :class:`PreparedAttachments` with a text hint and any image
+    content blocks.
+    """
+    empty = PreparedAttachments(hint="", image_blocks=[])
+    if not file_ids or not user_id:
+        return empty
+
+    try:
+        manager = await get_manager(user_id, session_id)
+    except Exception:
+        logger.warning(
+            "Failed to create workspace manager for file attachments",
+            exc_info=True,
+        )
+        return empty
+
+    image_blocks: list[dict[str, Any]] = []
+    file_descriptions: list[str] = []
+
+    for fid in file_ids:
+        try:
+            file_info = await manager.get_file_info(fid)
+            if file_info is None:
+                continue
+            content = await manager.read_file_by_id(fid)
+            mime = (file_info.mime_type or "").split(";")[0].strip().lower()
+
+            # Images: embed directly in the user message as vision blocks
+            if mime in _VISION_MIME_TYPES and len(content) <= _MAX_INLINE_IMAGE_BYTES:
+                b64 = base64.b64encode(content).decode("ascii")
+                image_blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": b64,
+                        },
+                    }
+                )
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) [embedded as image]"
+                )
+            else:
+                # Non-image files: save to sdk_cwd for Read tool access
+                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                )
+        except Exception:
+            logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
+
+    if not file_descriptions:
+        return empty
+
+    noun = "file" if len(file_descriptions) == 1 else "files"
+    has_non_images = len(file_descriptions) > len(image_blocks)
+    read_hint = " Use the Read tool to view non-image files." if has_non_images else ""
+    hint = (
+        f"[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
+        + "\n".join(file_descriptions)
+        + "]"
+    )
+    return PreparedAttachments(hint=hint, image_blocks=image_blocks)
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
     is_user_message: bool = True,
     user_id: str | None = None,
     session: ChatSession | None = None,
+    file_ids: list[str] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """Stream chat completion using Claude Agent SDK."""
+    """Stream chat completion using Claude Agent SDK.
+
+    Args:
+        file_ids: Optional workspace file IDs attached to the user's message.
+            Images are embedded as vision content blocks; other files are
+            saved to the SDK working directory for the Read tool.
+    """
 
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -883,19 +1013,48 @@ async def stream_chat_completion_sdk(
                 transcript_msg_count,
                 session_id,
             )
+            # If files are attached, prepare them: images become vision
+            # content blocks in the user message, other files go to sdk_cwd.
+            attachments = await _prepare_file_attachments(
+                file_ids or [], user_id or "", session_id, sdk_cwd
+            )
+            if attachments.hint:
+                query_message = f"{query_message}\n\n{attachments.hint}"
+
             logger.info(
-                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
+                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "
+                "query_len=%d, attached_files=%d, image_blocks=%d",
                 session_id[:12],
                 use_resume,
                 len(session.messages),
                 len(query_message),
+                len(file_ids) if file_ids else 0,
+                len(attachments.image_blocks),
             )
 
             compaction.reset_for_query()
             if was_compacted:
                 for ev in compaction.emit_pre_query(session):
                     yield ev
-            await client.query(query_message, session_id=session_id)
+
+            if attachments.image_blocks:
+                # Build multimodal content: image blocks + text
+                content_blocks: list[dict[str, Any]] = [
+                    *attachments.image_blocks,
+                    {"type": "text", "text": query_message},
+                ]
+                user_msg = {
+                    "type": "user",
+                    "message": {"role": "user", "content": content_blocks},
+                    "parent_tool_use_id": None,
+                    "session_id": session_id,
+                }
+                assert client._transport is not None  # noqa: SLF001
+                await client._transport.write(  # noqa: SLF001
+                    json.dumps(user_msg) + "\n"
+                )
+            else:
+                await client.query(query_message, session_id=session_id)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []

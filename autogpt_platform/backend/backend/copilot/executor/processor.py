@@ -263,6 +263,8 @@ class CoPilotProcessor:
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
+                context=entry.context,
+                file_ids=entry.file_ids,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
