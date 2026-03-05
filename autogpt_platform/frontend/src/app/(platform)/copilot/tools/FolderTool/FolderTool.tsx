@@ -2,6 +2,7 @@
 
 import type { ToolUIPart } from "ai";
 import {
+  FileIcon,
   FolderIcon,
   FolderPlusIcon,
   FoldersIcon,
@@ -9,6 +10,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import {
+  File as TreeFile,
   Folder as TreeFolder,
   Tree,
   type TreeViewElement,
@@ -80,7 +82,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <FolderIcon size={14} weight="fill" className="text-amber-500" />
+            <FolderIcon size={14} weight="fill" className="text-neutral-600" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -90,6 +92,16 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         {folder.subfolder_count > 0 &&
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
+      {folder.agents && folder.agents.length > 0 && (
+        <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
+          {folder.agents.map((a) => (
+            <div key={a.id} className="flex items-center gap-1.5">
+              <FileIcon size={12} weight="duotone" className="text-neutral-600" />
+              <span className="text-xs text-zinc-600">{a.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </ContentCard>
   );
 }
@@ -98,15 +110,24 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
 /*  Tree renderer using file-tree component                            */
 /* ------------------------------------------------------------------ */
 
-function folderTreeToElements(nodes: FolderTreeInfo[]): TreeViewElement[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
-    children:
-      node.children.length > 0
-        ? folderTreeToElements(node.children)
-        : undefined,
-  }));
+type TreeNode = TreeViewElement & { isAgent?: boolean };
+
+function folderTreeToElements(nodes: FolderTreeInfo[]): TreeNode[] {
+  return nodes.map((node) => {
+    const children: TreeNode[] = [
+      ...folderTreeToElements(node.children),
+      ...(node.agents ?? []).map((a) => ({
+        id: a.id,
+        name: a.name,
+        isAgent: true,
+      })),
+    ];
+    return {
+      id: node.id,
+      name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
+      children: children.length > 0 ? children : undefined,
+    };
+  });
 }
 
 function collectAllIDs(nodes: FolderTreeInfo[]): string[] {
@@ -121,11 +142,9 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
     <Tree
       initialExpandedItems={allIDs}
       elements={elements}
-      openIcon={
-        <FolderIcon size={16} weight="fill" className="text-amber-500" />
-      }
+      openIcon={<FolderIcon size={16} weight="fill" className="text-neutral-600" />}
       closeIcon={
-        <FolderIcon size={16} weight="duotone" className="text-amber-400" />
+        <FolderIcon size={16} weight="duotone" className="text-neutral-600" />
       }
       className="max-h-64"
     >
@@ -136,12 +155,25 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
   );
 }
 
-function FolderTreeNodes({ element }: { element: TreeViewElement }) {
+function FolderTreeNodes({ element }: { element: TreeNode }) {
+  if ((element as TreeNode).isAgent) {
+    return (
+      <TreeFile
+        value={element.id}
+        fileIcon={
+          <FileIcon size={14} weight="duotone" className="text-neutral-600" />
+        }
+      >
+        <span className="text-sm text-zinc-700">{element.name}</span>
+      </TreeFile>
+    );
+  }
+
   if (element.children && element.children.length > 0) {
     return (
       <TreeFolder value={element.id} element={element.name} isSelectable>
         {element.children.map((child) => (
-          <FolderTreeNodes key={child.id} element={child} />
+          <FolderTreeNodes key={child.id} element={child as TreeNode} />
         ))}
       </TreeFolder>
     );

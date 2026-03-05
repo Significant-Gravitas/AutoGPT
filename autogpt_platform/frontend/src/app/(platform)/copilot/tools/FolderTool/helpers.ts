@@ -1,5 +1,11 @@
 import type { ToolUIPart } from "ai";
 
+interface FolderAgentSummary {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 interface FolderInfo {
   id: string;
   name: string;
@@ -8,6 +14,7 @@ interface FolderInfo {
   color?: string | null;
   agent_count: number;
   subfolder_count: number;
+  agents?: FolderAgentSummary[] | null;
 }
 
 interface FolderTreeInfo extends FolderInfo {
@@ -70,7 +77,7 @@ export type FolderToolOutput =
   | AgentsMovedOutput
   | ErrorOutput;
 
-export type { FolderInfo, FolderTreeInfo };
+export type { FolderAgentSummary, FolderInfo, FolderTreeInfo };
 
 function parseOutput(output: unknown): FolderToolOutput | null {
   if (!output) return null;

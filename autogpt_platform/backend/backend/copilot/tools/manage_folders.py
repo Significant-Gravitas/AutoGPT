@@ -10,6 +10,7 @@ from .base import BaseTool
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
+    FolderAgentSummary,
     FolderCreatedResponse,
     FolderDeletedResponse,
     FolderInfo,
@@ -21,7 +22,10 @@ from .models import (
 )
 
 
-def _folder_to_info(folder: library_model.LibraryFolder) -> FolderInfo:
+def _folder_to_info(
+    folder: library_model.LibraryFolder,
+    agents: list[FolderAgentSummary] | None = None,
+) -> FolderInfo:
     return FolderInfo(
         id=folder.id,
         name=folder.name,
@@ -30,10 +34,14 @@ def _folder_to_info(folder: library_model.LibraryFolder) -> FolderInfo:
         color=folder.color,
         agent_count=folder.agent_count,
         subfolder_count=folder.subfolder_count,
+        agents=agents,
     )
 
 
-def _tree_to_info(tree: library_model.LibraryFolderTree) -> FolderTreeInfo:
+def _tree_to_info(
+    tree: library_model.LibraryFolderTree,
+    agents_map: dict[str, list[FolderAgentSummary]] | None = None,
+) -> FolderTreeInfo:
     return FolderTreeInfo(
         id=tree.id,
         name=tree.name,
@@ -42,8 +50,33 @@ def _tree_to_info(tree: library_model.LibraryFolderTree) -> FolderTreeInfo:
         color=tree.color,
         agent_count=tree.agent_count,
         subfolder_count=tree.subfolder_count,
-        children=[_tree_to_info(child) for child in tree.children],
+        children=[_tree_to_info(child, agents_map) for child in tree.children],
+        agents=agents_map.get(tree.id) if agents_map else None,
     )
+
+
+async def _fetch_agents_for_folder(
+    user_id: str, folder_id: str
+) -> list[FolderAgentSummary]:
+    db = library_db()
+    resp = await db.list_library_agents(user_id=user_id, folder_id=folder_id)
+    return [
+        FolderAgentSummary(id=a.id, name=a.name, description=a.description)
+        for a in resp.agents
+    ]
+
+
+async def _fetch_agents_map(
+    user_id: str, folder_ids: list[str]
+) -> dict[str, list[FolderAgentSummary]]:
+    result: dict[str, list[FolderAgentSummary]] = {}
+    for fid in folder_ids:
+        result[fid] = await _fetch_agents_for_folder(user_id, fid)
+    return result
+
+
+def _collect_tree_ids(nodes: list[library_model.LibraryFolderTree]) -> list[str]:
+    return [nid for n in nodes for nid in [n.id, *_collect_tree_ids(n.children)]]
 
 
 def _count_tree(nodes: list[library_model.LibraryFolderTree]) -> int:
@@ -166,6 +199,13 @@ class ListFoldersTool(BaseTool):
                         "Omit to get the full folder tree."
                     ),
                 },
+                "include_agents": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether to include the list of agents inside each folder. "
+                        "Defaults to false."
+                    ),
+                },
             },
             "required": [],
         }
@@ -175,6 +215,7 @@ class ListFoldersTool(BaseTool):
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
         parent_id = kwargs.get("parent_id")
+        include_agents = kwargs.get("include_agents", False)
         session_id = session.session_id if session else None
 
         try:
@@ -182,18 +223,37 @@ class ListFoldersTool(BaseTool):
                 folders = await library_db().list_folders(
                     user_id=user_id, parent_id=parent_id
                 )
+                agents_map = (
+                    await _fetch_agents_map(
+                        user_id, [f.id for f in folders]
+                    )
+                    if include_agents
+                    else None
+                )
                 return FolderListResponse(
                     message=f"Found {len(folders)} folder(s).",
-                    folders=[_folder_to_info(f) for f in folders],
+                    folders=[
+                        _folder_to_info(
+                            f, agents_map.get(f.id) if agents_map else None
+                        )
+                        for f in folders
+                    ],
                     count=len(folders),
                     session_id=session_id,
                 )
             else:
                 tree = await library_db().get_folder_tree(user_id=user_id)
                 flat_count = _count_tree(tree)
+                agents_map = (
+                    await _fetch_agents_map(
+                        user_id, _collect_tree_ids(tree)
+                    )
+                    if include_agents
+                    else None
+                )
                 return FolderListResponse(
                     message=f"Found {flat_count} folder(s) in your library.",
-                    tree=[_tree_to_info(t) for t in tree],
+                    tree=[_tree_to_info(t, agents_map) for t in tree],
                     count=flat_count,
                     session_id=session_id,
                 )

@@ -551,6 +551,14 @@ class BrowserScreenshotResponse(ToolResponseBase):
 # Folder management models
 
 
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
 class FolderInfo(BaseModel):
     """Information about a folder."""
 
@@ -561,6 +569,7 @@ class FolderInfo(BaseModel):
     color: str | None = None
     agent_count: int = 0
     subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
 
 
 class FolderTreeInfo(FolderInfo):
