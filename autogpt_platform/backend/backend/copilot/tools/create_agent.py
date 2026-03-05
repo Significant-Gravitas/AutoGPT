@@ -44,8 +44,10 @@ class CreateAgentTool(BaseTool):
                     "type": "object",
                     "description": (
                         "The agent JSON to validate and save. "
-                        "Must contain 'nodes' and 'links' arrays, and optionally "
-                        "'name' and 'description'."
+                        "Must contain 'nodes' and 'links' arrays. "
+                        "MUST include 'name' (concise title) and 'description' "
+                        "(what the agent does) — agents without these get "
+                        "generic defaults."
                     ),
                 },
                 "library_agent_ids": {

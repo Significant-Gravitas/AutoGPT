@@ -51,7 +51,9 @@ class EditAgentTool(BaseTool):
                     "type": "object",
                     "description": (
                         "Complete updated agent JSON to validate and save. "
-                        "Must contain 'nodes' and 'links'."
+                        "Must contain 'nodes' and 'links'. "
+                        "Include 'name' and 'description' to update the "
+                        "agent's title and summary."
                     ),
                 },
                 "library_agent_ids": {

@@ -124,11 +124,36 @@ async def fix_validate_and_save(
     node_count = len(agent_json.get("nodes", []))
     link_count = len(agent_json.get("links", []))
 
+    # Build a warning suffix when name/description is missing or generic
+    _GENERIC_NAMES = {
+        "agent",
+        "generated agent",
+        "customized agent",
+        "updated agent",
+        "new agent",
+        "my agent",
+    }
+    metadata_warnings: list[str] = []
+    if not agent_json.get("name") or agent_name.lower().strip() in _GENERIC_NAMES:
+        metadata_warnings.append("'name'")
+    if not agent_description:
+        metadata_warnings.append("'description'")
+    metadata_hint = ""
+    if metadata_warnings:
+        missing = " and ".join(metadata_warnings)
+        metadata_hint = (
+            f" Note: the agent is missing a meaningful {missing}. "
+            f"Please update the agent_json to include them."
+        )
+
     if not save:
         return AgentPreviewResponse(
             message=(
-                preview_message
-                or f"Agent '{agent_name}' with {node_count} blocks is ready."
+                (
+                    preview_message
+                    or f"Agent '{agent_name}' with {node_count} blocks is ready."
+                )
+                + metadata_hint
             ),
             agent_json=agent_json,
             agent_name=agent_name,
@@ -153,7 +178,10 @@ async def fix_validate_and_save(
             agent_json, user_id, is_update=is_update
         )
         return AgentSavedResponse(
-            message=(save_message or f"Agent '{created_graph.name}' has been saved!"),
+            message=(
+                (save_message or f"Agent '{created_graph.name}' has been saved!")
+                + metadata_hint
+            ),
             agent_id=created_graph.id,
             agent_name=created_graph.name,
             library_agent_id=library_agent.id,
