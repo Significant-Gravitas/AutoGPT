@@ -145,6 +145,14 @@ class TestConvertToolsToResponsesFormat:
         assert "description" not in result[0]
         assert "parameters" not in result[0]
 
+    def test_raises_on_missing_name(self):
+        """Should raise ValueError when function tool has no name."""
+        import pytest
+
+        tools = [{"type": "function", "function": {}}]
+        with pytest.raises(ValueError, match="missing required 'name' field"):
+            convert_tools_to_responses_format(tools)
+
 
 class TestExtractResponsesToolCalls:
     """Tests for the extract_responses_tool_calls function."""

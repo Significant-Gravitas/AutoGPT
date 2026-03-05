@@ -54,9 +54,14 @@ def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
     for tool in tools:
         if tool.get("type") == "function":
             func = tool.get("function", {})
+            name = func.get("name")
+            if not name:
+                raise ValueError(
+                    f"Function tool is missing required 'name' field: {tool}"
+                )
             entry: dict[str, Any] = {
                 "type": "function",
-                "name": func.get("name"),
+                "name": name,
                 # Note: strict=True is default in Responses API
             }
             if func.get("description") is not None:
@@ -109,7 +114,7 @@ def extract_responses_usage(response: Any) -> tuple[int, int]:
     Returns:
         Tuple of (input_tokens, output_tokens)
     """
-    if not response.usage:
+    if not getattr(response, "usage", None):
         return 0, 0
 
     return (
