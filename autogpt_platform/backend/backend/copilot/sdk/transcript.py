@@ -331,10 +331,10 @@ async def upload_transcript(
 ) -> None:
     """Strip progress entries and upload transcript to bucket storage.
 
-    Safety: only overwrites when the new (stripped) transcript is larger than
-    what is already stored.  Since JSONL is append-only, the latest transcript
-    is always the longest.  This prevents a slow/stale background task from
-    clobbering a newer upload from a concurrent turn.
+    The executor holds a cluster lock per session, so concurrent uploads for
+    the same session cannot happen.  We always overwrite — with ``--resume``
+    the CLI may compact old tool results, so neither byte size nor line count
+    is a reliable proxy for "newer".
 
     Args:
         message_count: ``len(session.messages)`` at upload time — used by
@@ -353,33 +353,16 @@ async def upload_transcript(
     storage = await get_workspace_storage()
     wid, fid, fname = _storage_path_parts(user_id, session_id)
     encoded = stripped.encode("utf-8")
-    new_size = len(encoded)
 
-    # Check existing transcript size to avoid overwriting newer with older
-    path = _build_storage_path(user_id, session_id, storage)
-    content_skipped = False
-    try:
-        existing = await storage.retrieve(path)
-        if len(existing) >= new_size:
-            logger.info(
-                f"[Transcript] Skipping content upload — existing ({len(existing)}B) "
-                f">= new ({new_size}B) for session {session_id}"
-            )
-            content_skipped = True
-    except (FileNotFoundError, Exception):
-        pass  # No existing transcript or retrieval error — proceed with upload
+    await storage.store(
+        workspace_id=wid,
+        file_id=fid,
+        filename=fname,
+        content=encoded,
+    )
 
-    if not content_skipped:
-        await storage.store(
-            workspace_id=wid,
-            file_id=fid,
-            filename=fname,
-            content=encoded,
-        )
-
-    # Always update metadata (even when content is skipped) so message_count
-    # stays current.  The gap-fill logic in _build_query_message relies on
-    # message_count to avoid re-compressing the same messages every turn.
+    # Update metadata so message_count stays current.  The gap-fill logic
+    # in _build_query_message relies on it to avoid re-compressing messages.
     try:
         meta = {"message_count": message_count, "uploaded_at": time.time()}
         mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
@@ -393,9 +376,8 @@ async def upload_transcript(
         logger.warning(f"[Transcript] Failed to write metadata for {session_id}: {e}")
 
     logger.info(
-        f"[Transcript] Uploaded {new_size}B "
-        f"(stripped from {len(content)}B, msg_count={message_count}, "
-        f"content_skipped={content_skipped}) "
+        f"[Transcript] Uploaded {len(encoded)}B "
+        f"(stripped from {len(content)}B, msg_count={message_count}) "
         f"for session {session_id}"
     )
 
