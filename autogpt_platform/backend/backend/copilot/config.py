@@ -93,8 +93,7 @@ class ChatConfig(BaseSettings):
     )
     use_claude_code_subscription: bool = Field(
         default=False,
-        description="Use Claude Code CLI subscription auth instead of API keys. "
-        "Requires `claude login` on the host. Only works with SDK mode.",
+        description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
     )
 
     # E2B Sandbox Configuration
