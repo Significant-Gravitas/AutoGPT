@@ -1,4 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { TOOL_PART_PREFIX } from "./constants";
 
 const TOOL_TO_CATEGORY: Record<string, string> = {
   find_agent: "search",
@@ -47,9 +48,9 @@ export function getWorkDoneCounters(
     if (message.role !== "assistant") continue;
 
     for (const part of message.parts) {
-      if (!part.type.startsWith("tool-")) continue;
+      if (!part.type.startsWith(TOOL_PART_PREFIX)) continue;
 
-      const toolName = part.type.replace("tool-", "");
+      const toolName = part.type.replace(TOOL_PART_PREFIX, "");
       const category = TOOL_TO_CATEGORY[toolName];
       if (!category) continue;
 

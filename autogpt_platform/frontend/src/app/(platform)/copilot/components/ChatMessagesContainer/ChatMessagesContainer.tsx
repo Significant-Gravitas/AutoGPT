@@ -3,20 +3,16 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import {
-  Message,
-  MessageActions,
-  MessageContent,
-} from "@/components/ai-elements/message";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { parseSpecialMarkers } from "./helpers";
+import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
-import { CopyButton } from "./components/CopyButton";
-import { TTSButton } from "./components/TTSButton";
-import { parseSpecialMarkers } from "./helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -24,6 +20,7 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   headerSlot?: React.ReactNode;
+  sessionID?: string | null;
 }
 
 /** Collect all messages belonging to a turn: the user message + every
@@ -32,16 +29,15 @@ function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
   lastAssistantIndex: number,
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
-  let userIndex = lastAssistantIndex - 1;
-  while (userIndex >= 0 && messages[userIndex].role !== "user") {
-    userIndex--;
-  }
-  let endIndex = lastAssistantIndex + 1;
-  while (endIndex < messages.length && messages[endIndex].role !== "user") {
-    endIndex++;
-  }
+  const userIndex = messages.findLastIndex(
+    (m, i) => i < lastAssistantIndex && m.role === "user",
+  );
+  const nextUserIndex = messages.findIndex(
+    (m, i) => i > lastAssistantIndex && m.role === "user",
+  );
   const start = userIndex >= 0 ? userIndex : lastAssistantIndex;
-  return messages.slice(start, endIndex);
+  const end = nextUserIndex >= 0 ? nextUserIndex : messages.length;
+  return messages.slice(start, end);
 }
 
 export function ChatMessagesContainer({
@@ -50,6 +46,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   headerSlot,
+  sessionID,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
@@ -64,7 +61,7 @@ export function ChatMessagesContainer({
       return true;
 
     if (
-      lastPart.type.startsWith("tool-") &&
+      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
       "state" in lastPart &&
       (lastPart.state === "input-streaming" ||
         lastPart.state === "input-available")
@@ -94,17 +91,29 @@ export function ChatMessagesContainer({
             messageIndex === messages.length - 1 &&
             message.role === "assistant";
 
+          const isCurrentlyStreaming =
+            isLastAssistant &&
+            (status === "streaming" || status === "submitted");
+
           const isAssistant = message.role === "assistant";
 
-          const isAssistantDone =
+          const nextMessage = messages[messageIndex + 1];
+          const isLastInTurn =
             isAssistant &&
-            (!isLastAssistant ||
-              (status !== "streaming" && status !== "submitted"));
-
-          const isLastAssistantInTurn =
-            isAssistant &&
-            (messageIndex === messages.length - 1 ||
-              messages[messageIndex + 1].role === "user");
+            messageIndex <= messages.length - 1 &&
+            (!nextMessage || nextMessage.role === "user");
+          const textParts = message.parts.filter(
+            (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+          );
+          const lastTextPart = textParts[textParts.length - 1];
+          const hasErrorMarker =
+            lastTextPart !== undefined &&
+            parseSpecialMarkers(lastTextPart.text).markerType === "error";
+          const showActions =
+            isLastInTurn &&
+            !isCurrentlyStreaming &&
+            textParts.length > 0 &&
+            !hasErrorMarker;
 
           const fileParts = message.parts.filter(
             (p): p is FileUIPart => p.type === "file",
@@ -127,15 +136,11 @@ export function ChatMessagesContainer({
                     partIndex={i}
                   />
                 ))}
-                {isLastAssistantInTurn &&
-                  !(
-                    isLastAssistant &&
-                    (status === "streaming" || status === "submitted")
-                  ) && (
-                    <TurnStatsBar
-                      turnMessages={getTurnMessages(messages, messageIndex)}
-                    />
-                  )}
+                {isLastInTurn && !isCurrentlyStreaming && (
+                  <TurnStatsBar
+                    turnMessages={getTurnMessages(messages, messageIndex)}
+                  />
+                )}
                 {isLastAssistant && showThinking && (
                   <ThinkingIndicator active={showThinking} />
                 )}
@@ -146,37 +151,12 @@ export function ChatMessagesContainer({
                   isUser={message.role === "user"}
                 />
               )}
-              {isLastAssistantInTurn &&
-                isAssistantDone &&
-                (() => {
-                  const turnMsgs = getTurnMessages(messages, messageIndex);
-                  const allTextParts = turnMsgs
-                    .filter((m) => m.role === "assistant")
-                    .flatMap((m) =>
-                      m.parts.filter(
-                        (p): p is Extract<typeof p, { type: "text" }> =>
-                          p.type === "text",
-                      ),
-                    );
-
-                  const lastTextPart = allTextParts[allTextParts.length - 1];
-                  if (lastTextPart) {
-                    const { markerType } = parseSpecialMarkers(
-                      lastTextPart.text,
-                    );
-                    if (markerType === "error") return null;
-                  }
-
-                  const textContent = allTextParts
-                    .map((p) => p.text)
-                    .join("\n");
-                  return (
-                    <MessageActions>
-                      <CopyButton text={textContent} />
-                      <TTSButton text={textContent} />
-                    </MessageActions>
-                  );
-                })()}
+              {showActions && (
+                <AssistantMessageActions
+                  message={message}
+                  sessionID={sessionID ?? null}
+                />
+              )}
             </Message>
           );
         })}
