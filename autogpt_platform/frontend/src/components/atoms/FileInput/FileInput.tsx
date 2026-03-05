@@ -67,8 +67,7 @@ export function FileInput(props: Props) {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const storageNote =
-    "Files are stored securely in your workspace.";
+  const storageNote = "Files are stored securely in your workspace.";
 
   function acceptToString(a?: string | string[]) {
     if (!a) return "*/*";
@@ -193,6 +192,11 @@ export function FileInput(props: Props) {
 
     setIsUploading(true);
     setUploadError(null);
+
+    // Delete the old file before uploading the replacement to avoid orphans
+    if (value && onDeleteFile) {
+      onDeleteFile(value);
+    }
 
     try {
       const result = await onUploadFile(file);
