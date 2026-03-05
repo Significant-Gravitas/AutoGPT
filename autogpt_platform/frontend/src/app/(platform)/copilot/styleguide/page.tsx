@@ -921,26 +921,29 @@ export default function StyleguidePage() {
                     output: {
                       type: ResponseType.agent_details,
                       agent: {
+                        id: "agent-yt-1",
                         name: "YouTube Summarizer",
                         description:
                           "Summarizes YouTube videos into key points.",
-                        inputs: [
-                          {
-                            name: "video_url",
-                            title: "Video URL",
-                            type: "string",
-                            required: true,
-                            description: "The YouTube video URL to summarize",
+                        inputs: {
+                          type: "object",
+                          properties: {
+                            video_url: {
+                              type: "string",
+                              title: "Video URL",
+                              description: "The YouTube video URL to summarize",
+                              default: "https://youtube.com/watch?v=example",
+                            },
+                            language: {
+                              type: "string",
+                              title: "Output Language",
+                              description:
+                                "Language for the summary (default: English)",
+                              default: "English",
+                            },
                           },
-                          {
-                            name: "language",
-                            title: "Output Language",
-                            type: "string",
-                            required: false,
-                            description:
-                              "Language for the summary (default: English)",
-                          },
-                        ],
+                          required: ["video_url"],
+                        },
                       },
                       message: "This agent requires inputs to run.",
                     },
