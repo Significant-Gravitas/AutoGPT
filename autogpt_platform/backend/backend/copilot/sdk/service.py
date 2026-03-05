@@ -177,6 +177,13 @@ Long-running tools (create_agent, edit_agent, etc.) are handled
 asynchronously.  You will receive an immediate response; the actual result
 is delivered to the user via a background stream.
 
+### Large tool outputs
+When a tool output exceeds the display limit, it is automatically saved to
+the persistent workspace.  The truncated output includes a
+`<tool-output-truncated>` tag with the workspace path.  Use
+`read_workspace_file(path="...", offset=N, length=50000)` to retrieve
+additional sections.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
