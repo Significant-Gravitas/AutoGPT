@@ -111,12 +111,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
-# Copy Node.js installation for Prisma
+# Copy Node.js installation for Prisma and agent-browser
 COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 COPY --from=builder /usr/bin/npm /usr/bin/npm
 COPY --from=builder /usr/bin/npx /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install agent-browser (Copilot browser tool) + Chromium runtime dependencies.
+# Playwright's install-deps resolves the correct OS packages for the current
+# Debian version automatically.
+RUN npx playwright install-deps chromium \
+    && npm install -g agent-browser \
+    && agent-browser install \
+    && rm -rf /tmp/* /root/.npm
 
 WORKDIR /app/autogpt_platform/backend
 
