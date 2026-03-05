@@ -21,7 +21,13 @@ export function useWorkspaceUpload() {
     if (response.status !== 200) {
       throw new Error("Upload failed");
     }
-    return response.data;
+    const d = response.data;
+    return {
+      file_name: d.name,
+      size: d.size_bytes,
+      content_type: d.mime_type,
+      file_uri: `workspace://${d.file_id}#${d.mime_type}`,
+    };
   }
 
   function handleDeleteFile(fileURI: string) {
