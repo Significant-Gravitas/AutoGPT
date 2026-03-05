@@ -5,8 +5,10 @@ import { imageRenderer } from "./renderers/ImageRenderer";
 import { videoRenderer } from "./renderers/VideoRenderer";
 import { jsonRenderer } from "./renderers/JSONRenderer";
 import { markdownRenderer } from "./renderers/MarkdownRenderer";
+import { workspaceFileRenderer } from "./renderers/WorkspaceFileRenderer";
 
 // Register all renderers in priority order
+globalRegistry.register(workspaceFileRenderer);
 globalRegistry.register(videoRenderer);
 globalRegistry.register(imageRenderer);
 globalRegistry.register(codeRenderer);
