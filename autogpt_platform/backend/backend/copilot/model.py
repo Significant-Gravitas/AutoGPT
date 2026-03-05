@@ -705,14 +705,17 @@ async def update_session_title(session_id: str, title: str) -> bool:
             logger.warning(f"Session {session_id} not found for title update")
             return False
 
-        # Update title in cache if it exists (instead of invalidating).
-        # This prevents race conditions where cache invalidation causes
-        # the frontend to see stale DB data while streaming is still in progress.
+        # Acquire session lock before read-modify-write on the cache.
+        # upsert_chat_session holds the same lock, so this serializes with
+        # concurrent streaming persists and prevents a stale snapshot from
+        # overwriting messages added between our read and write.
         try:
-            cached = await _get_session_from_cache(session_id)
-            if cached:
-                cached.title = title
-                await cache_chat_session(cached)
+            lock = await _get_session_lock(session_id)
+            async with lock:
+                cached = await _get_session_from_cache(session_id)
+                if cached:
+                    cached.title = title
+                    await cache_chat_session(cached)
         except Exception as e:
             # Not critical - title will be correct on next full cache refresh
             logger.warning(
