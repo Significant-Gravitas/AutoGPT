@@ -1,11 +1,10 @@
 """Folder management tools for the copilot."""
 
-import logging
 from typing import Any
 
-from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import library_db
 
 from .base import BaseTool
 from .models import (
@@ -20,8 +19,6 @@ from .models import (
     FolderUpdatedResponse,
     ToolResponseBase,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _folder_to_info(folder: library_model.LibraryFolder) -> FolderInfo:

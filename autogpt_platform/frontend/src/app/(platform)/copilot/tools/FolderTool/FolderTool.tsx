@@ -8,6 +8,11 @@ import {
   TrashIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
+import {
+  Folder as TreeFolder,
+  Tree,
+  type TreeViewElement,
+} from "@/components/molecules/file-tree";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -90,37 +95,59 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tree renderer                                                      */
+/*  Tree renderer using file-tree component                            */
 /* ------------------------------------------------------------------ */
 
-function FolderTreeNode({
-  node,
-  depth,
-}: {
-  node: FolderTreeInfo;
-  depth: number;
-}) {
+function folderTreeToElements(nodes: FolderTreeInfo[]): TreeViewElement[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
+    children:
+      node.children.length > 0
+        ? folderTreeToElements(node.children)
+        : undefined,
+  }));
+}
+
+function collectAllIDs(nodes: FolderTreeInfo[]): string[] {
+  return nodes.flatMap((n) => [n.id, ...collectAllIDs(n.children)]);
+}
+
+function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
+  const elements = folderTreeToElements(tree);
+  const allIDs = collectAllIDs(tree);
+
   return (
-    <div style={{ paddingLeft: depth * 16 }}>
-      <div className="flex items-center gap-2 py-1">
-        {node.color ? (
-          <span
-            className="inline-block h-3 w-3 rounded-full"
-            style={{ backgroundColor: node.color }}
-          />
-        ) : (
-          <FolderIcon size={14} weight="fill" className="text-amber-500" />
-        )}
-        <span className="text-sm font-medium text-zinc-800">{node.name}</span>
-        <span className="text-xs text-neutral-500">
-          {node.agent_count} agent{node.agent_count !== 1 ? "s" : ""}
-        </span>
-      </div>
-      {node.children.map((child) => (
-        <FolderTreeNode key={child.id} node={child} depth={depth + 1} />
+    <Tree
+      initialExpandedItems={allIDs}
+      elements={elements}
+      openIcon={
+        <FolderIcon size={16} weight="fill" className="text-amber-500" />
+      }
+      closeIcon={
+        <FolderIcon size={16} weight="duotone" className="text-amber-400" />
+      }
+      className="max-h-64"
+    >
+      {elements.map((el) => (
+        <FolderTreeNodes key={el.id} element={el} />
       ))}
-    </div>
+    </Tree>
   );
+}
+
+function FolderTreeNodes({ element }: { element: TreeViewElement }) {
+  if (element.children && element.children.length > 0) {
+    return (
+      <TreeFolder value={element.id} element={element.name} isSelectable>
+        {element.children.map((child) => (
+          <FolderTreeNodes key={child.id} element={child} />
+        ))}
+      </TreeFolder>
+    );
+  }
+
+  return <TreeFolder value={element.id} element={element.name} isSelectable />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -138,13 +165,7 @@ function AccordionContent({ output }: { output: FolderToolOutput }) {
 
   if (isFolderList(output)) {
     if (output.tree && output.tree.length > 0) {
-      return (
-        <div className="space-y-1">
-          {output.tree.map((node) => (
-            <FolderTreeNode key={node.id} node={node} depth={0} />
-          ))}
-        </div>
-      );
+      return <FolderTreeView tree={output.tree} />;
     }
     if (output.folders && output.folders.length > 0) {
       return (
