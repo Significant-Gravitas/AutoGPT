@@ -342,6 +342,14 @@ async def store_media_file(
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
+        # Virus scan the local file before any further processing
+        local_content = target_path.read_bytes()
+        if len(local_content) > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {len(local_content)} bytes > {MAX_FILE_SIZE_BYTES} bytes"
+            )
+        await scan_content_safe(local_content, filename=sanitized_file)
+
     # Return based on requested format
     if return_format == "for_local_processing":
         # Use when processing files locally with tools like ffmpeg, MoviePy, PIL
@@ -375,7 +383,7 @@ async def store_media_file(
                     else:
                         info = await workspace_manager.get_file_info(ws.file_ref)
                     if info:
-                        return MediaFileType(f"{file}#{info.mimeType}")
+                        return MediaFileType(f"{file}#{info.mime_type}")
                 except Exception:
                     pass
             return MediaFileType(file)
@@ -389,7 +397,7 @@ async def store_media_file(
             filename=filename,
             overwrite=True,
         )
-        return MediaFileType(f"workspace://{file_record.id}#{file_record.mimeType}")
+        return MediaFileType(f"workspace://{file_record.id}#{file_record.mime_type}")
 
     else:
         raise ValueError(f"Invalid return_format: {return_format}")

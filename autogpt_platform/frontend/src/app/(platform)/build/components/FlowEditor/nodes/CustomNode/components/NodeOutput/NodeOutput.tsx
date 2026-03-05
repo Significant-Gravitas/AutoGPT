@@ -46,7 +46,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
               <div className="space-y-2">
                 <Text variant="small-medium">Input</Text>
 
-                <ContentRenderer value={latestInputData} shortContent={false} />
+                <ContentRenderer value={latestInputData} shortContent={true} />
 
                 <div className="mt-1 flex justify-end gap-1">
                   <NodeDataViewer
@@ -98,7 +98,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                           Data:
                         </Text>
                         <div className="relative space-y-2">
-                          {value.map((item, index) => (
+                          {value.slice(0, 3).map((item, index) => (
                             <div key={index}>
                               <ContentRenderer
                                 value={item}

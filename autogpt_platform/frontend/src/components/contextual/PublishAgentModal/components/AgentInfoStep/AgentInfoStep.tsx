@@ -1,6 +1,6 @@
 "use client";
 
-import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";

@@ -24,7 +24,10 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Type
+
+if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
 
 # Add backend to path for imports
 backend_dir = Path(__file__).parent.parent
@@ -242,9 +245,9 @@ def file_path_to_title(file_path: str) -> str:
     return apply_fixes(name.replace("_", " ").title())
 
 
-def extract_block_doc(block_cls: type) -> BlockDoc:
+def extract_block_doc(block_cls: Type["AnyBlockSchema"]) -> BlockDoc:
     """Extract documentation data from a block class."""
-    block = block_cls.create()
+    block = block_cls()
 
     # Get source file
     try:
@@ -520,7 +523,7 @@ def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") 
     lines.append("")
 
     # Group blocks by category
-    by_category = defaultdict(list)
+    by_category = defaultdict[str, list[BlockDoc]](list)
     for block in blocks:
         primary_cat = block.categories[0] if block.categories else "BASIC"
         by_category[primary_cat].append(block)

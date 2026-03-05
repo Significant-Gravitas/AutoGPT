@@ -4,8 +4,8 @@
 # import tweepy
 # from tweepy.client import Response
 
+# from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema, BlockSchemaInput, BlockSchemaOutput
 # from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
-# from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockSchemaInput, BlockSchemaOutput
 # from backend.data.model import SchemaField
 # from backend.blocks.twitter._builders import DMExpansionsBuilder
 # from backend.blocks.twitter._types import DMEventExpansion, DMEventExpansionInputs, DMEventType, DMMediaField, DMTweetField, TweetUserFields

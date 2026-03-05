@@ -1,7 +1,11 @@
-import type { GraphMeta as LegacyGraphMeta } from "@/lib/autogpt-server-api";
+import type {
+  Graph as LegacyGraph,
+  GraphMeta as LegacyGraphMeta,
+} from "@/lib/autogpt-server-api";
+import type { GraphModel as GeneratedGraph } from "@/app/api/__generated__/models/graphModel";
 import type { GraphMeta as GeneratedGraphMeta } from "@/app/api/__generated__/models/graphMeta";
 
-export type SubAgentUpdateInfo<T extends GraphMetaLike = GraphMetaLike> = {
+export type SubAgentUpdateInfo<T extends GraphLike = GraphLike> = {
   hasUpdate: boolean;
   currentVersion: number;
   latestVersion: number;
@@ -10,7 +14,10 @@ export type SubAgentUpdateInfo<T extends GraphMetaLike = GraphMetaLike> = {
   incompatibilities: IncompatibilityInfo | null;
 };
 
-// Union type for GraphMeta that works with both legacy and new builder
+// Union type for Graph (with schemas) that works with both legacy and new builder
+export type GraphLike = LegacyGraph | GeneratedGraph;
+
+// Union type for GraphMeta (without schemas) for version detection
 export type GraphMetaLike = LegacyGraphMeta | GeneratedGraphMeta;
 
 export type IncompatibilityInfo = {

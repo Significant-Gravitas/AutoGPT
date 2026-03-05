@@ -11,16 +11,9 @@ import uuid
 from typing import Optional
 
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspaceFile
 
-from backend.data.workspace import (
-    count_workspace_files,
-    create_workspace_file,
-    get_workspace_file,
-    get_workspace_file_by_path,
-    list_workspace_files,
-    soft_delete_workspace_file,
-)
+from backend.data.db_accessors import workspace_db
+from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -125,13 +118,14 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        db = workspace_db()
         resolved_path = self._resolve_path(path)
-        file = await get_workspace_file_by_path(self.workspace_id, resolved_path)
+        file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
         if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
 
         storage = await get_workspace_storage()
-        return await storage.retrieve(file.storagePath)
+        return await storage.retrieve(file.storage_path)
 
     async def read_file_by_id(self, file_id: str) -> bytes:
         """
@@ -146,12 +140,13 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
 
         storage = await get_workspace_storage()
-        return await storage.retrieve(file.storagePath)
+        return await storage.retrieve(file.storage_path)
 
     async def write_file(
         self,
@@ -160,7 +155,7 @@ class WorkspaceManager:
         path: Optional[str] = None,
         mime_type: Optional[str] = None,
         overwrite: bool = False,
-    ) -> UserWorkspaceFile:
+    ) -> WorkspaceFile:
         """
         Write file to workspace.
 
@@ -175,7 +170,7 @@ class WorkspaceManager:
             overwrite: Whether to overwrite existing file at path
 
         Returns:
-            Created UserWorkspaceFile instance
+            Created WorkspaceFile instance
 
         Raises:
             ValueError: If file exceeds size limit or path already exists
@@ -203,8 +198,10 @@ class WorkspaceManager:
         # For overwrite=True, we let the write proceed and handle via UniqueViolationError
         # This ensures the new file is written to storage BEFORE the old one is deleted,
         # preventing data loss if the new write fails
+        db = workspace_db()
+
         if not overwrite:
-            existing = await get_workspace_file_by_path(self.workspace_id, path)
+            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
             if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
 
@@ -230,52 +227,43 @@ class WorkspaceManager:
 
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
-        try:
-            file = await create_workspace_file(
-                workspace_id=self.workspace_id,
-                file_id=file_id,
-                name=filename,
-                path=path,
-                storage_path=storage_path,
-                mime_type=mime_type,
-                size_bytes=len(content),
-                checksum=checksum,
-            )
-        except UniqueViolationError:
-            # Race condition: another request created a file at this path
-            if overwrite:
-                # Re-fetch and delete the conflicting file, then retry
-                existing = await get_workspace_file_by_path(self.workspace_id, path)
-                if existing:
-                    await self.delete_file(existing.id)
-                # Retry the create - if this also fails, clean up storage file
-                try:
-                    file = await create_workspace_file(
-                        workspace_id=self.workspace_id,
-                        file_id=file_id,
-                        name=filename,
-                        path=path,
-                        storage_path=storage_path,
-                        mime_type=mime_type,
-                        size_bytes=len(content),
-                        checksum=checksum,
+        async def _persist_db_record(
+            retries: int = 2 if overwrite else 0,
+        ) -> WorkspaceFile:
+            """Create DB record, retrying on conflict if overwrite=True.
+
+            Cleans up the orphaned storage file on any failure.
+            """
+            try:
+                return await db.create_workspace_file(
+                    workspace_id=self.workspace_id,
+                    file_id=file_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    checksum=checksum,
+                )
+            except UniqueViolationError:
+                if retries > 0:
+                    # Delete conflicting file and retry
+                    existing = await db.get_workspace_file_by_path(
+                        self.workspace_id, path
                     )
-                except Exception:
-                    # Clean up orphaned storage file on retry failure
-                    try:
-                        await storage.delete(storage_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up orphaned storage file: {e}")
-                    raise
-            else:
-                # Clean up the orphaned storage file before raising
-                try:
-                    await storage.delete(storage_path)
-                except Exception as e:
-                    logger.warning(f"Failed to clean up orphaned storage file: {e}")
+                    if existing:
+                        await self.delete_file(existing.id)
+                    return await _persist_db_record(retries=retries - 1)
+                if overwrite:
+                    raise ValueError(
+                        f"Unable to overwrite file at path: {path} "
+                        f"(concurrent write conflict)"
+                    ) from None
                 raise ValueError(f"File already exists at path: {path}")
+
+        try:
+            file = await _persist_db_record()
         except Exception:
-            # Any other database error (connection, validation, etc.) - clean up storage
             try:
                 await storage.delete(storage_path)
             except Exception as e:
@@ -295,7 +283,7 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
-    ) -> list[UserWorkspaceFile]:
+    ) -> list[WorkspaceFile]:
         """
         List files in workspace.
 
@@ -310,11 +298,12 @@ class WorkspaceManager:
                                   If False (default), only list current session's files.
 
         Returns:
-            List of UserWorkspaceFile instances
+            List of WorkspaceFile instances
         """
         effective_path = self._get_effective_path(path, include_all_sessions)
+        db = workspace_db()
 
-        return await list_workspace_files(
+        return await db.list_workspace_files(
             workspace_id=self.workspace_id,
             path_prefix=effective_path,
             limit=limit,
@@ -331,20 +320,21 @@ class WorkspaceManager:
         Returns:
             True if deleted, False if not found
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             return False
 
         # Delete from storage
         storage = await get_workspace_storage()
         try:
-            await storage.delete(file.storagePath)
+            await storage.delete(file.storage_path)
         except Exception as e:
             logger.warning(f"Failed to delete file from storage: {e}")
             # Continue with database soft-delete even if storage delete fails
 
         # Soft-delete database record
-        result = await soft_delete_workspace_file(file_id, self.workspace_id)
+        result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
         return result is not None
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:
@@ -361,14 +351,15 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
-        file = await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
 
         storage = await get_workspace_storage()
-        return await storage.get_download_url(file.storagePath, expires_in)
+        return await storage.get_download_url(file.storage_path, expires_in)
 
-    async def get_file_info(self, file_id: str) -> Optional[UserWorkspaceFile]:
+    async def get_file_info(self, file_id: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata.
 
@@ -376,11 +367,12 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            UserWorkspaceFile instance or None
+            WorkspaceFile instance or None
         """
-        return await get_workspace_file(file_id, self.workspace_id)
+        db = workspace_db()
+        return await db.get_workspace_file(file_id, self.workspace_id)
 
-    async def get_file_info_by_path(self, path: str) -> Optional[UserWorkspaceFile]:
+    async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata by path.
 
@@ -391,10 +383,11 @@ class WorkspaceManager:
             path: Virtual path
 
         Returns:
-            UserWorkspaceFile instance or None
+            WorkspaceFile instance or None
         """
+        db = workspace_db()
         resolved_path = self._resolve_path(path)
-        return await get_workspace_file_by_path(self.workspace_id, resolved_path)
+        return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
 
     async def get_file_count(
         self,
@@ -416,7 +409,8 @@ class WorkspaceManager:
             Number of files
         """
         effective_path = self._get_effective_path(path, include_all_sessions)
+        db = workspace_db()
 
-        return await count_workspace_files(
+        return await db.count_workspace_files(
             self.workspace_id, path_prefix=effective_path
         )
