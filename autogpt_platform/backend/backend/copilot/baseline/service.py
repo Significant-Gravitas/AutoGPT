@@ -44,8 +44,6 @@ from backend.copilot.service import (
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.json import dumps as json_dumps
-from backend.util.json import loads as json_loads
 from backend.util.prompt import compress_context
 
 logger = logging.getLogger(__name__)
@@ -280,19 +278,21 @@ async def stream_chat_completion_baseline(
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": json_dumps(
-                            json_loads(tc["arguments"] or "{}", fallback={})
-                        ),
-                    },
-                }
-                for tc in tool_calls_by_index.values()
-            ]
+            tool_calls_list = []
+            for tc in tool_calls_by_index.values():
+                args = tc["arguments"] or "{}"
+                try:
+                    orjson.loads(args)
+                except (orjson.JSONDecodeError, TypeError):
+                    args = "{}"
+                tool_calls_list.append(
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": args},
+                    }
+                )
+            assistant_msg["tool_calls"] = tool_calls_list
             openai_messages.append(assistant_msg)
 
             # Execute each tool call and stream events
