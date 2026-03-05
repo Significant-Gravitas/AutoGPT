@@ -26,7 +26,7 @@ class AgentValidator:
     def __init__(self):
         self.errors: list[str] = []
 
-    def add_error(self, error_message: str):
+    def add_error(self, error_message: str) -> None:
         """Add an error message to the validation errors list."""
         self.errors.append(error_message)
 

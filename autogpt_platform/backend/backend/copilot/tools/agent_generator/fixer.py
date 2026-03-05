@@ -39,7 +39,7 @@ class AgentFixer:
     def __init__(self):
         self.fixes_applied: list[str] = []
 
-    def add_fix_log(self, fix_description: str):
+    def add_fix_log(self, fix_description: str) -> None:
         """Add a fix description to the applied fixes list."""
         self.fixes_applied.append(fix_description)
 
@@ -874,7 +874,7 @@ class AgentFixer:
                     fixed_count += 1
 
         if fixed_count > 0:
-            logger.info(f"Fixed model parameter on {fixed_count} AI block nodes")
+            logger.debug(f"Fixed model parameter on {fixed_count} AI block nodes")
 
         return agent
 
@@ -1272,7 +1272,7 @@ class AgentFixer:
 
         # Create lookup for library agents
         library_agent_lookup = {la.get("graph_id", ""): la for la in library_agents}
-        logger.info(
+        logger.debug(
             f"fix_agent_executor_blocks: library_agent_lookup keys = "
             f"{list(library_agent_lookup.keys())}"
         )
@@ -1286,7 +1286,7 @@ class AgentFixer:
 
             # Check if graph_id references a library agent
             graph_id = input_default.get("graph_id")
-            logger.info(
+            logger.debug(
                 f"fix_agent_executor_blocks: Found AgentExecutorBlock "
                 f"{node_id}, graph_id={graph_id}"
             )
@@ -1306,7 +1306,7 @@ class AgentFixer:
                 )
                 continue
 
-            logger.info(
+            logger.debug(
                 f"fix_agent_executor_blocks: Found matching library agent "
                 f"'{library_agent.get('name')}', input_schema keys: "
                 f"{list(library_agent.get('input_schema', {}).get('properties', {}).keys())}"
@@ -1342,17 +1342,17 @@ class AgentFixer:
                 lib_input_schema = {}
             if not isinstance(current_input_schema, dict):
                 current_input_schema = {}
-            logger.info(
+            logger.debug(
                 f"fix_agent_executor_blocks: current_input_schema="
                 f"{current_input_schema}"
             )
-            logger.info(
+            logger.debug(
                 f"fix_agent_executor_blocks: lib_input_schema keys="
                 f"{list(lib_input_schema.get('properties', {}).keys()) if lib_input_schema else 'None'}"
             )
             if not current_input_schema or not current_input_schema.get("properties"):
                 input_default["input_schema"] = lib_input_schema
-                logger.info(
+                logger.debug(
                     "fix_agent_executor_blocks: Replaced input_schema "
                     "with library agent's schema"
                 )
@@ -1687,9 +1687,9 @@ class AgentFixer:
         if library_agents:
             agent = self.fix_agent_executor_blocks(agent, library_agents)
 
-        logger.info(f"Applied {len(self.fixes_applied)} fixes to agent")
+        logger.debug(f"Applied {len(self.fixes_applied)} fixes to agent")
         for fix in self.fixes_applied:
-            logger.warning(f"  - {fix}")
+            logger.debug(f"  - {fix}")
 
         return agent
 
@@ -1697,6 +1697,6 @@ class AgentFixer:
         """Get a list of all fixes that were applied."""
         return self.fixes_applied.copy()
 
-    def clear_fixes_log(self):
+    def clear_fixes_log(self) -> None:
         """Clear the list of applied fixes."""
         self.fixes_applied = []
