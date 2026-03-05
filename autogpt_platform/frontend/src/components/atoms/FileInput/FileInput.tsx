@@ -102,7 +102,7 @@ export function FileInput(props: Props) {
     return false;
   }
 
-  const getFileLabelFromValue = (val: unknown): string => {
+  function getFileLabelFromValue(val: unknown): string {
     // Handle object format from external API: { name, type, size, data }
     if (val && typeof val === "object") {
       const obj = val as Record<string, unknown>;
@@ -156,9 +156,9 @@ export function FileInput(props: Props) {
       }
     }
     return "File";
-  };
+  }
 
-  const processFileBase64 = (file: File) => {
+  function processFileBase64(file: File) {
     setIsUploading(true);
     setUploadError(null);
 
@@ -178,9 +178,9 @@ export function FileInput(props: Props) {
       setIsUploading(false);
     };
     reader.readAsDataURL(file);
-  };
+  }
 
-  const uploadFile = async (file: File) => {
+  async function uploadFile(file: File) {
     if (mode === "base64") {
       processFileBase64(file);
       return;
@@ -210,9 +210,9 @@ export function FileInput(props: Props) {
     } finally {
       setIsUploading(false);
     }
-  };
+  }
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     // Validate max size
@@ -228,13 +228,13 @@ export function FileInput(props: Props) {
       return;
     }
     uploadFile(file);
-  };
+  }
 
-  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  function handleFileDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (file) uploadFile(file);
-  };
+  }
 
   function handleClear() {
     if (value && onDeleteFile) {
