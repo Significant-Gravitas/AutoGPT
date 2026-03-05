@@ -41,8 +41,7 @@ class CustomizeAgentTool(BaseTool):
                     "type": "object",
                     "description": (
                         "Complete customized agent JSON to validate and save. "
-                        "Include 'name' and 'description' to set the agent's "
-                        "title and summary."
+                        "Optionally include 'name' and 'description'."
                     ),
                 },
                 "library_agent_ids": {

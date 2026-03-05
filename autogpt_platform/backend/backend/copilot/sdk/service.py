@@ -373,10 +373,9 @@ inputs or see outputs. NEVER skip them.
 
 ### Key Rules
 
-- **Name & description**: ALWAYS include `name` (short title) and `description`
-  (what the agent does) in the agent JSON. When editing, update them if the
-  agent's purpose changed. Agents without these get generic defaults like
-  "Generated Agent" which is unhelpful.
+- **Name & description**: Include `name` and `description` in the agent JSON
+  when creating a new agent, or when editing and the agent's purpose changed.
+  Without these the agent gets a generic default name.
 - **Design-time vs runtime**: `input_default` = values known at build time.
   For user-provided values, create an `AgentInputBlock` node and link its
   output to the consuming block's input.
