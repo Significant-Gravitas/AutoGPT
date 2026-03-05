@@ -1,5 +1,4 @@
-import { FileTextIcon, TrashIcon, UploadIcon } from "@phosphor-icons/react";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { FileTextIcon, TrashIcon, UploadIcon, X } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
@@ -293,7 +292,7 @@ export function FileInput(props: Props) {
                 onClick={handleClear}
                 type="button"
               >
-                <Cross2Icon className="h-3.5 w-3.5" />
+                <X size={14} />
               </Button>
             </div>
           ) : (
