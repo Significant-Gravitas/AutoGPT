@@ -142,6 +142,9 @@ function getCopyContentWorkspaceFile(
     mimeType,
     data: async () => {
       const response = await fetch(downloadURL);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`);
+      }
       return await response.blob();
     },
     alternativeMimeTypes: ["text/plain"],

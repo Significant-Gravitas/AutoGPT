@@ -120,6 +120,10 @@ class UploadFileResponse(BaseModel):
     size_bytes: int
 
 
+class DeleteFileResponse(BaseModel):
+    deleted: bool
+
+
 class StorageUsageResponse(BaseModel):
     used_bytes: int
     limit_bytes: int
@@ -158,9 +162,9 @@ async def download_file(
 async def delete_workspace_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     file_id: str,
-) -> dict[str, bool]:
+) -> DeleteFileResponse:
     """
-    Soft-delete a workspace file and remove it from storage.
+    Soft-delete a workspace file and attempt to remove it from storage.
 
     Used when a user clears a file input in the builder.
     """
@@ -173,7 +177,7 @@ async def delete_workspace_file(
     if not deleted:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
-    return {"deleted": True}
+    return DeleteFileResponse(deleted=True)
 
 
 @router.post(

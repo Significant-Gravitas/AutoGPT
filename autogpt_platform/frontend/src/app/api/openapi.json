@@ -6600,7 +6600,7 @@
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
-        "description": "Soft-delete a workspace file and remove it from storage.\n\nUsed when a user clears a file input in the builder.",
+        "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
         "operationId": "deleteWorkspaceDelete a workspace file",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6616,11 +6616,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": { "type": "boolean" },
-                  "title": "Response Deleteworkspacedelete A Workspace File"
-                }
+                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
               }
             }
           },
@@ -8289,6 +8285,12 @@
         "type": "string",
         "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
+      },
+      "DeleteFileResponse": {
+        "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
+        "type": "object",
+        "required": ["deleted"],
+        "title": "DeleteFileResponse"
       },
       "DeleteGraphResponse": {
         "properties": {

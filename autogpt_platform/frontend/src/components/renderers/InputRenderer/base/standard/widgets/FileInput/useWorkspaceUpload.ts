@@ -3,10 +3,7 @@ import {
   useDeleteWorkspaceDeleteAWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  parseWorkspaceFileID,
-  buildWorkspaceURI,
-} from "@/lib/workspace-uri";
+import { parseWorkspaceFileID, buildWorkspaceURI } from "@/lib/workspace-uri";
 
 export function useWorkspaceUpload() {
   const { toast } = useToast();
