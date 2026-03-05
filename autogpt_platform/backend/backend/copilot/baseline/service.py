@@ -287,7 +287,7 @@ async def stream_chat_completion_baseline(
             yield StreamFinishStep()
             step_open = False
 
-            # Append the assistant message with tool_calls to context
+            # Append the assistant message with tool_calls to context.
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
@@ -297,7 +297,7 @@ async def stream_chat_completion_baseline(
                     "type": "function",
                     "function": {
                         "name": tc["name"],
-                        "arguments": tc["arguments"],
+                        "arguments": tc["arguments"] or "{}",
                     },
                 }
                 for tc in tool_calls_by_index.values()
