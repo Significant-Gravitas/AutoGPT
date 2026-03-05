@@ -87,7 +87,7 @@ async def review_submission(
     )
 
     state_changed = already_approved != request.is_approved
-    # Clear caches when the request is approved as it updates what is shown on the store
+    # Clear caches whenever approval state changes, since store visibility can change
     if state_changed:
         store_cache.clear_all_caches()
     return submission

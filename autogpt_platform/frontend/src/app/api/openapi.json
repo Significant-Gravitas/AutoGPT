@@ -12295,13 +12295,13 @@
             "type": "string",
             "minLength": 1,
             "title": "Graph Id",
-            "description": "Agent ID cannot be empty"
+            "description": "Graph ID cannot be empty"
           },
           "graph_version": {
             "type": "integer",
             "exclusiveMinimum": 0.0,
             "title": "Graph Version",
-            "description": "Agent version must be greater than 0"
+            "description": "Graph version must be greater than 0"
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },

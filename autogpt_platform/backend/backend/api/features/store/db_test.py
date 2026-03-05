@@ -180,7 +180,7 @@ async def test_get_store_agent_details(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_creator_details(mocker):
+async def test_get_store_creator(mocker):
     # Mock data
     mock_creator_data = prisma.models.Creator(
         name="Test Creator",

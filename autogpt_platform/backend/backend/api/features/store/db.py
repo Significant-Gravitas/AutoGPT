@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Literal, overload
 
-import fastapi
 import prisma.enums
 import prisma.errors
 import prisma.models
@@ -277,9 +276,8 @@ async def get_available_graph(
         )
 
         if not store_listing_version or not store_listing_version.AgentGraph:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"Store listing version {store_listing_version_id} not found",
+            raise NotFoundError(
+                f"Store listing version {store_listing_version_id} not found",
             )
 
         return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
@@ -1040,9 +1038,8 @@ async def review_store_submission(
         )
 
         if not submission:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"Store listing version {store_listing_version_id} not found",
+            raise NotFoundError(
+                f"Store listing version {store_listing_version_id} not found"
             )
         assert submission.AgentGraph is not None
         creator_user_id = submission.AgentGraph.userId
@@ -1181,6 +1178,8 @@ async def review_store_submission(
             reviewed_submission
         )
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
         raise DatabaseError("Failed to create store submission review") from e

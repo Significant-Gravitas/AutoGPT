@@ -67,11 +67,11 @@ export const AgentTableCard = ({
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {run_count!.toLocaleString()} runs
+          {(run_count ?? 0).toLocaleString()} runs
         </div>
         <div className="flex items-center gap-1">
           <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-            {rating!.toFixed(1)}
+            {(rating ?? 0).toFixed(1)}
           </span>
           <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
         </div>

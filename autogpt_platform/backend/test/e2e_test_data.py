@@ -571,8 +571,8 @@ class TestDataCreator:
         if test_user and self.agent_graphs:
             test_submission_data = {
                 "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"],
-                "agent_version": 1,
+                "graph_id": self.agent_graphs[0]["id"],
+                "graph_version": 1,
                 "slug": "test-agent-submission",
                 "name": "Test Agent Submission",
                 "sub_heading": "A test agent for frontend testing",

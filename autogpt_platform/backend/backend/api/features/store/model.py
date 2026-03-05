@@ -275,10 +275,10 @@ class StoreSubmissionsResponse(pydantic.BaseModel):
 
 class StoreSubmissionRequest(pydantic.BaseModel):
     graph_id: str = pydantic.Field(
-        ..., min_length=1, description="Agent ID cannot be empty"
+        ..., min_length=1, description="Graph ID cannot be empty"
     )
     graph_version: int = pydantic.Field(
-        ..., gt=0, description="Agent version must be greater than 0"
+        ..., gt=0, description="Graph version must be greater than 0"
     )
     slug: str
     name: str
