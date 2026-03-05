@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
 import { cn } from "@/lib/utils";
+import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { Text } from "../Text/Text";
 
 type UploadFileResult = {
@@ -126,10 +127,10 @@ export function FileInput(props: Props) {
       return "File";
     }
 
-    if (val.startsWith("workspace://")) {
-      const fragment = val.split("#")[1];
-      if (fragment) {
-        const parts = fragment.split("/");
+    const wsURI = parseWorkspaceURI(val);
+    if (wsURI) {
+      if (wsURI.mimeType) {
+        const parts = wsURI.mimeType.split("/");
         if (parts.length > 1) {
           return `${parts[1].toUpperCase()} file`;
         }

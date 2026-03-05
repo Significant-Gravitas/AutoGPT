@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkspaceURI } from "./WorkspaceFileRenderer";
-import { parseWorkspaceFileID } from "@/components/renderers/InputRenderer/base/standard/widgets/FileInput/useWorkspaceUpload";
+import {
+  parseWorkspaceURI,
+  parseWorkspaceFileID,
+  isWorkspaceURI,
+  buildWorkspaceURI,
+} from "@/lib/workspace-uri";
 
 describe("parseWorkspaceURI", () => {
   it("parses a full workspace URI with mime type", () => {
@@ -74,5 +78,38 @@ describe("parseWorkspaceFileID", () => {
       const idOnly = parseWorkspaceFileID(uri);
       expect(idOnly).toBe(fullParse?.fileID ?? null);
     }
+  });
+});
+
+describe("isWorkspaceURI", () => {
+  it("returns true for workspace URIs", () => {
+    expect(isWorkspaceURI("workspace://abc")).toBe(true);
+    expect(isWorkspaceURI("workspace://abc#image/png")).toBe(true);
+  });
+
+  it("returns false for non-workspace values", () => {
+    expect(isWorkspaceURI("https://example.com")).toBe(false);
+    expect(isWorkspaceURI("")).toBe(false);
+    expect(isWorkspaceURI(null)).toBe(false);
+    expect(isWorkspaceURI(undefined)).toBe(false);
+    expect(isWorkspaceURI(123)).toBe(false);
+  });
+});
+
+describe("buildWorkspaceURI", () => {
+  it("builds URI with mime type", () => {
+    expect(buildWorkspaceURI("file-123", "image/png")).toBe(
+      "workspace://file-123#image/png",
+    );
+  });
+
+  it("builds URI without mime type", () => {
+    expect(buildWorkspaceURI("file-123")).toBe("workspace://file-123");
+  });
+
+  it("roundtrips with parseWorkspaceURI", () => {
+    const uri = buildWorkspaceURI("file-abc", "text/plain");
+    const parsed = parseWorkspaceURI(uri);
+    expect(parsed).toEqual({ fileID: "file-abc", mimeType: "text/plain" });
   });
 });

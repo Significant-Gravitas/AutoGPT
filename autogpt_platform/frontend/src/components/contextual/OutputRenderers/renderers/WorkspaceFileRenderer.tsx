@@ -6,6 +6,7 @@ import {
   DownloadContent,
   CopyContent,
 } from "../types";
+import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -35,30 +36,12 @@ const audioMimeTypes = [
   "audio/flac",
 ];
 
-interface WorkspaceURI {
-  fileID: string;
-  mimeType: string | null;
-}
-
-export function parseWorkspaceURI(value: string): WorkspaceURI | null {
-  if (!value.startsWith("workspace://")) return null;
-  const rest = value.slice("workspace://".length);
-  const hashIndex = rest.indexOf("#");
-  if (hashIndex === -1) {
-    return { fileID: rest, mimeType: null };
-  }
-  return {
-    fileID: rest.slice(0, hashIndex),
-    mimeType: rest.slice(hashIndex + 1) || null,
-  };
-}
-
 function buildDownloadURL(fileID: string): string {
   return `/api/proxy/api/workspace/files/${fileID}/download`;
 }
 
 function canRenderWorkspaceFile(value: unknown): boolean {
-  return typeof value === "string" && value.startsWith("workspace://");
+  return isWorkspaceURI(value);
 }
 
 function getFileTypeLabel(mimeType: string | null): string {

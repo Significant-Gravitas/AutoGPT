@@ -1,18 +1,15 @@
 import {
-  usePostWorkspaceUploadAFileToTheWorkspace,
+  usePostWorkspaceUploadFileToWorkspace,
   useDeleteWorkspaceDeleteAWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
-
-export function parseWorkspaceFileID(uri: string): string | null {
-  if (!uri.startsWith("workspace://")) return null;
-  const rest = uri.slice("workspace://".length);
-  const hashIndex = rest.indexOf("#");
-  return hashIndex === -1 ? rest : rest.slice(0, hashIndex);
-}
+import {
+  parseWorkspaceFileID,
+  buildWorkspaceURI,
+} from "@/lib/workspace-uri";
 
 export function useWorkspaceUpload() {
   const { mutateAsync: uploadMutation } =
-    usePostWorkspaceUploadAFileToTheWorkspace();
+    usePostWorkspaceUploadFileToWorkspace();
 
   const { mutate: deleteMutation } = useDeleteWorkspaceDeleteAWorkspaceFile();
 
@@ -26,7 +23,7 @@ export function useWorkspaceUpload() {
       file_name: d.name,
       size: d.size_bytes,
       content_type: d.mime_type,
-      file_uri: `workspace://${d.file_id}#${d.mime_type}`,
+      file_uri: buildWorkspaceURI(d.file_id, d.mime_type),
     };
   }
 
