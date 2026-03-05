@@ -398,6 +398,7 @@ async def create_library_agent(
     hitl_safe_mode: bool = True,
     sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
+    folder_id: str | None = None,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -425,37 +426,39 @@ async def create_library_agent(
     )
 
     async with transaction() as tx:
-        library_agents = await asyncio.gather(
-            *(
-                prisma.models.LibraryAgent.prisma(tx).create(
-                    data=prisma.types.LibraryAgentCreateInput(
-                        isCreatedByUser=(user_id == user_id),
-                        useGraphIsActiveVersion=True,
-                        User={"connect": {"id": user_id}},
-                        # Creator={"connect": {"id": user_id}},
-                        AgentGraph={
-                            "connect": {
-                                "graphVersionId": {
-                                    "id": graph_entry.id,
-                                    "version": graph_entry.version,
-                                }
-                            }
-                        },
-                        settings=SafeJson(
-                            GraphSettings.from_graph(
-                                graph_entry,
-                                hitl_safe_mode=hitl_safe_mode,
-                                sensitive_action_safe_mode=sensitive_action_safe_mode,
-                            ).model_dump()
-                        ),
-                    ),
-                    include=library_agent_include(
-                        user_id, include_nodes=False, include_executions=False
-                    ),
-                )
-                for graph_entry in graph_entries
+        library_agents = []
+        for i, graph_entry in enumerate(graph_entries):
+            create_data = prisma.types.LibraryAgentCreateInput(
+                isCreatedByUser=(user_id == user_id),
+                useGraphIsActiveVersion=True,
+                User={"connect": {"id": user_id}},
+                AgentGraph={
+                    "connect": {
+                        "graphVersionId": {
+                            "id": graph_entry.id,
+                            "version": graph_entry.version,
+                        }
+                    }
+                },
+                settings=SafeJson(
+                    GraphSettings.from_graph(
+                        graph_entry,
+                        hitl_safe_mode=hitl_safe_mode,
+                        sensitive_action_safe_mode=sensitive_action_safe_mode,
+                    ).model_dump()
+                ),
             )
-        )
+            # Only assign folder to the main graph, not sub-graphs
+            if i == 0 and folder_id:
+                create_data["folderId"] = folder_id
+
+            agent = await prisma.models.LibraryAgent.prisma(tx).create(
+                data=create_data,
+                include=library_agent_include(
+                    user_id, include_nodes=False, include_executions=False
+                ),
+            )
+            library_agents.append(agent)
 
     # Generate images for the main graph and sub-graphs
     for agent, graph in zip(library_agents, graph_entries):
