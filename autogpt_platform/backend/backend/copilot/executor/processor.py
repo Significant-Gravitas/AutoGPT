@@ -6,11 +6,13 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import logging
+import os
+import subprocess
 import threading
 import time
 
-from backend.copilot import service as copilot_service
 from backend.copilot import stream_registry
+from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
@@ -108,7 +110,40 @@ class CoPilotProcessor:
         )
         self.execution_thread.start()
 
+        # Skip the SDK's per-request CLI version check — the bundled CLI is
+        # already version-matched to the SDK package.
+        os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+
+        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
+        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
+        self._prewarm_cli()
+
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+
+    def _prewarm_cli(self) -> None:
+        """Run the bundled CLI binary once to warm OS page caches."""
+        try:
+            from claude_agent_sdk._internal.transport.subprocess_cli import (
+                SubprocessCLITransport,
+            )
+
+            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+            if cli_path:
+                result = subprocess.run(
+                    [cli_path, "-v"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                else:
+                    logger.warning(
+                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
+                        result.returncode,  # type: ignore[reportCallIssue]
+                        cli_path,
+                    )
+        except Exception as e:
+            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -119,12 +154,12 @@ class CoPilotProcessor:
         """
         from backend.util.workspace_storage import shutdown_workspace_storage
 
+        coro = shutdown_workspace_storage()
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                shutdown_workspace_storage(), self.execution_loop
-            )
+            future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
             future.result(timeout=5)
         except Exception as e:
+            coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
             logger.warning(
                 f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
@@ -194,7 +229,7 @@ class CoPilotProcessor:
     ):
         """Async execution logic for a CoPilot turn.
 
-        Calls the stream_chat_completion service function and publishes
+        Calls the chat completion service (SDK or baseline) and publishes
         results to the stream registry.
 
         Args:
@@ -218,9 +253,9 @@ class CoPilotProcessor:
             stream_fn = (
                 sdk_service.stream_chat_completion_sdk
                 if use_sdk
-                else copilot_service.stream_chat_completion
+                else stream_chat_completion_baseline
             )
-            log.info(f"Using {'SDK' if use_sdk else 'standard'} service")
+            log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
             async for chunk in stream_fn(
@@ -228,7 +263,6 @@ class CoPilotProcessor:
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
-                context=entry.context,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")

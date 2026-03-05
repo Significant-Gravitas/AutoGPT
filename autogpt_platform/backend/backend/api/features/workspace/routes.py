@@ -3,6 +3,7 @@ Workspace API routes for managing user file storage.
 """
 
 import logging
+import os
 import re
 import uuid
 from typing import Annotated
@@ -11,15 +12,22 @@ from urllib.parse import quote
 import fastapi
 import pydantic
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
-from fastapi import File, UploadFile
+
+from fastapi import File, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from backend.data.workspace import (
     WorkspaceFile,
+    count_workspace_files,
     get_or_create_workspace,
     get_workspace,
     get_workspace_file,
+    get_workspace_total_size,
+    soft_delete_workspace_file,
 )
+from backend.util.settings import Config
+from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import get_workspace_storage
 
@@ -107,6 +115,21 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
             raise
 
 
+class UploadFileResponse(BaseModel):
+    file_id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+
+
+class StorageUsageResponse(BaseModel):
+    used_bytes: int
+    limit_bytes: int
+    used_percent: float
+    file_count: int
+
+
 @router.get(
     "/files/{file_id}/download",
     summary="Download file by ID",
@@ -129,8 +152,7 @@ async def download_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return await _create_file_download_response(file)
-
-
+  
 @router.delete(
     "/files/{file_id}",
     summary="Delete a workspace file",
@@ -156,46 +178,118 @@ async def delete_workspace_file(
     return {"deleted": True}
 
 
-class WorkspaceUploadResponse(pydantic.BaseModel):
-    file_uri: str
-    file_name: str
-    size: int
-    content_type: str
-
-
 @router.post(
     "/files/upload",
-    summary="Upload a file to the workspace",
+    summary="Upload file to workspace",
 )
-async def upload_workspace_file(
+async def upload_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
-    file: UploadFile = File(...),
-) -> WorkspaceUploadResponse:
+    file: UploadFile,
+    session_id: str | None = Query(default=None),
+) -> UploadFileResponse:
     """
-    Upload a file to the user's workspace for use in builder graph inputs.
+    Upload a file to the user's workspace.
 
-    Returns a workspace:// URI that can be stored in graph node inputs
-    instead of embedding full file content as base64.
+    Files are stored in session-scoped paths when session_id is provided,
+    so the agent's session-scoped tools can discover them automatically.
     """
+    config = Config()
+
+    # Sanitize filename — strip any directory components
+    filename = os.path.basename(file.filename or "upload") or "upload"
+
+    # Read file content with early abort on size limit
+    max_file_bytes = config.max_file_size_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total_size = 0
+    while chunk := await file.read(64 * 1024):  # 64KB chunks
+        total_size += len(chunk)
+        if total_size > max_file_bytes:
+            raise fastapi.HTTPException(
+                status_code=413,
+                detail=f"File exceeds maximum size of {config.max_file_size_mb} MB",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
+    # Get or create workspace
     workspace = await get_or_create_workspace(user_id)
-    content = await file.read()
 
-    filename = file.filename or "upload"
-    content_type = file.content_type or "application/octet-stream"
-    file_id = str(uuid.uuid4())
-    path = f"/builder-uploads/{file_id}/{filename}"
+    # Pre-write storage cap check (soft check — final enforcement is post-write)
+    storage_limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
+    current_usage = await get_workspace_total_size(workspace.id)
+    if storage_limit_bytes and current_usage + len(content) > storage_limit_bytes:
+        used_percent = (current_usage / storage_limit_bytes) * 100
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail={
+                "message": "Storage limit exceeded",
+                "used_bytes": current_usage,
+                "limit_bytes": storage_limit_bytes,
+                "used_percent": round(used_percent, 1),
+            },
+        )
 
-    manager = WorkspaceManager(user_id, workspace.id)
-    workspace_file = await manager.write_file(
-        content=content,
-        filename=filename,
-        path=path,
-        mime_type=content_type,
+    # Warn at 80% usage
+    if (
+        storage_limit_bytes
+        and (usage_ratio := (current_usage + len(content)) / storage_limit_bytes) >= 0.8
+    ):
+        logger.warning(
+            f"User {user_id} workspace storage at {usage_ratio * 100:.1f}% "
+            f"({current_usage + len(content)} / {storage_limit_bytes} bytes)"
+        )
+
+    # Virus scan
+    await scan_content_safe(content, filename=filename)
+
+    # Write file via WorkspaceManager
+    manager = WorkspaceManager(user_id, workspace.id, session_id)
+    workspace_file = await manager.write_file(content, filename)
+
+    # Post-write storage check — eliminates TOCTOU race on the quota.
+    # If a concurrent upload pushed us over the limit, undo this write.
+    new_total = await get_workspace_total_size(workspace.id)
+    if storage_limit_bytes and new_total > storage_limit_bytes:
+        await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        raise fastapi.HTTPException(
+            status_code=413,
+            detail={
+                "message": "Storage limit exceeded (concurrent upload)",
+                "used_bytes": new_total,
+                "limit_bytes": storage_limit_bytes,
+            },
+        )
+
+    return UploadFileResponse(
+        file_id=workspace_file.id,
+        name=workspace_file.name,
+        path=workspace_file.path,
+        mime_type=workspace_file.mime_type,
+        size_bytes=workspace_file.size_bytes,
     )
 
-    return WorkspaceUploadResponse(
-        file_uri=f"workspace://{workspace_file.id}#{workspace_file.mime_type}",
-        file_name=workspace_file.name,
-        size=workspace_file.size_bytes,
-        content_type=workspace_file.mime_type,
+
+@router.get(
+    "/storage/usage",
+    summary="Get workspace storage usage",
+)
+async def get_storage_usage(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+) -> StorageUsageResponse:
+    """
+    Get storage usage information for the user's workspace.
+    """
+    config = Config()
+    workspace = await get_or_create_workspace(user_id)
+
+    used_bytes = await get_workspace_total_size(workspace.id)
+    file_count = await count_workspace_files(workspace.id)
+    limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
+
+    return StorageUsageResponse(
+        used_bytes=used_bytes,
+        limit_bytes=limit_bytes,
+        used_percent=round((used_bytes / limit_bytes) * 100, 1) if limit_bytes else 0,
+        file_count=file_count,
     )

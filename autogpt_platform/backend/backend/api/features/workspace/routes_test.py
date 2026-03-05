@@ -1,29 +1,51 @@
-import datetime
+"""Tests for workspace file upload and download routes."""
+
 import io
-import json
-import uuid as uuid_mod
-from unittest.mock import AsyncMock
+from datetime import datetime, timezone
 
 import fastapi
 import fastapi.testclient
 import pytest
-from pytest_mock import MockFixture
-from pytest_snapshot.plugin import Snapshot
+import pytest_mock
 
-from backend.api.features.workspace.routes import router
-from backend.data.workspace import Workspace, WorkspaceFile
+from backend.api.features.workspace import routes as workspace_routes
+from backend.data.workspace import WorkspaceFile
 
 app = fastapi.FastAPI()
-app.include_router(router)
+app.include_router(workspace_routes.router)
+
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from rest_api.py."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 client = fastapi.testclient.TestClient(app)
 
-FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
-WORKSPACE_ID = "ws-test-1234"
+TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+
+MOCK_WORKSPACE = type("W", (), {"id": "ws-1"})()
+
+_NOW = datetime(2023, 1, 1, tzinfo=timezone.utc)
+
+MOCK_FILE = WorkspaceFile(
+    id="file-aaa-bbb",
+    workspace_id="ws-1",
+    created_at=_NOW,
+    updated_at=_NOW,
+    name="hello.txt",
+    path="/session/hello.txt",
+    mime_type="text/plain",
+    size_bytes=13,
+    storage_path="local://hello.txt",
+)
 
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
-    """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
@@ -31,197 +53,255 @@ def setup_app_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
-def _make_workspace(user_id: str) -> Workspace:
-    return Workspace(
-        id=WORKSPACE_ID,
-        user_id=user_id,
-        created_at=FIXED_NOW,
-        updated_at=FIXED_NOW,
+def _upload(
+    filename: str = "hello.txt",
+    content: bytes = b"Hello, world!",
+    content_type: str = "text/plain",
+):
+    """Helper to POST a file upload."""
+    return client.post(
+        "/files/upload?session_id=sess-1",
+        files={"file": (filename, io.BytesIO(content), content_type)},
     )
 
 
-def _make_workspace_file(
-    *,
-    file_id: str = "file-abc-123",
-    name: str = "test.png",
-    mime_type: str = "image/png",
-    size_bytes: int = 1024,
-) -> WorkspaceFile:
-    return WorkspaceFile(
-        id=file_id,
-        workspace_id=WORKSPACE_ID,
-        created_at=FIXED_NOW,
-        updated_at=FIXED_NOW,
-        name=name,
-        path=f"/builder-uploads/{file_id}/{name}",
-        storage_path=f"local://{WORKSPACE_ID}/{file_id}/{name}",
-        mime_type=mime_type,
-        size_bytes=size_bytes,
-    )
+# ---- Happy path ----
 
 
-# ── DELETE /files/{file_id} ─────────────────────────────────────────────
-
-
-def test_delete_file_workspace_not_found(mocker: MockFixture, test_user_id: str):
+def test_upload_happy_path(mocker: pytest_mock.MockFixture):
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace",
-        new_callable=AsyncMock,
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_id"] == "file-aaa-bbb"
+    assert data["name"] == "hello.txt"
+    assert data["size_bytes"] == 13
+
+
+# ---- Per-file size limit ----
+
+
+def test_upload_exceeds_max_file_size(mocker: pytest_mock.MockFixture):
+    """Files larger than max_file_size_mb should be rejected with 413."""
+    cfg = mocker.patch("backend.api.features.workspace.routes.Config")
+    cfg.return_value.max_file_size_mb = 0  # 0 MB → any content is too big
+    cfg.return_value.max_workspace_storage_mb = 500
+
+    response = _upload(content=b"x" * 1024)
+    assert response.status_code == 413
+
+
+# ---- Storage quota exceeded ----
+
+
+def test_upload_storage_quota_exceeded(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    # Current usage already at limit
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=500 * 1024 * 1024,
+    )
+
+    response = _upload()
+    assert response.status_code == 413
+    assert "Storage limit exceeded" in response.text
+
+
+# ---- Post-write quota race (B2) ----
+
+
+def test_upload_post_write_quota_race(mocker: pytest_mock.MockFixture):
+    """If a concurrent upload tips the total over the limit after write,
+    the file should be soft-deleted and 413 returned."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    # Pre-write check passes (under limit), but post-write check fails
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        side_effect=[0, 600 * 1024 * 1024],  # first call OK, second over limit
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+    mock_delete = mocker.patch(
+        "backend.api.features.workspace.routes.soft_delete_workspace_file",
         return_value=None,
     )
 
-    response = client.delete("/files/file-abc-123")
+    response = _upload()
+    assert response.status_code == 413
+    mock_delete.assert_called_once_with("file-aaa-bbb", "ws-1")
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Workspace not found"
+
+# ---- Any extension accepted (no allowlist) ----
 
 
-def test_delete_file_not_found(mocker: MockFixture, test_user_id: str):
+def test_upload_any_extension(mocker: pytest_mock.MockFixture):
+    """Any file extension should be accepted — ClamAV is the security layer."""
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace",
-        new_callable=AsyncMock,
-        return_value=_make_workspace(test_user_id),
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
     )
-
-    mock_manager = AsyncMock()
-    mock_manager.delete_file.return_value = False
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager",
-        return_value=mock_manager,
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
     )
-
-    response = client.delete("/files/file-abc-123")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "File not found"
-    mock_manager.delete_file.assert_awaited_once_with("file-abc-123")
-
-
-def test_delete_file_success(
-    mocker: MockFixture, test_user_id: str, snapshot: Snapshot
-):
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace",
-        new_callable=AsyncMock,
-        return_value=_make_workspace(test_user_id),
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
     )
-
-    mock_manager = AsyncMock()
-    mock_manager.delete_file.return_value = True
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
 
-    response = client.delete("/files/file-abc-123")
-
+    response = _upload(filename="data.xyz", content=b"arbitrary")
     assert response.status_code == 200
-    assert response.json() == {"deleted": True}
-    mock_manager.delete_file.assert_awaited_once_with("file-abc-123")
-
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2, sort_keys=True),
-        "delete_file_success",
-    )
 
 
-# ── POST /files/upload ──────────────────────────────────────────────────
+# ---- Virus scan rejection ----
 
 
-def test_upload_file_success(
-    mocker: MockFixture, test_user_id: str, snapshot: Snapshot
-):
-    workspace = _make_workspace(test_user_id)
-    workspace_file = _make_workspace_file()
+def test_upload_blocked_by_virus_scan(mocker: pytest_mock.MockFixture):
+    """Files flagged by ClamAV should be rejected and never written to storage."""
+    from backend.api.features.store.exceptions import VirusDetectedError
 
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
-        new_callable=AsyncMock,
-        return_value=workspace,
+        return_value=MOCK_WORKSPACE,
     )
-
-    mock_manager = AsyncMock()
-    mock_manager.write_file.return_value = workspace_file
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        side_effect=VirusDetectedError("Eicar-Test-Signature"),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
 
-    # Deterministic uuid so the path is predictable
-    mocker.patch(
-        "backend.api.features.workspace.routes.uuid.uuid4",
-        return_value=uuid_mod.UUID("12345678-1234-1234-1234-123456781234"),
-    )
-
-    file_content = b"fake image data"
-    response = client.post(
-        "/files/upload",
-        files={"file": ("test.png", io.BytesIO(file_content), "image/png")},
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-    assert (
-        data["file_uri"]
-        == f"workspace://{workspace_file.id}#{workspace_file.mime_type}"
-    )
-    assert data["file_name"] == workspace_file.name
-    assert data["size"] == workspace_file.size_bytes
-    assert data["content_type"] == workspace_file.mime_type
-
-    mock_manager.write_file.assert_awaited_once_with(
-        content=file_content,
-        filename="test.png",
-        path="/builder-uploads/12345678-1234-1234-1234-123456781234/test.png",
-        mime_type="image/png",
-    )
-
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(data, indent=2, sort_keys=True),
-        "upload_file_success",
-    )
+    response = _upload(filename="evil.exe", content=b"X5O!P%@AP...")
+    assert response.status_code == 400
+    assert "Virus detected" in response.text
+    mock_manager.write_file.assert_not_called()
 
 
-def test_upload_file_default_filename_and_content_type(
-    mocker: MockFixture, test_user_id: str
-):
-    """Upload without explicit filename/content_type uses defaults."""
-    workspace = _make_workspace(test_user_id)
-    workspace_file = _make_workspace_file(
-        name="upload", mime_type="application/octet-stream"
-    )
+# ---- No file extension ----
 
+
+def test_upload_file_without_extension(mocker: pytest_mock.MockFixture):
+    """Files without an extension should be accepted and stored as-is."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
-        new_callable=AsyncMock,
-        return_value=workspace,
+        return_value=MOCK_WORKSPACE,
     )
-
-    mock_manager = AsyncMock()
-    mock_manager.write_file.return_value = workspace_file
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
 
-    mocker.patch(
-        "backend.api.features.workspace.routes.uuid.uuid4",
-        return_value=uuid_mod.UUID("56785678-5678-5678-5678-567856785678"),
+    response = _upload(
+        filename="Makefile",
+        content=b"all:\n\techo hello",
+        content_type="application/octet-stream",
     )
-
-    file_content = b"some bytes"
-    response = client.post(
-        "/files/upload",
-        files={
-            "file": ("upload", io.BytesIO(file_content), "application/octet-stream")
-        },
-    )
-
     assert response.status_code == 200
+    mock_manager.write_file.assert_called_once()
+    assert mock_manager.write_file.call_args[0][1] == "Makefile"
 
-    data = response.json()
-    assert data["content_type"] == "application/octet-stream"
-    assert data["file_name"] == "upload"
+
+# ---- Filename sanitization (SF5) ----
+
+
+def test_upload_strips_path_components(mocker: pytest_mock.MockFixture):
+    """Path-traversal filenames should be reduced to their basename."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    # Filename with traversal
+    _upload(filename="../../etc/passwd.txt")
+
+    # write_file should have been called with just the basename
+    mock_manager.write_file.assert_called_once()
+    call_args = mock_manager.write_file.call_args
+    assert call_args[0][1] == "passwd.txt"
+
+
+# ---- Download ----
+
+
+def test_download_file_not_found(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_file",
+        return_value=None,
+    )
+
+    response = client.get("/files/some-file-id/download")
+    assert response.status_code == 404

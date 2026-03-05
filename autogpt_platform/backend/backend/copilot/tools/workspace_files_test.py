@@ -102,67 +102,68 @@ class TestValidateEphemeralPath:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestResolveWriteContent:
-    def test_no_sources_returns_error(self):
+    async def test_no_sources_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content(None, None, None, "s1")
+        result = await _resolve_write_content(None, None, None, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_multiple_sources_returns_error(self):
+    async def test_multiple_sources_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content("text", "b64data", None, "s1")
+        result = await _resolve_write_content("text", "b64data", None, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_plain_text_content(self):
-        result = _resolve_write_content("hello world", None, None, "s1")
+    async def test_plain_text_content(self):
+        result = await _resolve_write_content("hello world", None, None, "s1")
         assert result == b"hello world"
 
-    def test_base64_content(self):
+    async def test_base64_content(self):
         raw = b"binary data"
         b64 = base64.b64encode(raw).decode()
-        result = _resolve_write_content(None, b64, None, "s1")
+        result = await _resolve_write_content(None, b64, None, "s1")
         assert result == raw
 
-    def test_invalid_base64_returns_error(self):
+    async def test_invalid_base64_returns_error(self):
         from backend.copilot.tools.models import ErrorResponse
 
-        result = _resolve_write_content(None, "not-valid-b64!!!", None, "s1")
+        result = await _resolve_write_content(None, "not-valid-b64!!!", None, "s1")
         assert isinstance(result, ErrorResponse)
         assert "base64" in result.message.lower()
 
-    def test_source_path(self, ephemeral_dir):
+    async def test_source_path(self, ephemeral_dir):
         target = ephemeral_dir / "input.txt"
         target.write_bytes(b"file content")
-        result = _resolve_write_content(None, None, str(target), "s1")
+        result = await _resolve_write_content(None, None, str(target), "s1")
         assert result == b"file content"
 
-    def test_source_path_not_found(self, ephemeral_dir):
+    async def test_source_path_not_found(self, ephemeral_dir):
         from backend.copilot.tools.models import ErrorResponse
 
         missing = str(ephemeral_dir / "nope.txt")
-        result = _resolve_write_content(None, None, missing, "s1")
+        result = await _resolve_write_content(None, None, missing, "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_source_path_outside_ephemeral(self, ephemeral_dir, tmp_path):
+    async def test_source_path_outside_ephemeral(self, ephemeral_dir, tmp_path):
         from backend.copilot.tools.models import ErrorResponse
 
         outside = tmp_path / "outside.txt"
         outside.write_text("nope")
-        result = _resolve_write_content(None, None, str(outside), "s1")
+        result = await _resolve_write_content(None, None, str(outside), "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_empty_string_sources_treated_as_none(self):
+    async def test_empty_string_sources_treated_as_none(self):
         from backend.copilot.tools.models import ErrorResponse
 
         # All empty strings → same as no sources
-        result = _resolve_write_content("", "", "", "s1")
+        result = await _resolve_write_content("", "", "", "s1")
         assert isinstance(result, ErrorResponse)
 
-    def test_empty_string_source_path_with_text(self):
+    async def test_empty_string_source_path_with_text(self):
         # source_path="" should be normalised to None, so only content counts
-        result = _resolve_write_content("hello", "", "", "s1")
+        result = await _resolve_write_content("hello", "", "", "s1")
         assert result == b"hello"
 
 
@@ -233,6 +234,65 @@ async def test_workspace_file_round_trip(setup_test_data):
     list_resp2 = await list_tool._execute(user_id=user.id, session=session)
     assert isinstance(list_resp2, WorkspaceFileListResponse)
     assert not any(f.file_id == file_id for f in list_resp2.files)
+
+
+# ---------------------------------------------------------------------------
+# Ranged reads (offset / length)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_with_offset_and_length(setup_test_data):
+    """Read a slice of a text file using offset and length."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    # Write a known-content file
+    content = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" * 100  # 2600 chars
+    write_tool = WriteWorkspaceFileTool()
+    write_resp = await write_tool._execute(
+        user_id=user.id,
+        session=session,
+        filename="ranged_test.txt",
+        content=content,
+    )
+    assert isinstance(write_resp, WorkspaceWriteResponse), write_resp.message
+    file_id = write_resp.file_id
+
+    from backend.copilot.tools.workspace_files import WorkspaceFileContentResponse
+
+    read_tool = ReadWorkspaceFileTool()
+
+    # Read with offset=100, length=50
+    resp = await read_tool._execute(
+        user_id=user.id, session=session, file_id=file_id, offset=100, length=50
+    )
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    decoded = base64.b64decode(resp.content_base64).decode()
+    assert decoded == content[100:150]
+    assert "100" in resp.message
+    assert "2,600" in resp.message  # total chars (comma-formatted)
+
+    # Read with offset only (no length) — returns from offset to end
+    resp2 = await read_tool._execute(
+        user_id=user.id, session=session, file_id=file_id, offset=2500
+    )
+    assert isinstance(resp2, WorkspaceFileContentResponse)
+    decoded2 = base64.b64decode(resp2.content_base64).decode()
+    assert decoded2 == content[2500:]
+    assert len(decoded2) == 100
+
+    # Read with offset beyond file length — returns empty string
+    resp3 = await read_tool._execute(
+        user_id=user.id, session=session, file_id=file_id, offset=9999, length=10
+    )
+    assert isinstance(resp3, WorkspaceFileContentResponse)
+    decoded3 = base64.b64decode(resp3.content_base64).decode()
+    assert decoded3 == ""
+
+    # Cleanup
+    delete_tool = DeleteWorkspaceFileTool()
+    await delete_tool._execute(user_id=user.id, session=session, file_id=file_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -3,7 +3,7 @@
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { buildInputSchema, extractDefaults, isFormValid } from "./helpers";
@@ -23,6 +23,14 @@ export function AgentDetailsCard({ output }: Props) {
   const [valid, setValid] = useState(() =>
     schema ? isFormValid(schema, defaults) : false,
   );
+
+  // Reset form state when the agent changes (e.g. during mid-conversation switches)
+  useEffect(() => {
+    const newSchema = buildInputSchema(output.agent.inputs);
+    const newDefaults = newSchema ? extractDefaults(newSchema) : {};
+    setInputValues(newDefaults);
+    setValid(newSchema ? isFormValid(newSchema, newDefaults) : false);
+  }, [output.agent.id]);
 
   function handleChange(v: { formData?: Record<string, unknown> }) {
     const data = v.formData ?? {};

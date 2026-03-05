@@ -26,11 +26,6 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
-    # Streaming Configuration
-    max_retries: int = Field(
-        default=3,
-        description="Max retries for fallback path (SDK handles retries internally)",
-    )
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
@@ -67,11 +62,15 @@ class ChatConfig(BaseSettings):
         default="CoPilot Prompt",
         description="Name of the prompt in Langfuse to fetch",
     )
+    langfuse_prompt_cache_ttl: int = Field(
+        default=300,
+        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+    )
 
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,
-        description="Use Claude Agent SDK for chat completions",
+        description="Use Claude Agent SDK (True) or OpenAI-compatible LLM baseline (False)",
     )
     claude_agent_model: str | None = Field(
         default=None,
@@ -93,11 +92,42 @@ class ChatConfig(BaseSettings):
         "history compression. Falls back to compression when unavailable.",
     )
 
-    # Extended thinking configuration for Claude models
-    thinking_enabled: bool = Field(
+    # E2B Sandbox Configuration
+    use_e2b_sandbox: bool = Field(
         default=True,
-        description="Enable adaptive thinking for Claude models via OpenRouter",
+        description="Use E2B cloud sandboxes for persistent bash/python execution. "
+        "When enabled, bash_exec routes commands to E2B and SDK file tools "
+        "operate directly on the sandbox via E2B's filesystem API.",
     )
+    e2b_api_key: str | None = Field(
+        default=None,
+        description="E2B API key. Falls back to E2B_API_KEY environment variable.",
+    )
+    e2b_sandbox_template: str = Field(
+        default="base",
+        description="E2B sandbox template to use for copilot sessions.",
+    )
+    e2b_sandbox_timeout: int = Field(
+        default=43200,  # 12 hours — same as session_ttl
+        description="E2B sandbox keepalive timeout in seconds.",
+    )
+
+    @field_validator("use_e2b_sandbox", mode="before")
+    @classmethod
+    def get_use_e2b_sandbox(cls, v):
+        """Get use_e2b_sandbox from environment if not provided."""
+        env_val = os.getenv("CHAT_USE_E2B_SANDBOX", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return True if v is None else v
+
+    @field_validator("e2b_api_key", mode="before")
+    @classmethod
+    def get_e2b_api_key(cls, v):
+        """Get E2B API key from environment if not provided."""
+        if v is None:
+            v = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
+        return v
 
     @field_validator("api_key", mode="before")
     @classmethod

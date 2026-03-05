@@ -357,29 +357,29 @@ async def upload_transcript(
 
     # Check existing transcript size to avoid overwriting newer with older
     path = _build_storage_path(user_id, session_id, storage)
+    content_skipped = False
     try:
         existing = await storage.retrieve(path)
         if len(existing) >= new_size:
             logger.info(
-                f"[Transcript] Skipping upload — existing ({len(existing)}B) "
+                f"[Transcript] Skipping content upload — existing ({len(existing)}B) "
                 f">= new ({new_size}B) for session {session_id}"
             )
-            return
+            content_skipped = True
     except (FileNotFoundError, Exception):
         pass  # No existing transcript or retrieval error — proceed with upload
 
-    await storage.store(
-        workspace_id=wid,
-        file_id=fid,
-        filename=fname,
-        content=encoded,
-    )
+    if not content_skipped:
+        await storage.store(
+            workspace_id=wid,
+            file_id=fid,
+            filename=fname,
+            content=encoded,
+        )
 
-    # Store metadata alongside the transcript so the next turn can detect
-    # staleness and only compress the gap instead of the full history.
-    # Wrapped in try/except so a metadata write failure doesn't orphan
-    # the already-uploaded transcript — the next turn will just fall back
-    # to full gap fill (msg_count=0).
+    # Always update metadata (even when content is skipped) so message_count
+    # stays current.  The gap-fill logic in _build_query_message relies on
+    # message_count to avoid re-compressing the same messages every turn.
     try:
         meta = {"message_count": message_count, "uploaded_at": time.time()}
         mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
@@ -394,7 +394,8 @@ async def upload_transcript(
 
     logger.info(
         f"[Transcript] Uploaded {new_size}B "
-        f"(stripped from {len(content)}B, msg_count={message_count}) "
+        f"(stripped from {len(content)}B, msg_count={message_count}, "
+        f"content_skipped={content_skipped}) "
         f"for session {session_id}"
     )
 
