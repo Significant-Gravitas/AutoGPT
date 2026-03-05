@@ -714,15 +714,15 @@ async def llm_call(
             if force_json_output:
                 text_config = {"format": {"type": "json_object"}}  # type: ignore
 
-            response = await oai_client.responses.create(  # type: ignore[arg-type]
+            response = await oai_client.responses.create(
                 model=llm_model.value,
-                input=prompt,
-                tools=tools_param,
+                input=prompt,  # type: ignore[arg-type]
+                tools=tools_param,  # type: ignore[arg-type]
                 max_output_tokens=max_tokens,
                 parallel_tool_calls=get_parallel_tool_calls_param(
                     llm_model, parallel_tool_calls
                 ),
-                text=text_config,
+                text=text_config,  # type: ignore[arg-type]
                 store=False,
             )
 
