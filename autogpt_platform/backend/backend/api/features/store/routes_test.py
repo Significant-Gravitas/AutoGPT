@@ -514,7 +514,7 @@ def test_get_creator_details(
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creator")
     mock_db_call.return_value = mocked_value
 
-    response = client.get("/creator/creator1")
+    response = client.get("/creators/creator1")
     assert response.status_code == 200
 
     data = store_model.CreatorDetails.model_validate(response.json())

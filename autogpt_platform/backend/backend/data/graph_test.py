@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
+import prisma
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
@@ -353,6 +354,21 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
+
+    # Ensure the default user has a Profile (required for store submissions)
+    existing_profile = await prisma.models.Profile.prisma().find_first(
+        where={"userId": DEFAULT_USER_ID}
+    )
+    if not existing_profile:
+        await prisma.models.Profile.prisma().create(
+            data=prisma.types.ProfileCreateInput(
+                userId=DEFAULT_USER_ID,
+                name="Default User",
+                username=f"default-user-{DEFAULT_USER_ID[:8]}",
+                description="Default test user profile",
+                links=[],
+            )
+        )
 
     store_submission_request = store.StoreSubmissionRequest(
         graph_id=created_graph.id,

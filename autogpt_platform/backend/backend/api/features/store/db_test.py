@@ -156,7 +156,24 @@ async def test_get_store_creator(mocker):
 async def test_create_store_submission(mocker):
     now = datetime.now()
 
-    # Mock agent graph (with no pending submissions)
+    # Mock agent graph (with no pending submissions) and user with profile
+    mock_profile = prisma.models.Profile(
+        id="profile-id",
+        userId="user-id",
+        name="Test User",
+        username="testuser",
+        description="Test",
+        links=[],
+        createdAt=now,
+        updatedAt=now,
+    )
+    mock_user = prisma.models.User(
+        id="user-id",
+        email="test@example.com",
+        createdAt=now,
+        updatedAt=now,
+        Profile=mock_profile,
+    )
     mock_agent = prisma.models.AgentGraph(
         id="agent-id",
         version=1,
@@ -164,6 +181,7 @@ async def test_create_store_submission(mocker):
         createdAt=now,
         isActive=True,
         StoreListingVersions=[],
+        User=mock_user,
     )
 
     # Mock the created StoreListingVersion (returned by create)

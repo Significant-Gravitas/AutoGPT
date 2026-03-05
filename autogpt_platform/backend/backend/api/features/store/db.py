@@ -643,7 +643,7 @@ async def create_store_submission(
                     f"for this user (#{user_id})"
                 )
 
-        if not graph.User or graph.User.Profile:
+        if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
                 "User must create a Marketplace Profile before submitting an agent"
@@ -664,8 +664,14 @@ async def create_store_submission(
 
             new_submission = await prisma.models.StoreListingVersion.prisma(tx).create(
                 data={
-                    "agentGraphId": graph_id,
-                    "agentGraphVersion": graph_version,
+                    "AgentGraph": {
+                        "connect": {
+                            "graphVersionId": {
+                                "id": graph_id,
+                                "version": graph_version,
+                            }
+                        }
+                    },
                     "name": name,
                     "videoUrl": video_url,
                     "agentOutputDemoUrl": agent_output_demo_url,
@@ -684,7 +690,8 @@ async def create_store_submission(
                             "create": {
                                 "slug": slug,
                                 "agentGraphId": graph_id,
-                                "owningUserId": user_id,
+                                "OwningUser": {"connect": {"id": user_id}},
+                                "CreatorProfile": {"connect": {"userId": user_id}},
                             },
                         }
                     },
