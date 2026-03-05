@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import functools
 import json
 import logging
 import os
@@ -304,48 +305,35 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-_cli_check: bool | RuntimeError | None = None
-
-
+@functools.cache
 def _validate_claude_code_subscription() -> None:
     """Validate Claude CLI is installed and responds to ``--version``.
 
-    Caches both success and failure so the blocking subprocess check runs
-    at most once per process lifetime.
+    Cached so the blocking subprocess check runs at most once per process
+    lifetime.  A failure (CLI not installed) is a config error that requires
+    a process restart anyway.
     """
-    global _cli_check  # noqa: PLW0603
-
-    if _cli_check is True:
-        return
-    if isinstance(_cli_check, RuntimeError):
-        raise _cli_check
-
-    try:
-        claude_path = shutil.which("claude")
-        if not claude_path:
-            raise RuntimeError(
-                "Claude Code CLI not found. Install it with: "
-                "npm install -g @anthropic-ai/claude-code"
-            )
-        result = subprocess.run(
-            [claude_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        raise RuntimeError(
+            "Claude Code CLI not found. Install it with: "
+            "npm install -g @anthropic-ai/claude-code"
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Claude CLI check failed (exit {result.returncode}): "
-                f"{result.stderr.strip()}"
-            )
-        logger.info(
-            "Claude Code subscription mode: CLI version %s",
-            result.stdout.strip(),
+    result = subprocess.run(
+        [claude_path, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Claude CLI check failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
         )
-        _cli_check = True
-    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        _cli_check = exc if isinstance(exc, RuntimeError) else RuntimeError(str(exc))
-        raise _cli_check from exc
+    logger.info(
+        "Claude Code subscription mode: CLI version %s",
+        result.stdout.strip(),
+    )
 
 
 def _build_sdk_env(
