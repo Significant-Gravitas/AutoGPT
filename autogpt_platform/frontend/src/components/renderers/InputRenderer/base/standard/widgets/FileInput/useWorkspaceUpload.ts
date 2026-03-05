@@ -3,7 +3,7 @@ import {
   useDeleteWorkspaceDeleteAWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 
-function parseWorkspaceFileID(uri: string): string | null {
+export function parseWorkspaceFileID(uri: string): string | null {
   if (!uri.startsWith("workspace://")) return null;
   const rest = uri.slice("workspace://".length);
   const hashIndex = rest.indexOf("#");

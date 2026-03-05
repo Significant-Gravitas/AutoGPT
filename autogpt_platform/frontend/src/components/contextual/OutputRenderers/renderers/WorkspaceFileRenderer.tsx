@@ -40,7 +40,7 @@ interface WorkspaceURI {
   mimeType: string | null;
 }
 
-function parseWorkspaceURI(value: string): WorkspaceURI | null {
+export function parseWorkspaceURI(value: string): WorkspaceURI | null {
   if (!value.startsWith("workspace://")) return null;
   const rest = value.slice("workspace://".length);
   const hashIndex = rest.indexOf("#");
