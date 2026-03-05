@@ -1399,7 +1399,9 @@ async def stream_chat_completion_sdk(
 
                     # Log AssistantMessage API errors (e.g. invalid_request)
                     # so we can debug Anthropic API 400s surfaced by the CLI.
-                    if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
+                    if isinstance(sdk_msg, AssistantMessage) and getattr(
+                        sdk_msg, "error", None
+                    ):
                         logger.error(
                             "[SDK] [%s] AssistantMessage has error=%s, "
                             "content_blocks=%d, content_preview=%s",

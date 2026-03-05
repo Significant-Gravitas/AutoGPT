@@ -44,6 +44,7 @@ def make_mock_block(
     mock.output_schema = MagicMock()
     mock.output_schema.jsonschema.return_value = output_schema or {}
     mock.categories = []
+    mock.optimized_description = None
 
     # Mock get_info() for include_schemas support
     mock_info = MagicMock()
