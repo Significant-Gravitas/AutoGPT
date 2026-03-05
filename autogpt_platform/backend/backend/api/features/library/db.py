@@ -532,6 +532,7 @@ async def update_agent_version_in_library(
 async def create_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
+    folder_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new graph and add it to the user's library."""
     graph.version = 1
@@ -545,6 +546,7 @@ async def create_graph_in_library(
         user_id=user_id,
         sensitive_action_safe_mode=True,
         create_library_agents_for_sub_graphs=False,
+        folder_id=folder_id,
     )
 
     if created_graph.is_active:
