@@ -1056,6 +1056,10 @@ class AgentFixer:
             if not source_node or not sink_node:
                 continue
 
+            # Skip self-referencing links (e.g. AddToList feeding itself)
+            if source_id == sink_id:
+                continue
+
             source_pos = (source_node.get("metadata") or {}).get("position", {})
             sink_meta = sink_node.get("metadata") or {}
             sink_pos = sink_meta.get("position", {})
