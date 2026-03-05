@@ -301,10 +301,10 @@ def _resolve_sdk_model() -> str | None:
 
 @functools.cache
 def _validate_claude_code_subscription() -> None:
-    """Validate Claude CLI is installed and authenticated (once per process).
+    """Validate Claude CLI is installed and responds to ``--version``.
 
-    Cached via ``lru_cache`` so the subprocess check only runs once.
-    Checks that the ``claude`` binary exists and responds to ``--version``.
+    Cached via ``@functools.cache`` so the subprocess check only runs once
+    per process lifetime.
     """
     claude_path = shutil.which("claude")
     if not claude_path:
