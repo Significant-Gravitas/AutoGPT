@@ -15,7 +15,7 @@ Read `docs/content/platform/block-sdk-guide.md` first for the full guide.
 
 1. **Provider config** (if external service): create `_config.py` with `ProviderBuilder`
 2. **Block file** in `backend/backend/blocks/`:
-   - Unique `id = uuid.uuid4()`
+   - Generate a UUID once with `uuid.uuid4()`, then **hard-code that string** as `id` (IDs must be stable across imports)
    - `Input(BlockSchema)` and `Output(BlockSchema)` classes
    - `async def run` that `yield`s output fields
 3. **Files**: use `store_media_file()` with `"for_block_output"` for outputs

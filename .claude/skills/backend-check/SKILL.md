@@ -12,6 +12,6 @@ metadata:
 ## Steps
 
 1. **Format**: `poetry run format` — NEVER run ruff/black/isort individually
-2. **Fix** any remaining errors manually, re-run until clean
-3. **Test**: `poetry run pytest -s -vvv <test_files>` (or `poetry run test` for all)
+2. **Lint**: `poetry run lint` — fix any remaining errors, re-run until clean
+3. **Test**: `poetry run test` (runs DB setup + pytest). For specific files: `poetry run pytest -s -vvv <test_files>`
 4. **Snapshots** (if needed): `poetry run pytest path/to/test.py --snapshot-update` — review with `git diff`

@@ -11,10 +11,16 @@ metadata:
 
 ## Steps
 
-1. **Start backend** (background): `cd autogpt_platform/backend && poetry run rest &`
-2. **Regenerate client**: `cd autogpt_platform/frontend && pnpm generate:api:force`
-3. **Stop backend**: kill the background process
-4. **Verify**: `pnpm types && pnpm format`
+1. **Start backend** (background, from backend dir):
+   ```bash
+   cd autogpt_platform/backend && poetry run rest &
+   REST_PID=$!
+   # Wait for readiness
+   until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; done
+   ```
+2. **Regenerate client** (from frontend dir): `cd autogpt_platform/frontend && pnpm generate:api:force`
+3. **Stop backend**: `kill $REST_PID`
+4. **Verify** (from frontend dir): `pnpm types && pnpm format`
 
 ## Rules
 

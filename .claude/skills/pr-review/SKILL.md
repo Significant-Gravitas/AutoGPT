@@ -13,14 +13,19 @@ metadata:
 
 1. **Find PR**: `gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT`
 2. **Fetch comments** (all three sources):
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews`
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments`
-   - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments`
+   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` (top-level reviews)
+   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` (inline review comments)
+   - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` (PR conversation comments)
 3. **Skip** comments already reacted to by PR author
 4. **For each unreacted comment**:
    - Read referenced code, make the fix (or reply if you disagree/need info)
-   - React: `gh api repos/.../pulls/{N}/comments/{ID}/reactions -f content="+1"` (or `-1`)
-   - Reply if needed: `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="..."`
+   - **Inline review comments** (`pulls/{N}/comments`):
+     - React: `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` (or `-1`)
+     - Reply: `gh api repos/.../pulls/comments/{ID}/replies -f body="..."`
+   - **PR conversation comments** (`issues/{N}/comments`):
+     - React: `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` (or `-1`)
+     - No threaded replies — post a new issue comment if needed
+   - **Top-level reviews**: no reaction API — address in code, reply via issue comment if needed
 5. **Include autogpt-reviewer bot fixes** too
 6. **Format**: `poetry run format` (backend), `pnpm format` (frontend)
 7. **Commit & push**, then re-fetch — new comments may appear. Repeat until all reacted.
