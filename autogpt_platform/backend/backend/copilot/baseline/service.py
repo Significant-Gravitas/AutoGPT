@@ -44,6 +44,8 @@ from backend.copilot.service import (
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
+from backend.util.json import dumps as json_dumps
+from backend.util.json import loads as json_loads
 from backend.util.prompt import compress_context
 
 logger = logging.getLogger(__name__)
@@ -272,7 +274,9 @@ async def stream_chat_completion_baseline(
             yield StreamFinishStep()
             step_open = False
 
-            # Append the assistant message with tool_calls to context
+            # Append the assistant message with tool_calls to context.
+            # Sanitize arguments to valid JSON — OpenRouter parses them to
+            # build Anthropic tool_use blocks; malformed JSON causes 400s.
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
@@ -282,7 +286,9 @@ async def stream_chat_completion_baseline(
                     "type": "function",
                     "function": {
                         "name": tc["name"],
-                        "arguments": tc["arguments"],
+                        "arguments": json_dumps(
+                            json_loads(tc["arguments"] or "{}", fallback={})
+                        ),
                     },
                 }
                 for tc in tool_calls_by_index.values()

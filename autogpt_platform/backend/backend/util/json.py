@@ -73,6 +73,9 @@ def dumps(
 T = TypeVar("T")
 
 
+_SENTINEL = object()
+
+
 @overload
 def loads(data: str | bytes, *args, target_type: Type[T], **kwargs) -> T: ...
 
@@ -82,9 +85,18 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 
 
 def loads(
-    data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
+    data: str | bytes,
+    *args,
+    target_type: Type[T] | None = None,
+    fallback: Any = _SENTINEL,
+    **kwargs,
 ) -> Any:
-    parsed = orjson.loads(data)
+    try:
+        parsed = orjson.loads(data)
+    except (orjson.JSONDecodeError, TypeError):
+        if fallback is not _SENTINEL:
+            return fallback
+        raise
 
     if target_type:
         return type_match(parsed, target_type)
