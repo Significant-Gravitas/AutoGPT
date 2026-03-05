@@ -6,6 +6,9 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { parseSpecialMarkers } from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
@@ -59,33 +62,39 @@ const CUSTOM_TOOL_TYPES = new Set([
  * Non-generic tools (those with custom renderers) and active/streaming tools
  * are left as individual parts.
  */
-function buildRenderSegments(parts: MessagePart[]): RenderSegment[] {
+function buildRenderSegments(
+  parts: MessagePart[],
+  baseIndex = 0,
+): RenderSegment[] {
   const segments: RenderSegment[] = [];
-  let pendingGroup: ToolUIPart[] | null = null;
+  let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
 
   function flushGroup() {
     if (!pendingGroup) return;
     if (pendingGroup.length >= 2) {
-      segments.push({ kind: "collapsed-group", parts: pendingGroup });
+      segments.push({
+        kind: "collapsed-group",
+        parts: pendingGroup.map((p) => p.part),
+      });
     } else {
       for (const p of pendingGroup) {
-        const idx = parts.indexOf(p);
-        segments.push({ kind: "part", part: p, index: idx });
+        segments.push({ kind: "part", part: p.part, index: p.index });
       }
     }
     pendingGroup = null;
   }
 
   parts.forEach((part, i) => {
+    const absoluteIndex = baseIndex + i;
     const isGenericCompletedTool =
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
       if (!pendingGroup) pendingGroup = [];
-      pendingGroup.push(part as ToolUIPart);
+      pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
     } else {
       flushGroup();
-      segments.push({ kind: "part", part, index: i });
+      segments.push({ kind: "part", part, index: absoluteIndex });
     }
   });
 
@@ -151,6 +160,23 @@ function renderSegments(
   });
 }
 
+/** Collect all messages belonging to a turn: the user message + every
+ *  assistant message up to (but not including) the next user message. */
+function getTurnMessages(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  lastAssistantIndex: number,
+): UIMessage<unknown, UIDataTypes, UITools>[] {
+  const userIndex = messages.findLastIndex(
+    (m, i) => i < lastAssistantIndex && m.role === "user",
+  );
+  const nextUserIndex = messages.findIndex(
+    (m, i) => i > lastAssistantIndex && m.role === "user",
+  );
+  const start = userIndex >= 0 ? userIndex : lastAssistantIndex;
+  const end = nextUserIndex >= 0 ? nextUserIndex : messages.length;
+  return messages.slice(start, end);
+}
+
 export function ChatMessagesContainer({
   messages,
   status,
@@ -161,9 +187,6 @@ export function ChatMessagesContainer({
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
-  // Determine if something is visibly "in-flight" in the last assistant message:
-  // - Text is actively streaming (last part is non-empty text)
-  // - A tool call is pending (state is input-streaming or input-available)
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
     const parts = lastMessage.parts;
@@ -171,13 +194,11 @@ export function ChatMessagesContainer({
 
     const lastPart = parts[parts.length - 1];
 
-    // Text is actively being written
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
 
-    // A tool call is still pending (no output yet)
     if (
-      lastPart.type.startsWith("tool-") &&
+      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
       "state" in lastPart &&
       (lastPart.state === "input-streaming" ||
         lastPart.state === "input-available")
@@ -210,14 +231,26 @@ export function ChatMessagesContainer({
           const isCurrentlyStreaming =
             isLastAssistant &&
             (status === "streaming" || status === "submitted");
+
+          const isAssistant = message.role === "assistant";
+
           const nextMessage = messages[messageIndex + 1];
           const isLastInTurn =
-            message.role === "assistant" &&
+            isAssistant &&
+            messageIndex <= messages.length - 1 &&
             (!nextMessage || nextMessage.role === "user");
+          const textParts = message.parts.filter(
+            (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+          );
+          const lastTextPart = textParts[textParts.length - 1];
+          const hasErrorMarker =
+            lastTextPart !== undefined &&
+            parseSpecialMarkers(lastTextPart.text).markerType === "error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
-            message.parts.some((p) => p.type === "text");
+            textParts.length > 0 &&
+            !hasErrorMarker;
 
           const fileParts = message.parts.filter(
             (p): p is FileUIPart => p.type === "file",
@@ -232,10 +265,13 @@ export function ChatMessagesContainer({
             : { reasoning: [] as MessagePart[], response: message.parts };
           const hasReasoning = reasoning.length > 0;
 
+          const responseStartIndex = message.parts.length - response.length;
           const responseSegments =
-            message.role === "assistant" ? buildRenderSegments(response) : null;
+            message.role === "assistant"
+              ? buildRenderSegments(response, responseStartIndex)
+              : null;
           const reasoningSegments = hasReasoning
-            ? buildRenderSegments(reasoning)
+            ? buildRenderSegments(reasoning, 0)
             : null;
 
           return (
@@ -262,6 +298,11 @@ export function ChatMessagesContainer({
                         partIndex={i}
                       />
                     ))}
+                {isLastInTurn && !isCurrentlyStreaming && (
+                  <TurnStatsBar
+                    turnMessages={getTurnMessages(messages, messageIndex)}
+                  />
+                )}
                 {isLastAssistant && showThinking && (
                   <ThinkingIndicator active={showThinking} />
                 )}

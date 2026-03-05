@@ -90,11 +90,10 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "browser_navigate":
       return typeof inp.url === "string" ? inp.url : null;
     case "browser_act":
-      return typeof inp.action === "string"
-        ? inp.target
-          ? `${inp.action} ${inp.target}`
-          : (inp.action as string)
-        : null;
+      if (typeof inp.action !== "string") return null;
+      return typeof inp.target === "string"
+        ? `${inp.action} ${inp.target}`
+        : inp.action;
     case "browser_screenshot":
       return null;
     case "read_workspace_file":

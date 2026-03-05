@@ -25,7 +25,12 @@ import {
   ContentCodeBlock,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
-import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import {
+  globalRegistry,
+  OutputItem,
+} from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import {
   type ToolCategory,
   extractToolName,
@@ -36,6 +41,18 @@ import {
 
 interface Props {
   part: ToolUIPart;
+}
+
+function RenderMedia({
+  value,
+  metadata,
+}: {
+  value: string;
+  metadata: OutputMetadata;
+}) {
+  const renderer = globalRegistry.getRenderer(value, metadata);
+  if (!renderer) return null;
+  return <OutputItem value={value} metadata={metadata} renderer={renderer} />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -57,7 +74,7 @@ function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <ScaleLoader size={14} />;
+    return <OrbitLoader size={14} />;
   }
 
   const iconClass = "text-green-500";
@@ -356,14 +373,21 @@ function getFileAccordionData(
 
   // Handle base64 content from workspace files
   let displayContent = content;
+  const mimeType = getStringField(output, "mime_type");
+  const isImage = mimeType?.startsWith("image/");
   if (output.content_base64 && typeof output.content_base64 === "string") {
-    try {
-      const bytes = Uint8Array.from(atob(output.content_base64), (c) =>
-        c.charCodeAt(0),
-      );
-      displayContent = new TextDecoder().decode(bytes);
-    } catch {
-      displayContent = "[Binary content]";
+    if (isImage) {
+      // Render image inline — handled below in the JSX
+      displayContent = null;
+    } else {
+      try {
+        const bytes = Uint8Array.from(atob(output.content_base64), (c) =>
+          c.charCodeAt(0),
+        );
+        displayContent = new TextDecoder().decode(bytes);
+      } catch {
+        displayContent = "[Binary content]";
+      }
     }
   }
 
@@ -441,6 +465,17 @@ function getFileAccordionData(
           </>
         ) : writtenContent ? (
           <ContentCodeBlock>{writtenContent}</ContentCodeBlock>
+        ) : isImage &&
+          output.content_base64 &&
+          typeof output.content_base64 === "string" ? (
+          <RenderMedia
+            value={`data:${mimeType};base64,${output.content_base64}`}
+            metadata={{
+              type: "image",
+              mimeType: mimeType ?? undefined,
+              filename: filePath ?? undefined,
+            }}
+          />
         ) : displayContent ? (
           <ContentCodeBlock>{displayContent}</ContentCodeBlock>
         ) : null}

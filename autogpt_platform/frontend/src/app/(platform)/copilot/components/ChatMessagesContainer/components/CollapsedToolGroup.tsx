@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   ArrowsClockwiseIcon,
   CaretRightIcon,
@@ -81,6 +81,7 @@ function EntryIcon({
 
 export function CollapsedToolGroup({ parts }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
 
   const errorCount = parts.filter((p) => p.state === "output-error").length;
   const label =
@@ -93,6 +94,8 @@ export function CollapsedToolGroup({ parts }: Props) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
         className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <CaretRightIcon
@@ -119,7 +122,10 @@ export function CollapsedToolGroup({ parts }: Props) {
       </button>
 
       {expanded && (
-        <div className="ml-5 mt-1 space-y-0.5 border-l border-neutral-200 pl-3">
+        <div
+          id={panelId}
+          className="ml-5 mt-1 space-y-0.5 border-l border-neutral-200 pl-3"
+        >
           {parts.map((part) => {
             const toolName = extractToolName(part);
             const category = getToolCategory(toolName);
