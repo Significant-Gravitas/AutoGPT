@@ -11,8 +11,10 @@ import asyncio
 import logging
 from typing import Any
 
-import openai
 from langfuse import get_client
+from langfuse.openai import (
+    AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
+)
 
 from backend.data.db_accessors import understanding_db
 from backend.data.understanding import format_understanding_for_prompt
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
-client = openai.AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
 langfuse = get_client()
@@ -173,7 +175,6 @@ async def _get_system_prompt_template(context: str) -> str:
     """
     if _is_langfuse_configured():
         try:
-            # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
             # Use asyncio.to_thread to avoid blocking the event loop
             # In non-production environments, fetch the latest prompt version
             # instead of the production-labeled version for easier testing
@@ -186,7 +187,7 @@ async def _get_system_prompt_template(context: str) -> str:
                 langfuse.get_prompt,
                 config.langfuse_prompt_name,
                 label=label,
-                cache_ttl_seconds=0,
+                cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
             )
             return prompt.compile(users_information=context)
         except Exception as e:

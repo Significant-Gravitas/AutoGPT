@@ -62,6 +62,10 @@ class ChatConfig(BaseSettings):
         default="CoPilot Prompt",
         description="Name of the prompt in Langfuse to fetch",
     )
+    langfuse_prompt_cache_ttl: int = Field(
+        default=300,
+        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+    )
 
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
@@ -86,6 +90,10 @@ class ChatConfig(BaseSettings):
         default=True,
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
+    )
+    use_claude_code_subscription: bool = Field(
+        default=False,
+        description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
     )
 
     # E2B Sandbox Configuration
@@ -121,7 +129,7 @@ class ChatConfig(BaseSettings):
     @classmethod
     def get_e2b_api_key(cls, v):
         """Get E2B API key from environment if not provided."""
-        if v is None:
+        if not v:
             v = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
         return v
 
@@ -129,7 +137,7 @@ class ChatConfig(BaseSettings):
     @classmethod
     def get_api_key(cls, v):
         """Get API key from environment if not provided."""
-        if v is None:
+        if not v:
             # Try to get from environment variables
             # First check for CHAT_API_KEY (Pydantic prefix)
             v = os.getenv("CHAT_API_KEY")
@@ -139,13 +147,16 @@ class ChatConfig(BaseSettings):
             if not v:
                 # Fall back to OPENAI_API_KEY
                 v = os.getenv("OPENAI_API_KEY")
+            # Note: ANTHROPIC_API_KEY is intentionally NOT included here.
+            # The SDK CLI picks it up from the env directly. Including it
+            # would pair it with the OpenRouter base_url, causing auth failures.
         return v
 
     @field_validator("base_url", mode="before")
     @classmethod
     def get_base_url(cls, v):
         """Get base URL from environment if not provided."""
-        if v is None:
+        if not v:
             # Check for OpenRouter or custom base URL
             v = os.getenv("CHAT_BASE_URL")
             if not v:
@@ -166,6 +177,15 @@ class ChatConfig(BaseSettings):
             return env_val in ("true", "1", "yes", "on")
         # Default to True (SDK enabled by default)
         return True if v is None else v
+
+    @field_validator("use_claude_code_subscription", mode="before")
+    @classmethod
+    def get_use_claude_code_subscription(cls, v):
+        """Get use_claude_code_subscription from environment if not provided."""
+        env_val = os.getenv("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return False if v is None else v
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

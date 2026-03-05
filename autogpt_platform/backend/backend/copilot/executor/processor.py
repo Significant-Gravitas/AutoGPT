@@ -6,6 +6,8 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import logging
+import os
+import subprocess
 import threading
 import time
 
@@ -108,7 +110,40 @@ class CoPilotProcessor:
         )
         self.execution_thread.start()
 
+        # Skip the SDK's per-request CLI version check — the bundled CLI is
+        # already version-matched to the SDK package.
+        os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+
+        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
+        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
+        self._prewarm_cli()
+
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+
+    def _prewarm_cli(self) -> None:
+        """Run the bundled CLI binary once to warm OS page caches."""
+        try:
+            from claude_agent_sdk._internal.transport.subprocess_cli import (
+                SubprocessCLITransport,
+            )
+
+            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+            if cli_path:
+                result = subprocess.run(
+                    [cli_path, "-v"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                else:
+                    logger.warning(
+                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
+                        result.returncode,  # type: ignore[reportCallIssue]
+                        cli_path,
+                    )
+        except Exception as e:
+            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -208,9 +243,10 @@ class CoPilotProcessor:
         error_msg = None
 
         try:
-            # Choose service based on LaunchDarkly flag
+            # Choose service based on LaunchDarkly flag.
+            # Claude Code subscription forces SDK mode (CLI subprocess auth).
             config = ChatConfig()
-            use_sdk = await is_feature_enabled(
+            use_sdk = config.use_claude_code_subscription or await is_feature_enabled(
                 Flag.COPILOT_SDK,
                 entry.user_id or "anonymous",
                 default=config.use_claude_agent_sdk,
@@ -228,6 +264,8 @@ class CoPilotProcessor:
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
+                context=entry.context,
+                file_ids=entry.file_ids,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
