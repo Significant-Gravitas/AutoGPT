@@ -1372,7 +1372,7 @@ async def get_admin_listings_with_versions(
         page_size: Number of items per page
 
     Returns:
-        StoreListingsWithVersionsResponse with listings and their versions
+        Paginated listings with their versions
     """
     logger.debug(
         f"Getting admin store listings with status={status}, search={search_query}, page={page}"

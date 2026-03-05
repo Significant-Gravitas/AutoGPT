@@ -5546,7 +5546,7 @@
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
-        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
+        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    Paginated listings with their versions",
         "operationId": "getV2Get admin listings history",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5652,7 +5652,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmissionAdminView with updated review information",
         "operationId": "postV2Review store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

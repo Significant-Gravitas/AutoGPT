@@ -44,7 +44,7 @@ async def get_admin_listings_with_versions(
         page_size: Number of items per page
 
     Returns:
-        StoreListingsWithVersionsResponse with listings and their versions
+        Paginated listings with their versions
     """
     listings = await store_db.get_admin_listings_with_versions(
         status=status,
@@ -73,7 +73,7 @@ async def review_submission(
         user_id: Authenticated admin user performing the review
 
     Returns:
-        StoreSubmission with updated review information
+        StoreSubmissionAdminView with updated review information
     """
     already_approved = await store_db.check_submission_already_approved(
         store_listing_version_id=store_listing_version_id,
