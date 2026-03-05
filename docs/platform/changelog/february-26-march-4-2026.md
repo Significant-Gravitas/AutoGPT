@@ -20,6 +20,8 @@ Tool outputs in chat now display richer detail — bash results show stdout and 
 
 Two new browsing capabilities let AutoPilot interact with websites on your behalf. For quick lookups, it can fetch and extract content from any page in one shot. For multi-step tasks — like logging into a site, navigating through menus, and pulling data — it drives a full browser session that persists across steps within your conversation. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12230)
 
+<figure><img src="../.gitbook/assets/web-browsing-hero.jpg" alt="AutoPilot browsing a website autonomously in a live browser session"><figcaption><p>AutoPilot navigating a website in a live browser session</p></figcaption></figure>
+
 ## Connect any MCP tool
 
 AutoPilot can now discover and run tools from any MCP (Model Context Protocol) server. Point it at a server URL, it finds the available tools automatically, and you can execute them right from chat. If the server requires authentication, you'll get the same familiar login prompt used in the agent builder. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12213)
