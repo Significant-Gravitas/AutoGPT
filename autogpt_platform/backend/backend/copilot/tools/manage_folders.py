@@ -102,6 +102,7 @@ class CreateFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         name = kwargs.get("name", "").strip()
         parent_id = kwargs.get("parent_id")
         icon = kwargs.get("icon")
@@ -175,6 +176,7 @@ class ListFoldersTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         parent_id = kwargs.get("parent_id")
         session_id = session.session_id if session else None
 
@@ -249,6 +251,7 @@ class UpdateFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         folder_id = kwargs.get("folder_id", "").strip()
         name = kwargs.get("name")
         icon = kwargs.get("icon")
@@ -325,6 +328,7 @@ class MoveFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         folder_id = kwargs.get("folder_id", "").strip()
         target_parent_id = kwargs.get("target_parent_id")
         session_id = session.session_id if session else None
@@ -392,6 +396,7 @@ class DeleteFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         folder_id = kwargs.get("folder_id", "").strip()
         session_id = session.session_id if session else None
 
@@ -463,6 +468,7 @@ class MoveAgentsToFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        assert user_id is not None  # guaranteed by requires_auth
         agent_ids = kwargs.get("agent_ids", [])
         folder_id = kwargs.get("folder_id")
         session_id = session.session_id if session else None

@@ -19,6 +19,7 @@ from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsToo
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
+from .get_doc_page import GetDocPageTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -27,7 +28,6 @@ from .manage_folders import (
     MoveFolderTool,
     UpdateFolderTool,
 )
-from .get_doc_page import GetDocPageTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
