@@ -87,6 +87,11 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
+    use_claude_code_subscription: bool = Field(
+        default=False,
+        description="Use Claude Code CLI subscription auth instead of API keys. "
+        "Requires `claude login` on the host. Only works with SDK mode.",
+    )
 
     # E2B Sandbox Configuration
     use_e2b_sandbox: bool = Field(
@@ -166,6 +171,15 @@ class ChatConfig(BaseSettings):
             return env_val in ("true", "1", "yes", "on")
         # Default to True (SDK enabled by default)
         return True if v is None else v
+
+    @field_validator("use_claude_code_subscription", mode="before")
+    @classmethod
+    def get_use_claude_code_subscription(cls, v):
+        """Get use_claude_code_subscription from environment if not provided."""
+        env_val = os.getenv("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
+        return False if v is None else v
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

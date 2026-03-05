@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
@@ -297,6 +298,50 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
+def _validate_claude_code_subscription() -> None:
+    """Validate Claude CLI is installed and authenticated (once per process).
+
+    No-ops when ``use_claude_code_subscription`` is disabled. On first call
+    with subscription enabled, checks that the ``claude`` binary exists and
+    responds to ``--version``. If the CLI is not logged in, attempts to run
+    ``claude login`` interactively.
+    """
+    if not config.use_claude_code_subscription:
+        return
+    if getattr(_validate_claude_code_subscription, "_done", False):
+        return
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        raise RuntimeError(
+            "Claude Code CLI not found. Install it with: "
+            "npm install -g @anthropic-ai/claude-code"
+        )
+    try:
+        result = subprocess.run(
+            [claude_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Claude CLI check failed (exit {result.returncode}): "
+                f"{result.stderr.strip()}"
+            )
+        logger.info(
+            "Claude Code subscription mode: CLI version %s",
+            result.stdout.strip(),
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Claude Code CLI not found. Install it with: "
+            "npm install -g @anthropic-ai/claude-code"
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Claude CLI timed out during version check")
+    _validate_claude_code_subscription._done = True  # type: ignore[attr-defined]
+
+
 def _build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
@@ -317,6 +362,14 @@ def _build_sdk_env(
     falls back to its default credentials.
     """
     env: dict[str, str] = {}
+
+    # Claude Code subscription mode: let the CLI use its own logged-in auth.
+    # No API key or base URL overrides — the subprocess inherits credentials
+    # from `claude login`.
+    if config.use_claude_code_subscription:
+        _validate_claude_code_subscription()
+        return env
+
     if config.api_key and config.base_url:
         # Strip /v1 suffix — SDK expects the base URL without a version path
         base = config.base_url.rstrip("/")
@@ -726,11 +779,17 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
-        if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
+        if (
+            not sdk_env
+            and not os.environ.get("ANTHROPIC_API_KEY")
+            and not config.use_claude_code_subscription
+        ):
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY "
                 "(or CHAT_API_KEY) for OpenRouter routing, "
-                "or ANTHROPIC_API_KEY for direct Anthropic access."
+                "ANTHROPIC_API_KEY for direct Anthropic access, "
+                "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
+                "Claude Code CLI subscription (requires `claude login`)."
             )
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
