@@ -6,8 +6,6 @@ import prisma.models
 import pytest
 from prisma import Prisma
 
-from backend.util.json import SafeJson
-
 from . import db
 from .model import Profile
 
@@ -177,7 +175,7 @@ async def test_create_store_submission(mocker):
         updatedAt=now,
         Profile=[mock_profile],
         emailVerified=True,
-        metadata=SafeJson({}),
+        metadata="{}",  # type: ignore[reportArgumentType]
         integrations="",
         maxEmailsPerDay=1,
         notifyOnAgentRun=True,
