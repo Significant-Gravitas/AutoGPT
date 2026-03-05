@@ -1602,6 +1602,40 @@ class AgentFixer:
 
         return agent
 
+    def fix_dynamic_block_sink_names(self, agent: dict[str, Any]) -> dict[str, Any]:
+        """Fix links that use _#_ notation for dynamic block sink names.
+
+        MCPToolBlock and AgentExecutorBlock use dynamic input schemas where
+        tool arguments / sub-agent inputs are flattened to top-level field
+        names at execution time. Links should use the bare field name
+        (e.g., ``query``) instead of nested notation
+        (e.g., ``tool_arguments_#_query`` or ``inputs_#_query``).
+        """
+        nodes = {n.get("id"): n for n in agent.get("nodes", [])}
+        prefixes = {
+            MCP_TOOL_BLOCK_ID: "tool_arguments_#_",
+            AGENT_EXECUTOR_BLOCK_ID: "inputs_#_",
+        }
+
+        for link in agent.get("links", []):
+            sink_id = link.get("sink_id")
+            sink_name = link.get("sink_name", "")
+            sink_node = nodes.get(sink_id)
+            if not sink_node:
+                continue
+
+            block_id = sink_node.get("block_id")
+            prefix = prefixes.get(block_id)
+            if prefix and sink_name.startswith(prefix):
+                bare_name = sink_name[len(prefix) :]
+                link["sink_name"] = bare_name
+                self.add_fix_log(
+                    f"Link to {block_id[:8]}: renamed sink "
+                    f"'{sink_name}' -> '{bare_name}'"
+                )
+
+        return agent
+
     def apply_all_fixes(
         self,
         agent: dict[str, Any],
@@ -1642,6 +1676,9 @@ class AgentFixer:
             agent = self.fix_ai_model_parameter(agent, blocks)
             agent = self.fix_link_static_properties(agent, blocks)
             agent = self.fix_data_type_mismatch(agent, blocks)
+
+        # Fix _#_ notation in links targeting dynamic blocks (MCP/AgentExecutor)
+        agent = self.fix_dynamic_block_sink_names(agent)
 
         # Apply fixes for MCPToolBlock nodes
         agent = self.fix_mcp_tool_blocks(agent)

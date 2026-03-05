@@ -682,3 +682,53 @@ class TestFixMCPToolBlocks:
         fixer.fix_mcp_tool_blocks(agent)
 
         assert len(fixer.fixes_applied) == 0
+
+
+class TestFixDynamicBlockSinkNames:
+    """Tests for fix_dynamic_block_sink_names."""
+
+    def test_mcp_tool_arguments_prefix_removed(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", block_id=MCP_TOOL_BLOCK_ID)
+        link = _make_link(
+            source_id="src", sink_id="n1", sink_name="tool_arguments_#_query"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        fixer.fix_dynamic_block_sink_names(agent)
+
+        assert agent["links"][0]["sink_name"] == "query"
+        assert len(fixer.fixes_applied) == 1
+
+    def test_agent_executor_inputs_prefix_removed(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", block_id=AGENT_EXECUTOR_BLOCK_ID)
+        link = _make_link(source_id="src", sink_id="n1", sink_name="inputs_#_url")
+        agent = _make_agent(nodes=[node], links=[link])
+
+        fixer.fix_dynamic_block_sink_names(agent)
+
+        assert agent["links"][0]["sink_name"] == "url"
+        assert len(fixer.fixes_applied) == 1
+
+    def test_bare_sink_name_unchanged(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", block_id=MCP_TOOL_BLOCK_ID)
+        link = _make_link(source_id="src", sink_id="n1", sink_name="query")
+        agent = _make_agent(nodes=[node], links=[link])
+
+        fixer.fix_dynamic_block_sink_names(agent)
+
+        assert agent["links"][0]["sink_name"] == "query"
+        assert len(fixer.fixes_applied) == 0
+
+    def test_non_dynamic_block_unchanged(self):
+        fixer = AgentFixer()
+        node = _make_node(node_id="n1", block_id="some-other-block-id")
+        link = _make_link(source_id="src", sink_id="n1", sink_name="values_#_key")
+        agent = _make_agent(nodes=[node], links=[link])
+
+        fixer.fix_dynamic_block_sink_names(agent)
+
+        assert agent["links"][0]["sink_name"] == "values_#_key"
+        assert len(fixer.fixes_applied) == 0

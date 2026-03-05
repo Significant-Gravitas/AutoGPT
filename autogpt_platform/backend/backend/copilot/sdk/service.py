@@ -439,9 +439,11 @@ To use an MCP (Model Context Protocol) tool as a node in the agent:
    - `tool_arguments`: `{}` (populated by links or hardcoded values)
 4. The block requires MCP credentials — the user configures these in the
    platform UI after the agent is saved
-5. Wire inputs to tool_arguments sub-fields using nested property notation:
-   `tool_arguments_#_<field_name>` as the sink_name
-6. Output: `result` (the tool's return value) and `status` ("success"/"error")
+5. Wire inputs using the tool argument field name directly as the sink_name
+   (e.g., `query`, NOT `tool_arguments_#_query`). The execution engine
+   automatically collects top-level fields matching tool_input_schema into
+   tool_arguments.
+6. Output: `result` (the tool's return value) and `error` (error message)
 
 ### Example: Simple AI Text Processor
 
@@ -1216,6 +1218,11 @@ async def stream_chat_completion_sdk(
 
         allowed = get_copilot_tool_names(use_e2b=use_e2b)
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        def _on_stderr(line: str) -> None:
+            sid = session_id[:12] if session_id else "?"
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
             "mcp_servers": {"copilot": mcp_server},
@@ -1224,6 +1231,7 @@ async def stream_chat_completion_sdk(
             "hooks": security_hooks,
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
+            "stderr": _on_stderr,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -1388,6 +1396,18 @@ async def stream_chat_completion_sdk(
                         len(adapter.current_tool_calls),
                         len(adapter.resolved_tool_calls),
                     )
+
+                    # Log AssistantMessage API errors (e.g. invalid_request)
+                    # so we can debug Anthropic API 400s surfaced by the CLI.
+                    if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
+                        logger.error(
+                            "[SDK] [%s] AssistantMessage has error=%s, "
+                            "content_blocks=%d, content_preview=%s",
+                            session_id[:12],
+                            sdk_msg.error,
+                            len(sdk_msg.content),
+                            str(sdk_msg.content)[:500],
+                        )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
