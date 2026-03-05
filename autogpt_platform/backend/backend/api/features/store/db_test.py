@@ -336,7 +336,7 @@ async def test_get_store_agents_with_search_and_filters_parameterized():
         creators=["creator1'; DROP TABLE Users; --", "creator2"],
         category="AI'; DELETE FROM StoreAgent; --",
         featured=True,
-        sorted_by="rating",
+        sorted_by=db.StoreAgentsSortOptions.RATING,
         page=1,
         page_size=20,
     )

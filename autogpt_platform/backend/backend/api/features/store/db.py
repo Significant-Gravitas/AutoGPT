@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Literal, overload
 
 import prisma.enums
@@ -40,10 +41,17 @@ DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 
+class StoreAgentsSortOptions(Enum):
+    RATING = "rating"
+    RUNS = "runs"
+    NAME = "name"
+    UPDATED_AT = "updated_at"
+
+
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
-    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
+    sorted_by: StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -141,11 +149,11 @@ async def get_store_agents(
                 ]
 
             order_by = []
-            if sorted_by == "rating":
+            if sorted_by == StoreAgentsSortOptions.RATING:
                 order_by.append({"rating": "desc"})
-            elif sorted_by == "runs":
+            elif sorted_by == StoreAgentsSortOptions.RUNS:
                 order_by.append({"runs": "desc"})
-            elif sorted_by == "name":
+            elif sorted_by == StoreAgentsSortOptions.NAME:
                 order_by.append({"agent_name": "asc"})
 
             db_agents = await prisma.models.StoreAgent.prisma().find_many(
@@ -312,10 +320,17 @@ async def get_store_agent_by_version_id(
         raise DatabaseError("Failed to fetch agent details") from e
 
 
+class StoreCreatorsSortOptions(Enum):
+    # NOTE: values correspond 1:1 to columns of the Creator view
+    AGENT_RATING = "agent_rating"
+    AGENT_RUNS = "agent_runs"
+    NUM_AGENTS = "num_agents"
+
+
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
+    sorted_by: StoreCreatorsSortOptions | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:
@@ -376,13 +391,19 @@ async def get_store_creators(
         skip = (page - 1) * page_size
         take = page_size
 
-        # Add sorting with validated sort parameter
-        order = []
-        valid_sort_fields = {"agent_rating", "agent_runs", "num_agents"}
-        if sorted_by in valid_sort_fields:
-            order.append({sorted_by: "desc"})
-        else:
-            order.append({"username": "asc"})
+        order: prisma.types.CreatorOrderByInput = (
+            {"agent_rating": "desc"}
+            if sorted_by == StoreCreatorsSortOptions.AGENT_RATING
+            else (
+                {"agent_runs": "desc"}
+                if sorted_by == StoreCreatorsSortOptions.AGENT_RUNS
+                else (
+                    {"num_agents": "desc"}
+                    if sorted_by == StoreCreatorsSortOptions.NUM_AGENTS
+                    else {"username": "asc"}
+                )
+            )
+        )
 
         # Execute query with sanitized parameters
         creators = await prisma.models.Creator.prisma().find_many(

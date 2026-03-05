@@ -1,5 +1,3 @@
-from typing import Literal
-
 from backend.util.cache import cached
 
 from . import db as store_db
@@ -23,7 +21,7 @@ def clear_all_caches():
 async def _get_cached_store_agents(
     featured: bool,
     creator: str | None,
-    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None,
+    sorted_by: store_db.StoreAgentsSortOptions | None,
     search_query: str | None,
     category: str | None,
     page: int,
@@ -57,7 +55,7 @@ async def _get_cached_agent_details(
 async def _get_cached_store_creators(
     featured: bool,
     search_query: str | None,
-    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None,
+    sorted_by: store_db.StoreCreatorsSortOptions | None,
     page: int,
     page_size: int,
 ):

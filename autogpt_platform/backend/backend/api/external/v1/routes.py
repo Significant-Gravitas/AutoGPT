@@ -1,7 +1,7 @@
 import logging
 import urllib.parse
 from collections import defaultdict
-from typing import Annotated, Any, Literal, Optional, Sequence
+from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 import backend.api.features.store.cache as store_cache
+import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
@@ -236,7 +237,7 @@ async def get_graph_execution_results(
 async def get_store_agents(
     featured: bool = False,
     creator: str | None = None,
-    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
+    sorted_by: store_db.StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -312,7 +313,7 @@ async def get_store_agent(
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
+    sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:

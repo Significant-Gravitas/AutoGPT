@@ -449,7 +449,6 @@ async def execute_graph_block(
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile = File(...),
-    provider: str = "gcs",
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
     """
@@ -512,7 +511,6 @@ async def upload_file(
     storage_path = await cloud_storage.store_file(
         content=content,
         filename=file_name,
-        provider=provider,
         expiration_hours=expiration_hours,
         user_id=user_id,
     )
