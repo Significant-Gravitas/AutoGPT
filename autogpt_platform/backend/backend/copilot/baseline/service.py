@@ -44,6 +44,7 @@ from backend.copilot.service import (
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
+from backend.util.json import loads as json_loads
 from backend.util.prompt import compress_context
 
 logger = logging.getLogger(__name__)
@@ -281,9 +282,7 @@ async def stream_chat_completion_baseline(
             tool_calls_list = []
             for tc in tool_calls_by_index.values():
                 args = tc["arguments"] or "{}"
-                try:
-                    orjson.loads(args)
-                except (orjson.JSONDecodeError, TypeError):
+                if json_loads(args, fallback=None) is None:
                     args = "{}"
                 tool_calls_list.append(
                     {
