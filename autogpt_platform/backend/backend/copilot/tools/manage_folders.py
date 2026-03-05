@@ -117,7 +117,7 @@ class CreateFolderTool(BaseTool):
             )
 
         try:
-            folder = await library_db.create_folder(
+            folder = await library_db().create_folder(
                 user_id=user_id,
                 name=name,
                 parent_id=parent_id,
@@ -182,7 +182,7 @@ class ListFoldersTool(BaseTool):
 
         try:
             if parent_id:
-                folders = await library_db.list_folders(
+                folders = await library_db().list_folders(
                     user_id=user_id, parent_id=parent_id
                 )
                 return FolderListResponse(
@@ -192,7 +192,7 @@ class ListFoldersTool(BaseTool):
                     session_id=session_id,
                 )
             else:
-                tree = await library_db.get_folder_tree(user_id=user_id)
+                tree = await library_db().get_folder_tree(user_id=user_id)
                 flat_count = _count_tree(tree)
                 return FolderListResponse(
                     message=f"Found {flat_count} folder(s) in your library.",
@@ -266,7 +266,7 @@ class UpdateFolderTool(BaseTool):
             )
 
         try:
-            folder = await library_db.update_folder(
+            folder = await library_db().update_folder(
                 folder_id=folder_id,
                 user_id=user_id,
                 name=name,
@@ -341,7 +341,7 @@ class MoveFolderTool(BaseTool):
             )
 
         try:
-            folder = await library_db.move_folder(
+            folder = await library_db().move_folder(
                 folder_id=folder_id,
                 user_id=user_id,
                 target_parent_id=target_parent_id,
@@ -408,7 +408,7 @@ class DeleteFolderTool(BaseTool):
             )
 
         try:
-            await library_db.delete_folder(
+            await library_db().delete_folder(
                 folder_id=folder_id,
                 user_id=user_id,
                 soft_delete=True,
@@ -481,7 +481,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
 
         try:
-            await library_db.bulk_move_agents_to_folder(
+            await library_db().bulk_move_agents_to_folder(
                 agent_ids=agent_ids,
                 folder_id=folder_id,
                 user_id=user_id,
