@@ -96,7 +96,11 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <FileIcon size={12} weight="duotone" className="text-neutral-600" />
+              <FileIcon
+                size={12}
+                weight="duotone"
+                className="text-neutral-600"
+              />
               <span className="text-xs text-zinc-600">{a.name}</span>
             </div>
           ))}
@@ -142,7 +146,9 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
     <Tree
       initialExpandedItems={allIDs}
       elements={elements}
-      openIcon={<FolderIcon size={16} weight="fill" className="text-neutral-600" />}
+      openIcon={
+        <FolderIcon size={16} weight="fill" className="text-neutral-600" />
+      }
       closeIcon={
         <FolderIcon size={16} weight="duotone" className="text-neutral-600" />
       }

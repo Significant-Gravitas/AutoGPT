@@ -224,18 +224,14 @@ class ListFoldersTool(BaseTool):
                     user_id=user_id, parent_id=parent_id
                 )
                 agents_map = (
-                    await _fetch_agents_map(
-                        user_id, [f.id for f in folders]
-                    )
+                    await _fetch_agents_map(user_id, [f.id for f in folders])
                     if include_agents
                     else None
                 )
                 return FolderListResponse(
                     message=f"Found {len(folders)} folder(s).",
                     folders=[
-                        _folder_to_info(
-                            f, agents_map.get(f.id) if agents_map else None
-                        )
+                        _folder_to_info(f, agents_map.get(f.id) if agents_map else None)
                         for f in folders
                     ],
                     count=len(folders),
@@ -245,9 +241,7 @@ class ListFoldersTool(BaseTool):
                 tree = await library_db().get_folder_tree(user_id=user_id)
                 flat_count = _count_tree(tree)
                 agents_map = (
-                    await _fetch_agents_map(
-                        user_id, _collect_tree_ids(tree)
-                    )
+                    await _fetch_agents_map(user_id, _collect_tree_ids(tree))
                     if include_agents
                     else None
                 )
