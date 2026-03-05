@@ -173,7 +173,6 @@ async def _get_system_prompt_template(context: str) -> str:
     """
     if _is_langfuse_configured():
         try:
-            # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
             # Use asyncio.to_thread to avoid blocking the event loop
             # In non-production environments, fetch the latest prompt version
             # instead of the production-labeled version for easier testing
@@ -186,7 +185,7 @@ async def _get_system_prompt_template(context: str) -> str:
                 langfuse.get_prompt,
                 config.langfuse_prompt_name,
                 label=label,
-                cache_ttl_seconds=0,
+                cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
             )
             return prompt.compile(users_information=context)
         except Exception as e:
