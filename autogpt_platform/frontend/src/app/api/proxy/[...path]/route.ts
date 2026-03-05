@@ -71,9 +71,13 @@ async function handleWorkspaceDownload(
     responseHeaders["Content-Disposition"] = contentDisposition;
   }
 
-  // Return the binary content
-  const arrayBuffer = await response.arrayBuffer();
-  return new NextResponse(arrayBuffer, {
+  const contentLength = response.headers.get("Content-Length");
+  if (contentLength) {
+    responseHeaders["Content-Length"] = contentLength;
+  }
+
+  // Stream the response body directly instead of buffering in memory
+  return new NextResponse(response.body, {
     status: 200,
     headers: responseHeaders,
   });
@@ -255,7 +259,6 @@ async function handler(
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {
