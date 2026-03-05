@@ -2,10 +2,13 @@
 
 import asyncio
 import base64
+import functools
 import json
 import logging
 import os
+import re
 import shutil
+import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
@@ -22,6 +25,7 @@ from claude_agent_sdk import (
 )
 from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -55,6 +59,7 @@ from ..service import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -295,13 +300,50 @@ def _resolve_sdk_model() -> str | None:
     Uses ``config.claude_agent_model`` if set, otherwise derives from
     ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
     ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+
+    When ``use_claude_code_subscription`` is enabled and no explicit
+    ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
+    default model for the user's subscription plan.
     """
     if config.claude_agent_model:
         return config.claude_agent_model
+    if config.use_claude_code_subscription:
+        return None
     model = config.model
     if "/" in model:
         return model.split("/", 1)[1]
     return model
+
+
+@functools.cache
+def _validate_claude_code_subscription() -> None:
+    """Validate Claude CLI is installed and responds to ``--version``.
+
+    Cached so the blocking subprocess check runs at most once per process
+    lifetime.  A failure (CLI not installed) is a config error that requires
+    a process restart anyway.
+    """
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        raise RuntimeError(
+            "Claude Code CLI not found. Install it with: "
+            "npm install -g @anthropic-ai/claude-code"
+        )
+    result = subprocess.run(
+        [claude_path, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Claude CLI check failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+    logger.info(
+        "Claude Code subscription mode: CLI version %s",
+        result.stdout.strip(),
+    )
 
 
 def _build_sdk_env(
@@ -324,7 +366,16 @@ def _build_sdk_env(
     falls back to its default credentials.
     """
     env: dict[str, str] = {}
-    if config.api_key and config.base_url:
+
+    if config.use_claude_code_subscription:
+        # Claude Code subscription: let the CLI use its own logged-in auth.
+        # Explicitly clear API key env vars so the subprocess doesn't pick
+        # them up from the parent process and bypass subscription auth.
+        _validate_claude_code_subscription()
+        env["ANTHROPIC_API_KEY"] = ""
+        env["ANTHROPIC_AUTH_TOKEN"] = ""
+        env["ANTHROPIC_BASE_URL"] = ""
+    elif config.api_key and config.base_url:
         # Strip /v1 suffix — SDK expects the base URL without a version path
         base = config.base_url.rstrip("/")
         if base.endswith("/v1"):
@@ -337,21 +388,24 @@ def _build_sdk_env(
         # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
         env["ANTHROPIC_API_KEY"] = ""
 
-        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-        # The ``x-session-id`` header is *required* for the Anthropic-native
-        # ``/messages`` endpoint — without it broadcast silently drops the
-        # trace even when org-level Langfuse integration is configured.
-        def _safe(value: str) -> str:
-            """Strip CR/LF to prevent header injection, then truncate."""
-            return value.replace("\r", "").replace("\n", "").strip()[:128]
+    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+    # The ``x-session-id`` header is *required* for the Anthropic-native
+    # ``/messages`` endpoint — without it broadcast silently drops the
+    # trace even when org-level Langfuse integration is configured.
+    def _safe(value: str) -> str:
+        """Strip CR/LF to prevent header injection, then truncate."""
+        return value.replace("\r", "").replace("\n", "").strip()[:128]
 
-        headers: list[str] = []
-        if session_id:
-            headers.append(f"x-session-id: {_safe(session_id)}")
-        if user_id:
-            headers.append(f"x-user-id: {_safe(user_id)}")
-        if headers:
-            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+    headers: list[str] = []
+    if session_id:
+        headers.append(f"x-session-id: {_safe(session_id)}")
+    if user_id:
+        headers.append(f"x-user-id: {_safe(user_id)}")
+    # Only inject headers when routing through OpenRouter/proxy — they're
+    # meaningless (and leak internal IDs) when using subscription mode.
+    if headers and env.get("ANTHROPIC_BASE_URL"):
+        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+
     return env
 
 
@@ -575,15 +629,142 @@ async def _build_query_message(
     return current_message, False
 
 
+# Claude API vision-supported image types.
+_VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
+# Max size for embedding images directly in the user message (20 MiB raw).
+_MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
+
+# Matches characters unsafe for filenames.
+_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+
+def _save_to_sdk_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
+    """Write file content to the SDK ephemeral directory.
+
+    Returns the absolute path.  Adds a numeric suffix on name collisions.
+    """
+    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
+    candidate = os.path.join(sdk_cwd, safe)
+    if os.path.exists(candidate):
+        stem, ext = os.path.splitext(safe)
+        idx = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(sdk_cwd, f"{stem}_{idx}{ext}")
+            idx += 1
+    with open(candidate, "wb") as f:
+        f.write(content)
+    return candidate
+
+
+class PreparedAttachments(BaseModel):
+    """Result of preparing file attachments for a query."""
+
+    hint: str = ""
+    """Text hint describing the files (appended to the user message)."""
+
+    image_blocks: list[dict[str, Any]] = []
+    """Claude API image content blocks to embed in the user message."""
+
+
+async def _prepare_file_attachments(
+    file_ids: list[str],
+    user_id: str,
+    session_id: str,
+    sdk_cwd: str,
+) -> PreparedAttachments:
+    """Download workspace files and prepare them for Claude.
+
+    Images (PNG/JPEG/GIF/WebP) are embedded directly as vision content blocks
+    in the user message so Claude can see them without tool calls.
+
+    Non-image files (PDFs, text, etc.) are saved to *sdk_cwd* so the CLI's
+    built-in Read tool can access them.
+
+    Returns a :class:`PreparedAttachments` with a text hint and any image
+    content blocks.
+    """
+    empty = PreparedAttachments(hint="", image_blocks=[])
+    if not file_ids or not user_id:
+        return empty
+
+    try:
+        manager = await get_manager(user_id, session_id)
+    except Exception:
+        logger.warning(
+            "Failed to create workspace manager for file attachments",
+            exc_info=True,
+        )
+        return empty
+
+    image_blocks: list[dict[str, Any]] = []
+    file_descriptions: list[str] = []
+
+    for fid in file_ids:
+        try:
+            file_info = await manager.get_file_info(fid)
+            if file_info is None:
+                continue
+            content = await manager.read_file_by_id(fid)
+            mime = (file_info.mime_type or "").split(";")[0].strip().lower()
+
+            # Images: embed directly in the user message as vision blocks
+            if mime in _VISION_MIME_TYPES and len(content) <= _MAX_INLINE_IMAGE_BYTES:
+                b64 = base64.b64encode(content).decode("ascii")
+                image_blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": b64,
+                        },
+                    }
+                )
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) [embedded as image]"
+                )
+            else:
+                # Non-image files: save to sdk_cwd for Read tool access
+                local_path = _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                )
+        except Exception:
+            logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
+
+    if not file_descriptions:
+        return empty
+
+    noun = "file" if len(file_descriptions) == 1 else "files"
+    has_non_images = len(file_descriptions) > len(image_blocks)
+    read_hint = " Use the Read tool to view non-image files." if has_non_images else ""
+    hint = (
+        f"[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
+        + "\n".join(file_descriptions)
+        + "]"
+    )
+    return PreparedAttachments(hint=hint, image_blocks=image_blocks)
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
     is_user_message: bool = True,
     user_id: str | None = None,
     session: ChatSession | None = None,
+    file_ids: list[str] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
-    """Stream chat completion using Claude Agent SDK."""
+    """Stream chat completion using Claude Agent SDK.
+
+    Args:
+        file_ids: Optional workspace file IDs attached to the user's message.
+            Images are embedded as vision content blocks; other files are
+            saved to the SDK working directory for the Read tool.
+    """
 
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -784,13 +965,14 @@ async def stream_chat_completion_sdk(
 
         set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
 
-        # Fail fast when no API credentials are available at all
+        # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
-        if not sdk_env and not os.environ.get("ANTHROPIC_API_KEY"):
+        if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
-                "No API key configured. Set OPEN_ROUTER_API_KEY "
-                "(or CHAT_API_KEY) for OpenRouter routing, "
-                "or ANTHROPIC_API_KEY for direct Anthropic access."
+                "No API key configured. Set OPEN_ROUTER_API_KEY, "
+                "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
+                "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
+                "Claude Code CLI subscription (requires `claude login`)."
             )
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
@@ -883,19 +1065,48 @@ async def stream_chat_completion_sdk(
                 transcript_msg_count,
                 session_id,
             )
+            # If files are attached, prepare them: images become vision
+            # content blocks in the user message, other files go to sdk_cwd.
+            attachments = await _prepare_file_attachments(
+                file_ids or [], user_id or "", session_id, sdk_cwd
+            )
+            if attachments.hint:
+                query_message = f"{query_message}\n\n{attachments.hint}"
+
             logger.info(
-                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, query_len=%d",
+                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "
+                "query_len=%d, attached_files=%d, image_blocks=%d",
                 session_id[:12],
                 use_resume,
                 len(session.messages),
                 len(query_message),
+                len(file_ids) if file_ids else 0,
+                len(attachments.image_blocks),
             )
 
             compaction.reset_for_query()
             if was_compacted:
                 for ev in compaction.emit_pre_query(session):
                     yield ev
-            await client.query(query_message, session_id=session_id)
+
+            if attachments.image_blocks:
+                # Build multimodal content: image blocks + text
+                content_blocks: list[dict[str, Any]] = [
+                    *attachments.image_blocks,
+                    {"type": "text", "text": query_message},
+                ]
+                user_msg = {
+                    "type": "user",
+                    "message": {"role": "user", "content": content_blocks},
+                    "parent_tool_use_id": None,
+                    "session_id": session_id,
+                }
+                assert client._transport is not None  # noqa: SLF001
+                await client._transport.write(  # noqa: SLF001
+                    json.dumps(user_msg) + "\n"
+                )
+            else:
+                await client.query(query_message, session_id=session_id)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []

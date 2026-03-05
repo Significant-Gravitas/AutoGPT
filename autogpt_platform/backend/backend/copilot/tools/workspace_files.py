@@ -432,7 +432,7 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB
+    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
     PREVIEW_SIZE = 500
 
     @property

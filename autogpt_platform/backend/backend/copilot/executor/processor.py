@@ -243,9 +243,10 @@ class CoPilotProcessor:
         error_msg = None
 
         try:
-            # Choose service based on LaunchDarkly flag
+            # Choose service based on LaunchDarkly flag.
+            # Claude Code subscription forces SDK mode (CLI subprocess auth).
             config = ChatConfig()
-            use_sdk = await is_feature_enabled(
+            use_sdk = config.use_claude_code_subscription or await is_feature_enabled(
                 Flag.COPILOT_SDK,
                 entry.user_id or "anonymous",
                 default=config.use_claude_agent_sdk,
@@ -263,6 +264,8 @@ class CoPilotProcessor:
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
+                context=entry.context,
+                file_ids=entry.file_ids,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")

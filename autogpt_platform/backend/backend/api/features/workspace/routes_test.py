@@ -305,3 +305,55 @@ def test_download_file_not_found(mocker: pytest_mock.MockFixture):
 
     response = client.get("/files/some-file-id/download")
     assert response.status_code == 404
+
+
+# ---- Delete ----
+
+
+def test_delete_file_success(mocker: pytest_mock.MockFixture):
+    """Deleting an existing file should return {"deleted": true}."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.delete_file = mocker.AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = client.delete("/files/file-aaa-bbb")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True}
+    mock_manager.delete_file.assert_called_once_with("file-aaa-bbb")
+
+
+def test_delete_file_not_found(mocker: pytest_mock.MockFixture):
+    """Deleting a non-existent file should return 404."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=MOCK_WORKSPACE,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.delete_file = mocker.AsyncMock(return_value=False)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = client.delete("/files/nonexistent-id")
+    assert response.status_code == 404
+    assert "File not found" in response.text
+
+
+def test_delete_file_no_workspace(mocker: pytest_mock.MockFixture):
+    """Deleting when user has no workspace should return 404."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=None,
+    )
+
+    response = client.delete("/files/file-aaa-bbb")
+    assert response.status_code == 404
+    assert "Workspace not found" in response.text

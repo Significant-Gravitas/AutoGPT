@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import orjson
+from langfuse import propagate_attributes
 
 from backend.copilot.model import (
     ChatMessage,
@@ -198,6 +199,20 @@ async def stream_chat_completion_baseline(
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
+    # Propagate user/session context to Langfuse so all LLM calls within
+    # this request are grouped under a single trace with proper attribution.
+    _trace_ctx: Any = None
+    try:
+        _trace_ctx = propagate_attributes(
+            user_id=user_id,
+            session_id=session_id,
+            trace_name="copilot-baseline",
+            tags=["baseline"],
+        )
+        _trace_ctx.__enter__()
+    except Exception:
+        logger.warning("[Baseline] Langfuse trace context setup failed")
+
     assistant_text = ""
     text_block_id = str(uuid.uuid4())
     text_started = False
@@ -272,7 +287,7 @@ async def stream_chat_completion_baseline(
             yield StreamFinishStep()
             step_open = False
 
-            # Append the assistant message with tool_calls to context
+            # Append the assistant message with tool_calls to context.
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
@@ -282,7 +297,7 @@ async def stream_chat_completion_baseline(
                     "type": "function",
                     "function": {
                         "name": tc["name"],
-                        "arguments": tc["arguments"],
+                        "arguments": tc["arguments"] or "{}",
                     },
                 }
                 for tc in tool_calls_by_index.values()
@@ -385,6 +400,13 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # Close Langfuse trace context
+        if _trace_ctx is not None:
+            try:
+                _trace_ctx.__exit__(None, None, None)
+            except Exception:
+                logger.warning("[Baseline] Langfuse trace context teardown failed")
+
         # Persist assistant response
         if assistant_text:
             session.messages.append(
