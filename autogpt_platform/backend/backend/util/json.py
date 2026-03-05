@@ -105,8 +105,13 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def _sanitize_string(value: str) -> str:
-    """Remove PostgreSQL-incompatible control characters from string."""
+def sanitize_string(value: str) -> str:
+    """Remove PostgreSQL-incompatible control characters from string.
+
+    Strips \\x00-\\x08, \\x0B-\\x0C, \\x0E-\\x1F, \\x7F while keeping tab,
+    newline, and carriage return.  Use this before inserting free-form text
+    into PostgreSQL text/varchar columns.
+    """
     return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
@@ -116,7 +121,7 @@ def sanitize_json(data: Any) -> Any:
         # 1. First convert to basic JSON-serializable types (handles Pydantic models)
         # 2. Then sanitize strings in the result
         basic_result = to_dict(data)
-        return to_dict(basic_result, custom_encoder={str: _sanitize_string})
+        return to_dict(basic_result, custom_encoder={str: sanitize_string})
     except Exception as e:
         # Log the failure and fall back to string representation
         logger.error(
@@ -129,7 +134,7 @@ def sanitize_json(data: Any) -> Any:
         )
 
         # Ultimate fallback: convert to string representation and sanitize
-        return _sanitize_string(str(data))
+        return sanitize_string(str(data))
 
 
 class SafeJson(Json):
