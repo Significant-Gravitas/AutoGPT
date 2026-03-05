@@ -2,7 +2,6 @@
 
 import asyncio
 import base64
-import functools
 import json
 import logging
 import os
@@ -305,20 +304,29 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-@functools.cache
+_cli_check: bool | RuntimeError | None = None
+
+
 def _validate_claude_code_subscription() -> None:
     """Validate Claude CLI is installed and responds to ``--version``.
 
-    Cached via ``@functools.cache`` so the subprocess check only runs once
-    per process lifetime.
+    Caches both success and failure so the blocking subprocess check runs
+    at most once per process lifetime.
     """
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        raise RuntimeError(
-            "Claude Code CLI not found. Install it with: "
-            "npm install -g @anthropic-ai/claude-code"
-        )
+    global _cli_check  # noqa: PLW0603
+
+    if _cli_check is True:
+        return
+    if isinstance(_cli_check, RuntimeError):
+        raise _cli_check
+
     try:
+        claude_path = shutil.which("claude")
+        if not claude_path:
+            raise RuntimeError(
+                "Claude Code CLI not found. Install it with: "
+                "npm install -g @anthropic-ai/claude-code"
+            )
         result = subprocess.run(
             [claude_path, "--version"],
             capture_output=True,
@@ -334,13 +342,10 @@ def _validate_claude_code_subscription() -> None:
             "Claude Code subscription mode: CLI version %s",
             result.stdout.strip(),
         )
-    except FileNotFoundError:
-        raise RuntimeError(
-            "Claude Code CLI not found. Install it with: "
-            "npm install -g @anthropic-ai/claude-code"
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Claude CLI timed out during version check")
+        _cli_check = True
+    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _cli_check = exc if isinstance(exc, RuntimeError) else RuntimeError(str(exc))
+        raise _cli_check from exc
 
 
 def _build_sdk_env(
