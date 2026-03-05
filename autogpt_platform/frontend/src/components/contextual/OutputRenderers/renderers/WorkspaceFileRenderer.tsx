@@ -1,5 +1,5 @@
 import { DownloadSimple, FileText } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -7,6 +7,7 @@ import {
   CopyContent,
 } from "../types";
 import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -51,6 +52,71 @@ function getFileTypeLabel(mimeType: string | null): string {
   return `${sub.toUpperCase()} file`;
 }
 
+function WorkspaceImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="group relative">
+      {!loaded && (
+        <Skeleton className="absolute inset-0 h-full min-h-40 w-full rounded-md" />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
+
+function WorkspaceVideo({ src, mimeType }: { src: string; mimeType: string }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="group relative">
+      {!loaded && (
+        <Skeleton className="absolute inset-0 h-full min-h-40 w-full rounded-md" />
+      )}
+      <video
+        controls
+        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        preload="metadata"
+        onLoadedMetadata={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      >
+        <source src={src} type={mimeType} />
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  );
+}
+
+function WorkspaceAudio({ src, mimeType }: { src: string; mimeType: string }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="group relative">
+      {!loaded && (
+        <Skeleton className="absolute inset-0 h-full min-h-12 w-full rounded-md" />
+      )}
+      <audio
+        controls
+        preload="metadata"
+        className={`w-full ${loaded ? "opacity-100" : "min-h-12 opacity-0"}`}
+        onLoadedMetadata={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      >
+        <source src={src} type={mimeType} />
+        Your browser does not support the audio tag.
+      </audio>
+    </div>
+  );
+}
+
 function renderWorkspaceFile(
   value: unknown,
   metadata?: OutputMetadata,
@@ -63,42 +129,16 @@ function renderWorkspaceFile(
 
   if (mimeType && imageMimeTypes.includes(mimeType)) {
     return (
-      <div className="group relative">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={downloadURL}
-          alt={metadata?.filename || "Image"}
-          className="h-auto max-w-full rounded-md border border-gray-200"
-          loading="lazy"
-        />
-      </div>
+      <WorkspaceImage src={downloadURL} alt={metadata?.filename || "Image"} />
     );
   }
 
   if (mimeType && videoMimeTypes.includes(mimeType)) {
-    return (
-      <div className="group relative">
-        <video
-          controls
-          className="h-auto max-w-full rounded-md border border-gray-200"
-          preload="metadata"
-        >
-          <source src={downloadURL} type={mimeType} />
-          Your browser does not support the video tag.
-        </video>
-      </div>
-    );
+    return <WorkspaceVideo src={downloadURL} mimeType={mimeType} />;
   }
 
   if (mimeType && audioMimeTypes.includes(mimeType)) {
-    return (
-      <div className="group relative">
-        <audio controls preload="metadata" className="w-full">
-          <source src={downloadURL} type={mimeType} />
-          Your browser does not support the audio tag.
-        </audio>
-      </div>
-    );
+    return <WorkspaceAudio src={downloadURL} mimeType={mimeType} />;
   }
 
   // Generic file card with icon and download link
