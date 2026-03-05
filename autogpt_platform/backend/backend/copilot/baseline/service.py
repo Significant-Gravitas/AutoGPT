@@ -35,6 +35,10 @@ from backend.copilot.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
+from backend.copilot.sdk.service import (
+    _build_agent_generation_guide,
+    _needs_agent_generation_guide,
+)
 from backend.copilot.service import (
     _build_system_prompt,
     _generate_session_title,
@@ -182,6 +186,11 @@ async def stream_chat_completion_baseline(
         system_prompt, _ = await _build_system_prompt(
             user_id=None, has_conversation_history=True
         )
+
+    # Append agent generation guide when the user's message suggests
+    # they want to create/build an agent (includes MCP & sub-agent guidance).
+    if _needs_agent_generation_guide(message):
+        system_prompt += _build_agent_generation_guide()
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
