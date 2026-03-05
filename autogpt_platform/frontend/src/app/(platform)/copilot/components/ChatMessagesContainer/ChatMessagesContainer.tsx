@@ -6,6 +6,7 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { parseSpecialMarkers } from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
@@ -83,10 +84,18 @@ export function ChatMessagesContainer({
           const isLastInTurn =
             message.role === "assistant" &&
             (!nextMessage || nextMessage.role === "user");
+          const textParts = message.parts.filter(
+            (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+          );
+          const lastTextPart = textParts[textParts.length - 1];
+          const hasErrorMarker =
+            lastTextPart !== undefined &&
+            parseSpecialMarkers(lastTextPart.text).markerType === "error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
-            message.parts.some((p) => p.type === "text");
+            textParts.length > 0 &&
+            !hasErrorMarker;
 
           const fileParts = message.parts.filter(
             (p): p is FileUIPart => p.type === "file",

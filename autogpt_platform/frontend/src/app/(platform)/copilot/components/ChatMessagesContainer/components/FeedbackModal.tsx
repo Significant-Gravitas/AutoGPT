@@ -15,7 +15,6 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
   const [comment, setComment] = useState("");
 
   function handleSubmit() {
-    if (!comment.trim()) return;
     onSubmit(comment);
     setComment("");
   }
@@ -54,11 +53,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
               <Button variant="outline" size="sm" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                onClick={handleSubmit}
-                disabled={!comment.trim()}
-              >
+              <Button size="sm" onClick={handleSubmit}>
                 Submit feedback
               </Button>
             </div>
