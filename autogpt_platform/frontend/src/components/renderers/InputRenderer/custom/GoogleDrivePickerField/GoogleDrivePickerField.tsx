@@ -39,7 +39,7 @@ export const GoogleDrivePickerField = (props: FieldProps) => {
   return (
     <div className="flex flex-col gap-2">
       <TitleFieldTemplate
-        id={titleId(fieldPathId)}
+        id={titleId(fieldPathId.$id)}
         title={schema.title || ""}
         required={false}
         schema={schema}
