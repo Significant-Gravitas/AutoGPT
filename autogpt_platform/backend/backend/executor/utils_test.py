@@ -693,6 +693,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     assert "nodes_to_skip" in captured_kwargs
     assert captured_kwargs["nodes_to_skip"] == nodes_to_skip
 
+    # Verify workspace_id is set in the execution context
+    assert "execution_context" in captured_kwargs
+    assert captured_kwargs["execution_context"].workspace_id == "test-workspace-id"
+
 
 @pytest.mark.asyncio
 async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
