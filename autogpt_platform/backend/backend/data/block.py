@@ -87,6 +87,25 @@ async def initialize_blocks() -> None:
             f"{', '.join(failed_blocks)}. These blocks are still available in memory."
         )
 
+    # Load optimized descriptions from DB onto block classes so that
+    # every get_block() instance automatically carries them.
+    try:
+        all_db_blocks = await AgentBlock.prisma().find_many(
+            where={"optimizedDescription": {"not": None}},
+        )
+        block_classes = get_blocks()
+        applied = 0
+        for db_block in all_db_blocks:
+            if db_block.optimizedDescription and db_block.id in block_classes:
+                block_classes[db_block.id]._optimized_description = (
+                    db_block.optimizedDescription
+                )
+                applied += 1
+        if applied:
+            logger.info("Loaded %d optimized block descriptions", applied)
+    except Exception:
+        logger.debug("Could not load optimized descriptions", exc_info=True)
+
 
 async def get_blocks_needing_optimization() -> list[dict[str, str]]:
     """Return blocks that have a description but no optimized description yet."""
@@ -109,12 +128,3 @@ async def update_block_optimized_description(
         where={"id": block_id},
         data={"optimizedDescription": optimized_description},
     )
-
-
-async def get_optimized_block_descriptions() -> dict[str, str]:
-    """Return a mapping of block_id -> optimized description for all blocks
-    that have one."""
-    blocks = await AgentBlock.prisma().find_many(
-        where={"optimizedDescription": {"not": None}},
-    )
-    return {b.id: b.optimizedDescription for b in blocks if b.optimizedDescription}

@@ -50,6 +50,9 @@ def get_blocks_as_dicts() -> list[dict[str, Any]]:
         try:
             instance = block_cls()
             info = instance.get_info().model_dump()
+            # Use optimized description if available (loaded at startup)
+            if instance.optimized_description:
+                info["description"] = instance.optimized_description
             blocks.append(info)
         except Exception:
             logger.warning(
@@ -57,25 +60,6 @@ def get_blocks_as_dicts() -> list[dict[str, Any]]:
                 getattr(block_cls, "__name__", "unknown"),
                 exc_info=True,
             )
-
-    # Overlay LLM-optimized descriptions from the database (if available)
-    try:
-        from backend.util.clients import get_database_manager_client
-
-        db_client = get_database_manager_client()
-        optimized = db_client.get_optimized_block_descriptions()
-        applied = 0
-        for block in blocks:
-            if opt_desc := optimized.get(block["id"]):
-                block["description"] = opt_desc
-                applied += 1
-        if applied:
-            logger.info("Applied %d optimized block descriptions", applied)
-    except Exception:
-        logger.debug(
-            "Could not load optimized descriptions, using originals",
-            exc_info=True,
-        )
 
     _blocks_cache = blocks
     logger.info("Cached %d block dicts", len(blocks))

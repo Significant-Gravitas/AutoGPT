@@ -7,7 +7,6 @@ from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
-from backend.util.clients import get_database_manager_client
 
 from .base import BaseTool, ToolResponseBase
 from .models import (
@@ -137,13 +136,6 @@ class FindBlockTool(BaseTool):
                     session_id=session_id,
                 )
 
-            # Load optimized descriptions (concise LLM-rewritten summaries)
-            try:
-                db_client = get_database_manager_client()
-                optimized_descs = db_client.get_optimized_block_descriptions()
-            except Exception:
-                optimized_descs = {}
-
             # Enrich results with block information
             blocks: list[BlockInfoSummary] = []
             for result in results:
@@ -161,11 +153,10 @@ class FindBlockTool(BaseTool):
                 ):
                     continue
 
-                description = optimized_descs.get(block_id) or block.description or ""
                 summary = BlockInfoSummary(
                     id=block_id,
                     name=block.name,
-                    description=description,
+                    description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
                 )
 
