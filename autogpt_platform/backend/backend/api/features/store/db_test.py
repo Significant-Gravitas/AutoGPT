@@ -6,6 +6,8 @@ import prisma.models
 import pytest
 from prisma import Prisma
 
+from backend.util.json import SafeJson
+
 from . import db
 from .model import Profile
 
@@ -163,6 +165,7 @@ async def test_create_store_submission(mocker):
         name="Test User",
         username="testuser",
         description="Test",
+        isFeatured=False,
         links=[],
         createdAt=now,
         updatedAt=now,
@@ -172,7 +175,22 @@ async def test_create_store_submission(mocker):
         email="test@example.com",
         createdAt=now,
         updatedAt=now,
-        Profile=mock_profile,
+        Profile=[mock_profile],
+        emailVerified=True,
+        metadata=SafeJson({}),
+        integrations="",
+        maxEmailsPerDay=1,
+        notifyOnAgentRun=True,
+        notifyOnZeroBalance=True,
+        notifyOnLowBalance=True,
+        notifyOnBlockExecutionFailed=True,
+        notifyOnContinuousAgentError=True,
+        notifyOnDailySummary=True,
+        notifyOnWeeklySummary=True,
+        notifyOnMonthlySummary=True,
+        notifyOnAgentApproved=True,
+        notifyOnAgentRejected=True,
+        timezone="Europe/Delft",
     )
     mock_agent = prisma.models.AgentGraph(
         id="agent-id",

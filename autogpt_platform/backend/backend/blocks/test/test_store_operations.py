@@ -101,20 +101,20 @@ async def test_search_store_agents_block(mocker):
         return_value=SearchAgentsResponse(
             agents=[
                 StoreAgentDict(
-                    slug="creator2/agent2",
-                    name="Agent Two",
-                    description="Second test agent",
-                    creator="Creator 2",
-                    rating=4.2,
-                    runs=200,
-                ),
-                StoreAgentDict(
                     slug="creator1/agent1",
                     name="Agent One",
                     description="First test agent",
                     creator="Creator 1",
                     rating=4.8,
                     runs=500,
+                ),
+                StoreAgentDict(
+                    slug="creator2/agent2",
+                    name="Agent Two",
+                    description="Second test agent",
+                    creator="Creator 2",
+                    rating=4.2,
+                    runs=200,
                 ),
             ],
             total_count=2,

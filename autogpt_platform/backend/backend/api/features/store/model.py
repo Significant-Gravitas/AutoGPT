@@ -312,14 +312,14 @@ class StoreSubmissionAdminView(StoreSubmission):
     @classmethod
     def from_db(cls, _sub: "prisma.models.StoreSubmission") -> Self:
         return cls(
-            **super().from_db(_sub).model_dump(),
+            **StoreSubmission.from_db(_sub).model_dump(),
             internal_comments=_sub.internal_comments,
         )
 
     @classmethod
     def from_listing_version(cls, _lv: "prisma.models.StoreListingVersion") -> Self:
         return cls(
-            **super().from_listing_version(_lv).model_dump(),
+            **StoreSubmission.from_listing_version(_lv).model_dump(),
             internal_comments=_lv.internalComments,
         )
 
