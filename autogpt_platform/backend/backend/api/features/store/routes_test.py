@@ -8,6 +8,8 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.db import StoreAgentsSortOptions
+
 from . import model as store_model
 from . import routes as store_routes
 
@@ -196,7 +198,7 @@ def test_get_agents_sorted(
     mock_db_call.assert_called_once_with(
         featured=False,
         creators=None,
-        sorted_by="runs",
+        sorted_by=StoreAgentsSortOptions.RUNS,
         search_query=None,
         category=None,
         page=1,
@@ -509,9 +511,7 @@ def test_get_creator_details(
         agent_rating=4.8,
         top_categories=["category1", "category2"],
     )
-    mock_db_call = mocker.patch(
-        "backend.api.features.store.db.get_store_creator_details"
-    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creator")
     mock_db_call.return_value = mocked_value
 
     response = client.get("/creator/creator1")

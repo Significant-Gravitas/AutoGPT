@@ -24,7 +24,7 @@ from backend.data.notifications import (
     NotificationEventModel,
 )
 from backend.notifications.notifications import queue_notification_async
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
@@ -155,6 +155,8 @@ async def get_store_agents(
                 order_by.append({"runs": "desc"})
             elif sorted_by == StoreAgentsSortOptions.NAME:
                 order_by.append({"agent_name": "asc"})
+            elif sorted_by == StoreAgentsSortOptions.UPDATED_AT:
+                order_by.append({"updated_at": "desc"})
 
             db_agents = await prisma.models.StoreAgent.prisma().find_many(
                 where=where_clause,
@@ -620,7 +622,8 @@ async def create_store_submission(
                         "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                         "isDeleted": False,
                     }
-                }
+                },
+                "User": {"include": {"Profile": True}},
             },
         )
 
@@ -639,6 +642,12 @@ async def create_store_submission(
                     f"Agent #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
+
+        if not graph.User or graph.User.Profile:
+            logger.warning(f"User #{user_id} does not have a Profile")
+            raise PreconditionFailed(
+                "User must create a Marketplace Profile before submitting an agent"
+            )
 
         async with transaction() as tx:
             # Delete any currently PENDING submissions for the same graph

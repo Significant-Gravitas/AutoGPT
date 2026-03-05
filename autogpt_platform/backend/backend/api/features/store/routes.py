@@ -149,7 +149,10 @@ async def get_agents(
     search_query: str | None = Query(
         default=None, description="Literal + semantic search on names and descriptions"
     ),
-    sorted_by: store_db.StoreAgentsSortOptions | None = Query(default=None),
+    sorted_by: store_db.StoreAgentsSortOptions | None = Query(
+        default=None,
+        description="Property to sort results by. Ignored if search_query is provided.",
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
 ) -> store_model.StoreAgentsResponse:

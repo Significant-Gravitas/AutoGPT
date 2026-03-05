@@ -64,6 +64,10 @@ class GraphNotInLibraryError(GraphNotAccessibleError):
     """Raised when attempting to execute a graph that is not / no longer in the user's library."""
 
 
+class PreconditionFailed(Exception):
+    """The user must do something else first before trying the current operation"""
+
+
 class InsufficientBalanceError(ValueError):
     user_id: str
     message: str

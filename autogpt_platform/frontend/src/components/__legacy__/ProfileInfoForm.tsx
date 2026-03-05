@@ -8,7 +8,7 @@ import { IconPersonFill } from "@/components/__legacy__/ui/icons";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { postV2UpdateUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { postV2UploadSubmissionMedia } from "@/app/api/__generated__/endpoints/store/store";
-import { okData, resolveResponse } from "@/app/api/helpers";
+import { resolveResponse } from "@/app/api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { Button } from "./Button";
 

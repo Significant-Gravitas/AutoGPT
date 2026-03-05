@@ -5749,8 +5749,10 @@
                 { "$ref": "#/components/schemas/StoreAgentsSortOptions" },
                 { "type": "null" }
               ],
+              "description": "Property to sort results by. Ignored if search_query is provided.",
               "title": "Sorted By"
-            }
+            },
+            "description": "Property to sort results by. Ignored if search_query is provided."
           },
           {
             "name": "page",

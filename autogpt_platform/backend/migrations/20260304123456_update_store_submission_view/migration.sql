@@ -99,10 +99,12 @@ WHERE sl."isDeleted" = false
   AND sl."hasApprovedVersion" = true;
 
 
--- Restore Creator view as last updated in 20250604130249_optimise_store_agent_and_creator_views
+-- Restore Creator view as last updated in 20250604130249_optimise_store_agent_and_creator_views, with minor changes:
+-- - Ensure top_categories always TEXT[]
+-- - Filter out empty ('') categories
 CREATE OR REPLACE VIEW "Creator" AS
 WITH creator_listings AS (
-    SELECT 
+    SELECT
         sl."owningUserId",
         sl.id AS listing_id,
         slv."agentGraphId",
@@ -123,10 +125,11 @@ WITH creator_listings AS (
 creator_stats AS (
     SELECT
         cl."owningUserId",
-        COUNT(DISTINCT cl.listing_id) AS num_agents,
-        AVG(COALESCE(cl.score, 0)::numeric) AS agent_rating,
-        SUM(DISTINCT COALESCE(cl.run_count, 0)) AS agent_runs,
-        array_agg(DISTINCT cat ORDER BY cat) FILTER (WHERE cat IS NOT NULL) AS all_categories
+        COUNT(DISTINCT cl.listing_id)                  AS num_agents,
+        AVG(COALESCE(cl.score, 0)::numeric)            AS agent_rating,
+        SUM(COALESCE(cl.run_count, 0))                 AS agent_runs,
+        array_agg(DISTINCT cat ORDER BY cat)
+          FILTER (WHERE cat IS NOT NULL AND cat != '') AS all_categories
     FROM creator_listings cl
     LEFT JOIN LATERAL unnest(COALESCE(cl.categories, ARRAY[]::text[])) AS cat ON true
     GROUP BY cl."owningUserId"
@@ -134,14 +137,14 @@ creator_stats AS (
 SELECT
     p.username,
     p.name,
-    p."avatarUrl" AS avatar_url,
+    p."avatarUrl"                                AS avatar_url,
     p.description,
-    cs.all_categories AS top_categories,
+    COALESCE(cs.all_categories, ARRAY[]::text[]) AS top_categories,
     p.links,
-    p."isFeatured" AS is_featured,
-    COALESCE(cs.num_agents, 0::bigint) AS num_agents,
-    COALESCE(cs.agent_rating, 0.0) AS agent_rating,
-    COALESCE(cs.agent_runs, 0::numeric) AS agent_runs
+    p."isFeatured"                               AS is_featured,
+    COALESCE(cs.num_agents, 0::bigint)           AS num_agents,
+    COALESCE(cs.agent_rating, 0.0)               AS agent_rating,
+    COALESCE(cs.agent_runs, 0::numeric)          AS agent_runs
 FROM "Profile" p
 LEFT JOIN creator_stats cs ON cs."owningUserId" = p."userId";
 
@@ -199,7 +202,7 @@ WHERE     sl."isDeleted" = false;
 
 
 -- Drop unused index on StoreListingReview.reviewByUserId
-DROP INDEX "StoreListingReview_reviewByUserId_idx";
+DROP INDEX IF EXISTS "StoreListingReview_reviewByUserId_idx";
 -- Add index on storeListingVersionId to make StoreSubmission query faster
 CREATE INDEX "StoreListingReview_storeListingVersionId_idx" ON "StoreListingReview"("storeListingVersionId");
 
