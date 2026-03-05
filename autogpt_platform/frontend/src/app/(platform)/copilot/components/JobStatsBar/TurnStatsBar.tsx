@@ -1,13 +1,12 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { useWorkDoneCounters } from "./useWorkDoneCounters";
+import { getWorkDoneCounters } from "./useWorkDoneCounters";
 
 interface Props {
-  /** Messages scoped to this turn (user message + assistant response) */
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
 }
 
 export function TurnStatsBar({ turnMessages }: Props) {
-  const { counters } = useWorkDoneCounters(turnMessages);
+  const { counters } = getWorkDoneCounters(turnMessages);
 
   if (counters.length === 0) return null;
 

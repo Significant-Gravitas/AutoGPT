@@ -32,12 +32,10 @@ function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
   lastAssistantIndex: number,
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
-  // Walk back to find the user message that started this turn
   let userIndex = lastAssistantIndex - 1;
   while (userIndex >= 0 && messages[userIndex].role !== "user") {
     userIndex--;
   }
-  // Walk forward to find the end of the turn (next user message or end)
   let endIndex = lastAssistantIndex + 1;
   while (endIndex < messages.length && messages[endIndex].role !== "user") {
     endIndex++;
@@ -55,9 +53,6 @@ export function ChatMessagesContainer({
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
-  // Determine if something is visibly "in-flight" in the last assistant message:
-  // - Text is actively streaming (last part is non-empty text)
-  // - A tool call is pending (state is input-streaming or input-available)
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
     const parts = lastMessage.parts;
@@ -65,11 +60,9 @@ export function ChatMessagesContainer({
 
     const lastPart = parts[parts.length - 1];
 
-    // Text is actively being written
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
 
-    // A tool call is still pending (no output yet)
     if (
       lastPart.type.startsWith("tool-") &&
       "state" in lastPart &&
@@ -103,15 +96,11 @@ export function ChatMessagesContainer({
 
           const isAssistant = message.role === "assistant";
 
-          // Past assistant messages are always done; the last one
-          // is done only when the stream has finished.
           const isAssistantDone =
             isAssistant &&
             (!isLastAssistant ||
               (status !== "streaming" && status !== "submitted"));
 
-          // True when this is the last assistant message in its turn
-          // (next message is a user message or end of list).
           const isLastAssistantInTurn =
             isAssistant &&
             (messageIndex === messages.length - 1 ||
@@ -138,7 +127,6 @@ export function ChatMessagesContainer({
                     partIndex={i}
                   />
                 ))}
-                {/* Per-turn stats — shown only on the final assistant message of each turn */}
                 {isLastAssistantInTurn &&
                   !(
                     isLastAssistant &&
@@ -161,7 +149,6 @@ export function ChatMessagesContainer({
               {isLastAssistantInTurn &&
                 isAssistantDone &&
                 (() => {
-                  // Collect text from ALL assistant messages in this turn
                   const turnMsgs = getTurnMessages(messages, messageIndex);
                   const allTextParts = turnMsgs
                     .filter((m) => m.role === "assistant")
@@ -172,7 +159,6 @@ export function ChatMessagesContainer({
                       ),
                     );
 
-                  // Hide actions when the turn ended with an error or cancellation
                   const lastTextPart = allTextParts[allTextParts.length - 1];
                   if (lastTextPart) {
                     const { markerType } = parseSpecialMarkers(

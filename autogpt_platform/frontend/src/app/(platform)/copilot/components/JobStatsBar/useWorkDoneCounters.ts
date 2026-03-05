@@ -1,28 +1,15 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 
-/**
- * Counter categories that map tool names to singular human-readable labels.
- * Only "meaningful" external actions are counted -- internal operations
- * (like add_understanding, search_docs, get_doc_page) are excluded.
- */
 const TOOL_TO_CATEGORY: Record<string, string> = {
-  // Searches
   find_agent: "search",
   find_library_agent: "search",
-
-  // Agent runs
   run_agent: "agent run",
   run_block: "block run",
-
-  // Agent creation / editing
   create_agent: "agent created",
   edit_agent: "agent edited",
-
-  // Scheduling
   schedule_agent: "agent scheduled",
 };
 
-/** Maximum number of counter categories to display */
 const MAX_COUNTERS = 3;
 
 function pluralize(label: string, count: number): string {
@@ -51,7 +38,7 @@ export interface WorkDoneCounter {
   category: string;
 }
 
-export function useWorkDoneCounters(
+export function getWorkDoneCounters(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ) {
   const categoryCounts = new Map<string, number>();
