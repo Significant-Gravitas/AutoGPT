@@ -82,18 +82,10 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 
 
 def loads(
-    data: str | bytes,
-    *args,
-    target_type: Type[T] | None = None,
-    fallback: Any = None,
-    **kwargs,
+    data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
 ) -> Any:
-    try:
-        parsed = orjson.loads(data)
-    except (orjson.JSONDecodeError, TypeError):
-        if fallback is not None:
-            return fallback
-        raise
+    parsed = orjson.loads(data)
+
     if target_type:
         return type_match(parsed, target_type)
     return parsed
