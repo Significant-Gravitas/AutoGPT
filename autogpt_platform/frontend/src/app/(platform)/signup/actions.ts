@@ -1,11 +1,11 @@
 "use server";
 
-import BackendAPI from "@/lib/autogpt-server-api";
+import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
-import { getOnboardingStatus } from "../../api/helpers";
 
 export async function signup(
   email: string,
@@ -58,10 +58,8 @@ export async function signup(
       await supabase.auth.setSession(data.session);
     }
 
-    // Create the user in the backend (matches OAuth callback flow)
     try {
-      const api = new BackendAPI();
-      await api.createUser();
+      await resolveResponse(postV1GetOrCreateUser());
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);
       Sentry.captureException(createUserError);
