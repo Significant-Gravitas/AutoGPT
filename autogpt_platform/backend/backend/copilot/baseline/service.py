@@ -273,8 +273,6 @@ async def stream_chat_completion_baseline(
             step_open = False
 
             # Append the assistant message with tool_calls to context.
-            # Sanitize arguments to valid JSON — OpenRouter parses them to
-            # build Anthropic tool_use blocks; malformed JSON causes 400s.
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
