@@ -127,8 +127,17 @@ class TranscriptBuilder:
 
         Automatically flushes pending tool results first to maintain
         correct transcript ordering (tool_results → assistant).
+
+        Consecutive assistant messages are merged into a single entry
+        to avoid violating the Claude API's no-consecutive-same-role rule.
         """
         self.flush_pending_tool_results()
+
+        # Merge into the previous assistant entry if there is one
+        if self._entries and self._entries[-1].type == "assistant":
+            self._entries[-1].message["content"].extend(content_blocks)
+            return
+
         msg_uuid = str(uuid4())
 
         self._entries.append(
