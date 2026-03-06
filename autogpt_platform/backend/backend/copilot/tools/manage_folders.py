@@ -538,7 +538,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
 
         try:
-            await library_db().bulk_move_agents_to_folder(
+            moved = await library_db().bulk_move_agents_to_folder(
                 agent_ids=agent_ids,
                 folder_id=folder_id,
                 user_id=user_id,
@@ -550,10 +550,14 @@ class MoveAgentsToFolderTool(BaseTool):
                 session_id=session_id,
             )
 
+        agent_names = [a.name for a in moved]
+        dest = "the folder" if folder_id else "root level"
+        names_str = ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
         return AgentsMovedToFolderResponse(
-            message=f"Moved {len(agent_ids)} agent(s) to {'the folder' if folder_id else 'root level'}.",
+            message=f"Moved {names_str} to {dest}.",
             agent_ids=agent_ids,
+            agent_names=agent_names,
             folder_id=folder_id,
-            count=len(agent_ids),
+            count=len(moved),
             session_id=session_id,
         )

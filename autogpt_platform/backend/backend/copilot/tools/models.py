@@ -621,5 +621,6 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
     agent_ids: list[str]
+    agent_names: list[str] = []
     folder_id: str | None = None
     count: int = 0
