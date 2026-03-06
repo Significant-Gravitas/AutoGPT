@@ -469,7 +469,10 @@ async def get_store_submissions(
         # Calculate pagination values
         skip = (page - 1) * page_size
 
-        where = prisma.types.StoreSubmissionWhereInput(user_id=user_id)
+        where: prisma.types.StoreSubmissionWhereInput = {
+            "user_id": user_id,
+            "is_deleted": False,
+        }
         # Query submissions from database
         submissions = await prisma.models.StoreSubmission.prisma().find_many(
             where=where,
@@ -944,10 +947,12 @@ async def update_profile(
         # Verify that the user is authorized to update this profile
         if existing_profile.userId != user_id:
             logger.error(
-                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
+                f"Unauthorized update attempt for profile {existing_profile.id} "
+                f"by user {user_id}"
             )
             raise DatabaseError(
-                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
+                f"Unauthorized update attempt for profile {existing_profile.id} "
+                f"by user {user_id}"
             )
 
         logger.debug(f"Updating existing profile for user {user_id}")
@@ -1047,26 +1052,25 @@ async def get_my_agents(
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
-    store_listing_version = (
-        await prisma.models.StoreListingVersion.prisma().find_unique(
-            where={"id": store_listing_version_id}
-        )
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
     )
 
-    if not store_listing_version:
-        raise ValueError(f"Store listing version {store_listing_version_id} not found")
+    if not slv:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version_id} not found"
+        )
 
     graph = await get_graph(
-        graph_id=store_listing_version.agentGraphId,
-        version=store_listing_version.agentGraphVersion,
+        graph_id=slv.agentGraphId,
+        version=slv.agentGraphVersion,
         user_id=None,
         for_export=True,
     )
     if not graph:
-        raise ValueError(
-            f"Agent {store_listing_version.agentGraphId} v{store_listing_version.agentGraphVersion} not found"
+        raise NotFoundError(
+            f"Graph {slv.agentGraphId} v{slv.agentGraphVersion} not found"
         )
-
     return graph
 
 
@@ -1427,15 +1431,16 @@ async def get_admin_listings_with_versions(
         Paginated listings with their versions
     """
     logger.debug(
-        f"Getting admin store listings with status={status}, search={search_query}, page={page}"
+        "Getting admin store listings: "
+        f"status={status}, search={search_query}, page={page}"
     )
 
     # Build the where clause for StoreListing
-    where_dict: prisma.types.StoreListingWhereInput = {
+    store_listing_filter: prisma.types.StoreListingWhereInput = {
         "isDeleted": False,
     }
     if status:
-        where_dict["Versions"] = {"some": {"submissionStatus": status}}
+        store_listing_filter["Versions"] = {"some": {"submissionStatus": status}}
 
     if search_query:
         # Find users with matching email
@@ -1446,7 +1451,7 @@ async def get_admin_listings_with_versions(
         user_ids = [user.id for user in matching_users]
 
         # Set up OR conditions
-        where_dict["OR"] = [
+        store_listing_filter["OR"] = [
             {"slug": {"contains": search_query, "mode": "insensitive"}},
             {
                 "Versions": {
@@ -1477,23 +1482,23 @@ async def get_admin_listings_with_versions(
 
         # Add user_id condition if any users matched
         if user_ids:
-            where_dict["OR"].append({"owningUserId": {"in": user_ids}})
+            store_listing_filter["OR"].append({"owningUserId": {"in": user_ids}})
 
     # Calculate pagination
     skip = (page - 1) * page_size
 
     # Create proper Prisma types for the query
-    where = prisma.types.StoreListingWhereInput(**where_dict)
-    include = prisma.types.StoreListingInclude(
-        Versions=prisma.types.FindManyStoreListingVersionArgsFromStoreListing(
-            order_by={"version": "desc"}
-        ),
-        OwningUser=True,
-    )
+    include: prisma.types.StoreListingInclude = {
+        "Versions": {
+            "order_by": {"version": "desc"},
+            "where": {"isDeleted": False},
+        },
+        "OwningUser": True,
+    }
 
     # Query listings with their versions
     listings = await prisma.models.StoreListing.prisma().find_many(
-        where=where,
+        where=store_listing_filter,
         skip=skip,
         take=page_size,
         include=include,
@@ -1501,7 +1506,7 @@ async def get_admin_listings_with_versions(
     )
 
     # Get total count for pagination
-    total = await prisma.models.StoreListing.prisma().count(where=where)
+    total = await prisma.models.StoreListing.prisma().count(where=store_listing_filter)
     total_pages = (total + page_size - 1) // page_size
 
     # Convert to response models
@@ -1573,24 +1578,24 @@ async def get_agent_as_admin(
     store_listing_version_id: str,
 ) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
-    store_listing_version = (
-        await prisma.models.StoreListingVersion.prisma().find_unique(
-            where={"id": store_listing_version_id}
-        )
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
     )
 
-    if not store_listing_version:
-        raise ValueError(f"Store listing version {store_listing_version_id} not found")
+    if not slv:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version_id} not found"
+        )
 
     graph = await get_graph_as_admin(
         user_id=user_id,
-        graph_id=store_listing_version.agentGraphId,
-        version=store_listing_version.agentGraphVersion,
+        graph_id=slv.agentGraphId,
+        version=slv.agentGraphVersion,
         for_export=True,
     )
     if not graph:
-        raise ValueError(
-            f"Agent {store_listing_version.agentGraphId} v{store_listing_version.agentGraphVersion} not found"
+        raise NotFoundError(
+            f"Graph {slv.agentGraphId} v{slv.agentGraphVersion} not found"
         )
 
     return graph

@@ -164,7 +164,7 @@ LEFT JOIN creator_stats cs ON cs."owningUserId" = p."userId";
 -- - Renamed store_listing_version_id -> listing_version_id
 -- - Renamed date_submitted -> submitted_at
 -- - Renamed runs, rating -> run_count, review_avg_rating
--- - Added fields: instructions, agent_output_demo_url, review_count
+-- - Added fields: instructions, agent_output_demo_url, review_count, is_deleted
 DROP VIEW IF EXISTS "StoreSubmission";
 CREATE OR REPLACE VIEW "StoreSubmission" AS
 WITH review_stats AS (
@@ -195,10 +195,11 @@ SELECT
     slv."submittedAt"        AS submitted_at,
     slv."changesSummary"     AS changes_summary,
     slv."submissionStatus"   AS status,
+    slv."reviewedAt"         AS reviewed_at,
     slv."reviewerId"         AS reviewer_id,
     slv."reviewComments"     AS review_comments,
     slv."internalComments"   AS internal_comments,
-    slv."reviewedAt"         AS reviewed_at,
+    slv."isDeleted"          AS is_deleted,
 
     COALESCE(run_stats.run_count, 0::bigint) AS run_count,
     COALESCE(review_stats.review_count, 0::bigint) AS review_count,

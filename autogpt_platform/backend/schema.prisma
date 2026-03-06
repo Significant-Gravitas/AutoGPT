@@ -924,6 +924,8 @@ view StoreSubmission {
   review_comments   String?
   internal_comments String?
 
+  is_deleted Boolean
+
   // Aggregated from AgentGraphExecutions and StoreListingReviews:
   run_count         Int
   review_count      Int
