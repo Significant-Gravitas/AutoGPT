@@ -20,6 +20,8 @@ You can now attach files directly in the AutoPilot chat — documents, images, s
 
 You can now drop a messy spreadsheet into AutoPilot and ask it to clean the data, find trends, and generate a polished chart. It can crunch numbers, build scripts, create documents, and produce downloadable files, all inside the conversation. Each step builds on the last, so you can go from raw data to finished deliverable just by asking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
 
+<figure><img src="../.gitbook/assets/code-execution-hero.png" alt="AutoPilot analyzing business data and generating a sales performance dashboard"><figcaption><p>AutoPilot analyzing 14 months of business data and generating a dashboard — all from a single request</p></figcaption></figure>
+
 ## AutoPilot can browse the web for you
 
 Two new browsing capabilities let AutoPilot interact with websites on your behalf. For quick lookups, it can fetch and extract content from any page in one shot. For multi-step tasks — like logging into a site, navigating through menus, and pulling data — it drives a full browser session that persists across steps within your conversation. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12230)
