@@ -45,8 +45,8 @@ export async function getAdminListingsWithVersions(
   pageSize: number = 20,
 ) {
   const response = await getV2GetAdminListingsHistory({
-    status: status ?? null,
-    search: search ?? null,
+    status,
+    search,
     page,
     page_size: pageSize,
   });
