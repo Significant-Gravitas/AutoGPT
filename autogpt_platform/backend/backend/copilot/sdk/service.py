@@ -1554,36 +1554,29 @@ async def stream_chat_completion_sdk(
                         transcript_builder.entry_count,
                         len(transcript_content),
                     )
+                    # Create task first so we have a reference if timeout occurs
+                    upload_task = asyncio.create_task(
+                        upload_transcript(
+                            user_id=user_id,
+                            session_id=session_id,
+                            content=transcript_content,
+                            message_count=len(session.messages),
+                            log_prefix=log_prefix,
+                        )
+                    )
                     try:
                         async with asyncio.timeout(30):
-                            await asyncio.shield(
-                                upload_transcript(
-                                    user_id=user_id,
-                                    session_id=session_id,
-                                    content=transcript_content,
-                                    message_count=len(session.messages),
-                                    log_prefix=log_prefix,
-                                )
-                            )
+                            await asyncio.shield(upload_task)
                     except TimeoutError:
-                        # Timeout fired but shield keeps upload running - track it
-                        # to prevent garbage collection (maintain strong reference)
+                        # Timeout fired but shield keeps upload running - track the
+                        # SAME task to prevent garbage collection (no double upload)
                         logger.warning(
                             "%s Transcript upload exceeded 30s timeout, "
                             "continuing in background",
                             log_prefix,
                         )
-                        task = asyncio.create_task(
-                            upload_transcript(
-                                user_id=user_id,
-                                session_id=session_id,
-                                content=transcript_content,
-                                message_count=len(session.messages),
-                                log_prefix=log_prefix,
-                            )
-                        )
-                        _background_tasks.add(task)
-                        task.add_done_callback(_background_tasks.discard)
+                        _background_tasks.add(upload_task)
+                        upload_task.add_done_callback(_background_tasks.discard)
             except Exception as upload_err:
                 logger.error(
                     "%s Transcript upload failed in finally: %s",
