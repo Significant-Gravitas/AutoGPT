@@ -71,6 +71,15 @@ class TestReadTranscriptFile:
         path.write_text("not json\n{}\n{}\n")
         assert read_transcript_file(str(path)) is None
 
+    def test_returns_content_for_resume_transcript(self, tmp_path):
+        """A --resume transcript with only assistant entries (no user) is valid."""
+        content = _make_jsonl(METADATA_LINE, FILE_HISTORY, ASST_MSG)
+        path = tmp_path / "resume.jsonl"
+        path.write_text(content)
+        result = read_transcript_file(str(path))
+        assert result is not None
+        assert "assistant" in result
+
     def test_no_size_limit(self, tmp_path):
         """Large files are accepted — bucket storage has no size limit."""
         big_content = {"type": "user", "uuid": "u9", "data": "x" * 1_000_000}
@@ -155,8 +164,28 @@ class TestValidateTranscript:
         assert validate_transcript(content) is False
 
     def test_assistant_only_no_user(self):
+        """With --resume the user message is a CLI query param, not a transcript entry.
+        A transcript with only assistant entries is valid."""
         content = _make_jsonl(METADATA_LINE, FILE_HISTORY, ASST_MSG)
-        assert validate_transcript(content) is False
+        assert validate_transcript(content) is True
+
+    def test_resume_transcript_without_user_entry(self):
+        """Simulates a real --resume stop hook transcript: the CLI session file
+        has summary + assistant entries but no user entry."""
+        summary = {"type": "summary", "uuid": "s1", "text": "context..."}
+        asst1 = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {"role": "assistant", "content": "Hello!"},
+        }
+        asst2 = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "a1",
+            "message": {"role": "assistant", "content": "Sure, let me help."},
+        }
+        content = _make_jsonl(summary, asst1, asst2)
+        assert validate_transcript(content) is True
 
     def test_invalid_json_returns_false(self):
         assert validate_transcript("not json\n{}\n{}\n") is False
