@@ -232,7 +232,6 @@ you're going to add a `credentials` parameter to the `Input` model and the `run`
 
 !!! note "Credentials type hints are required"
     For `CredentialsMetaInput`, include explicit type parameters to avoid type errors:
-
     - First type parameter: provider name (`Literal[ProviderName.<PROVIDER>]`)
     - Second type parameter: supported credential type(s) (`Literal["api_key"]`, `Literal["oauth2"]`, or both)
 
