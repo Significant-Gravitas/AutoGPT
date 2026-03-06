@@ -134,7 +134,7 @@ export function LibraryAgentList({
 
       <div>
         {selectedFolderId && (
-          <div className="mb-4 flex items-center gap-1">
+          <div className="mb-4 flex items-center gap-2">
             <button
               type="button"
               onClick={() => onFolderSelect(null)}
@@ -148,7 +148,7 @@ export function LibraryAgentList({
                 <Text variant="body" className="text-zinc-400">
                   /
                 </Text>
-                <Text variant="body" className="text-zinc-700">
+                <Text variant="large" className="text-zinc-700">
                   {currentFolder.name}
                 </Text>
               </>
