@@ -101,7 +101,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OPENAI_GPT_OSS_120B: 1,
     LlmModel.OPENAI_GPT_OSS_20B: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GEMINI_3_PRO_PREVIEW: 5,
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: 5,
     LlmModel.GEMINI_2_5_FLASH: 1,
     LlmModel.GEMINI_2_0_FLASH: 1,
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
