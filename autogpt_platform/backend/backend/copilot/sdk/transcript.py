@@ -74,7 +74,14 @@ def merge_with_previous_transcript(
     When using --resume, old assistant turns have matching UUIDs but placeholder content.
     This replaces them with real content from the previous transcript.
     """
+    logger.info(
+        "%s merge_with_previous_transcript: new=%dB, previous=%s",
+        log_prefix,
+        len(new_content),
+        f"{len(previous_content)}B" if previous_content else "None",
+    )
     if not previous_content or not previous_content.strip():
+        logger.warning("%s No previous content to merge!", log_prefix)
         return new_content
 
     # Build index: uuid -> assistant entry line from previous transcript

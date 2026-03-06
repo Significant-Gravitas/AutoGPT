@@ -1,0 +1,566 @@
+2026-03-06 16:35:34,059 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:34,061 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:34,061 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:34,061 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:34,061 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:34,301 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:34,301 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:34,301 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:36,165 [33mWARNING[0m  [33mProvider LINEAR implements OAuth but the required env vars LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:36,395 [34mINFO[0m  Metrics endpoint exposed at /metrics for external-api
+2026-03-06 16:35:36,400 [34mINFO[0m  Metrics endpoint exposed at /metrics for rest-api
+2026-03-06 16:35:36,499 [34mINFO[0m  Metrics endpoint exposed at /metrics for websocket-server
+2026-03-06 16:35:36,634 [34mINFO[0m  OTEL tracing configured for Claude Agent SDK → https://cloud.langfuse.com [local]
+2026-03-06 16:35:36,653 [33mWARNING[0m  [33mPostmark server API token not found, email sending disabled[0m
+2026-03-06 16:35:36,726 [34mINFO[0m  [DatabaseManager] started with PID 1316
+2026-03-06 16:35:36,728 [34mINFO[0m  [Scheduler] started with PID 1318
+2026-03-06 16:35:36,731 [34mINFO[0m  [NotificationManager] started with PID 1319
+2026-03-06 16:35:36,734 [34mINFO[0m  [WebsocketServer] started with PID 1320
+2026-03-06 16:35:36,738 [34mINFO[0m  [AgentServer] started with PID 1321
+2026-03-06 16:35:36,744 [34mINFO[0m  [ExecutionManager] started with PID 1322
+2026-03-06 16:35:36,745 [34mINFO[0m  [CoPilotExecutor] Starting...
+2026-03-06 16:35:36,745 [34mINFO[0m  [CoPilotExecutor] Pod assigned executor_id: 8686d0ee-09a9-4277-9d64-f0dbcfcf77c2 
+2026-03-06 16:35:36,745 [34mINFO[0m  [CoPilotExecutor] Spawn max-5 workers... 
+2026-03-06 16:35:36,797 [34mINFO[0m  [PID-1262|THREAD-6441815|CoPilotExecutor|RabbitMQ-8ceb2763-3499-48ef-bdbc-de4afc265ec8] Acquiring connection started...
+2026-03-06 16:35:36,800 [34mINFO[0m  [PID-1262|THREAD-6441818|CoPilotExecutor|RabbitMQ-8ceb2763-3499-48ef-bdbc-de4afc265ec8] Acquiring connection started...
+2026-03-06 16:35:36,806 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-03-06 16:35:36,810 [34mINFO[0m  Socket connected: <socket.socket fd=29, family=30, type=1, proto=6, laddr=('::1', 57157, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-03-06 16:35:36,820 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11ded8050>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11ded8050> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-03-06 16:35:36,826 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-03-06 16:35:36,830 [34mINFO[0m  Socket connected: <socket.socket fd=30, family=30, type=1, proto=6, laddr=('::1', 57158, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-03-06 16:35:36,830 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11de9d1d0>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11de9d1d0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-03-06 16:35:36,843 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11ded8050> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,843 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11ded8050> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,844 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11ded8050> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,844 [34mINFO[0m  Created channel=1
+2026-03-06 16:35:36,844 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11de9d1d0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,845 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11de9d1d0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,846 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11de9d1d0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:36,846 [34mINFO[0m  Created channel=1
+2026-03-06 16:35:36,877 [34mINFO[0m  [PID-1262|THREAD-6441815|CoPilotExecutor|RabbitMQ-8ceb2763-3499-48ef-bdbc-de4afc265ec8] Acquiring connection completed successfully.
+2026-03-06 16:35:36,879 [34mINFO[0m  [PID-1262|THREAD-6441818|CoPilotExecutor|RabbitMQ-8ceb2763-3499-48ef-bdbc-de4afc265ec8] Acquiring connection completed successfully.
+2026-03-06 16:35:36,882 [34mINFO[0m  [CoPilotExecutor] Starting to consume cancel messages... 
+2026-03-06 16:35:36,884 [34mINFO[0m  [CoPilotExecutor] Starting to consume run messages... 
+2026-03-06 16:35:38,805 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:38,810 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:38,811 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:38,811 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:38,812 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:39,093 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:39,093 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:39,094 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:39,817 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:39,819 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:39,820 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:39,820 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:39,821 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:39,928 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:39,931 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:39,932 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:39,932 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:39,933 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:40,050 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:40,050 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:40,051 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:40,158 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:40,159 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:40,159 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:40,998 [34mINFO[0m  [NotificationManager] Starting...
+2026-03-06 16:35:41,070 [34mINFO[0m  Metrics endpoint exposed at /metrics for NotificationManager
+2026-03-06 16:35:41,078 [34mINFO[0m  [PID-1319|THREAD-6442353|NotificationManager|FastAPI server-576423d0-606d-4b37-ba59-67ae4a9fa3b7] Running FastAPI server started...
+2026-03-06 16:35:41,080 [34mINFO[0m  [NotificationManager] Starting RPC server at http://localhost:8007
+2026-03-06 16:35:41,086 [34mINFO[0m  [NotificationManager] [NotificationManager] ⏳ Configuring RabbitMQ... 
+2026-03-06 16:35:41,087 [34mINFO[0m  [PID-1319|THREAD-6442354|NotificationManager|AsyncRabbitMQ-998b0654-7ef3-4401-b905-576488df915c] Acquiring async connection started...
+2026-03-06 16:35:41,118 [34mINFO[0m  Started server process [1319]
+2026-03-06 16:35:41,120 [34mINFO[0m  Waiting for application startup.
+2026-03-06 16:35:41,124 [34mINFO[0m  Application startup complete.
+2026-03-06 16:35:41,129 [34mINFO[0m  Uvicorn running on http://localhost:8007 (Press CTRL+C to quit)
+2026-03-06 16:35:41,311 [34mINFO[0m  [PID-1319|THREAD-6442354|NotificationManager|AsyncRabbitMQ-998b0654-7ef3-4401-b905-576488df915c] Acquiring async connection completed successfully.
+2026-03-06 16:35:41,313 [34mINFO[0m  [NotificationManager] [NotificationManager] Started notification service 
+2026-03-06 16:35:41,315 [34mINFO[0m  [NotificationManager] Starting consumer for queue: immediate_notifications 
+2026-03-06 16:35:41,316 [34mINFO[0m  [NotificationManager] Starting consumer for queue: admin_notifications 
+2026-03-06 16:35:41,317 [34mINFO[0m  [NotificationManager] Starting consumer for queue: batch_notifications 
+2026-03-06 16:35:41,317 [34mINFO[0m  [NotificationManager] Starting consumer for queue: summary_notifications 
+2026-03-06 16:35:41,617 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:41,619 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:41,620 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,621 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:41,621 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,637 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:41,638 [34mINFO[0m  Initializing LaunchDarkly Client 9.15.0
+2026-03-06 16:35:41,640 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:41,640 [34mINFO[0m  Starting event processor
+2026-03-06 16:35:41,641 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,641 [34mINFO[0m  Starting StreamingUpdateProcessor connecting to uri: https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,641 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,641 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:41,642 [34mINFO[0m  Waiting up to 5 seconds for LaunchDarkly client to initialize...
+2026-03-06 16:35:41,642 [34mINFO[0m  Connecting to stream at https://stream.launchdarkly.com/all
+2026-03-06 16:35:41,802 [34mINFO[0m  Metrics endpoint exposed at /metrics for websocket-server
+2026-03-06 16:35:41,804 [34mINFO[0m  [WebsocketServer] Starting...
+2026-03-06 16:35:41,804 [34mINFO[0m  CORS allow origins: ['http://localhost:3000', 'http://127.0.0.1:3000']
+2026-03-06 16:35:41,868 [34mINFO[0m  Started server process [1320]
+2026-03-06 16:35:41,868 [34mINFO[0m  Waiting for application startup.
+2026-03-06 16:35:41,871 [34mINFO[0m  Application startup complete.
+2026-03-06 16:35:41,874 [34mINFO[0m  [PID-1320|THREAD-6441789|WebsocketServer|AsyncRedis-e4b6fb9d-7774-4ac2-812e-054989ed3777] Acquiring connection started...
+2026-03-06 16:35:41,875 [34mINFO[0m  [PID-1320|THREAD-6441789|WebsocketServer|AsyncRedis-e4b6fb9d-7774-4ac2-812e-054989ed3777] Acquiring connection started...
+2026-03-06 16:35:41,876 [34mINFO[0m  Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+2026-03-06 16:35:41,892 [34mINFO[0m  [PID-1320|THREAD-6441789|WebsocketServer|AsyncRedis-e4b6fb9d-7774-4ac2-812e-054989ed3777] Acquiring connection completed successfully.
+2026-03-06 16:35:41,893 [34mINFO[0m  [PID-1320|THREAD-6441789|WebsocketServer|AsyncRedis-e4b6fb9d-7774-4ac2-812e-054989ed3777] Acquiring connection completed successfully.
+2026-03-06 16:35:41,954 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:41,955 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:41,955 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:41,958 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:41,959 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:41,960 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:41,960 [34mINFO[0m  StreamingUpdateProcessor initialized ok.
+2026-03-06 16:35:41,961 [34mINFO[0m  Started LaunchDarkly Client: OK
+2026-03-06 16:35:41,961 [34mINFO[0m  LaunchDarkly client initialized successfully
+2026-03-06 16:35:43,408 [34mINFO[0m  [DatabaseManager] Starting...
+2026-03-06 16:35:43,444 [34mINFO[0m  Metrics endpoint exposed at /metrics for DatabaseManager
+2026-03-06 16:35:43,500 [34mINFO[0m  [Scheduler] Starting...
+2026-03-06 16:35:43,505 [34mINFO[0m  [PID-1316|THREAD-6442661|DatabaseManager|FastAPI server-ba0decaf-f63f-4a91-91d7-dc9cec853b75] Running FastAPI server started...
+2026-03-06 16:35:43,506 [34mINFO[0m  [DatabaseManager] Starting RPC server at http://localhost:8005
+2026-03-06 16:35:43,509 [34mINFO[0m  [ExecutionManager] Starting...
+2026-03-06 16:35:43,510 [34mINFO[0m  [GraphExecutor] [ExecutionManager] 🆔 Pod assigned executor_id: 2900d4de-4491-404c-a724-378136dee6f2 
+2026-03-06 16:35:43,511 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Spawn max-10 workers... 
+2026-03-06 16:35:43,516 [34mINFO[0m  [PID-1322|THREAD-6442680|ExecutionManager|RabbitMQ-eef4b964-09fa-4eb0-8bc9-5312b20dbabc] Acquiring connection started...
+2026-03-06 16:35:43,517 [34mINFO[0m  [PID-1322|THREAD-6442681|ExecutionManager|RabbitMQ-eef4b964-09fa-4eb0-8bc9-5312b20dbabc] Acquiring connection started...
+2026-03-06 16:35:43,519 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-03-06 16:35:43,519 [34mINFO[0m  [DatabaseManager] ⏳ Connecting to Database...
+2026-03-06 16:35:43,519 [34mINFO[0m  Pika version 1.3.2 connecting to ('::1', 5672, 0, 0)
+2026-03-06 16:35:43,520 [34mINFO[0m  [PID-1316|THREAD-6442677|DatabaseManager|Prisma-3e1656b8-e704-4389-8951-eba601327f2a] Acquiring connection started...
+2026-03-06 16:35:43,521 [34mINFO[0m  Socket connected: <socket.socket fd=20, family=30, type=1, proto=6, laddr=('::1', 57197, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-03-06 16:35:43,521 [34mINFO[0m  Socket connected: <socket.socket fd=21, family=30, type=1, proto=6, laddr=('::1', 57198, 0, 0), raddr=('::1', 5672, 0, 0)>
+2026-03-06 16:35:43,522 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b83ecf0>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b83ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-03-06 16:35:43,524 [34mINFO[0m  Streaming transport linked up: (<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b8c6710>, _StreamingProtocolShim: <SelectConnection PROTOCOL transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b8c6710> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>).
+2026-03-06 16:35:43,532 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b8c6710> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,532 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b8c6710> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,533 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b8c6710> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,533 [34mINFO[0m  Created channel=1
+2026-03-06 16:35:43,533 [34mINFO[0m  AMQPConnector - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b83ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,534 [34mINFO[0m  AMQPConnectionWorkflow - reporting success: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b83ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,534 [34mINFO[0m  Connection workflow succeeded: <SelectConnection OPEN transport=<pika.adapters.utils.io_services_utils._AsyncPlaintextTransport object at 0x11b83ecf0> params=<ConnectionParameters host=localhost port=5672 virtual_host=/ ssl=False>>
+2026-03-06 16:35:43,535 [34mINFO[0m  Created channel=1
+2026-03-06 16:35:43,538 [34mINFO[0m  Metrics endpoint exposed at /metrics for Scheduler
+2026-03-06 16:35:43,544 [34mINFO[0m  [PID-1322|THREAD-6442680|ExecutionManager|RabbitMQ-eef4b964-09fa-4eb0-8bc9-5312b20dbabc] Acquiring connection completed successfully.
+2026-03-06 16:35:43,545 [34mINFO[0m  [PID-1322|THREAD-6442681|ExecutionManager|RabbitMQ-eef4b964-09fa-4eb0-8bc9-5312b20dbabc] Acquiring connection completed successfully.
+2026-03-06 16:35:43,547 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Starting cancel message consumer... 
+2026-03-06 16:35:43,549 [34mINFO[0m  [GraphExecutor] [ExecutionManager] ⏳ Starting to consume run messages... 
+2026-03-06 16:35:43,549 [34mINFO[0m  [PID-1318|THREAD-6442688|Scheduler|FastAPI server-cea361d4-6aa2-4c35-befe-9ae2dde5e540] Running FastAPI server started...
+2026-03-06 16:35:43,550 [34mINFO[0m  [Scheduler] Starting RPC server at http://localhost:8003
+2026-03-06 16:35:43,683 [34mINFO[0m  [PID-1316|THREAD-6442677|DatabaseManager|Prisma-3e1656b8-e704-4389-8951-eba601327f2a] Acquiring connection completed successfully.
+2026-03-06 16:35:43,684 [34mINFO[0m  [DatabaseManager] ✅ Ready
+2026-03-06 16:35:43,700 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,701 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,701 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,701 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,701 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,702 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,702 [34mINFO[0m  [Scheduler] [APScheduler] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-06 16:35:43,855 [34mINFO[0m  [Scheduler] [APScheduler] Added job "process_weekly_summary" to job store "weekly_notifications"
+2026-03-06 16:35:43,882 [34mINFO[0m  [Scheduler] [APScheduler] Added job "report_late_executions" to job store "execution"
+2026-03-06 16:35:43,901 [34mINFO[0m  [Scheduler] [APScheduler] Added job "report_block_error_rates" to job store "execution"
+2026-03-06 16:35:43,920 [34mINFO[0m  [Scheduler] [APScheduler] Added job "cleanup_expired_files" to job store "execution"
+2026-03-06 16:35:43,931 [34mINFO[0m  [Scheduler] [APScheduler] Added job "cleanup_oauth_tokens" to job store "execution"
+2026-03-06 16:35:43,943 [34mINFO[0m  [Scheduler] [APScheduler] Added job "execution_accuracy_alerts" to job store "execution"
+2026-03-06 16:35:43,951 [34mINFO[0m  [Scheduler] [APScheduler] Added job "ensure_embeddings_coverage" to job store "execution"
+2026-03-06 16:35:43,952 [34mINFO[0m  [Scheduler] [APScheduler] Scheduler started
+2026-03-06 16:35:43,955 [34mINFO[0m  [Scheduler] Running embedding backfill on startup...
+2026-03-06 16:35:44,148 [34mINFO[0m  [PID-1318|THREAD-6441786|Scheduler|AppService client-84024962-0324-4c9f-806d-5f94331e678a] Creating service client started...
+2026-03-06 16:35:44,149 [34mINFO[0m  [PID-1318|THREAD-6441786|Scheduler|AppService client-84024962-0324-4c9f-806d-5f94331e678a] Creating service client completed successfully.
+2026-03-06 16:35:44,688 [33mWARNING[0m  [33mProvider LINEAR implements OAuth but the required env vars LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:45,034 [34mINFO[0m  Metrics endpoint exposed at /metrics for external-api
+2026-03-06 16:35:45,041 [34mINFO[0m  Metrics endpoint exposed at /metrics for rest-api
+2026-03-06 16:35:45,150 [34mINFO[0m  [AgentServer] Starting...
+2026-03-06 16:35:45,165 [34mINFO[0m  Started server process [1321]
+2026-03-06 16:35:45,166 [34mINFO[0m  Waiting for application startup.
+2026-03-06 16:35:45,167 [33mWARNING[0m  [33m⚠️ JWT_SIGN_ALGORITHM is set to 'HS256', a symmetric shared-key signature algorithm. We highly recommend using an asymmetric algorithm such as ES256, because when leaked, a shared secret would allow anyone to forge valid tokens and impersonate users. More info: https://supabase.com/docs/guides/auth/signing-keys#choosing-the-right-signing-algorithm[0m
+2026-03-06 16:35:45,168 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|Prisma-cdcfac80-c53e-4e93-b4e4-b4c97f4b7142] Acquiring connection started...
+2026-03-06 16:35:45,337 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|Prisma-cdcfac80-c53e-4e93-b4e4-b4c97f4b7142] Acquiring connection completed successfully.
+2026-03-06 16:35:45,352 [34mINFO[0m  Thread pool size set to 60 for sync endpoint/dependency performance
+2026-03-06 16:35:45,352 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-03-06 16:35:45,353 [34mINFO[0m  Syncing provider costs to blocks...
+2026-03-06 16:35:45,598 [33mWARNING[0m  [33m⚠️ JWT_SIGN_ALGORITHM is set to 'HS256', a symmetric shared-key signature algorithm. We highly recommend using an asymmetric algorithm such as ES256, because when leaked, a shared secret would allow anyone to forge valid tokens and impersonate users. More info: https://supabase.com/docs/guides/auth/signing-keys#choosing-the-right-signing-algorithm[0m
+2026-03-06 16:35:45,599 [34mINFO[0m  ('127.0.0.1', 57231) - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcyNzkxNDA5LCJpYXQiOjE3NzI3ODc4MDksImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MjczNDEyNn1dLCJzZXNzaW9uX2lkIjoiYjJiODI2ZWEtZGFlNC00NzI0LWI4OTYtOGJkMDYyZTc4ZWMwIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.bdTkp3-FoKa_iEiIX4HANqGwdLMxTRXyXng_fEN6dQw" [accepted]
+2026-03-06 16:35:45,599 [34mINFO[0m  connection open
+2026-03-06 16:35:45,936 [33mWARNING[0m  [33mProvider WORDPRESS implements OAuth but the required env vars WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:46,056 [34mINFO[0m  Registered 1 custom costs for block FirecrawlExtractBlock
+2026-03-06 16:35:46,204 [33mWARNING[0m  [33mProvider LINEAR implements OAuth but the required env vars LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET are not both set[0m
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/backend/backend/blocks/exa/helpers.py:56: UserWarning: Field name "schema" in "SummarySettings" shadows an attribute in parent "BaseModel"
+  class SummarySettings(BaseModel):
+2026-03-06 16:35:46,551 [33mWARNING[0m  [33mProvider WORDPRESS implements OAuth but the required env vars WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:46,557 [33mWARNING[0m  [33mProvider AIRTABLE implements OAuth but the required env vars AIRTABLE_CLIENT_ID and AIRTABLE_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:46,628 [34mINFO[0m  Registered 1 custom costs for block FirecrawlExtractBlock
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/backend/backend/blocks/exa/helpers.py:56: UserWarning: Field name "schema" in "SummarySettings" shadows an attribute in parent "BaseModel"
+  class SummarySettings(BaseModel):
+2026-03-06 16:35:47,046 [33mWARNING[0m  [33mProvider AIRTABLE implements OAuth but the required env vars AIRTABLE_CLIENT_ID and AIRTABLE_CLIENT_SECRET are not both set[0m
+2026-03-06 16:35:48,937 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-03-06 16:35:49,147 [33mWARNING[0m  [33mBlock WordPressCreatePostBlock credential input 'credentials' provider 'wordpress' has no authentication methods configured - Disabling[0m
+2026-03-06 16:35:49,148 [33mWARNING[0m  [33mBlock WordPressGetAllPostsBlock credential input 'credentials' provider 'wordpress' has no authentication methods configured - Disabling[0m
+2026-03-06 16:35:49,296 [34mINFO[0m  Successfully patched IntegrationCredentialsStore.get_all_creds
+2026-03-06 16:35:49,312 [34mINFO[0m  [Scheduler] BLOCK: 36 items without embeddings (90.2% coverage)
+2026-03-06 16:35:49,312 [34mINFO[0m  [Scheduler] Total: 36 items without embeddings (99.3% coverage) - processing all
+2026-03-06 16:35:49,315 [34mINFO[0m  Processing BLOCK content type...
+2026-03-06 16:35:49,323 [34mINFO[0m  Processing STORE_AGENT content type...
+2026-03-06 16:35:49,328 [34mINFO[0m  Processing DOCUMENTATION content type...
+2026-03-06 16:35:49,390 [34mINFO[0m  [Scheduler] Embedding backfill completed: 0/0 succeeded, 0 failed
+2026-03-06 16:35:49,390 [34mINFO[0m  [Scheduler] Running cleanup for orphaned embeddings (blocks/docs)...
+2026-03-06 16:35:49,409 [34mINFO[0m  STORE_AGENT: No orphaned embeddings found
+2026-03-06 16:35:49,413 [34mINFO[0m  BLOCK: No orphaned embeddings found
+2026-03-06 16:35:49,456 [34mINFO[0m  DOCUMENTATION: No orphaned embeddings found
+2026-03-06 16:35:49,458 [34mINFO[0m  [Scheduler] Cleanup completed: no orphaned embeddings found
+2026-03-06 16:35:49,458 [34mINFO[0m  [Scheduler] Startup embedding backfill complete: {'backfill': {'processed': 0, 'success': 0, 'failed': 0}, 'cleanup': {'deleted': 0}}
+2026-03-06 16:35:49,496 [34mINFO[0m  Started server process [1318]
+2026-03-06 16:35:49,497 [34mINFO[0m  Waiting for application startup.
+2026-03-06 16:35:49,515 [34mINFO[0m  Application startup complete.
+2026-03-06 16:35:49,520 [34mINFO[0m  Uvicorn running on http://localhost:8003 (Press CTRL+C to quit)
+2026-03-06 16:35:49,522 [33mWARNING[0m  [33mBlock WordPressCreatePostBlock credential input 'credentials' provider 'wordpress' has no authentication methods configured - Disabling[0m
+2026-03-06 16:35:49,523 [33mWARNING[0m  [33mBlock WordPressGetAllPostsBlock credential input 'credentials' provider 'wordpress' has no authentication methods configured - Disabling[0m
+2026-03-06 16:35:49,641 [34mINFO[0m  Synced 82 costs to 82 blocks
+2026-03-06 16:35:49,642 [33mWARNING[0m  [33mExecuting <Task pending name='Task-2' coro=<LifespanOn.main() running at /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/uvicorn/lifespan/on.py:86> created at /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/uvicorn/lifespan/on.py:51> took 4.305 seconds[0m
+2026-03-06 16:35:51,479 [34mINFO[0m  ('127.0.0.1', 57274) - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcyNzkxNDA5LCJpYXQiOjE3NzI3ODc4MDksImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MjczNDEyNn1dLCJzZXNzaW9uX2lkIjoiYjJiODI2ZWEtZGFlNC00NzI0LWI4OTYtOGJkMDYyZTc4ZWMwIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.bdTkp3-FoKa_iEiIX4HANqGwdLMxTRXyXng_fEN6dQw" [accepted]
+2026-03-06 16:35:51,480 [34mINFO[0m  connection open
+2026-03-06 16:35:53,139 [34mINFO[0m  Migrating integration credentials for 0 users
+2026-03-06 16:35:53,152 [34mINFO[0m  Fixing LLM credential inputs on 0 nodes
+2026-03-06 16:35:53,153 [34mINFO[0m  Migrating LLM models
+2026-03-06 16:35:53,180 [34mINFO[0m  Migrated 0 node triggers to triggered presets
+2026-03-06 16:35:53,181 [34mINFO[0m  Application startup complete.
+2026-03-06 16:35:53,181 [34mINFO[0m  Uvicorn running on http://0.0.0.0:8006 (Press CTRL+C to quit)
+2026-03-06 16:35:54,407 [34mINFO[0m  127.0.0.1:57288 - "GET /api/library/agents?page=1&page_size=100 HTTP/1.1" 200
+2026-03-06 16:35:54,456 [34mINFO[0m  127.0.0.1:57288 - "GET /api/store/profile HTTP/1.1" 200
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/expressions/parser.py:72: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/expressions/parser.py:85: PyparsingDeprecationWarning: 'escChar' argument is deprecated, use 'esc_char'
+  quoted_identifier = QuotedString('"', escChar="\\", unquoteResults=True)
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/expressions/parser.py:85: PyparsingDeprecationWarning: 'unquoteResults' argument is deprecated, use 'unquote_results'
+  quoted_identifier = QuotedString('"', escChar="\\", unquoteResults=True)
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:365: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:494: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:498: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:502: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:506: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:538: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:542: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:546: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+/Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/pyiceberg/table/metadata.py:550: PydanticDeprecatedSince212: Using `@model_validator` with mode='after' on a classmethod is deprecated. Instead, use an instance method. See the documentation at https://docs.pydantic.dev/2.12/concepts/validators/#model-after-validator. Deprecated in Pydantic V2.12 to be removed in V3.0.
+  @model_validator(mode="after")
+2026-03-06 16:35:54,737 [34mINFO[0m  127.0.0.1:57290 - "GET /api/executions HTTP/1.1" 200
+2026-03-06 16:35:54,739 [33mWARNING[0m  [33mExecuting <Task finished name='Task-9' coro=<RequestResponseCycle.run_asgi() done, defined at /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py:414> result=None created at /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py:295> took 0.268 seconds[0m
+2026-03-06 16:35:54,740 [34mINFO[0m  127.0.0.1:57288 - "GET /api/credits HTTP/1.1" 200
+2026-03-06 16:35:54,743 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|AsyncRedis-41c5d3d5-985c-4ec6-89e3-98049106a7f1] Acquiring connection started...
+2026-03-06 16:35:54,757 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|AsyncRedis-41c5d3d5-985c-4ec6-89e3-98049106a7f1] Acquiring connection completed successfully.
+2026-03-06 16:35:54,760 [34mINFO[0m  Loading session b9bc24cf-9794-42c9-87e7-8231d9e366ce from cache: message_count=8, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:35:54,762 [34mINFO[0m  127.0.0.1:57296 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:35:54,764 [34mINFO[0m  [GET_SESSION] session=b9bc24cf-9794-42c9-87e7-8231d9e366ce, active_session=False, msg_count=8, last_role=assistant
+2026-03-06 16:35:54,764 [34mINFO[0m  127.0.0.1:57294 - "GET /api/chat/sessions/b9bc24cf-9794-42c9-87e7-8231d9e366ce HTTP/1.1" 200
+2026-03-06 16:35:54,790 [34mINFO[0m  127.0.0.1:57288 - "GET /api/credits HTTP/1.1" 200
+2026-03-06 16:36:49,131 [34mINFO[0m  127.0.0.1:57346 - "GET /api/onboarding HTTP/1.1" 200
+2026-03-06 16:36:49,149 [34mINFO[0m  127.0.0.1:57348 - "GET /api/library/folders HTTP/1.1" 200
+2026-03-06 16:36:49,163 [34mINFO[0m  127.0.0.1:57350 - "GET /api/library/agents?page=1&page_size=20&sort_by=updatedAt&include_root_only=true HTTP/1.1" 200
+2026-03-06 16:36:49,169 [34mINFO[0m  127.0.0.1:57352 - "GET /api/library/agents/favorites?page=1&page_size=10 HTTP/1.1" 200
+2026-03-06 16:36:49,593 [34mINFO[0m  127.0.0.1:57346 - "GET /api/integrations/providers HTTP/1.1" 200
+2026-03-06 16:36:49,598 [34mINFO[0m  127.0.0.1:57348 - "GET /api/integrations/providers/system HTTP/1.1" 200
+2026-03-06 16:36:49,863 [34mINFO[0m  127.0.0.1:57346 - "GET /api/library/agents?page=1&page_size=100 HTTP/1.1" 200
+2026-03-06 16:36:49,884 [34mINFO[0m  127.0.0.1:57348 - "GET /api/store/profile HTTP/1.1" 200
+2026-03-06 16:36:49,895 [34mINFO[0m  127.0.0.1:57346 - "GET /api/library/folders HTTP/1.1" 200
+2026-03-06 16:36:49,909 [34mINFO[0m  127.0.0.1:57350 - "GET /api/executions HTTP/1.1" 200
+2026-03-06 16:36:49,926 [34mINFO[0m  127.0.0.1:57348 - "GET /api/library/agents?page=1&page_size=20&sort_by=updatedAt&include_root_only=true HTTP/1.1" 200
+2026-03-06 16:36:49,934 [34mINFO[0m  127.0.0.1:57346 - "GET /api/library/agents/favorites?page=1&page_size=10 HTTP/1.1" 200
+2026-03-06 16:36:49,989 [34mINFO[0m  127.0.0.1:57346 - "GET /api/onboarding HTTP/1.1" 200
+2026-03-06 16:36:50,001 [34mINFO[0m  127.0.0.1:57348 - "GET /api/executions HTTP/1.1" 200
+2026-03-06 16:36:50,013 [34mINFO[0m  127.0.0.1:57350 - "GET /api/store/profile HTTP/1.1" 200
+2026-03-06 16:36:50,030 [34mINFO[0m  127.0.0.1:57352 - "GET /api/library/agents?page=1&page_size=100 HTTP/1.1" 200
+2026-03-06 16:36:50,035 [34mINFO[0m  127.0.0.1:57374 - "GET /api/library/agents/favorites?page=1&page_size=10 HTTP/1.1" 200
+2026-03-06 16:36:50,040 [34mINFO[0m  127.0.0.1:57346 - "GET /api/library/agents?page=1&page_size=20&sort_by=updatedAt&include_root_only=true HTTP/1.1" 200
+2026-03-06 16:36:50,137 [34mINFO[0m  127.0.0.1:57346 - "GET /api/library/folders HTTP/1.1" 200
+2026-03-06 16:36:50,150 [34mINFO[0m  127.0.0.1:57348 - "GET /api/integrations/credentials HTTP/1.1" 200
+2026-03-06 16:36:50,156 [34mINFO[0m  127.0.0.1:57346 - "GET /api/credits HTTP/1.1" 200
+2026-03-06 16:36:50,242 [34mINFO[0m  127.0.0.1:57346 - "GET /api/credits HTTP/1.1" 200
+2026-03-06 16:36:50,302 [34mINFO[0m  ('127.0.0.1', 57376) - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcyNzkxNDA5LCJpYXQiOjE3NzI3ODc4MDksImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsIjoidGVzdGVlZXNlckBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI1NTA2YjNhZi1iNjFjLTQzYTQtOWQ4YS0yNGRlZTE0NzhjZGUifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MjczNDEyNn1dLCJzZXNzaW9uX2lkIjoiYjJiODI2ZWEtZGFlNC00NzI0LWI4OTYtOGJkMDYyZTc4ZWMwIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.bdTkp3-FoKa_iEiIX4HANqGwdLMxTRXyXng_fEN6dQw" [accepted]
+2026-03-06 16:36:50,305 [34mINFO[0m  connection open
+2026-03-06 16:36:51,316 [34mINFO[0m  Loading session b9bc24cf-9794-42c9-87e7-8231d9e366ce from cache: message_count=8, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:36:51,319 [34mINFO[0m  [GET_SESSION] session=b9bc24cf-9794-42c9-87e7-8231d9e366ce, active_session=False, msg_count=8, last_role=assistant
+2026-03-06 16:36:51,319 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions/b9bc24cf-9794-42c9-87e7-8231d9e366ce HTTP/1.1" 200
+2026-03-06 16:36:51,467 [34mINFO[0m  Loading session b9bc24cf-9794-42c9-87e7-8231d9e366ce from cache: message_count=8, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:36:51,471 [34mINFO[0m  [GET_SESSION] session=b9bc24cf-9794-42c9-87e7-8231d9e366ce, active_session=False, msg_count=8, last_role=assistant
+2026-03-06 16:36:51,475 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions/b9bc24cf-9794-42c9-87e7-8231d9e366ce HTTP/1.1" 200
+2026-03-06 16:36:51,517 [34mINFO[0m  Loading session b9bc24cf-9794-42c9-87e7-8231d9e366ce from cache: message_count=8, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:36:51,521 [34mINFO[0m  [GET_SESSION] session=b9bc24cf-9794-42c9-87e7-8231d9e366ce, active_session=False, msg_count=8, last_role=assistant
+2026-03-06 16:36:51,522 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions/b9bc24cf-9794-42c9-87e7-8231d9e366ce HTTP/1.1" 200
+2026-03-06 16:36:53,360 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:36:54,894 [34mINFO[0m  Creating session with user_id: ...e1478cde
+2026-03-06 16:36:54,921 [34mINFO[0m  127.0.0.1:57346 - "POST /api/chat/sessions HTTP/1.1" 200
+2026-03-06 16:36:55,000 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:36:55,075 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=0, roles=[]
+2026-03-06 16:36:55,077 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=0, last_role=none
+2026-03-06 16:36:55,077 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:36:55,121 [34mINFO[0m  127.0.0.1:57384 - "OPTIONS /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f/stream HTTP/1.1" 200
+2026-03-06 16:36:55,125 [34mINFO[0m  [TIMING] stream_chat_post STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, message_len=54
+2026-03-06 16:36:55,131 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=0, roles=[]
+2026-03-06 16:36:55,132 [34mINFO[0m  [TIMING] session validated in 6.9ms
+2026-03-06 16:36:55,132 [34mINFO[0m  [STREAM] Saving user message to session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:36:55,134 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=0, roles=[]
+2026-03-06 16:36:55,157 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['user'], start_sequence=0
+2026-03-06 16:36:55,181 [34mINFO[0m  [STREAM] User message saved for session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:36:55,181 [34mINFO[0m  [TIMING] create_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, turn_id=e8b04b0e-5cb6-4caa-b850-b8ec507bfc17
+2026-03-06 16:36:55,181 [34mINFO[0m  [TIMING] get_redis_async took 0.0ms
+2026-03-06 16:36:55,184 [34mINFO[0m  [TIMING] redis.hset took 2.5ms
+2026-03-06 16:36:55,186 [34mINFO[0m  [TIMING] create_session COMPLETED in 4.8ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:36:55,186 [34mINFO[0m  [TIMING] create_session completed in 5.1ms
+2026-03-06 16:36:55,188 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|AsyncRabbitMQ-829c8117-4516-4959-8d38-1051f2494ddb] Acquiring async connection started...
+2026-03-06 16:36:55,287 [34mINFO[0m  [PID-1321|THREAD-6441790|AgentServer|AsyncRabbitMQ-829c8117-4516-4959-8d38-1051f2494ddb] Acquiring async connection completed successfully.
+2026-03-06 16:36:55,295 [34mINFO[0m  [TIMING] Task enqueued to RabbitMQ, setup=169.8ms
+2026-03-06 16:36:55,296 [34mINFO[0m  [TIMING] event_generator STARTED, turn=e8b04b0e-5cb6-4caa-b850-b8ec507bfc17, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde
+2026-03-06 16:36:55,297 [34mINFO[0m  [TIMING] subscribe_to_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, last_msg=0-0
+2026-03-06 16:36:55,299 [34mINFO[0m  [TIMING] Redis hgetall took 2.5ms
+2026-03-06 16:36:55,302 [34mINFO[0m  [TIMING] Redis xread (replay) took 2.5ms, status=running
+2026-03-06 16:36:55,303 [34mINFO[0m  [TIMING] Replayed 0 messages, last_id=0-0
+2026-03-06 16:36:55,303 [34mINFO[0m  [TIMING] Session still running, starting _stream_listener
+2026-03-06 16:36:55,303 [34mINFO[0m  [TIMING] subscribe_to_session COMPLETED in 6.9ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_messages_replayed=0
+2026-03-06 16:36:55,304 [34mINFO[0m  [TIMING] Starting to read from subscriber_queue
+2026-03-06 16:36:55,305 [34mINFO[0m  [TIMING] _stream_listener STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, last_id=0-0
+2026-03-06 16:36:55,306 [34mINFO[0m  [PID-1262|THREAD-6441818|CoPilotExecutor|Redis-083641e1-2e27-4c19-b07b-0aed74bf5f80] Acquiring connection started...
+2026-03-06 16:36:55,316 [34mINFO[0m  [PID-1262|THREAD-6441818|CoPilotExecutor|Redis-083641e1-2e27-4c19-b07b-0aed74bf5f80] Acquiring connection completed successfully.
+2026-03-06 16:36:55,318 [34mINFO[0m  [CoPilotExecutor] Acquired cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f, executor_id=8686d0ee-09a9-4277-9d64-f0dbcfcf77c2 
+2026-03-06 16:36:55,340 [34mINFO[0m  Using bundled Claude Code CLI: /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-03-06 16:36:55,834 [34mINFO[0m  [CoPilotExecutor] [CoPilotExecutor] CLI pre-warm done: /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude 
+2026-03-06 16:36:55,834 [34mINFO[0m  [CoPilotExecutor] [CoPilotExecutor] Worker 12935360512 started 
+2026-03-06 16:36:55,835 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Starting execution 
+2026-03-06 16:36:55,848 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Using SDK service 
+2026-03-06 16:36:55,848 [34mINFO[0m  [PID-1262|THREAD-6445184|CoPilotExecutor|AsyncRedis-d33655ce-26c5-4e2e-a673-300d9dcac6d0] Acquiring connection started...
+2026-03-06 16:36:55,854 [34mINFO[0m  [PID-1262|THREAD-6445184|CoPilotExecutor|AsyncRedis-d33655ce-26c5-4e2e-a673-300d9dcac6d0] Acquiring connection completed successfully.
+2026-03-06 16:36:55,856 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=1, roles=['user']
+2026-03-06 16:36:55,856 [34mINFO[0m  [PID-1262|THREAD-6445184|CoPilotExecutor|AppService client-788d2a2d-2fdd-4af3-b6e8-9ce62e3be6c5] Creating service client started...
+2026-03-06 16:36:55,857 [34mINFO[0m  [PID-1262|THREAD-6445184|CoPilotExecutor|AppService client-788d2a2d-2fdd-4af3-b6e8-9ce62e3be6c5] Creating service client completed successfully.
+2026-03-06 16:36:55,874 [34mINFO[0m  127.0.0.1:57346 - "GET /api/store/profile HTTP/1.1" 200
+2026-03-06 16:36:55,935 [34mINFO[0m  127.0.0.1:57346 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:36:55,942 [34mINFO[0m  127.0.0.1:57397 - "GET /api/executions HTTP/1.1" 200
+2026-03-06 16:36:55,958 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=1, roles=['user']
+2026-03-06 16:36:55,968 [33mWARNING[0m  [33m[E2B] [1ec5b199-7ae] E2B sandbox enabled but no API key configured (CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap[0m
+2026-03-06 16:36:55,974 [34mINFO[0m  [PID-1316|THREAD-6442677|DatabaseManager|AsyncRedis-093b82dc-d342-4c42-929b-9ef7874d3d2d] Acquiring connection started...
+2026-03-06 16:36:55,981 [34mINFO[0m  [PID-1316|THREAD-6442677|DatabaseManager|AsyncRedis-093b82dc-d342-4c42-929b-9ef7874d3d2d] Acquiring connection completed successfully.
+2026-03-06 16:36:56,803 [34mINFO[0m  [TIMING] xread #1 returned 1 messages in 1498.5ms
+2026-03-06 16:36:56,804 [34mINFO[0m  [TIMING] publish_chunk StreamStart in 4.0ms (xadd=3.0ms)
+2026-03-06 16:36:56,805 [34mINFO[0m  [TIMING] FIRST live message at 1500.2ms, type=StreamStart
+2026-03-06 16:36:56,805 [34mINFO[0m  [TIMING] FIRST CHUNK from queue at 1.51s, type=StreamStart
+2026-03-06 16:36:56,806 [34mINFO[0m  127.0.0.1:57384 - "POST /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f/stream HTTP/1.1" 200
+2026-03-06 16:36:57,358 [34mINFO[0m  Claude Code subscription mode: CLI version 2.1.29 (Claude Code)
+2026-03-06 16:36:57,376 [34mINFO[0m  Using bundled Claude Code CLI: /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-03-06 16:36:57,397 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=1, roles=['user']
+2026-03-06 16:36:59,285 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Sending query — resume=False, total_msgs=1, query_len=54, attached_files=0, image_blocks=0
+2026-03-06 16:36:59,290 [33mWARNING[0m  [33mRun compression is not enabled. Please update to the latest version of LangSmith. Falling back to regular multipart ingestion.[0m
+2026-03-06 16:36:59,361 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Received: SystemMessage init (unresolved=0, current=0, resolved=0)
+2026-03-06 16:36:59,363 [34mINFO[0m  [TIMING] xread #2 returned 1 messages in 2558.2ms
+2026-03-06 16:37:03,619 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:03,620 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:04,415 [34mINFO[0m  [TIMING] xread #3 timeout after 5050.9ms
+2026-03-06 16:37:05,583 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:05,584 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:05,590 [34mINFO[0m  [TIMING] xread #4 returned 1 messages in 1166.7ms
+2026-03-06 16:37:05,593 [34mINFO[0m  [TIMING] publish_chunk StreamTextStart in 9.2ms (xadd=6.3ms)
+2026-03-06 16:37:05,595 [34mINFO[0m  [TIMING] xread #5 returned 1 messages in 2.7ms
+2026-03-06 16:37:05,600 [34mINFO[0m  [SDK] Stop hook: transcript_path=/Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/dae0ef9b-4645-4c01-86b7-8b1afa9ecf10.jsonl, sdk_session_id=dae0ef9b-464...
+2026-03-06 16:37:05,601 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Stop hook: captured 2516B, 4 lines from /Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/dae0ef9b-4645-4c01-86b7-8b1afa9ecf10.jsonl
+2026-03-06 16:37:05,611 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:05,612 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:05,612 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:05,613 [34mINFO[0m  [TIMING] publish_chunk StreamTextEnd in 1.6ms (xadd=1.0ms)
+2026-03-06 16:37:05,614 [34mINFO[0m  [TIMING] xread #6 returned 1 messages in 17.1ms
+2026-03-06 16:37:05,616 [34mINFO[0m  [TIMING] xread #7 returned 1 messages in 1.2ms
+2026-03-06 16:37:05,626 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Stream completed successfully with 2 messages
+2026-03-06 16:37:05,658 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['assistant'], start_sequence=1
+2026-03-06 16:37:05,673 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=1, roles=['user']
+2026-03-06 16:37:05,674 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Session persisted in finally with 2 messages
+2026-03-06 16:37:05,674 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Transcript upload: source=stop_hook, stop_hook_fired=True, captured_len=2516, raw_len=2516, use_resume=False
+2026-03-06 16:37:05,689 [34mINFO[0m  Using local workspace storage: default
+2026-03-06 16:37:05,690 [34mINFO[0m  [SDK][1ec5b199-7ae][T1] Uploaded 2171B (stripped from 2516B, msg_count=2)
+2026-03-06 16:37:05,697 [34mINFO[0m  [TIMING] xread #8 returned 1 messages in 80.4ms
+2026-03-06 16:37:05,697 [34mINFO[0m  [TIMING] publish_chunk StreamFinish in 1.1ms (xadd=0.6ms)
+2026-03-06 16:37:05,697 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Execution completed in 9.86s 
+2026-03-06 16:37:05,697 [34mINFO[0m  [CoPilotExecutor] Run completed for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:05,697 [34mINFO[0m  [TIMING] StreamFinish received in 10.4s; delivered=7
+2026-03-06 16:37:05,697 [34mINFO[0m  [TIMING] _stream_listener FINISHED in 10.4s; session=1ec5b199-7aeb-4173-b633-eec072cf711f, delivered=7, xread_count=8
+2026-03-06 16:37:05,698 [34mINFO[0m  [CoPilotExecutor] Releasing cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:05,698 [34mINFO[0m  [TIMING] StreamFinish received in 10.40s; n_chunks=8
+2026-03-06 16:37:05,698 [34mINFO[0m  [TIMING] event_generator FINISHED in 10.40s; turn=e8b04b0e-5cb6-4caa-b850-b8ec507bfc17, session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_chunks=8
+2026-03-06 16:37:05,699 [34mINFO[0m  [CoPilotExecutor] Cleaned up completed session 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:05,748 [33mWARNING[0m  [33mInvalid type dict for attribute 'langsmith.metadata.usage_metadata' value. Expected one of ['bool', 'str', 'bytes', 'int', 'float'] or a sequence of those types[0m
+2026-03-06 16:37:05,812 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=2, roles=['user', 'assistant']
+2026-03-06 16:37:05,814 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=2, last_role=assistant
+2026-03-06 16:37:05,814 [34mINFO[0m  127.0.0.1:57435 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:05,836 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=2, roles=['user', 'assistant']
+2026-03-06 16:37:05,837 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=2, last_role=assistant
+2026-03-06 16:37:05,838 [34mINFO[0m  127.0.0.1:57435 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:05,843 [34mINFO[0m  127.0.0.1:57437 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:37:11,049 [34mINFO[0m  [TIMING] stream_chat_post STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, message_len=17
+2026-03-06 16:37:11,054 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=2, roles=['user', 'assistant']
+2026-03-06 16:37:11,055 [34mINFO[0m  [TIMING] session validated in 6.2ms
+2026-03-06 16:37:11,055 [34mINFO[0m  [STREAM] Saving user message to session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:11,058 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=2, roles=['user', 'assistant']
+2026-03-06 16:37:11,083 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['user'], start_sequence=2
+2026-03-06 16:37:11,100 [34mINFO[0m  [STREAM] User message saved for session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:11,100 [34mINFO[0m  [TIMING] create_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, turn_id=ad978a4a-bfae-4570-a886-a968191f074d
+2026-03-06 16:37:11,101 [34mINFO[0m  [TIMING] get_redis_async took 0.0ms
+2026-03-06 16:37:11,104 [34mINFO[0m  [TIMING] redis.hset took 2.5ms
+2026-03-06 16:37:11,105 [34mINFO[0m  [TIMING] create_session COMPLETED in 4.3ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:11,105 [34mINFO[0m  [TIMING] create_session completed in 4.5ms
+2026-03-06 16:37:11,115 [34mINFO[0m  [TIMING] Task enqueued to RabbitMQ, setup=66.8ms
+2026-03-06 16:37:11,117 [34mINFO[0m  [TIMING] event_generator STARTED, turn=ad978a4a-bfae-4570-a886-a968191f074d, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde
+2026-03-06 16:37:11,117 [34mINFO[0m  [TIMING] subscribe_to_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, last_msg=0-0
+2026-03-06 16:37:11,117 [34mINFO[0m  [CoPilotExecutor] Acquired cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f, executor_id=8686d0ee-09a9-4277-9d64-f0dbcfcf77c2 
+2026-03-06 16:37:11,118 [34mINFO[0m  [TIMING] Redis hgetall took 1.0ms
+2026-03-06 16:37:11,118 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Starting execution 
+2026-03-06 16:37:11,119 [34mINFO[0m  [TIMING] Redis xread (replay) took 0.9ms, status=running
+2026-03-06 16:37:11,120 [34mINFO[0m  [TIMING] Replayed 0 messages, last_id=0-0
+2026-03-06 16:37:11,120 [34mINFO[0m  [TIMING] Session still running, starting _stream_listener
+2026-03-06 16:37:11,120 [34mINFO[0m  [TIMING] subscribe_to_session COMPLETED in 3.0ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_messages_replayed=0
+2026-03-06 16:37:11,120 [34mINFO[0m  [TIMING] Starting to read from subscriber_queue
+2026-03-06 16:37:11,120 [34mINFO[0m  [TIMING] _stream_listener STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, last_id=0-0
+2026-03-06 16:37:11,131 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Using SDK service 
+2026-03-06 16:37:11,133 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=3, roles=['user', 'assistant', 'user']
+2026-03-06 16:37:11,165 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=3, roles=['user', 'assistant', 'user']
+2026-03-06 16:37:11,167 [33mWARNING[0m  [33m[E2B] [1ec5b199-7ae] E2B sandbox enabled but no API key configured (CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap[0m
+2026-03-06 16:37:11,184 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Downloaded 2171B (msg_count=2)
+2026-03-06 16:37:11,188 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Downloaded transcript: 2171B, 2 lines, msg_count=2, valid=True
+2026-03-06 16:37:11,188 [34mINFO[0m  [Transcript] Wrote resume file: /private/tmp/copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/transcript-1ec5b199.jsonl
+2026-03-06 16:37:11,190 [34mINFO[0m  [TIMING] xread #1 returned 1 messages in 69.5ms
+2026-03-06 16:37:11,191 [34mINFO[0m  [TIMING] publish_chunk StreamStart in 2.6ms (xadd=1.8ms)
+2026-03-06 16:37:11,191 [34mINFO[0m  [TIMING] FIRST live message at 70.6ms, type=StreamStart
+2026-03-06 16:37:11,192 [34mINFO[0m  [TIMING] FIRST CHUNK from queue at 0.08s, type=StreamStart
+2026-03-06 16:37:11,192 [34mINFO[0m  127.0.0.1:57386 - "POST /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f/stream HTTP/1.1" 200
+2026-03-06 16:37:11,209 [34mINFO[0m  Using bundled Claude Code CLI: /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-03-06 16:37:12,239 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Sending query — resume=True, total_msgs=3, query_len=17, attached_files=0, image_blocks=0
+2026-03-06 16:37:12,256 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Received: SystemMessage init (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:12,258 [34mINFO[0m  [TIMING] xread #2 returned 1 messages in 1066.8ms
+2026-03-06 16:37:16,556 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:16,557 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:17,273 [34mINFO[0m  [TIMING] xread #3 timeout after 5014.4ms
+2026-03-06 16:37:18,505 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:18,506 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:18,511 [34mINFO[0m  [TIMING] xread #4 returned 1 messages in 1233.0ms
+2026-03-06 16:37:18,513 [34mINFO[0m  [TIMING] publish_chunk StreamTextStart in 6.7ms (xadd=4.2ms)
+2026-03-06 16:37:18,516 [34mINFO[0m  [TIMING] xread #5 returned 1 messages in 3.0ms
+2026-03-06 16:37:18,588 [34mINFO[0m  [SDK] Stop hook: transcript_path=/Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/ba9147c7-9eec-46f6-9f0a-9e3ab5f651a3.jsonl, sdk_session_id=ba9147c7-9ee...
+2026-03-06 16:37:18,590 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Stop hook: captured 3720B, 6 lines from /Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/ba9147c7-9eec-46f6-9f0a-9e3ab5f651a3.jsonl
+2026-03-06 16:37:18,599 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:18,600 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:18,600 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:18,603 [34mINFO[0m  [TIMING] publish_chunk StreamTextEnd in 3.0ms (xadd=1.8ms)
+2026-03-06 16:37:18,603 [34mINFO[0m  [TIMING] xread #6 returned 1 messages in 84.2ms
+2026-03-06 16:37:18,607 [34mINFO[0m  [TIMING] xread #7 returned 1 messages in 2.7ms
+2026-03-06 16:37:18,619 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Stream completed successfully with 4 messages
+2026-03-06 16:37:18,638 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['assistant'], start_sequence=3
+2026-03-06 16:37:18,653 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=3, roles=['user', 'assistant', 'user']
+2026-03-06 16:37:18,655 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Session persisted in finally with 4 messages
+2026-03-06 16:37:18,655 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Transcript upload: source=stop_hook, stop_hook_fired=True, captured_len=3720, raw_len=3720, use_resume=True
+2026-03-06 16:37:18,677 [34mINFO[0m  [SDK][1ec5b199-7ae][T2] Uploaded 3412B (stripped from 3720B, msg_count=4)
+2026-03-06 16:37:18,683 [34mINFO[0m  [TIMING] publish_chunk StreamFinish in 1.0ms (xadd=0.5ms)
+2026-03-06 16:37:18,683 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Execution completed in 7.56s 
+2026-03-06 16:37:18,683 [34mINFO[0m  [TIMING] xread #8 returned 1 messages in 75.0ms
+2026-03-06 16:37:18,683 [34mINFO[0m  [CoPilotExecutor] Run completed for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:18,683 [34mINFO[0m  [CoPilotExecutor] Releasing cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:18,683 [34mINFO[0m  [TIMING] StreamFinish received in 7.6s; delivered=7
+2026-03-06 16:37:18,684 [34mINFO[0m  [TIMING] _stream_listener FINISHED in 7.6s; session=1ec5b199-7aeb-4173-b633-eec072cf711f, delivered=7, xread_count=8
+2026-03-06 16:37:18,684 [34mINFO[0m  [TIMING] StreamFinish received in 7.57s; n_chunks=8
+2026-03-06 16:37:18,684 [34mINFO[0m  [TIMING] event_generator FINISHED in 7.57s; turn=ad978a4a-bfae-4570-a886-a968191f074d, session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_chunks=8
+2026-03-06 16:37:18,684 [34mINFO[0m  [CoPilotExecutor] Cleaned up completed session 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:18,735 [33mWARNING[0m  [33mInvalid type dict for attribute 'langsmith.metadata.usage_metadata' value. Expected one of ['bool', 'str', 'bytes', 'int', 'float'] or a sequence of those types[0m
+2026-03-06 16:37:18,781 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=4, roles=['user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:18,783 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=4, last_role=assistant
+2026-03-06 16:37:18,783 [34mINFO[0m  127.0.0.1:57475 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:18,810 [34mINFO[0m  127.0.0.1:57475 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:37:18,828 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=4, roles=['user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:18,831 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=4, last_role=assistant
+2026-03-06 16:37:18,831 [34mINFO[0m  127.0.0.1:57475 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:21,530 [34mINFO[0m  [TIMING] stream_chat_post STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, message_len=71
+2026-03-06 16:37:21,534 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=4, roles=['user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:21,534 [34mINFO[0m  [TIMING] session validated in 4.3ms
+2026-03-06 16:37:21,535 [34mINFO[0m  [STREAM] Saving user message to session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:21,537 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=4, roles=['user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:21,560 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['user'], start_sequence=4
+2026-03-06 16:37:21,588 [34mINFO[0m  [STREAM] User message saved for session 1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:21,588 [34mINFO[0m  [TIMING] create_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, turn_id=5f1feccc-b06a-4d56-960a-a111481d9f9f
+2026-03-06 16:37:21,589 [34mINFO[0m  [TIMING] get_redis_async took 0.0ms
+2026-03-06 16:37:21,591 [34mINFO[0m  [TIMING] redis.hset took 1.9ms
+2026-03-06 16:37:21,594 [34mINFO[0m  [TIMING] create_session COMPLETED in 5.4ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f
+2026-03-06 16:37:21,595 [34mINFO[0m  [TIMING] create_session completed in 6.4ms
+2026-03-06 16:37:21,603 [34mINFO[0m  [TIMING] Task enqueued to RabbitMQ, setup=72.8ms
+2026-03-06 16:37:21,603 [34mINFO[0m  [CoPilotExecutor] Acquired cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f, executor_id=8686d0ee-09a9-4277-9d64-f0dbcfcf77c2 
+2026-03-06 16:37:21,604 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Starting execution 
+2026-03-06 16:37:21,604 [34mINFO[0m  [TIMING] event_generator STARTED, turn=5f1feccc-b06a-4d56-960a-a111481d9f9f, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde
+2026-03-06 16:37:21,605 [34mINFO[0m  [TIMING] subscribe_to_session STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, user=5506b3af-b61c-43a4-9d8a-24dee1478cde, last_msg=0-0
+2026-03-06 16:37:21,607 [34mINFO[0m  [TIMING] Redis hgetall took 1.4ms
+2026-03-06 16:37:21,608 [34mINFO[0m  [TIMING] Redis xread (replay) took 1.3ms, status=running
+2026-03-06 16:37:21,609 [34mINFO[0m  [TIMING] Replayed 0 messages, last_id=0-0
+2026-03-06 16:37:21,609 [34mINFO[0m  [TIMING] Session still running, starting _stream_listener
+2026-03-06 16:37:21,609 [34mINFO[0m  [TIMING] subscribe_to_session COMPLETED in 4.4ms; session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_messages_replayed=0
+2026-03-06 16:37:21,610 [34mINFO[0m  [TIMING] Starting to read from subscriber_queue
+2026-03-06 16:37:21,610 [34mINFO[0m  [TIMING] _stream_listener STARTED, session=1ec5b199-7aeb-4173-b633-eec072cf711f, last_id=0-0
+2026-03-06 16:37:21,618 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Using SDK service 
+2026-03-06 16:37:21,621 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=5, roles=['user', 'assistant', 'user', 'assistant', 'user']
+2026-03-06 16:37:21,638 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=5, roles=['user', 'assistant', 'user', 'assistant', 'user']
+2026-03-06 16:37:21,640 [33mWARNING[0m  [33m[E2B] [1ec5b199-7ae] E2B sandbox enabled but no API key configured (CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap[0m
+2026-03-06 16:37:21,658 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Downloaded 3412B (msg_count=4)
+2026-03-06 16:37:21,661 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Downloaded transcript: 3412B, 4 lines, msg_count=4, valid=True
+2026-03-06 16:37:21,661 [34mINFO[0m  [Transcript] Wrote resume file: /private/tmp/copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/transcript-1ec5b199.jsonl
+2026-03-06 16:37:21,663 [34mINFO[0m  [TIMING] publish_chunk StreamStart in 1.4ms (xadd=1.0ms)
+2026-03-06 16:37:21,663 [34mINFO[0m  [TIMING] xread #1 returned 1 messages in 52.6ms
+2026-03-06 16:37:21,663 [34mINFO[0m  [TIMING] FIRST live message at 53.3ms, type=StreamStart
+2026-03-06 16:37:21,664 [34mINFO[0m  [TIMING] FIRST CHUNK from queue at 0.06s, type=StreamStart
+2026-03-06 16:37:21,664 [34mINFO[0m  127.0.0.1:57386 - "POST /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f/stream HTTP/1.1" 200
+2026-03-06 16:37:21,681 [34mINFO[0m  Using bundled Claude Code CLI: /Users/majdyz/Code/AutoGPT2/autogpt_platform/autogpt_libs/autogpt_platform/autogpt_libs/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-03-06 16:37:22,709 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Sending query — resume=True, total_msgs=5, query_len=71, attached_files=0, image_blocks=0
+2026-03-06 16:37:22,724 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Received: SystemMessage init (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:22,727 [34mINFO[0m  [TIMING] xread #2 returned 1 messages in 1063.3ms
+2026-03-06 16:37:27,786 [34mINFO[0m  [TIMING] xread #3 timeout after 5058.2ms
+2026-03-06 16:37:32,735 [34mINFO[0m  [TIMING] xread #4 returned 1 messages in 4944.1ms
+2026-03-06 16:37:32,858 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:32,859 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:34,993 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:34,993 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:34,997 [34mINFO[0m  [TIMING] publish_chunk StreamTextStart in 3.2ms (xadd=2.2ms)
+2026-03-06 16:37:34,996 [34mINFO[0m  [TIMING] xread #5 returned 1 messages in 2259.0ms
+2026-03-06 16:37:35,002 [34mINFO[0m  [TIMING] xread #6 returned 1 messages in 3.1ms
+2026-03-06 16:37:35,044 [34mINFO[0m  [SDK] Stop hook: transcript_path=/Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/0a1e6852-eed6-44c5-b342-db5470cece05.jsonl, sdk_session_id=0a1e6852-eed...
+2026-03-06 16:37:35,046 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Stop hook: captured 7734B, 8 lines from /Users/majdyz/.claude/projects/-private-tmp-copilot-1ec5b199-7aeb-4173-b633-eec072cf711f/0a1e6852-eed6-44c5-b342-db5470cece05.jsonl
+2026-03-06 16:37:35,055 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:35,055 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Received: ResultMessage success (unresolved=0, current=0, resolved=0)
+2026-03-06 16:37:35,055 [34mINFO[0m  [SDK] [1ec5b199-7ae] Flush called but all 0 tool(s) already resolved
+2026-03-06 16:37:35,059 [34mINFO[0m  [TIMING] publish_chunk StreamTextEnd in 3.1ms (xadd=2.1ms)
+2026-03-06 16:37:35,058 [34mINFO[0m  [TIMING] xread #7 returned 1 messages in 54.4ms
+2026-03-06 16:37:35,062 [34mINFO[0m  [TIMING] xread #8 returned 1 messages in 2.3ms
+2026-03-06 16:37:35,075 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Stream completed successfully with 6 messages
+2026-03-06 16:37:35,101 [34mINFO[0m  Saving 1 new messages to DB for session 1ec5b199-7aeb-4173-b633-eec072cf711f: roles=['assistant'], start_sequence=5
+2026-03-06 16:37:35,128 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=5, roles=['user', 'assistant', 'user', 'assistant', 'user']
+2026-03-06 16:37:35,133 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Session persisted in finally with 6 messages
+2026-03-06 16:37:35,133 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Transcript upload: source=stop_hook, stop_hook_fired=True, captured_len=7734, raw_len=7734, use_resume=True
+2026-03-06 16:37:35,156 [34mINFO[0m  [SDK][1ec5b199-7ae][T3] Uploaded 7372B (stripped from 7734B, msg_count=6)
+2026-03-06 16:37:35,163 [34mINFO[0m  [TIMING] publish_chunk StreamFinish in 1.5ms (xadd=0.9ms)
+2026-03-06 16:37:35,163 [34mINFO[0m  [TIMING] xread #9 returned 1 messages in 99.8ms
+2026-03-06 16:37:35,164 [34mINFO[0m  [CoPilotExecutor|session_id:1ec5b199-7aeb-4173-b633-eec072cf711f|user_id:5506b3af-b61c-43a4-9d8a-24dee1478cde] Execution completed in 13.56s 
+2026-03-06 16:37:35,164 [34mINFO[0m  [CoPilotExecutor] Run completed for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:35,164 [34mINFO[0m  [CoPilotExecutor] Releasing cluster lock for 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:35,164 [34mINFO[0m  [TIMING] StreamFinish received in 13.6s; delivered=8
+2026-03-06 16:37:35,164 [34mINFO[0m  [TIMING] _stream_listener FINISHED in 13.6s; session=1ec5b199-7aeb-4173-b633-eec072cf711f, delivered=8, xread_count=9
+2026-03-06 16:37:35,164 [34mINFO[0m  [TIMING] StreamFinish received in 13.56s; n_chunks=9
+2026-03-06 16:37:35,165 [34mINFO[0m  [CoPilotExecutor] Cleaned up completed session 1ec5b199-7aeb-4173-b633-eec072cf711f 
+2026-03-06 16:37:35,165 [34mINFO[0m  [TIMING] event_generator FINISHED in 13.56s; turn=5f1feccc-b06a-4d56-960a-a111481d9f9f, session=1ec5b199-7aeb-4173-b633-eec072cf711f, n_chunks=9
+2026-03-06 16:37:35,213 [33mWARNING[0m  [33mInvalid type dict for attribute 'langsmith.metadata.usage_metadata' value. Expected one of ['bool', 'str', 'bytes', 'int', 'float'] or a sequence of those types[0m
+2026-03-06 16:37:35,263 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=6, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:35,268 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=6, last_role=assistant
+2026-03-06 16:37:35,268 [34mINFO[0m  127.0.0.1:57506 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:35,293 [34mINFO[0m  127.0.0.1:57508 - "GET /api/chat/sessions?limit=50 HTTP/1.1" 200
+2026-03-06 16:37:35,318 [34mINFO[0m  Loading session 1ec5b199-7aeb-4173-b633-eec072cf711f from cache: message_count=6, roles=['user', 'assistant', 'user', 'assistant', 'user', 'assistant']
+2026-03-06 16:37:35,320 [34mINFO[0m  [GET_SESSION] session=1ec5b199-7aeb-4173-b633-eec072cf711f, active_session=False, msg_count=6, last_role=assistant
+2026-03-06 16:37:35,320 [34mINFO[0m  127.0.0.1:57506 - "GET /api/chat/sessions/1ec5b199-7aeb-4173-b633-eec072cf711f HTTP/1.1" 200
+2026-03-06 16:37:50,884 [34mINFO[0m  127.0.0.1:57526 - "GET /api/store/profile HTTP/1.1" 200
+2026-03-06 16:37:50,891 [34mINFO[0m  127.0.0.1:57528 - "GET /api/executions HTTP/1.1" 200
