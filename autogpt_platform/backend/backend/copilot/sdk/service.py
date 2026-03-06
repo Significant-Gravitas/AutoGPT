@@ -151,6 +151,13 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 # which has kernel-level network isolation (unshare --net).
 _SHARED_TOOL_NOTES = """\
 
+### Web search and research
+- **`web_search(query)`** — Search the web for current information (uses Claude's
+  native web search). Use this when you need up-to-date information, facts,
+  statistics, or current events that are beyond your knowledge cutoff.
+- **`web_fetch(url)`** — Retrieve and analyze content from a specific URL.
+  Use this when you have a specific URL to read (documentation, articles, etc.).
+
 ### Sharing files with the user
 After saving a file to the persistent workspace with `write_workspace_file`,
 share it with the user by embedding the `download_url` from the response in
