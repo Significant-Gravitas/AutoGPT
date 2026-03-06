@@ -444,6 +444,7 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     """Convert SDK content blocks to transcript format.
 
     Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
+    Unknown block types are logged and skipped.
     """
     result: list[dict[str, Any]] = []
     for block in blocks or []:
@@ -473,6 +474,11 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                     "thinking": block.thinking,
                     "signature": block.signature,
                 }
+            )
+        else:
+            logger.warning(
+                f"[SDK] Unknown content block type: {type(block).__name__}. "
+                f"This may indicate a new SDK version with additional block types."
             )
     return result
 
