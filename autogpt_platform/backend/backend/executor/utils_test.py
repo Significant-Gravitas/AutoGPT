@@ -371,7 +371,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_workspace = mocker.MagicMock()
     mock_workspace.id = "test-workspace-id"
     mocker.patch(
-        "backend.executor.utils.get_or_create_workspace",
+        "backend.executor.utils.workspace_db.get_or_create_workspace",
         new=mocker.AsyncMock(return_value=mock_workspace),
     )
 
@@ -652,7 +652,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_workspace = mocker.MagicMock()
     mock_workspace.id = "test-workspace-id"
     mocker.patch(
-        "backend.executor.utils.get_or_create_workspace",
+        "backend.executor.utils.workspace_db.get_or_create_workspace",
         new=mocker.AsyncMock(return_value=mock_workspace),
     )
 
