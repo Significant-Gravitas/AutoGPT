@@ -54,18 +54,16 @@ class TranscriptBuilder:
         if not content or not content.strip():
             return
 
-        for line in content.strip().split("\n"):
+        lines = content.strip().split("\n")
+        for line_num, line in enumerate(lines, 1):
             if not line.strip():
                 continue
 
             data = json.loads(line, fallback=None)
             if data is None:
-                # Don't log content (PII risk) - use hash for debugging
-                import hashlib
-
-                line_hash = hashlib.sha256(line.encode()).hexdigest()[:16]
-                logger.warning("Failed to parse transcript line (hash: %s)", line_hash)
-                logger.debug("Failed line preview: %s", line[:100])
+                logger.warning(
+                    "Failed to parse transcript line %d/%d", line_num, len(lines)
+                )
                 continue
 
             # Load all non-strippable entries (user/assistant/system/etc.)

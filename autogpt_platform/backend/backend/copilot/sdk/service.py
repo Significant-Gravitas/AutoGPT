@@ -1136,8 +1136,9 @@ async def stream_chat_completion_sdk(
                 transcript_builder.add_user_message(content=content_blocks)
             else:
                 await client.query(query_message, session_id=session_id)
-                # Capture user message in transcript (text only)
-                transcript_builder.add_user_message(content=query_message)
+                # Capture actual user message in transcript (not the engineered query)
+                # query_message may include context wrappers, but transcript needs raw input
+                transcript_builder.add_user_message(content=current_message)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
