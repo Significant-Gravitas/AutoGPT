@@ -1352,18 +1352,15 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
+                            content = (
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=(
-                                        content := (
-                                            response.output
-                                            if isinstance(response.output, str)
-                                            else json.dumps(
-                                                response.output, ensure_ascii=False
-                                            )
-                                        )
-                                    ),
+                                    content=content,
                                     tool_call_id=response.toolCallId,
                                 )
                             )
