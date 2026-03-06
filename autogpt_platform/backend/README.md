@@ -2,9 +2,9 @@
 
 This directory uses the docs content as the single source of truth.
 
-- **Released / stable docs (`master` source)**:
+- **Released / stable docs (`master` source; canonical host `agpt.co/docs`)**:
   https://agpt.co/docs/platform/getting-started/getting-started
-  (repo source: `../../docs/platform/getting-started.md`)
+  (legacy `docs.agpt.co` host redirects here; repo source: `../../docs/platform/getting-started.md`)
 - **Development docs (`dev` source)**:
   https://dev-docs.agpt.co/platform/getting-started/getting-started
   (repo source: `../../docs/platform/getting-started.md`)

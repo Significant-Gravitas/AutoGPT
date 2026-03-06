@@ -2,9 +2,9 @@
 
 Advanced setup docs live in the repository docs source.
 
-- **Released / stable docs (`master` source)**:
+- **Released / stable docs (`master` source; canonical host `agpt.co/docs`)**:
   https://agpt.co/docs/platform/advanced-setup/advanced_setup
-  (repo source: `../../docs/platform/advanced_setup.md`)
+  (legacy `docs.agpt.co` host may not resolve this path; repo source: `../../docs/platform/advanced_setup.md`)
 - **Development docs (`dev` source)**:
   https://dev-docs.agpt.co/platform/advanced-setup/advanced_setup
   (repo source: `../../docs/platform/advanced_setup.md`)
