@@ -181,23 +181,28 @@ class TestPromptSupplement:
     def test_baseline_supplement_includes_key_tools(self):
         """Baseline supplement should document all essential tools."""
         from backend.copilot.prompting import get_baseline_supplement
+        from backend.copilot.tools import TOOL_REGISTRY
 
         docs = get_baseline_supplement()
 
-        # Core agent workflow tools
+        # Core agent workflow tools (always available)
         assert "`create_agent`" in docs
         assert "`run_agent`" in docs
         assert "`find_library_agent`" in docs
         assert "`edit_agent`" in docs
 
-        # MCP integration
+        # MCP integration (always available)
         assert "`run_mcp_tool`" in docs
 
-        # Browser automation
-        assert "`browser_navigate`" in docs
-
-        # Folder management
+        # Folder management (always available)
         assert "`create_folder`" in docs
+
+        # Browser tools only if available (Playwright may not be installed in CI)
+        if (
+            TOOL_REGISTRY.get("browser_navigate")
+            and TOOL_REGISTRY["browser_navigate"].is_available
+        ):
+            assert "`browser_navigate`" in docs
 
     def test_baseline_supplement_includes_workflows(self):
         """Baseline supplement should include workflow guidance in tool descriptions."""
