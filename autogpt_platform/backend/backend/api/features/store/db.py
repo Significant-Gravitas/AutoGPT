@@ -616,15 +616,7 @@ async def create_store_submission(
         # First verify the agent graph belongs to this user
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where={"id": graph_id, "version": graph_version, "userId": user_id},
-            include={
-                "StoreListingVersions": {
-                    "where": {
-                        "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
-                        "isDeleted": False,
-                    }
-                },
-                "User": {"include": {"Profile": True}},
-            },
+            include={"User": {"include": {"Profile": True}}},
         )
 
         if not graph:
@@ -650,9 +642,34 @@ async def create_store_submission(
             )
 
         async with transaction() as tx:
+            # Determine next version number for this listing
+            existing_listing = await prisma.models.StoreListing.prisma(tx).find_unique(
+                where={"agentGraphId": graph_id},
+                include={
+                    "Versions": {
+                        # We just need the latest version and one of each status:
+                        "order_by": {"version": "desc"},
+                        "distinct": ["submissionStatus"],
+                        "where": {"isDeleted": False},
+                    }
+                },
+            )
+            next_version = 1
+            graph_has_pending_submissions = False
+            if existing_listing and existing_listing.Versions:
+                current_latest_version = max(
+                    (slv.version for slv in existing_listing.Versions), default=0
+                )
+                next_version = current_latest_version + 1
+
+                graph_has_pending_submissions = any(
+                    slv.submissionStatus == prisma.enums.SubmissionStatus.PENDING
+                    for slv in existing_listing.Versions
+                )
+
             # Delete any currently PENDING submissions for the same graph
             # in favor of the new submission
-            if graph.StoreListingVersions:
+            if graph_has_pending_submissions:
                 await prisma.models.StoreListingVersion.prisma(tx).update_many(
                     where={
                         "agentGraphId": graph.id,
@@ -673,6 +690,7 @@ async def create_store_submission(
                         }
                     },
                     "name": name,
+                    "version": next_version,
                     "videoUrl": video_url,
                     "agentOutputDemoUrl": agent_output_demo_url,
                     "imageUrls": image_urls,
