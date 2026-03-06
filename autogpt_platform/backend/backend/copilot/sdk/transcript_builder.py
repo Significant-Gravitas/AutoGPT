@@ -43,6 +43,7 @@ class TranscriptBuilder:
     def __init__(self) -> None:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
+        self._pending_tool_results: list[dict[str, Any]] = []
 
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
@@ -107,10 +108,27 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
+    def add_tool_result(self, tool_use_id: str, content: str) -> None:
+        """Accumulate a tool result. Flushed automatically before the next assistant message."""
+        self._pending_tool_results.append(
+            {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+        )
+
+    def flush_pending_tool_results(self) -> None:
+        """Flush any pending tool results as a single user message."""
+        if self._pending_tool_results:
+            self.add_user_message(content=list(self._pending_tool_results))
+            self._pending_tool_results.clear()
+
     def add_assistant_message(
         self, content_blocks: list[dict], model: str = ""
     ) -> None:
-        """Add assistant message to the complete context."""
+        """Add assistant message to the complete context.
+
+        Automatically flushes pending tool results first to maintain
+        correct transcript ordering (tool_results → assistant).
+        """
+        self.flush_pending_tool_results()
         msg_uuid = str(uuid4())
 
         self._entries.append(

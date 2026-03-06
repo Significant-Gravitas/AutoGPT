@@ -1216,15 +1216,6 @@ async def stream_chat_completion_sdk(
                         len(adapter.resolved_tool_calls),
                     )
 
-                    # Capture SDK messages in transcript
-                    if isinstance(sdk_msg, AssistantMessage):
-                        content_blocks = _format_sdk_content_blocks(sdk_msg.content)
-                        model_name = getattr(sdk_msg, "model", "")
-                        transcript_builder.add_assistant_message(
-                            content_blocks=content_blocks,
-                            model=model_name,
-                        )
-
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
                     # message can arrive before the hook stashes output.
@@ -1238,6 +1229,17 @@ async def stream_chat_completion_sdk(
                     # AssistantMessages (each containing only
                     # ToolUseBlocks), we must NOT wait/flush — the prior
                     # tools are still executing concurrently.
+                    # Capture SDK assistant messages in transcript.
+                    # add_assistant_message auto-flushes pending tool
+                    # results to maintain correct ordering.
+                    if isinstance(sdk_msg, AssistantMessage):
+                        content_blocks = _format_sdk_content_blocks(sdk_msg.content)
+                        model_name = getattr(sdk_msg, "model", "")
+                        transcript_builder.add_assistant_message(
+                            content_blocks=content_blocks,
+                            model=model_name,
+                        )
+
                     is_parallel_continuation = isinstance(
                         sdk_msg, AssistantMessage
                     ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
@@ -1355,27 +1357,21 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
-                            tool_result_content = (
+                            content = (
                                 response.output
                                 if isinstance(response.output, str)
-                                else str(response.output)
+                                else json.dumps(response.output, ensure_ascii=False)
                             )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=tool_result_content,
+                                    content=content,
                                     tool_call_id=response.toolCallId,
                                 )
                             )
-                            # Capture tool result in transcript as user message with tool_result content
-                            transcript_builder.add_user_message(
-                                content=[
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": response.toolCallId,
-                                        "content": tool_result_content,
-                                    }
-                                ]
+                            transcript_builder.add_tool_result(
+                                tool_use_id=response.toolCallId,
+                                content=content,
                             )
                             has_tool_results = True
 
@@ -1405,6 +1401,10 @@ async def stream_chat_completion_sdk(
                             "%s Pending __anext__ task completed during cleanup",
                             log_prefix,
                         )
+
+            # Flush any remaining tool results that weren't flushed
+            # (e.g. stream ended right after tool execution).
+            transcript_builder.flush_pending_tool_results()
 
             # Safety net: if tools are still unresolved after the
             # streaming loop (e.g. StopAsyncIteration before ResultMessage,
