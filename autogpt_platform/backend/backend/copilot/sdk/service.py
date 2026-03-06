@@ -1145,13 +1145,6 @@ async def stream_chat_completion_sdk(
             has_appended_assistant = False
             has_tool_results = False
             ended_with_stream_error = False
-            # Shared message ID for all assistant transcript entries in this
-            # turn.  The CLI uses message.id to merge consecutive assistant
-            # entries (thinking → text → tool_use) into one API message on
-            # --resume.  Without it each entry becomes a separate API message,
-            # causing tool_use/tool_result mismatch 400 errors.
-            turn_message_id = f"msg_sdk_{uuid.uuid4().hex[:24]}"
-
             # Use an explicit async iterator with non-cancelling heartbeats.
             # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
             # (via asyncio.timeout or wait_for) corrupts the SDK's internal
@@ -1242,7 +1235,6 @@ async def stream_chat_completion_sdk(
                         transcript_builder.append_assistant(
                             content_blocks=content_blocks,
                             model=model_name,
-                            message_id=turn_message_id,
                         )
 
                     is_parallel_continuation = isinstance(

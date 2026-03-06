@@ -43,6 +43,8 @@ class TranscriptBuilder:
     def __init__(self) -> None:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
+        self._current_message_id: str = ""
+        self._last_was_assistant: bool = False
 
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
@@ -83,6 +85,9 @@ class TranscriptBuilder:
             )
             self._entries.append(entry)
             self._last_uuid = entry.uuid
+            self._last_was_assistant = data["type"] == "assistant"
+            if self._last_was_assistant:
+                self._current_message_id = data.get("message", {}).get("id", "")
 
         logger.info(
             "%s Loaded %d entries from previous transcript (last_uuid=%s)",
@@ -104,6 +109,7 @@ class TranscriptBuilder:
             )
         )
         self._last_uuid = msg_uuid
+        self._last_was_assistant = False
 
     def append_tool_result(self, tool_use_id: str, content: str) -> None:
         """Append a tool result as a user entry (one per tool call)."""
@@ -117,20 +123,19 @@ class TranscriptBuilder:
         self,
         content_blocks: list[dict],
         model: str = "",
-        message_id: str = "",
         stop_reason: str | None = None,
     ) -> None:
         """Append an assistant entry.
 
-        Args:
-            content_blocks: The content blocks for this entry.
-            model: Model name.
-            message_id: Shared across consecutive assistant entries from the
-                same API response.  The CLI uses this to merge them before
-                sending to the API on ``--resume``.
-            stop_reason: ``None`` for intermediate entries, ``"tool_use"`` or
-                ``"end_turn"`` for the last entry in a group.
+        Consecutive assistant entries automatically share the same message ID
+        so the CLI can merge them (thinking → text → tool_use) into a single
+        API message on ``--resume``.  A new ID is assigned whenever an
+        assistant entry follows a non-assistant entry (user message or tool
+        result), because that marks the start of a new API response.
         """
+        if not self._last_was_assistant:
+            self._current_message_id = f"msg_sdk_{uuid4().hex[:24]}"
+
         msg_uuid = str(uuid4())
 
         self._entries.append(
@@ -141,7 +146,7 @@ class TranscriptBuilder:
                 message={
                     "role": "assistant",
                     "model": model,
-                    "id": message_id or f"msg_sdk_{uuid4().hex[:24]}",
+                    "id": self._current_message_id,
                     "type": "message",
                     "content": content_blocks,
                     "stop_reason": stop_reason,
@@ -150,6 +155,7 @@ class TranscriptBuilder:
             )
         )
         self._last_uuid = msg_uuid
+        self._last_was_assistant = True
 
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
