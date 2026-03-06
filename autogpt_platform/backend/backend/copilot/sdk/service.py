@@ -327,13 +327,14 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                 }
             )
         elif isinstance(block, ToolResultBlock):
-            result.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.tool_use_id,
-                    "content": block.content,
-                }
-            )
+            tool_result_entry: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": block.tool_use_id,
+                "content": block.content,
+            }
+            if block.is_error:
+                tool_result_entry["is_error"] = True
+            result.append(tool_result_entry)
         elif isinstance(block, ThinkingBlock):
             result.append(
                 {

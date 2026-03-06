@@ -211,14 +211,17 @@ class TestPromptSupplement:
         assert "run_mcp_tool" in docs
 
     def test_baseline_supplement_completeness(self):
-        """All tools from TOOL_REGISTRY should appear in baseline supplement."""
+        """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
         from backend.copilot.prompting import get_baseline_supplement
         from backend.copilot.tools import TOOL_REGISTRY
 
         docs = get_baseline_supplement()
 
-        # Verify each registered tool is documented
-        for tool_name in TOOL_REGISTRY.keys():
+        # Verify each available registered tool is documented
+        # (matches _generate_tool_documentation which filters by is_available)
+        for tool_name, tool in TOOL_REGISTRY.items():
+            if not tool.is_available:
+                continue
             assert (
                 f"`{tool_name}`" in docs
             ), f"Tool '{tool_name}' missing from baseline supplement"
@@ -230,8 +233,10 @@ class TestPromptSupplement:
 
         docs = get_baseline_supplement()
 
-        # Count occurrences of each tool in the entire supplement
-        for tool_name in TOOL_REGISTRY.keys():
+        # Count occurrences of each available tool in the entire supplement
+        for tool_name, tool in TOOL_REGISTRY.items():
+            if not tool.is_available:
+                continue
             # Count how many times this tool appears as a bullet point
             count = docs.count(f"- **`{tool_name}`**")
             assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
