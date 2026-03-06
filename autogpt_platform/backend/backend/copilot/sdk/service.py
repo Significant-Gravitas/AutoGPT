@@ -44,6 +44,7 @@ from ..model import (
     update_session_title,
     upsert_chat_session,
 )
+from ..prompt_constants import KEY_WORKFLOWS
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -59,6 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
+from ..tools import TOOL_REGISTRY
 from ..tools.e2b_sandbox import get_or_create_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
@@ -155,9 +157,6 @@ def _generate_tool_documentation() -> str:
     This generates a complete list of available tools with their descriptions,
     ensuring the documentation stays in sync with the actual tool implementations.
     """
-    from backend.copilot.prompt_constants import KEY_WORKFLOWS
-    from backend.copilot.tools import TOOL_REGISTRY
-
     docs = "\n## AVAILABLE TOOLS\n\n"
 
     # Sort tools alphabetically for consistent output
