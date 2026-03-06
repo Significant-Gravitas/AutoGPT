@@ -550,12 +550,13 @@ class MoveAgentsToFolderTool(BaseTool):
                 session_id=session_id,
             )
 
+        moved_ids = [a.id for a in moved]
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
         names_str = ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",
-            agent_ids=agent_ids,
+            agent_ids=moved_ids,
             agent_names=agent_names,
             folder_id=folder_id,
             count=len(moved),
