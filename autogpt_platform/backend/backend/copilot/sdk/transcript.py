@@ -322,8 +322,8 @@ async def upload_transcript(
             len(stripped),
             len(content),
         )
-        logger.warning("%s Raw content preview: %s", log_prefix, content[:500])
-        logger.warning("%s Stripped content: %s", log_prefix, stripped[:500])
+        logger.debug("%s Raw content preview: %s", log_prefix, content[:500])
+        logger.debug("%s Stripped content: %s", log_prefix, stripped[:500])
         return
 
     storage = await get_workspace_storage()

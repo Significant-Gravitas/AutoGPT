@@ -1554,15 +1554,16 @@ async def stream_chat_completion_sdk(
                         transcript_builder.entry_count,
                         len(transcript_content),
                     )
-                    await asyncio.shield(
-                        upload_transcript(
-                            user_id=user_id,
-                            session_id=session_id,
-                            content=transcript_content,
-                            message_count=len(session.messages),
-                            log_prefix=log_prefix,
+                    async with asyncio.timeout(30):
+                        await asyncio.shield(
+                            upload_transcript(
+                                user_id=user_id,
+                                session_id=session_id,
+                                content=transcript_content,
+                                message_count=len(session.messages),
+                                log_prefix=log_prefix,
+                            )
                         )
-                    )
             except Exception as upload_err:
                 logger.error(
                     "%s Transcript upload failed in finally: %s",
