@@ -13,26 +13,63 @@ const PREFERRED_VOICES = [
   "Samantha",
   "Karen",
   "Daniel",
+  "Moira",
+  "Tessa",
   // Chrome / Android
   "Google UK English Female",
   "Google UK English Male",
   "Google US English",
-  // Edge / Windows
+  // Edge / Windows OneCore
   "Microsoft Zira",
   "Microsoft David",
+  "Microsoft Jenny",
+  "Microsoft Aria",
+  "Microsoft Guy",
 ];
+
+/**
+ * Name fragments that indicate low-quality / robotic synthesis engines.
+ * Matching is case-insensitive on `voice.name`.
+ */
+const ROBOTIC_VOICE_INDICATORS = [
+  "espeak",
+  "festival",
+  "mbrola",
+  "flite",
+  "pico",
+];
+
+/** Returns true when a voice is likely low-quality / robotic. */
+function isLikelyRobotic(voice: SpeechSynthesisVoice): boolean {
+  const lower = voice.name.toLowerCase();
+  return ROBOTIC_VOICE_INDICATORS.some((ind) => lower.includes(ind));
+}
 
 function pickBestVoice(): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis.getVoices();
+
+  // 1. Try preferred voices first (known high-quality)
   for (const name of PREFERRED_VOICES) {
     const match = voices.find((v) => v.name.includes(name));
     if (match) return match;
   }
-  // Fallback: prefer any voice flagged as default, or the first English voice
+
+  // 2. Filter out known robotic / low-quality voices
+  const nonRobotic = voices.filter((v) => !isLikelyRobotic(v));
+  const candidates = nonRobotic.length > 0 ? nonRobotic : voices;
+
+  // 3. Prefer remote / cloud-backed voices (usually higher quality)
+  const remote = candidates.filter((v) => !v.localService);
+  if (remote.length > 0) {
+    return remote.find((v) => v.lang.startsWith("en")) || remote[0];
+  }
+
+  // 4. Best remaining local voice: English default → English → default → first
   return (
-    voices.find((v) => v.default) ||
-    voices.find((v) => v.lang.startsWith("en")) ||
-    voices[0]
+    candidates.find((v) => v.default && v.lang.startsWith("en")) ||
+    candidates.find((v) => v.lang.startsWith("en")) ||
+    candidates.find((v) => v.default) ||
+    candidates[0]
   );
 }
 
