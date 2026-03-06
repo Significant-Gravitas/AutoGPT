@@ -1228,13 +1228,6 @@ async def stream_chat_completion_sdk(
                     # AssistantMessages (each containing only
                     # ToolUseBlocks), we must NOT wait/flush — the prior
                     # tools are still executing concurrently.
-                    # Capture SDK assistant messages in transcript.
-                    if isinstance(sdk_msg, AssistantMessage):
-                        transcript_builder.append_assistant(
-                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
-                            model=sdk_msg.model,
-                        )
-
                     is_parallel_continuation = isinstance(
                         sdk_msg, AssistantMessage
                     ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
@@ -1372,6 +1365,16 @@ async def stream_chat_completion_sdk(
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
+
+                    # Append assistant entry AFTER convert_message so that
+                    # any stashed tool results from the previous turn are
+                    # recorded first, preserving the required API order:
+                    # assistant(tool_use) → tool_result → assistant(text).
+                    if isinstance(sdk_msg, AssistantMessage):
+                        transcript_builder.append_assistant(
+                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
+                            model=sdk_msg.model,
+                        )
 
             except asyncio.CancelledError:
                 # Task/generator was cancelled (e.g. client disconnect,
