@@ -11544,7 +11544,13 @@
           "feature_request_created",
           "suggested_goal",
           "mcp_tools_discovered",
-          "mcp_tool_output"
+          "mcp_tool_output",
+          "folder_created",
+          "folder_list",
+          "folder_updated",
+          "folder_moved",
+          "folder_deleted",
+          "agents_moved_to_folder"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
