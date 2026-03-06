@@ -53,11 +53,15 @@ class RunMCPToolTool(BaseTool):
     def description(self) -> str:
         return (
             "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Call with just `server_url` to see available tools. "
-            "Then call again with `server_url`, `tool_name`, and `tool_arguments` to execute. "
-            "If the server requires authentication, the user will be prompted to connect it. "
-            "Find MCP servers at https://registry.modelcontextprotocol.io/ — hundreds of integrations "
-            "including GitHub, Postgres, Slack, filesystem, and more."
+            "Two-step workflow: (1) Call with just `server_url` to discover available tools. "
+            "(2) Call again with `server_url`, `tool_name`, and `tool_arguments` to execute. "
+            "Known hosted servers (use directly): Notion (https://mcp.notion.com/mcp), "
+            "Linear (https://mcp.linear.app/mcp), Stripe (https://mcp.stripe.com), "
+            "Intercom (https://mcp.intercom.com/mcp), Cloudflare (https://mcp.cloudflare.com/mcp), "
+            "Atlassian/Jira (https://mcp.atlassian.com/mcp). "
+            "For other services, search the MCP registry at https://registry.modelcontextprotocol.io/. "
+            "Authentication: If the server requires credentials, user will be prompted to connect via OAuth. "
+            "Once connected and user confirms, retry the same call immediately."
         )
 
     @property
