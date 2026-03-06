@@ -78,12 +78,14 @@ _NO_FALLBACK = object()
 
 @overload
 def loads(
-    data: str | bytes, *args, target_type: Type[T], fallback: T | None = ..., **kwargs
-) -> T: ...
+    data: str | bytes, *args, target_type: Type[T], fallback: T | None = None, **kwargs
+) -> T:
+    pass
 
 
 @overload
-def loads(data: str | bytes, *args, fallback: Any = ..., **kwargs) -> Any: ...
+def loads(data: str | bytes, *args, fallback: Any = None, **kwargs) -> Any:
+    pass
 
 
 def loads(
