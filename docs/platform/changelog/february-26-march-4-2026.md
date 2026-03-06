@@ -16,7 +16,7 @@ You can now attach files directly in the AutoPilot chat — documents, images, s
 
 ## AutoPilot can run code and create files for you
 
-AutoPilot can now write and run code for you — no setup, no technical knowledge needed. Drop in a messy spreadsheet and ask it to clean the data, find trends, and generate a polished chart. It can crunch numbers, build scripts, create documents, and produce downloadable files, all inside the conversation. Each step builds on the last, so you can go from raw data to finished deliverable just by asking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
+You can now drop a messy spreadsheet into AutoPilot and ask it to clean the data, find trends, and generate a polished chart. It can crunch numbers, build scripts, create documents, and produce downloadable files, all inside the conversation. Each step builds on the last, so you can go from raw data to finished deliverable just by asking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
 
 ## AutoPilot can browse the web for you
 
