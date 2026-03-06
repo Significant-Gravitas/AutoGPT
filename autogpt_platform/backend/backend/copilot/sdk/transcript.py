@@ -48,6 +48,83 @@ TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
 
 
 # ---------------------------------------------------------------------------
+# Synthetic entry merging
+# ---------------------------------------------------------------------------
+
+_SYNTHETIC_MODEL = "<synthetic>"
+
+
+def merge_with_previous_transcript(
+    new_content: str,
+    previous_content: str | None,
+    log_prefix: str = "[Transcript]",
+) -> str:
+    """Replace synthetic assistant entries with real ones from a previous transcript.
+
+    When the CLI resumes from a transcript via ``--resume``, it writes synthetic
+    placeholder entries (``model: "<synthetic>"``, ``text: "No response requested."``)
+    for all previous assistant turns.  Only the CURRENT turn gets a real response.
+
+    This function restores real assistant content by matching entries between
+    the new and previous transcripts using their ``uuid`` field.
+
+    Returns the merged JSONL content.
+    """
+    if not previous_content or not previous_content.strip():
+        return new_content
+
+    # Index real assistant entries from previous transcript by uuid
+    real_by_uuid: dict[str, str] = {}
+    for line in previous_content.strip().split("\n"):
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") != "assistant":
+            continue
+        msg = entry.get("message", {})
+        if msg.get("model") == _SYNTHETIC_MODEL:
+            continue
+        uid = entry.get("uuid", "")
+        if uid:
+            real_by_uuid[uid] = line
+
+    if not real_by_uuid:
+        return new_content
+
+    # Walk the new transcript and replace synthetic entries with real ones
+    merged_lines: list[str] = []
+    replaced = 0
+    for line in new_content.strip().split("\n"):
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            merged_lines.append(line)
+            continue
+
+        uid = entry.get("uuid", "")
+        msg = entry.get("message", {})
+        if (
+            entry.get("type") == "assistant"
+            and msg.get("model") == _SYNTHETIC_MODEL
+            and uid in real_by_uuid
+        ):
+            merged_lines.append(real_by_uuid[uid])
+            replaced += 1
+        else:
+            merged_lines.append(line)
+
+    if replaced:
+        logger.info(
+            "%s Merged %d synthetic entries with real assistant content",
+            log_prefix,
+            replaced,
+        )
+
+    return "\n".join(merged_lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
 # Progress stripping
 # ---------------------------------------------------------------------------
 
@@ -58,41 +135,40 @@ def strip_progress_entries(content: str) -> str:
     Removes entries whose ``type`` is in ``STRIPPABLE_TYPES`` and reparents
     any remaining child entries so the ``parentUuid`` chain stays intact.
     Typically reduces transcript size by ~30%.
+
+    Entries that are not stripped or reparented are kept as their original
+    raw JSON line to avoid unnecessary re-serialization that changes
+    whitespace or key ordering.
     """
     lines = content.strip().split("\n")
 
-    entries: list[dict] = []
+    # Parse entries, keeping the original line alongside the parsed dict.
+    parsed: list[tuple[str, dict | None]] = []
     for line in lines:
         try:
-            entries.append(json.loads(line))
+            parsed.append((line, json.loads(line)))
         except json.JSONDecodeError:
-            # Keep unparseable lines as-is (safety)
-            entries.append({"_raw": line})
+            parsed.append((line, None))
 
+    # First pass: identify stripped UUIDs and build parent map.
     stripped_uuids: set[str] = set()
     uuid_to_parent: dict[str, str] = {}
-    kept: list[dict] = []
 
-    for entry in entries:
-        if "_raw" in entry:
-            kept.append(entry)
+    for _line, entry in parsed:
+        if entry is None:
             continue
         uid = entry.get("uuid", "")
         parent = entry.get("parentUuid", "")
-        entry_type = entry.get("type", "")
-
         if uid:
             uuid_to_parent[uid] = parent
+        if entry.get("type", "") in STRIPPABLE_TYPES and uid:
+            stripped_uuids.add(uid)
 
-        if entry_type in STRIPPABLE_TYPES:
-            if uid:
-                stripped_uuids.add(uid)
-        else:
-            kept.append(entry)
-
-    # Reparent: walk up chain through stripped entries to find surviving ancestor
-    for entry in kept:
-        if "_raw" in entry:
+    # Second pass: keep non-stripped entries, reparenting where needed.
+    # Preserve original line when no reparenting is required.
+    reparented: set[str] = set()
+    for _line, entry in parsed:
+        if entry is None:
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
@@ -100,13 +176,23 @@ def strip_progress_entries(content: str) -> str:
             parent = uuid_to_parent.get(parent, "")
         if parent != original_parent:
             entry["parentUuid"] = parent
+            uid = entry.get("uuid", "")
+            if uid:
+                reparented.add(uid)
 
     result_lines: list[str] = []
-    for entry in kept:
-        if "_raw" in entry:
-            result_lines.append(entry["_raw"])
-        else:
+    for line, entry in parsed:
+        if entry is None:
+            result_lines.append(line)
+            continue
+        if entry.get("type", "") in STRIPPABLE_TYPES:
+            continue
+        uid = entry.get("uuid", "")
+        if uid in reparented:
+            # Re-serialize only entries whose parentUuid was changed.
             result_lines.append(json.dumps(entry, separators=(",", ":")))
+        else:
+            result_lines.append(line)
 
     return "\n".join(result_lines) + "\n"
 
@@ -258,8 +344,6 @@ def validate_transcript(content: str | None) -> bool:
         return False
 
     lines = content.strip().split("\n")
-    if len(lines) < 2:
-        return False
 
     has_assistant = False
 
@@ -326,25 +410,47 @@ async def upload_transcript(
     session_id: str,
     content: str,
     message_count: int = 0,
+    log_prefix: str = "[Transcript]",
+    previous_content: str | None = None,
 ) -> None:
-    """Strip progress entries and upload transcript to bucket storage.
+    """Merge synthetic entries, strip progress, and upload transcript.
 
     The executor holds a cluster lock per session, so concurrent uploads for
     the same session cannot happen.  We always overwrite — with ``--resume``
     the CLI may compact old tool results, so neither byte size nor line count
     is a reliable proxy for "newer".
 
+    When the CLI resumes, it writes synthetic placeholders for previous
+    assistant turns.  If *previous_content* is provided, real assistant
+    entries are restored before stripping and upload.
+
     Args:
         message_count: ``len(session.messages)`` at upload time — used by
             the next turn to detect staleness and compress only the gap.
+        previous_content: The previously-stored transcript (from the download
+            at the start of this turn).  Used to restore real assistant content
+            that the CLI replaced with synthetic ``"No response requested."``
+            placeholders.
     """
     from backend.util.workspace_storage import get_workspace_storage
 
-    stripped = strip_progress_entries(content)
+    merged = merge_with_previous_transcript(content, previous_content, log_prefix)
+    stripped = strip_progress_entries(merged)
     if not validate_transcript(stripped):
+        # Log entry types for debugging — helps identify why validation failed
+        entry_types: list[str] = []
+        for line in stripped.strip().split("\n"):
+            try:
+                entry_types.append(json.loads(line).get("type", "?"))
+            except json.JSONDecodeError:
+                entry_types.append("INVALID_JSON")
         logger.warning(
-            f"[Transcript] Skipping upload — stripped content not valid "
-            f"for session {session_id}"
+            "%s Skipping upload — stripped content not valid "
+            "(types=%s, stripped_len=%d, raw_len=%d)",
+            log_prefix,
+            entry_types,
+            len(stripped),
+            len(content),
         )
         return
 
@@ -371,17 +477,18 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to write metadata for {session_id}: {e}")
+        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
 
     logger.info(
-        f"[Transcript] Uploaded {len(encoded)}B "
-        f"(stripped from {len(content)}B, msg_count={message_count}) "
-        f"for session {session_id}"
+        f"{log_prefix} Uploaded {len(encoded)}B "
+        f"(stripped from {len(content)}B, msg_count={message_count})"
     )
 
 
 async def download_transcript(
-    user_id: str, session_id: str
+    user_id: str,
+    session_id: str,
+    log_prefix: str = "[Transcript]",
 ) -> TranscriptDownload | None:
     """Download transcript and metadata from bucket storage.
 
@@ -397,10 +504,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug(f"[Transcript] No transcript in storage for {session_id}")
+        logger.debug(f"{log_prefix} No transcript in storage")
         return None
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to download transcript: {e}")
+        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -423,10 +530,7 @@ async def download_transcript(
     except (FileNotFoundError, json.JSONDecodeError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.info(
-        f"[Transcript] Downloaded {len(content)}B "
-        f"(msg_count={message_count}) for session {session_id}"
-    )
+    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
     return TranscriptDownload(
         content=content,
         message_count=message_count,

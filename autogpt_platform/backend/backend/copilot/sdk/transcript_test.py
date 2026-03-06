@@ -5,6 +5,7 @@ import os
 
 from .transcript import (
     STRIPPABLE_TYPES,
+    merge_with_previous_transcript,
     read_transcript_file,
     strip_progress_entries,
     validate_transcript,
@@ -187,6 +188,12 @@ class TestValidateTranscript:
         content = _make_jsonl(summary, asst1, asst2)
         assert validate_transcript(content) is True
 
+    def test_single_assistant_entry(self):
+        """A transcript with just one assistant line is valid — the CLI may
+        produce short transcripts for simple responses with no tool use."""
+        content = json.dumps(ASST_MSG) + "\n"
+        assert validate_transcript(content) is True
+
     def test_invalid_json_returns_false(self):
         assert validate_transcript("not json\n{}\n{}\n") is False
 
@@ -282,3 +289,145 @@ class TestStripProgressEntries:
         assert "queue-operation" not in result_types
         assert "user" in result_types
         assert "assistant" in result_types
+
+    def test_preserves_original_line_formatting(self):
+        """Non-reparented entries keep their original JSON formatting."""
+        # Use pretty-printed JSON with spaces (as the CLI produces)
+        original_line = json.dumps(USER_MSG)  # default formatting with spaces
+        compact_line = json.dumps(USER_MSG, separators=(",", ":"))
+        assert original_line != compact_line  # precondition
+
+        content = original_line + "\n" + json.dumps(ASST_MSG) + "\n"
+        result = strip_progress_entries(content)
+        result_lines = result.strip().split("\n")
+
+        # Original line should be byte-identical (not re-serialized)
+        assert result_lines[0] == original_line
+
+    def test_reparented_entries_are_reserialized(self):
+        """Entries whose parentUuid changes must be re-serialized."""
+        progress = {"type": "progress", "uuid": "p1", "parentUuid": "u1"}
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "p1",
+            "message": {"role": "assistant", "content": "done"},
+        }
+        content = _make_jsonl(USER_MSG, progress, asst)
+        result = strip_progress_entries(content)
+        lines = result.strip().split("\n")
+        asst_entry = json.loads(lines[-1])
+        assert asst_entry["parentUuid"] == "u1"  # reparented
+
+
+class TestMergeWithPreviousTranscript:
+    def test_no_previous_content(self):
+        """Without previous content, returns new content unchanged."""
+        content = _make_jsonl(USER_MSG, ASST_MSG)
+        result = merge_with_previous_transcript(content, None)
+        assert result == content
+
+    def test_empty_previous_content(self):
+        result = merge_with_previous_transcript(_make_jsonl(USER_MSG), "")
+        assert result.strip() == json.dumps(USER_MSG)
+
+    def test_replaces_synthetic_with_real(self):
+        """Synthetic assistant entries are replaced with real ones from previous."""
+        real_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": "real answer",
+            },
+        }
+        synthetic_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {
+                "role": "assistant",
+                "model": "<synthetic>",
+                "content": [{"type": "text", "text": "No response requested."}],
+            },
+        }
+        new_user = {
+            "type": "user",
+            "uuid": "u2",
+            "message": {"role": "user", "content": "follow up"},
+        }
+        new_asst = {
+            "type": "assistant",
+            "uuid": "a2",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": "real answer 2",
+            },
+        }
+
+        previous = _make_jsonl(USER_MSG, real_asst)
+        new = _make_jsonl(USER_MSG, synthetic_asst, new_user, new_asst)
+
+        result = merge_with_previous_transcript(new, previous)
+        result_entries = [json.loads(line) for line in result.strip().split("\n")]
+
+        # The synthetic entry should be replaced with the real one
+        a1 = next(e for e in result_entries if e.get("uuid") == "a1")
+        assert a1["message"]["model"] == "claude-opus-4-6"
+        assert a1["message"]["content"] == "real answer"
+
+        # The new real entry should be preserved
+        a2 = next(e for e in result_entries if e.get("uuid") == "a2")
+        assert a2["message"]["model"] == "claude-opus-4-6"
+
+    def test_preserves_real_entries(self):
+        """Non-synthetic assistant entries in the new transcript are not replaced."""
+        real_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": "new real",
+            },
+        }
+        previous_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": "old real",
+            },
+        }
+
+        new = _make_jsonl(USER_MSG, real_asst)
+        previous = _make_jsonl(USER_MSG, previous_asst)
+
+        result = merge_with_previous_transcript(new, previous)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        a1 = next(e for e in entries if e.get("uuid") == "a1")
+        assert a1["message"]["content"] == "new real"
+
+    def test_no_matching_uuids(self):
+        """When previous has no matching UUIDs, new content is returned as-is."""
+        synthetic = {
+            "type": "assistant",
+            "uuid": "a-new",
+            "message": {"model": "<synthetic>", "content": "No response requested."},
+        }
+        previous_asst = {
+            "type": "assistant",
+            "uuid": "a-old",
+            "message": {"model": "claude-opus-4-6", "content": "old"},
+        }
+
+        new = _make_jsonl(USER_MSG, synthetic)
+        previous = _make_jsonl(USER_MSG, previous_asst)
+
+        result = merge_with_previous_transcript(new, previous)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        a = next(e for e in entries if e.get("uuid") == "a-new")
+        # Not replaced because UUID doesn't match
+        assert a["message"]["model"] == "<synthetic>"

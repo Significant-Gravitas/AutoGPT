@@ -777,6 +777,11 @@ async def stream_chat_completion_sdk(
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Structured log prefix: [SDK][<session>][T<turn>]
+    # Turn = number of user messages so far (1-based).
+    turn = sum(1 for m in session.messages if m.role == "user")
+    log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
+
     # Clean up stale error markers from previous turn before starting new turn
     # If the last message contains an error marker, remove it (user is retrying)
     if (
@@ -786,8 +791,8 @@ async def stream_chat_completion_sdk(
         and COPILOT_ERROR_PREFIX in session.messages[-1].content
     ):
         logger.info(
-            "[SDK] [%s] Removing stale error marker from previous turn",
-            session_id[:12],
+            "%s Removing stale error marker from previous turn",
+            log_prefix,
         )
         session.messages.pop()
 
@@ -827,6 +832,7 @@ async def stream_chat_completion_sdk(
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
+    previous_transcript_content: str | None = None
     sdk_cwd = ""
 
     # Acquire stream lock to prevent concurrent streams to the same session
@@ -841,7 +847,7 @@ async def stream_chat_completion_sdk(
     if lock_owner != stream_id:
         # Another stream is active
         logger.warning(
-            f"[SDK] Session {session_id} already has an active stream: {lock_owner}"
+            f"{log_prefix} Session already has an active stream: {lock_owner}"
         )
         yield StreamError(
             errorText="Another stream is already active for this session. "
@@ -865,7 +871,7 @@ async def stream_chat_completion_sdk(
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
         except (ValueError, OSError) as e:
-            logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
+            logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
             yield StreamError(
                 errorText="Unable to initialize working directory.",
                 code="sdk_cwd_error",
@@ -909,12 +915,13 @@ async def stream_chat_completion_sdk(
             ):
                 return None
             try:
-                return await download_transcript(user_id, session_id)
+                return await download_transcript(
+                    user_id, session_id, log_prefix=log_prefix
+                )
             except Exception as transcript_err:
                 logger.warning(
-                    "[SDK] [%s] Transcript download failed, continuing without "
-                    "--resume: %s",
-                    session_id[:12],
+                    "%s Transcript download failed, continuing without " "--resume: %s",
+                    log_prefix,
                     transcript_err,
                 )
                 return None
@@ -936,11 +943,17 @@ async def stream_chat_completion_sdk(
         transcript_msg_count = 0
         if dl:
             is_valid = validate_transcript(dl.content)
+            dl_lines = dl.content.strip().split("\n") if dl.content else []
+            logger.info(
+                "%s Downloaded transcript: %dB, %d lines, " "msg_count=%d, valid=%s",
+                log_prefix,
+                len(dl.content),
+                len(dl_lines),
+                dl.message_count,
+                is_valid,
+            )
             if is_valid:
-                logger.info(
-                    f"[SDK] Transcript available for session {session_id}: "
-                    f"{len(dl.content)}B, msg_count={dl.message_count}"
-                )
+                previous_transcript_content = dl.content
                 resume_file = write_transcript_to_tempfile(
                     dl.content, session_id, sdk_cwd
                 )
@@ -948,16 +961,14 @@ async def stream_chat_completion_sdk(
                     use_resume = True
                     transcript_msg_count = dl.message_count
                     logger.debug(
-                        f"[SDK] Using --resume ({len(dl.content)}B, "
+                        f"{log_prefix} Using --resume ({len(dl.content)}B, "
                         f"msg_count={transcript_msg_count})"
                     )
             else:
-                logger.warning(
-                    f"[SDK] Transcript downloaded but invalid for {session_id}"
-                )
+                logger.warning(f"{log_prefix} Transcript downloaded but invalid")
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
-                f"[SDK] No transcript available for {session_id} "
+                f"{log_prefix} No transcript available "
                 f"({len(session.messages)} messages in session)"
             )
 
@@ -985,18 +996,41 @@ async def stream_chat_completion_sdk(
         def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
             captured_transcript.path = transcript_path
             captured_transcript.sdk_session_id = sdk_session_id
-            content = read_transcript_file(transcript_path)
-            if content:
-                captured_transcript.raw_content = content
-                logger.info(
-                    f"[SDK] Stop hook: captured {len(content)}B from "
-                    f"{transcript_path}"
-                )
-            else:
+
+            # Read the raw file directly — do NOT call read_transcript_file()
+            # here.  That function runs validate_transcript() which rejects
+            # transcripts with < 2 lines or no assistant entries.  For very
+            # short responses (single-turn, no tool use) the CLI transcript
+            # can have just 1 JSONL line, causing the stop hook to "miss" it.
+            # Validation is deferred to upload_transcript() instead.
+            if not transcript_path or not os.path.isfile(transcript_path):
                 logger.warning(
-                    f"[SDK] Stop hook: transcript file empty/missing at "
-                    f"{transcript_path}"
+                    "%s Stop hook: file not found: %s", log_prefix, transcript_path
                 )
+                return
+
+            try:
+                with open(transcript_path) as f:
+                    content = f.read()
+            except OSError as e:
+                logger.warning("%s Stop hook: read error: %s", log_prefix, e)
+                return
+
+            if not content or not content.strip():
+                logger.warning(
+                    "%s Stop hook: file empty at %s", log_prefix, transcript_path
+                )
+                return
+
+            captured_transcript.raw_content = content
+            lines = content.strip().split("\n")
+            logger.info(
+                "%s Stop hook: captured %dB, %d lines from %s",
+                log_prefix,
+                len(content),
+                len(lines),
+                transcript_path,
+            )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -1074,9 +1108,9 @@ async def stream_chat_completion_sdk(
                 query_message = f"{query_message}\n\n{attachments.hint}"
 
             logger.info(
-                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "
+                "%s Sending query — resume=%s, total_msgs=%d, "
                 "query_len=%d, attached_files=%d, image_blocks=%d",
-                session_id[:12],
+                log_prefix,
                 use_resume,
                 len(session.messages),
                 len(query_message),
@@ -1150,8 +1184,8 @@ async def stream_chat_completion_sdk(
                         sdk_msg = done.pop().result()
                     except StopAsyncIteration:
                         logger.info(
-                            "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
-                            session_id[:12],
+                            "%s Stream ended normally (StopAsyncIteration)",
+                            log_prefix,
                         )
                         break
                     except Exception as stream_err:
@@ -1160,8 +1194,8 @@ async def stream_chat_completion_sdk(
                         # so the session can still be saved and the
                         # frontend gets a clean finish.
                         logger.error(
-                            "[SDK] [%s] Stream error from SDK: %s",
-                            session_id[:12],
+                            "%s Stream error from SDK: %s",
+                            log_prefix,
                             stream_err,
                             exc_info=True,
                         )
@@ -1173,9 +1207,9 @@ async def stream_chat_completion_sdk(
                         break
 
                     logger.info(
-                        "[SDK] [%s] Received: %s %s "
+                        "%s Received: %s %s "
                         "(unresolved=%d, current=%d, resolved=%d)",
-                        session_id[:12],
+                        log_prefix,
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
                         len(adapter.current_tool_calls)
@@ -1210,10 +1244,10 @@ async def stream_chat_completion_sdk(
                             await asyncio.sleep(0)
                         else:
                             logger.warning(
-                                "[SDK] [%s] Timed out waiting for "
+                                "%s Timed out waiting for "
                                 "PostToolUse hook stash "
                                 "(%d unresolved tool calls)",
-                                session_id[:12],
+                                log_prefix,
                                 len(adapter.current_tool_calls)
                                 - len(adapter.resolved_tool_calls),
                             )
@@ -1221,9 +1255,9 @@ async def stream_chat_completion_sdk(
                     # Log ResultMessage details for debugging
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
-                            "[SDK] [%s] Received: ResultMessage %s "
+                            "%s Received: ResultMessage %s "
                             "(unresolved=%d, current=%d, resolved=%d)",
-                            session_id[:12],
+                            log_prefix,
                             sdk_msg.subtype,
                             len(adapter.current_tool_calls)
                             - len(adapter.resolved_tool_calls),
@@ -1232,8 +1266,8 @@ async def stream_chat_completion_sdk(
                         )
                         if sdk_msg.subtype in ("error", "error_during_execution"):
                             logger.error(
-                                "[SDK] [%s] SDK execution failed with error: %s",
-                                session_id[:12],
+                                "%s SDK execution failed with error: %s",
+                                log_prefix,
                                 sdk_msg.result or "(no error message provided)",
                             )
 
@@ -1258,8 +1292,8 @@ async def stream_chat_completion_sdk(
                                 out_len = len(str(response.output))
                                 extra = f", output_len={out_len}"
                             logger.info(
-                                "[SDK] [%s] Tool event: %s, tool=%s%s",
-                                session_id[:12],
+                                "%s Tool event: %s, tool=%s%s",
+                                log_prefix,
                                 type(response).__name__,
                                 getattr(response, "toolName", "N/A"),
                                 extra,
@@ -1268,8 +1302,8 @@ async def stream_chat_completion_sdk(
                         # Log errors being sent to frontend
                         if isinstance(response, StreamError):
                             logger.error(
-                                "[SDK] [%s] Sending error to frontend: %s (code=%s)",
-                                session_id[:12],
+                                "%s Sending error to frontend: %s (code=%s)",
+                                log_prefix,
                                 response.errorText,
                                 response.code,
                             )
@@ -1335,8 +1369,8 @@ async def stream_chat_completion_sdk(
                 # server shutdown).  Log and let the safety-net / finally
                 # blocks handle cleanup.
                 logger.warning(
-                    "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
-                    session_id[:12],
+                    "%s Streaming loop cancelled (asyncio.CancelledError)",
+                    log_prefix,
                 )
                 raise
             finally:
@@ -1350,7 +1384,8 @@ async def stream_chat_completion_sdk(
                     except (asyncio.CancelledError, StopAsyncIteration):
                         # Expected: task was cancelled or exhausted during cleanup
                         logger.info(
-                            "[SDK] Pending __anext__ task completed during cleanup"
+                            "%s Pending __anext__ task completed during cleanup",
+                            log_prefix,
                         )
 
             # Safety net: if tools are still unresolved after the
@@ -1359,9 +1394,9 @@ async def stream_chat_completion_sdk(
             # them now so the frontend stops showing spinners.
             if adapter.has_unresolved_tool_calls:
                 logger.warning(
-                    "[SDK] [%s] %d unresolved tool(s) after stream loop — "
+                    "%s %d unresolved tool(s) after stream loop — "
                     "flushing as safety net",
-                    session_id[:12],
+                    log_prefix,
                     len(adapter.current_tool_calls) - len(adapter.resolved_tool_calls),
                 )
                 safety_responses: list[StreamBaseResponse] = []
@@ -1372,8 +1407,8 @@ async def stream_chat_completion_sdk(
                         (StreamToolInputAvailable, StreamToolOutputAvailable),
                     ):
                         logger.info(
-                            "[SDK] [%s] Safety flush: %s, tool=%s",
-                            session_id[:12],
+                            "%s Safety flush: %s, tool=%s",
+                            log_prefix,
                             type(response).__name__,
                             getattr(response, "toolName", "N/A"),
                         )
@@ -1386,8 +1421,8 @@ async def stream_chat_completion_sdk(
             # StreamFinish is published by mark_session_completed in the processor.
             if not stream_completed and not ended_with_stream_error:
                 logger.info(
-                    "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
-                    session_id[:12],
+                    "%s Stream ended without ResultMessage (stopped by user)",
+                    log_prefix,
                 )
                 closing_responses: list[StreamBaseResponse] = []
                 adapter._end_text_if_open(closing_responses)
@@ -1414,27 +1449,23 @@ async def stream_chat_completion_sdk(
         # stop hook content — which could be smaller after compaction).
 
         logger.info(
-            "[SDK] [%s] Stream completed successfully with %d messages",
-            session_id[:12],
+            "%s Stream completed successfully with %d messages",
+            log_prefix,
             len(session.messages),
         )
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
         if isinstance(e, asyncio.CancelledError):
-            logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
+            logger.warning("%s Session cancelled", log_prefix)
             error_msg = "Operation cancelled"
         else:
             error_msg = str(e) or type(e).__name__
             # SDK cleanup RuntimeError is expected during cancellation, log as warning
             if isinstance(e, RuntimeError) and "cancel scope" in str(e):
-                logger.warning(
-                    "[SDK] [%s] SDK cleanup error: %s", session_id[:12], error_msg
-                )
+                logger.warning("%s SDK cleanup error: %s", log_prefix, error_msg)
             else:
-                logger.error(
-                    f"[SDK] [%s] Error: {error_msg}", session_id[:12], exc_info=True
-                )
+                logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
         # Append error marker to session (non-invasive text parsing approach)
         # The finally block will persist the session with this error marker
@@ -1445,8 +1476,8 @@ async def stream_chat_completion_sdk(
                 )
             )
             logger.debug(
-                "[SDK] [%s] Appended error marker, will be persisted in finally",
-                session_id[:12],
+                "%s Appended error marker, will be persisted in finally",
+                log_prefix,
             )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
@@ -1478,14 +1509,14 @@ async def stream_chat_completion_sdk(
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
-                    "[SDK] [%s] Session persisted in finally with %d messages",
-                    session_id[:12],
+                    "%s Session persisted in finally with %d messages",
+                    log_prefix,
                     len(session.messages),
                 )
             except Exception as persist_err:
                 logger.error(
-                    "[SDK] [%s] Failed to persist session in finally: %s",
-                    session_id[:12],
+                    "%s Failed to persist session in finally: %s",
+                    log_prefix,
                     persist_err,
                     exc_info=True,
                 )
@@ -1502,8 +1533,22 @@ async def stream_chat_completion_sdk(
                 # file when the stop hook didn't fire (e.g. error before
                 # completion) so we don't lose the prior transcript.
                 raw_transcript = captured_transcript.raw_content or None
+                source = "stop_hook"
                 if not raw_transcript and use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
+                    source = "resume_file_fallback"
+
+                logger.info(
+                    "%s Transcript upload: source=%s, "
+                    "stop_hook_fired=%s, captured_len=%d, "
+                    "raw_len=%d, use_resume=%s",
+                    log_prefix,
+                    source,
+                    bool(captured_transcript.path),
+                    len(captured_transcript.raw_content),
+                    len(raw_transcript) if raw_transcript else 0,
+                    use_resume,
+                )
 
                 if raw_transcript and session is not None:
                     await asyncio.shield(
@@ -1512,13 +1557,15 @@ async def stream_chat_completion_sdk(
                             session_id,
                             raw_transcript,
                             message_count=len(session.messages),
+                            log_prefix=log_prefix,
+                            previous_content=previous_transcript_content,
                         )
                     )
                 else:
-                    logger.warning(f"[SDK] No transcript to upload for {session_id}")
+                    logger.warning(f"{log_prefix} No transcript to upload")
             except Exception as upload_err:
                 logger.error(
-                    f"[SDK] Transcript upload failed in finally: {upload_err}",
+                    f"{log_prefix} Transcript upload failed in finally: {upload_err}",
                     exc_info=True,
                 )
 
@@ -1534,23 +1581,30 @@ async def _try_upload_transcript(
     session_id: str,
     raw_content: str,
     message_count: int = 0,
+    log_prefix: str = "[SDK]",
+    previous_content: str | None = None,
 ) -> bool:
-    """Strip progress entries and upload transcript (with timeout).
+    """Merge synthetic entries, strip progress, and upload (with timeout).
 
     Returns True if the upload completed without error.
     """
     try:
         async with asyncio.timeout(30):
             await upload_transcript(
-                user_id, session_id, raw_content, message_count=message_count
+                user_id,
+                session_id,
+                raw_content,
+                message_count=message_count,
+                log_prefix=log_prefix,
+                previous_content=previous_content,
             )
         return True
     except asyncio.TimeoutError:
-        logger.warning(f"[SDK] Transcript upload timed out for {session_id}")
+        logger.warning(f"{log_prefix} Transcript upload timed out")
         return False
     except Exception as e:
         logger.error(
-            f"[SDK] Failed to upload transcript for {session_id}: {e}",
+            f"{log_prefix} Failed to upload transcript: {e}",
             exc_info=True,
         )
         return False
