@@ -6,7 +6,6 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
-from backend.copilot.prompt_constants import KEY_WORKFLOWS
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Shared technical notes that apply to both SDK and baseline modes
@@ -156,6 +155,7 @@ def _generate_tool_documentation() -> str:
 
     This generates a complete list of available tools with their descriptions,
     ensuring the documentation stays in sync with the actual tool implementations.
+    All workflow guidance is now embedded in individual tool descriptions.
     """
     docs = "\n## AVAILABLE TOOLS\n\n"
 
@@ -166,9 +166,6 @@ def _generate_tool_documentation() -> str:
         desc = schema["function"].get("description", "No description available")
         # Format as bullet list with tool name in code style
         docs += f"- **`{name}`**: {desc}\n"
-
-    # Add workflow guidance for key tools
-    docs += KEY_WORKFLOWS
 
     return docs
 
@@ -192,23 +189,15 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
     return _LOCAL_TOOL_SUPPLEMENT.format(cwd=cwd)
 
 
-def get_baseline_supplement(use_e2b: bool, cwd: str = "") -> str:
+def get_baseline_supplement() -> str:
     """Get the supplement for baseline mode (direct OpenAI API).
 
     Baseline mode INCLUDES auto-generated tool documentation because the
     direct API doesn't automatically provide tool schemas to Claude.
-    Also includes technical notes about storage systems.
-
-    Args:
-        use_e2b: Whether E2B cloud sandbox is being used
-        cwd: Current working directory (only used in local mode)
+    Also includes shared technical notes (but NOT SDK-specific environment details).
 
     Returns:
         The supplement string to append to the system prompt
     """
     tool_docs = _generate_tool_documentation()
-
-    # Append environment-specific notes
-    if use_e2b:
-        return tool_docs + _E2B_TOOL_SUPPLEMENT
-    return tool_docs + _LOCAL_TOOL_SUPPLEMENT.format(cwd=cwd)
+    return tool_docs + _SHARED_TOOL_NOTES

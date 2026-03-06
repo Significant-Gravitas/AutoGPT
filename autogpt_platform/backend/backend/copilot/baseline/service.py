@@ -185,9 +185,8 @@ async def stream_chat_completion_baseline(
             user_id=None, has_conversation_history=True
         )
 
-    # Append tool documentation and technical notes for baseline mode
-    # (baseline doesn't use E2B, so use_e2b=False)
-    system_prompt = base_system_prompt + get_baseline_supplement(use_e2b=False, cwd="")
+    # Append tool documentation and technical notes
+    system_prompt = base_system_prompt + get_baseline_supplement()
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
