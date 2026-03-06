@@ -1611,7 +1611,7 @@ async def _update_title_async(
             message, user_id=user_id, session_id=session_id
         )
         if title and user_id:
-            await update_session_title(session_id, title)
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
             logger.debug(f"[SDK] Generated title for {session_id}: {title}")
     except Exception as e:
         logger.warning(f"[SDK] Failed to update session title: {e}")

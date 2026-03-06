@@ -62,8 +62,8 @@ async def _update_title_async(
     """Generate and persist a session title in the background."""
     try:
         title = await _generate_session_title(message, user_id, session_id)
-        if title:
-            await update_session_title(session_id, title)
+        if title and user_id:
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
     except Exception as e:
         logger.warning("[Baseline] Failed to update session title: %s", e)
 
