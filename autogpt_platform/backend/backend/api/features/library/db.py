@@ -426,42 +426,35 @@ async def create_library_agent(
     )
 
     async with transaction() as tx:
-        create_data_list = []
-        for i, graph_entry in enumerate(graph_entries):
-            create_data = prisma.types.LibraryAgentCreateInput(
-                isCreatedByUser=(user_id == user_id),
-                useGraphIsActiveVersion=True,
-                User={"connect": {"id": user_id}},
-                AgentGraph={
-                    "connect": {
-                        "graphVersionId": {
-                            "id": graph_entry.id,
-                            "version": graph_entry.version,
-                        }
-                    }
-                },
-                settings=SafeJson(
-                    GraphSettings.from_graph(
-                        graph_entry,
-                        hitl_safe_mode=hitl_safe_mode,
-                        sensitive_action_safe_mode=sensitive_action_safe_mode,
-                    ).model_dump()
-                ),
-            )
-            # Only assign folder to the main graph, not sub-graphs
-            if i == 0 and folder_id:
-                create_data["folderId"] = folder_id
-            create_data_list.append(create_data)
-
         library_agents = await asyncio.gather(
             *(
                 prisma.models.LibraryAgent.prisma(tx).create(
-                    data=data,
+                    data=prisma.types.LibraryAgentCreateInput(
+                        isCreatedByUser=(user_id == user_id),
+                        useGraphIsActiveVersion=True,
+                        User={"connect": {"id": user_id}},
+                        AgentGraph={
+                            "connect": {
+                                "graphVersionId": {
+                                    "id": graph_entry.id,
+                                    "version": graph_entry.version,
+                                }
+                            }
+                        },
+                        settings=SafeJson(
+                            GraphSettings.from_graph(
+                                graph_entry,
+                                hitl_safe_mode=hitl_safe_mode,
+                                sensitive_action_safe_mode=sensitive_action_safe_mode,
+                            ).model_dump()
+                        ),
+                        folderId=folder_id if graph_entry is graph else None,
+                    ),
                     include=library_agent_include(
                         user_id, include_nodes=False, include_executions=False
                     ),
                 )
-                for data in create_data_list
+                for graph_entry in graph_entries
             )
         )
 
