@@ -48,20 +48,20 @@ TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
 
 
 # ---------------------------------------------------------------------------
-# UUID-based transcript merging for --resume
+# Transcript merging for --resume
 # ---------------------------------------------------------------------------
 
 # When using `--resume <file>`, the CLI creates synthetic placeholders for old turns.
-# We restore real content by matching UUIDs: any assistant entry with a UUID that exists
-# in the previous transcript gets replaced with the real version from previous.
+# We restore real content by using previous transcript entries for matching UUIDs.
 #
-# This works because:
+# Logic:
 # - Previous transcript: real content from completed turns (UUIDs: a1, a2, ...)
-# - New transcript: synthetic placeholders (same UUIDs: a1, a2) + new real content (UUID: a3)
-# - Only OLD UUIDs match → those get replaced ✅
-# - NEW UUID doesn't exist in previous → stays as-is ✅
+# - New transcript: placeholders (UUIDs: a1, a2) + new real content (UUID: a3)
+# - For each UUID in new: if exists in previous, use previous version (real content)
+# - For UUIDs only in new: keep new version (actually new content)
+# - Result: [a1 real, a2 real, a3 new]
 #
-# No need to detect "<synthetic>" marker - UUID matching handles everything!
+# This approach is robust - no need to detect synthetic markers that could change.
 
 
 def merge_with_previous_transcript(
@@ -88,12 +88,14 @@ def merge_with_previous_transcript(
         if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
             prev_by_uuid[uid] = line
 
-    logger.debug("%s Indexed %d assistant entries from previous", log_prefix, len(prev_by_uuid))
+    logger.debug(
+        "%s Indexed %d assistant entries from previous", log_prefix, len(prev_by_uuid)
+    )
 
     if not prev_by_uuid:
         return new_content
 
-    # Replace assistant entries that have matching UUIDs in previous transcript
+    # Replace assistant entries that exist in previous transcript (hydrate real content)
     merged_lines: list[str] = []
     replaced = 0
 
@@ -105,15 +107,27 @@ def merge_with_previous_transcript(
             continue
 
         # If this is an assistant entry with a UUID that exists in previous, use previous version
-        if entry.get("type") == "assistant" and (uid := entry.get("uuid")) and uid in prev_by_uuid:
+        if (
+            entry.get("type") == "assistant"
+            and (uid := entry.get("uuid"))
+            and uid in prev_by_uuid
+        ):
             merged_lines.append(prev_by_uuid[uid])
             replaced += 1
-            logger.debug("%s Replaced assistant uuid=%s with previous version", log_prefix, uid[:12])
+            logger.debug(
+                "%s Replaced assistant uuid=%s with version from previous",
+                log_prefix,
+                uid[:12],
+            )
         else:
             merged_lines.append(line)
 
     if replaced:
-        logger.info("%s Merged %d assistant entries from previous transcript", log_prefix, replaced)
+        logger.info(
+            "%s Merged %d assistant entries from previous transcript",
+            log_prefix,
+            replaced,
+        )
 
     return "\n".join(merged_lines) + "\n"
 

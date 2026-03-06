@@ -197,6 +197,13 @@ class TestValidateTranscript:
     def test_invalid_json_returns_false(self):
         assert validate_transcript("not json\n{}\n{}\n") is False
 
+    def test_malformed_json_after_valid_assistant_returns_false(self):
+        """Validation must scan all lines - malformed JSON anywhere should fail."""
+        valid_asst = json.dumps(ASST_MSG)
+        malformed = "not valid json"
+        content = valid_asst + "\n" + malformed + "\n"
+        assert validate_transcript(content) is False
+
 
 # --- strip_progress_entries ---
 
@@ -381,34 +388,35 @@ class TestMergeWithPreviousTranscript:
         a2 = next(e for e in result_entries if e.get("uuid") == "a2")
         assert a2["message"]["model"] == "claude-opus-4-6"
 
-    def test_preserves_real_entries(self):
-        """Non-synthetic assistant entries in the new transcript are not replaced."""
-        real_asst = {
+    def test_previous_wins_for_matching_uuids(self):
+        """When same UUID exists in both transcripts, previous version is used."""
+        real_asst_new = {
             "type": "assistant",
             "uuid": "a1",
             "message": {
                 "role": "assistant",
                 "model": "claude-opus-4-6",
-                "content": "new real",
+                "content": "new content",
             },
         }
-        previous_asst = {
+        real_asst_prev = {
             "type": "assistant",
             "uuid": "a1",
             "message": {
                 "role": "assistant",
                 "model": "claude-opus-4-6",
-                "content": "old real",
+                "content": "previous content",
             },
         }
 
-        new = _make_jsonl(USER_MSG, real_asst)
-        previous = _make_jsonl(USER_MSG, previous_asst)
+        new = _make_jsonl(USER_MSG, real_asst_new)
+        previous = _make_jsonl(USER_MSG, real_asst_prev)
 
         result = merge_with_previous_transcript(new, previous)
         entries = [json.loads(line) for line in result.strip().split("\n")]
         a1 = next(e for e in entries if e.get("uuid") == "a1")
-        assert a1["message"]["content"] == "new real"
+        # Previous always wins for matching UUIDs (hydrates real content)
+        assert a1["message"]["content"] == "previous content"
 
     def test_no_matching_uuids(self):
         """When previous has no matching UUIDs, new content is returned as-is."""
