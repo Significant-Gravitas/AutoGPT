@@ -149,6 +149,31 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 # Appended to the system prompt to inform the agent about available tools.
 # The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
 # which has kernel-level network isolation (unshare --net).
+def _generate_tool_documentation() -> str:
+    """Auto-generate tool documentation from TOOL_REGISTRY.
+
+    This generates a complete list of available tools with their descriptions,
+    ensuring the documentation stays in sync with the actual tool implementations.
+    """
+    from backend.copilot.prompt_constants import KEY_WORKFLOWS
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    docs = "\n## AVAILABLE TOOLS\n\n"
+
+    # Sort tools alphabetically for consistent output
+    for name in sorted(TOOL_REGISTRY.keys()):
+        tool = TOOL_REGISTRY[name]
+        schema = tool.as_openai_tool()
+        desc = schema["function"].get("description", "No description available")
+        # Format as bullet list with tool name in code style
+        docs += f"- **`{name}`**: {desc}\n"
+
+    # Add workflow guidance for key tools
+    docs += KEY_WORKFLOWS
+
+    return docs
+
+
 _SHARED_TOOL_NOTES = """\
 
 ### Web search and research
@@ -972,10 +997,16 @@ async def stream_chat_completion_sdk(
         )
 
         use_e2b = e2b_sandbox is not None
-        system_prompt = base_system_prompt + (
-            _E2B_TOOL_SUPPLEMENT
-            if use_e2b
-            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        # Generate tool documentation and append appropriate supplement
+        tool_docs = _generate_tool_documentation()
+        system_prompt = (
+            base_system_prompt
+            + tool_docs
+            + (
+                _E2B_TOOL_SUPPLEMENT
+                if use_e2b
+                else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+            )
         )
 
         # Process transcript download result
