@@ -10,6 +10,7 @@ from .helpers import (
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    AgentDict,
     are_types_compatible,
     get_defined_property_type,
 )
@@ -142,9 +143,11 @@ class AgentValidator:
         """
         valid = True
 
+        block_lookup = {b.get("id", ""): b for b in blocks}
+
         for node in agent.get("nodes", []):
             block_id = node.get("block_id")
-            block = next((b for b in blocks if b.get("id") == block_id), None)
+            block = block_lookup.get(block_id)
 
             if not block:
                 continue
@@ -259,6 +262,7 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
+        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
 
         for link in agent.get("links", []):
             sink_name = link.get("sink_name", "")
@@ -270,14 +274,7 @@ class AgentValidator:
             if "_#_" in sink_name:
                 parent, child = sink_name.split("_#_", 1)
 
-                sink_node = next(
-                    (
-                        node
-                        for node in agent.get("nodes", [])
-                        if node.get("id") == sink_id
-                    ),
-                    None,
-                )
+                sink_node = node_lookup.get(sink_id)
                 if not sink_node:
                     continue
 
@@ -418,6 +415,7 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
+        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
 
         for link in agent.get("links", []):
             source_id = link.get("source_id")
@@ -432,15 +430,7 @@ class AgentValidator:
                 valid = False
                 continue
 
-            # Find the source node
-            source_node = next(
-                (
-                    node
-                    for node in agent.get("nodes", [])
-                    if node.get("id") == source_id
-                ),
-                None,
-            )
+            source_node = node_lookup.get(source_id)
             if not source_node:
                 # This error is already caught by
                 # validate_link_node_references
@@ -845,7 +835,7 @@ class AgentValidator:
 
     def validate(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         blocks: list[dict[str, Any]],
         library_agents: list[dict[str, Any]] | None = None,
     ) -> tuple[bool, str | None]:

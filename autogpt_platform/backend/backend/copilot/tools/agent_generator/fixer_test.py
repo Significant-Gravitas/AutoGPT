@@ -8,6 +8,7 @@ from .fixer import (
     _GET_CURRENT_DATE_BLOCK_ID,
     _STORE_VALUE_BLOCK_ID,
     _TEXT_REPLACE_BLOCK_ID,
+    _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID,
     AGENT_EXECUTOR_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
     AgentFixer,
@@ -732,3 +733,141 @@ class TestFixDynamicBlockSinkNames:
 
         assert agent["links"][0]["sink_name"] == "values_#_key"
         assert len(fixer.fixes_applied) == 0
+
+
+class TestFixDataTypeMismatch:
+    """Tests for fix_data_type_mismatch."""
+
+    @staticmethod
+    def _make_block(
+        block_id: str,
+        name: str = "TestBlock",
+        input_schema: dict | None = None,
+        output_schema: dict | None = None,
+    ) -> dict:
+        return {
+            "id": block_id,
+            "name": name,
+            "inputSchema": input_schema or {"properties": {}},
+            "outputSchema": output_schema or {"properties": {}},
+        }
+
+    def test_inserts_converter_for_incompatible_types(self):
+        fixer = AgentFixer()
+        src_block_id = generate_uuid()
+        sink_block_id = generate_uuid()
+
+        src_node = _make_node(node_id="src", block_id=src_block_id)
+        sink_node = _make_node(node_id="sink", block_id=sink_block_id)
+        link = _make_link(
+            source_id="src",
+            source_name="result",
+            sink_id="sink",
+            sink_name="count",
+        )
+        agent = _make_agent(nodes=[src_node, sink_node], links=[link])
+
+        blocks = [
+            self._make_block(
+                src_block_id,
+                name="Source",
+                output_schema={"properties": {"result": {"type": "string"}}},
+            ),
+            self._make_block(
+                sink_block_id,
+                name="Sink",
+                input_schema={"properties": {"count": {"type": "integer"}}},
+            ),
+        ]
+
+        result = fixer.fix_data_type_mismatch(agent, blocks)
+
+        # A converter node should have been inserted
+        converter_nodes = [
+            n
+            for n in result["nodes"]
+            if n["block_id"] == _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID
+        ]
+        assert len(converter_nodes) == 1
+        assert converter_nodes[0]["input_default"]["type"] == "number"
+
+        # Original link replaced by two new links through the converter
+        assert len(result["links"]) == 2
+        src_to_converter = result["links"][0]
+        converter_to_sink = result["links"][1]
+
+        assert src_to_converter["source_id"] == "src"
+        assert src_to_converter["sink_id"] == converter_nodes[0]["id"]
+        assert src_to_converter["sink_name"] == "value"
+
+        assert converter_to_sink["source_id"] == converter_nodes[0]["id"]
+        assert converter_to_sink["source_name"] == "value"
+        assert converter_to_sink["sink_id"] == "sink"
+        assert converter_to_sink["sink_name"] == "count"
+
+        assert len(fixer.fixes_applied) == 1
+
+    def test_compatible_types_unchanged(self):
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+
+        src_node = _make_node(node_id="src", block_id=block_id)
+        sink_node = _make_node(node_id="sink", block_id=block_id)
+        link = _make_link(
+            source_id="src",
+            source_name="output",
+            sink_id="sink",
+            sink_name="input",
+        )
+        agent = _make_agent(nodes=[src_node, sink_node], links=[link])
+
+        blocks = [
+            self._make_block(
+                block_id,
+                input_schema={"properties": {"input": {"type": "string"}}},
+                output_schema={"properties": {"output": {"type": "string"}}},
+            ),
+        ]
+
+        result = fixer.fix_data_type_mismatch(agent, blocks)
+
+        # No converter inserted, original link kept
+        assert len(result["nodes"]) == 2
+        assert len(result["links"]) == 1
+        assert result["links"][0] is link
+        assert fixer.fixes_applied == []
+
+    def test_missing_block_keeps_link(self):
+        """Links referencing unknown blocks are kept unchanged."""
+        fixer = AgentFixer()
+        src_node = _make_node(node_id="src", block_id="unknown-block")
+        sink_node = _make_node(node_id="sink", block_id="unknown-block")
+        link = _make_link(source_id="src", sink_id="sink")
+        agent = _make_agent(nodes=[src_node, sink_node], links=[link])
+
+        result = fixer.fix_data_type_mismatch(agent, blocks=[])
+
+        assert len(result["links"]) == 1
+        assert result["links"][0] is link
+
+    def test_missing_type_info_keeps_link(self):
+        """Links where source/sink type is not defined are kept unchanged."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        src_node = _make_node(node_id="src", block_id=block_id)
+        sink_node = _make_node(node_id="sink", block_id=block_id)
+        link = _make_link(
+            source_id="src",
+            source_name="output",
+            sink_id="sink",
+            sink_name="input",
+        )
+        agent = _make_agent(nodes=[src_node, sink_node], links=[link])
+
+        # Block has no properties defined for the linked fields
+        blocks = [self._make_block(block_id)]
+
+        result = fixer.fix_data_type_mismatch(agent, blocks)
+
+        assert len(result["links"]) == 1
+        assert fixer.fixes_applied == []

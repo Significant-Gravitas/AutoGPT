@@ -10,6 +10,7 @@ __all__ = [
     "AGENT_EXECUTOR_BLOCK_ID",
     "AGENT_INPUT_BLOCK_ID",
     "AGENT_OUTPUT_BLOCK_ID",
+    "AgentDict",
     "MCP_TOOL_BLOCK_ID",
     "UUID_REGEX",
     "are_types_compatible",
@@ -18,6 +19,11 @@ __all__ = [
     "get_defined_property_type",
     "is_uuid",
 ]
+
+
+# Type alias for the agent JSON structure passed through
+# the validation and fixing pipeline.
+AgentDict = dict[str, Any]
 
 UUID_REGEX = re.compile(
     r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$"

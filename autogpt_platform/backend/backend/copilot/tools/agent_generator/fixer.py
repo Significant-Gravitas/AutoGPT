@@ -7,6 +7,7 @@ from typing import Any
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    AgentDict,
     are_types_compatible,
     generate_uuid,
     get_defined_property_type,
@@ -38,6 +39,13 @@ class AgentFixer:
 
     def __init__(self):
         self.fixes_applied: list[str] = []
+
+    @staticmethod
+    def _build_node_lookup(
+        agent: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        """Build a node-id → node dict from the agent's nodes list."""
+        return {node.get("id", ""): node for node in agent.get("nodes", [])}
 
     def add_fix_log(self, fix_description: str) -> None:
         """Add a fix description to the applied fixes list."""
@@ -671,7 +679,10 @@ class AgentFixer:
         return agent
 
     def fix_link_static_properties(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self,
+        agent: dict[str, Any],
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Fix the is_static property of links based on the source block's
@@ -1021,7 +1032,11 @@ class AgentFixer:
 
         return agent
 
-    def fix_node_x_coordinates(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_node_x_coordinates(
+        self,
+        agent: dict[str, Any],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         Fix node x-coordinates to ensure adjacent nodes (connected via links)
         have at least 800 units difference in their x-coordinates.
@@ -1036,11 +1051,11 @@ class AgentFixer:
         Returns:
             The fixed agent dictionary
         """
-        nodes = agent.get("nodes", [])
         links = agent.get("links", [])
 
         # Create a lookup dictionary for nodes by ID
-        node_lookup = {node.get("id"): node for node in nodes}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         # Iterate through all links and adjust positions as needed
         for link in links:
@@ -1451,7 +1466,10 @@ class AgentFixer:
         return agent
 
     def fix_invalid_nested_sink_links(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self,
+        agent: dict[str, Any],
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Fix invalid nested sink links (links with _#_ notation pointing to
@@ -1642,10 +1660,10 @@ class AgentFixer:
 
     def apply_all_fixes(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         blocks: list[dict[str, Any]] | None = None,
         library_agents: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Apply all available fixes to the agent.
 
@@ -1671,14 +1689,20 @@ class AgentFixer:
         agent = self.fix_data_sampling_sample_size(agent)
         agent = self.fix_text_replace_new_parameter(agent)
         agent = self.fix_credentials(agent)
-        agent = self.fix_node_x_coordinates(agent)
+        # Build node lookup once for non-mutating methods below
+        node_lookup = self._build_node_lookup(agent)
+        agent = self.fix_node_x_coordinates(agent, node_lookup=node_lookup)
         agent = self.fix_getcurrentdate_offset(agent)
 
         # Apply fixes that require blocks information
         if blocks:
-            agent = self.fix_invalid_nested_sink_links(agent, blocks)
+            agent = self.fix_invalid_nested_sink_links(
+                agent, blocks, node_lookup=node_lookup
+            )
             agent = self.fix_ai_model_parameter(agent, blocks)
-            agent = self.fix_link_static_properties(agent, blocks)
+            agent = self.fix_link_static_properties(
+                agent, blocks, node_lookup=node_lookup
+            )
             agent = self.fix_data_type_mismatch(agent, blocks)
 
         # Fix _#_ notation in links targeting dynamic blocks (MCP/AgentExecutor)

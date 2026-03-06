@@ -24,6 +24,55 @@ SYSTEM_PROMPT = (
     "Do not use markdown formatting."
 )
 
+# Rate-limit delay between sequential LLM calls (seconds)
+_RATE_LIMIT_DELAY = 0.5
+# Maximum tokens for optimized description generation
+_MAX_DESCRIPTION_TOKENS = 150
+# Maximum retries on rate-limit (429) errors
+_MAX_RETRIES = 3
+# Initial backoff delay for retries (seconds), doubles each retry
+_INITIAL_BACKOFF = 2.0
+
+
+def _call_llm_with_retry(
+    client: openai.OpenAI,
+    model: str,
+    block_name: str,
+    description: str,
+) -> str | None:
+    """Call the LLM with exponential backoff on rate-limit errors."""
+    backoff = _INITIAL_BACKOFF
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Block name: {block_name}\n" f"Description: {description}"
+                        ),
+                    },
+                ],
+                max_tokens=_MAX_DESCRIPTION_TOKENS,
+            )
+            return (response.choices[0].message.content or "").strip()
+        except openai.RateLimitError:
+            if attempt < _MAX_RETRIES - 1:
+                logger.warning(
+                    "Rate limited on %s, retrying in %.1fs (attempt %d/%d)",
+                    block_name,
+                    backoff,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                )
+                time.sleep(backoff)
+                backoff *= 2
+            else:
+                raise
+    return None  # unreachable, but satisfies type checker
+
 
 def optimize_block_descriptions() -> dict[str, int]:
     """Generate optimized descriptions for blocks that don't have one yet.
@@ -49,6 +98,8 @@ def optimize_block_descriptions() -> dict[str, int]:
     client = openai.OpenAI(api_key=config.api_key, base_url=config.base_url)
 
     stats = {"processed": 0, "success": 0, "failed": 0, "skipped": 0}
+    # Track newly optimized descriptions to update in-memory block classes
+    new_descriptions: dict[str, str] = {}
 
     for block in blocks:
         block_id = block["id"]
@@ -62,32 +113,21 @@ def optimize_block_descriptions() -> dict[str, int]:
         stats["processed"] += 1
 
         try:
-            response = client.chat.completions.create(
-                model=config.title_model,  # Use fast/cheap model
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Block name: {block_name}\n" f"Description: {description}"
-                        ),
-                    },
-                ],
-                max_tokens=150,
+            optimized = _call_llm_with_retry(
+                client, config.title_model, block_name, description
             )
-
-            optimized = (response.choices[0].message.content or "").strip()
             if not optimized:
                 logger.warning(f"Empty response for block {block_name}")
                 stats["failed"] += 1
                 continue
 
             db_client.update_block_optimized_description(block_id, optimized)
+            new_descriptions[block_id] = optimized
             stats["success"] += 1
             logger.debug(f"Optimized description for {block_name}")
 
             # Small delay between API calls to avoid rate limits
-            time.sleep(0.5)
+            time.sleep(_RATE_LIMIT_DELAY)
 
         except Exception:
             logger.warning(
@@ -102,12 +142,25 @@ def optimize_block_descriptions() -> dict[str, int]:
         f"{stats['failed']} failed, {stats['skipped']} skipped"
     )
 
-    # Invalidate the block cache so the next agent-gen call picks up
+    # Invalidate the block dict cache so the next agent-gen call picks up
     # the new optimized descriptions without requiring a process restart.
     if stats["success"] > 0:
         _reset_caches()
-        logger.info(
-            "Block cache invalidated — fresh descriptions will load on next use"
-        )
+
+        # Also update _optimized_description on in-memory Block classes
+        # so that find_block and other code reading Block instances see
+        # the new descriptions immediately.
+        try:
+            from backend.blocks import get_blocks
+
+            block_classes = get_blocks()
+            for block_id, optimized in new_descriptions.items():
+                if block_id in block_classes:
+                    block_classes[block_id]._optimized_description = optimized
+            logger.info(
+                "Updated %d in-memory block descriptions", len(new_descriptions)
+            )
+        except Exception:
+            logger.debug("Could not update in-memory block descriptions", exc_info=True)
 
     return stats
