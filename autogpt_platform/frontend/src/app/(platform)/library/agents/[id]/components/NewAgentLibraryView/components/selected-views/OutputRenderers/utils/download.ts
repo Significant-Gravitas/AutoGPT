@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import { OutputRenderer, OutputMetadata } from "../types";
 
 export interface DownloadItem {
-  value: any;
+  value: unknown;
   metadata?: OutputMetadata;
   renderer: OutputRenderer;
 }
@@ -25,7 +25,7 @@ async function fetchFileAsBlob(url: string): Promise<Blob | null> {
       return null;
     }
     return blob;
-  } catch (error) {
+  } catch (_error) {
     // CORS or network error — fall back to adding a link reference
     // instead of silently dropping the file
     console.warn(
@@ -94,6 +94,12 @@ export async function downloadOutputs(items: DownloadItem[]) {
           if (downloadContent.data.startsWith("http")) {
             sourceUrl = downloadContent.data;
             blob = await fetchFileAsBlob(downloadContent.data);
+          } else if (downloadContent.data.startsWith("data:")) {
+            blob = await fetch(downloadContent.data).then((r) => r.blob());
+          } else {
+            console.warn(
+              `Skipping unsupported URL format: ${downloadContent.data.slice(0, 50)}...`,
+            );
           }
         } else {
           blob = downloadContent.data as Blob;
