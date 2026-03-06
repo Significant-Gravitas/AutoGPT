@@ -22,9 +22,11 @@ Two new browsing capabilities let AutoPilot interact with websites on your behal
 
 <figure><img src="../.gitbook/assets/web-browsing-hero.jpg" alt="AutoPilot browsing a website autonomously in a live browser session"><figcaption><p>AutoPilot navigating a website in a live browser session</p></figcaption></figure>
 
-## Connect any MCP tool
+## Connect to any app — instantly
 
-AutoPilot can now discover and run tools from any MCP (Model Context Protocol) server. Point it at a server URL, it finds the available tools automatically, and you can execute them right from chat. If the server requires authentication, you'll get the same familiar login prompt used in the agent builder. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12213)
+That integration you've been waiting for? You don't need to wait anymore. AutoPilot now supports **MCP** (Model Context Protocol) — an open standard backed by hundreds of ready-made connectors for apps like Notion, Slack, Jira, Stripe, Postgres, and more. Just tell AutoPilot what you want to connect to, and it finds and sets up the right connector automatically — nothing to install, nothing to configure. Search your Notion workspace, query a database, create a Jira ticket — all from the chat. If the service requires a login, you'll get the same familiar sign-in prompt you already know. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12213)
+
+<figure><img src="../.gitbook/assets/mcp-notion-hero.jpg" alt="AutoPilot connecting to Notion via MCP and searching a workspace in real time"><figcaption><p>AutoPilot connecting to Notion and pulling release highlights — no integration setup required</p></figcaption></figure>
 
 ## Listen to responses and share them
 
