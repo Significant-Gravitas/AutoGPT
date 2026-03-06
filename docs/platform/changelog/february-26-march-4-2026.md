@@ -14,6 +14,8 @@ That integration you've been waiting for? You don't need to wait anymore. AutoPi
 
 You can now attach files directly in the AutoPilot chat — documents, images, spreadsheets, audio, and video. Hit the **+** button or drag and drop files into the chat. Once sent, your attachments display inline in the conversation and the AI can read and reference them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12220)
 
+<figure><img src="../.gitbook/assets/file-upload-hero.png" alt="Dragging a file into the AutoPilot chat"><figcaption><p>Drop files directly into the chat and AutoPilot picks them up instantly</p></figcaption></figure>
+
 ## AutoPilot can run code and create files for you
 
 You can now drop a messy spreadsheet into AutoPilot and ask it to clean the data, find trends, and generate a polished chart. It can crunch numbers, build scripts, create documents, and produce downloadable files, all inside the conversation. Each step builds on the last, so you can go from raw data to finished deliverable just by asking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
