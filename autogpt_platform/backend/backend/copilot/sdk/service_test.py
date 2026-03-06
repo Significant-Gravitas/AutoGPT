@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from .service import _generate_tool_documentation, _prepare_file_attachments
+from .service import _prepare_file_attachments
 
 
 @dataclass
@@ -147,24 +147,46 @@ class TestPrepareFileAttachments:
         assert len(result.image_blocks) == 1
 
 
-class TestGenerateToolDocumentation:
-    """Tests for auto-generated tool documentation from TOOL_REGISTRY."""
+class TestPromptSupplement:
+    """Tests for centralized prompt supplement generation."""
 
-    def test_generate_tool_documentation_structure(self):
-        """Test that tool documentation has expected structure."""
-        docs = _generate_tool_documentation()
+    def test_sdk_supplement_excludes_tool_docs(self):
+        """SDK mode should NOT include tool documentation (Claude gets schemas automatically)."""
+        from backend.copilot.prompting import get_sdk_supplement
 
-        # Check main sections exist
-        assert "## AVAILABLE TOOLS" in docs
-        assert "## KEY WORKFLOWS" in docs
+        # Test both local and E2B modes
+        local_supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
+        e2b_supplement = get_sdk_supplement(use_e2b=True, cwd="")
 
-        # Verify no duplicate sections
-        assert docs.count("## AVAILABLE TOOLS") == 1
-        assert docs.count("## KEY WORKFLOWS") == 1
+        # Should NOT have tool list section
+        assert "## AVAILABLE TOOLS" not in local_supplement
+        assert "## AVAILABLE TOOLS" not in e2b_supplement
 
-    def test_tool_documentation_includes_key_tools(self):
-        """Test that documentation includes essential copilot tools."""
-        docs = _generate_tool_documentation()
+        # Should still have technical notes
+        assert "## Tool notes" in local_supplement
+        assert "## Tool notes" in e2b_supplement
+
+    def test_baseline_supplement_includes_tool_docs(self):
+        """Baseline mode MUST include tool documentation (direct API needs it)."""
+        from backend.copilot.prompting import get_baseline_supplement
+
+        # Test both local and E2B modes
+        local_supplement = get_baseline_supplement(use_e2b=False, cwd="/tmp/test")
+        e2b_supplement = get_baseline_supplement(use_e2b=True, cwd="")
+
+        # MUST have tool list section
+        assert "## AVAILABLE TOOLS" in local_supplement
+        assert "## AVAILABLE TOOLS" in e2b_supplement
+
+        # Should also have technical notes
+        assert "## Tool notes" in local_supplement
+        assert "## Tool notes" in e2b_supplement
+
+    def test_baseline_supplement_includes_key_tools(self):
+        """Baseline supplement should document all essential tools."""
+        from backend.copilot.prompting import get_baseline_supplement
+
+        docs = get_baseline_supplement(use_e2b=False, cwd="")
 
         # Core agent workflow tools
         assert "`create_agent`" in docs
@@ -181,24 +203,11 @@ class TestGenerateToolDocumentation:
         # Folder management
         assert "`create_folder`" in docs
 
-    def test_tool_documentation_format(self):
-        """Test that each tool follows bullet list format."""
-        docs = _generate_tool_documentation()
+    def test_baseline_supplement_includes_workflows(self):
+        """Baseline supplement should include workflow guidance."""
+        from backend.copilot.prompting import get_baseline_supplement
 
-        lines = docs.split("\n")
-        tool_lines = [line for line in lines if line.strip().startswith("- **`")]
-
-        # Should have multiple tools (at least 20 from TOOL_REGISTRY)
-        assert len(tool_lines) >= 20
-
-        # Each tool line should have proper markdown format
-        for line in tool_lines:
-            assert line.startswith("- **`"), f"Bad format: {line}"
-            assert "`**:" in line, f"Missing description separator: {line}"
-
-    def test_tool_documentation_includes_workflows(self):
-        """Test that key workflow patterns are documented."""
-        docs = _generate_tool_documentation()
+        docs = get_baseline_supplement(use_e2b=False, cwd="")
 
         # Check workflow sections
         assert "MCP Integration Workflow" in docs
@@ -206,27 +215,29 @@ class TestGenerateToolDocumentation:
         assert "Folder Management" in docs
 
         # Check workflow details
-        assert "suggested_goal" in docs  # Agent creation feedback loop
-        assert "clarifying_questions" in docs  # Agent creation feedback loop
-        assert "run_mcp_tool(server_url)" in docs  # MCP discovery pattern
+        assert "suggested_goal" in docs
+        assert "clarifying_questions" in docs
+        assert "run_mcp_tool(server_url)" in docs
 
-    def test_tool_documentation_completeness(self):
-        """Test that all tools from TOOL_REGISTRY appear in documentation."""
+    def test_baseline_supplement_completeness(self):
+        """All tools from TOOL_REGISTRY should appear in baseline supplement."""
+        from backend.copilot.prompting import get_baseline_supplement
         from backend.copilot.tools import TOOL_REGISTRY
 
-        docs = _generate_tool_documentation()
+        docs = get_baseline_supplement(use_e2b=False, cwd="")
 
         # Verify each registered tool is documented
         for tool_name in TOOL_REGISTRY.keys():
             assert (
                 f"`{tool_name}`" in docs
-            ), f"Tool '{tool_name}' missing from auto-generated documentation"
+            ), f"Tool '{tool_name}' missing from baseline supplement"
 
-    def test_tool_documentation_no_duplicate_tools(self):
-        """Test that no tool appears multiple times in the list."""
+    def test_baseline_supplement_no_duplicate_tools(self):
+        """No tool should appear multiple times in baseline supplement."""
+        from backend.copilot.prompting import get_baseline_supplement
         from backend.copilot.tools import TOOL_REGISTRY
 
-        docs = _generate_tool_documentation()
+        docs = get_baseline_supplement(use_e2b=False, cwd="")
 
         # Extract the tools section (before KEY WORKFLOWS)
         tools_section = docs.split("## KEY WORKFLOWS")[0]
