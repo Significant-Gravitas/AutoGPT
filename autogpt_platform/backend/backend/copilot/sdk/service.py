@@ -1215,7 +1215,7 @@ async def stream_chat_completion_sdk(
                         len(adapter.resolved_tool_calls),
                     )
 
-                    # Capture AssistantMessage in transcript
+                    # Capture SDK messages in transcript
                     if isinstance(sdk_msg, AssistantMessage):
                         content_blocks = _format_sdk_content_blocks(sdk_msg.content)
                         model_name = getattr(sdk_msg, "model", "")
@@ -1223,6 +1223,14 @@ async def stream_chat_completion_sdk(
                             content_blocks=content_blocks,
                             model=model_name,
                         )
+                    elif isinstance(sdk_msg, ResultMessage):
+                        # Capture tool results as user messages (matches CLI behavior)
+                        # ResultMessage represents tool execution results from the SDK
+                        if sdk_msg.result:
+                            transcript_builder.add_user_message(
+                                content=sdk_msg.result,
+                                uuid=None,  # Generate new UUID
+                            )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1560,8 +1568,10 @@ async def stream_chat_completion_sdk(
                         transcript_builder.entry_count,
                         len(transcript_content),
                     )
-                    # Create task first so we have a reference if timeout occurs
-                    upload_task = asyncio.create_task(
+                    # Shield upload from cancellation - let it complete even if
+                    # the finally block is interrupted. No timeout to avoid race
+                    # conditions where backgrounded uploads overwrite newer transcripts.
+                    await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
                             session_id=session_id,
@@ -1570,19 +1580,6 @@ async def stream_chat_completion_sdk(
                             log_prefix=log_prefix,
                         )
                     )
-                    try:
-                        async with asyncio.timeout(30):
-                            await asyncio.shield(upload_task)
-                    except TimeoutError:
-                        # Timeout fired but shield keeps upload running - track the
-                        # SAME task to prevent garbage collection (no double upload)
-                        logger.warning(
-                            "%s Transcript upload exceeded 30s timeout, "
-                            "continuing in background",
-                            log_prefix,
-                        )
-                        _background_tasks.add(upload_task)
-                        upload_task.add_done_callback(_background_tasks.discard)
             except Exception as upload_err:
                 logger.error(
                     "%s Transcript upload failed in finally: %s",

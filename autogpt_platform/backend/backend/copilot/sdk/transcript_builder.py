@@ -19,6 +19,8 @@ from pydantic import BaseModel
 
 from backend.util import json
 
+from .transcript import STRIPPABLE_TYPES
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,12 +60,18 @@ class TranscriptBuilder:
 
             data = json.loads(line, fallback=None)
             if data is None:
-                logger.warning("Failed to parse transcript line: %s", line[:100])
+                # Don't log content (PII risk) - use hash for debugging
+                import hashlib
+
+                line_hash = hashlib.sha256(line.encode()).hexdigest()[:16]
+                logger.warning("Failed to parse transcript line (hash: %s)", line_hash)
+                logger.debug("Failed line preview: %s", line[:100])
                 continue
 
-            # Only load conversation messages (user/assistant)
-            # Skip metadata entries
-            if data.get("type") not in ("user", "assistant"):
+            # Load all non-strippable entries (user/assistant/system/etc.)
+            # Skip only STRIPPABLE_TYPES to match strip_progress_entries() behavior
+            entry_type = data.get("type", "")
+            if entry_type in STRIPPABLE_TYPES:
                 continue
 
             entry = TranscriptEntry(

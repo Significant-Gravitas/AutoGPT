@@ -76,7 +76,7 @@ def strip_progress_entries(content: str) -> str:
     uuid_to_parent: dict[str, str] = {}
 
     for _line, entry in parsed:
-        if entry is None:
+        if not isinstance(entry, dict):
             continue
         uid = entry.get("uuid", "")
         parent = entry.get("parentUuid", "")
@@ -89,7 +89,7 @@ def strip_progress_entries(content: str) -> str:
     # Preserve original line when no reparenting is required.
     reparented: set[str] = set()
     for _line, entry in parsed:
-        if entry is None:
+        if not isinstance(entry, dict):
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
@@ -103,7 +103,7 @@ def strip_progress_entries(content: str) -> str:
 
     result_lines: list[str] = []
     for line, entry in parsed:
-        if entry is None:
+        if not isinstance(entry, dict):
             result_lines.append(line)
             continue
         if entry.get("type", "") in STRIPPABLE_TYPES:
@@ -224,7 +224,7 @@ def validate_transcript(content: str | None) -> bool:
         if not line.strip():
             continue
         entry = json.loads(line, fallback=None)
-        if entry is None:
+        if not isinstance(entry, dict):
             return False
         if entry.get("type") == "assistant":
             has_assistant = True
