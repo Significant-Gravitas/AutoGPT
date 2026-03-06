@@ -7,6 +7,6 @@ This directory uses the docs content as the single source of truth.
   (legacy `docs.agpt.co` host redirects here; repo source: `../../docs/platform/getting-started.md`)
 - **Development docs (`dev` source)**:
   https://dev-docs.agpt.co/platform/getting-started/getting-started
-  (repo source: `../../docs/platform/getting-started.md`)
+  (dev-docs deployment may be temporarily unavailable; repo source fallback: `../../docs/platform/getting-started.md`)
 
 For advanced setup instructions, see `README.advanced.md` in this folder.
