@@ -1224,14 +1224,6 @@ async def stream_chat_completion_sdk(
                             content_blocks=content_blocks,
                             model=model_name,
                         )
-                    elif isinstance(sdk_msg, ResultMessage):
-                        # Capture tool results as user messages (matches CLI behavior)
-                        # ResultMessage represents tool execution results from the SDK
-                        if sdk_msg.result:
-                            transcript_builder.add_user_message(
-                                content=sdk_msg.result,
-                                uuid=None,  # Generate new UUID
-                            )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
