@@ -20,6 +20,9 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
 )
 from langfuse import propagate_attributes
@@ -442,8 +445,6 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
 
     Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
     """
-    from claude_agent_sdk import TextBlock, ThinkingBlock, ToolResultBlock
-
     result: list[dict[str, Any]] = []
     for block in blocks or []:
         if isinstance(block, TextBlock):
