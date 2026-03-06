@@ -4,6 +4,12 @@
 
 ***
 
+## Connect to any app — instantly
+
+That integration you've been waiting for? You don't need to wait anymore. AutoPilot now supports MCP (Model Context Protocol) — an open standard backed by hundreds of ready-made connectors for apps like Notion, Slack, Jira, Stripe, Postgres, and more. **Just tell AutoPilot what you want to connect to, and it finds and sets it up automatically** — nothing to install, nothing to configure. Search your Notion workspace, query a database, create a Jira ticket — all from the chat. If the service requires a login, you'll get the same familiar sign-in prompt you already know. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12213)
+
+<figure><img src="../.gitbook/assets/mcp-notion-hero.png" alt="AutoPilot connecting to Notion via MCP and searching a workspace in real time"><figcaption><p>AutoPilot connecting to Notion and pulling release highlights — no integration setup required</p></figcaption></figure>
+
 ## Upload files to AutoPilot
 
 You can now attach files directly in the AutoPilot chat — documents, images, spreadsheets, audio, and video. Hit the **+** button, pick your files, and they appear as neat chips in the input bar with a spinner while they upload. Once sent, your attachments display inline in the conversation and the AI can read and reference them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12220)
@@ -21,12 +27,6 @@ Tool outputs in chat now display richer detail — bash results show stdout and 
 Two new browsing capabilities let AutoPilot interact with websites on your behalf. For quick lookups, it can fetch and extract content from any page in one shot. For multi-step tasks — like logging into a site, navigating through menus, and pulling data — it drives a full browser session that persists across steps within your conversation. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12230)
 
 <figure><img src="../.gitbook/assets/web-browsing-hero.png" alt="AutoPilot browsing a website autonomously in a live browser session"><figcaption><p>AutoPilot navigating a website in a live browser session</p></figcaption></figure>
-
-## Connect to any app — instantly
-
-That integration you've been waiting for? You don't need to wait anymore. AutoPilot now supports **MCP** (Model Context Protocol) — an open standard backed by hundreds of ready-made connectors for apps like Notion, Slack, Jira, Stripe, Postgres, and more. Just tell AutoPilot what you want to connect to, and it finds and sets up the right connector automatically — nothing to install, nothing to configure. Search your Notion workspace, query a database, create a Jira ticket — all from the chat. If the service requires a login, you'll get the same familiar sign-in prompt you already know. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12213)
-
-<figure><img src="../.gitbook/assets/mcp-notion-hero.png" alt="AutoPilot connecting to Notion via MCP and searching a workspace in real time"><figcaption><p>AutoPilot connecting to Notion and pulling release highlights — no integration setup required</p></figcaption></figure>
 
 ## Listen to responses and share them
 
