@@ -3,8 +3,9 @@
 Advanced setup docs live in the repository docs source.
 
 - **Released / stable docs (`master` source)**:
-  ../../docs/platform/advanced_setup.md
+  https://agpt.co/docs/platform/advanced-setup/advanced_setup
 - **Development docs (`dev` source)**:
-  ../../docs/platform/advanced_setup.md
+  https://dev-docs.agpt.co/platform/advanced-setup/advanced_setup
+  (repo source: `../../docs/platform/advanced_setup.md`)
 
 For standard setup, see `README.md` in this folder.
