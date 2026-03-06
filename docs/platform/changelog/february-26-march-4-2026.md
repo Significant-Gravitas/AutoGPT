@@ -1,4 +1,4 @@
-# File uploads, cloud sandboxes, and browser automation
+# Connect any app, share files, and let AutoPilot browse for you
 
 *February 26 – March 4, 2026*
 

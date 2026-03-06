@@ -36,5 +36,5 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
-  * [File uploads, cloud sandboxes, and browser automation](changelog/february-26-march-4-2026.md)
+  * [Connect any app, share files, and let AutoPilot browse for you](changelog/february-26-march-4-2026.md)
   * [Voice input, persistent files, and a smarter AI](changelog/january-29-february-11-2026.md)
