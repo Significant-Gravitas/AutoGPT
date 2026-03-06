@@ -9,7 +9,7 @@ import {
   getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
+import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
@@ -114,14 +114,14 @@ export function usePublishAgentModal({
       !preSelectedAgentVersion
     )
       return;
-    const agentsData = okData(myAgents) as any;
-    const submissionsData = okData(mySubmissions) as any;
+    const agentsData = okData(myAgents);
+    const submissionsData = okData(mySubmissions);
 
     if (!agentsData || !submissionsData) return;
 
     // Find the agent data
     const agent = agentsData.agents?.find(
-      (a: MyAgent) => a.agent_id === preSelectedAgentId,
+      (a: MyUnpublishedAgent) => a.graph_id === preSelectedAgentId,
     );
     if (!agent) return;
 
