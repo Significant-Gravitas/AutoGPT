@@ -95,16 +95,21 @@ def merge_with_previous_transcript(
         if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
             prev_by_uuid[uid] = line
 
-    logger.debug(
-        "%s Indexed %d assistant entries from previous", log_prefix, len(prev_by_uuid)
+    logger.info(
+        "%s Indexed %d assistant UUIDs from previous: %s",
+        log_prefix,
+        len(prev_by_uuid),
+        list(prev_by_uuid.keys())[:5],  # Show first 5 UUIDs
     )
 
     if not prev_by_uuid:
+        logger.warning("%s No assistant entries in previous transcript!", log_prefix)
         return new_content
 
     # Replace assistant entries that exist in previous transcript (hydrate real content)
     merged_lines: list[str] = []
     replaced = 0
+    new_assistant_uuids = []
 
     for line in new_content.strip().split("\n"):
         try:
@@ -113,19 +118,26 @@ def merge_with_previous_transcript(
             merged_lines.append(line)
             continue
 
-        # If this is an assistant entry with a UUID that exists in previous, use previous version
-        if (
-            entry.get("type") == "assistant"
-            and (uid := entry.get("uuid"))
-            and uid in prev_by_uuid
-        ):
-            merged_lines.append(prev_by_uuid[uid])
-            replaced += 1
-            logger.debug(
-                "%s Replaced assistant uuid=%s with version from previous",
-                log_prefix,
-                uid[:12],
-            )
+        # Track assistant UUIDs in new transcript
+        if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
+            new_assistant_uuids.append(uid)
+
+            # If this UUID exists in previous, use previous version
+            if uid in prev_by_uuid:
+                merged_lines.append(prev_by_uuid[uid])
+                replaced += 1
+                logger.info(
+                    "%s Replaced assistant uuid=%s with version from previous",
+                    log_prefix,
+                    uid[:12],
+                )
+            else:
+                logger.info(
+                    "%s Assistant uuid=%s NOT in previous (keeping new)",
+                    log_prefix,
+                    uid[:12],
+                )
+                merged_lines.append(line)
         else:
             merged_lines.append(line)
 
