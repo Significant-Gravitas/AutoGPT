@@ -20,6 +20,14 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .get_doc_page import GetDocPageTool
+from .manage_folders import (
+    CreateFolderTool,
+    DeleteFolderTool,
+    ListFoldersTool,
+    MoveAgentsToFolderTool,
+    MoveFolderTool,
+    UpdateFolderTool,
+)
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -47,6 +55,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Folder management tools
+    "create_folder": CreateFolderTool(),
+    "list_folders": ListFoldersTool(),
+    "update_folder": UpdateFolderTool(),
+    "move_folder": MoveFolderTool(),
+    "delete_folder": DeleteFolderTool(),
+    "move_agents_to_folder": MoveAgentsToFolderTool(),
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "run_mcp_tool": RunMCPToolTool(),
