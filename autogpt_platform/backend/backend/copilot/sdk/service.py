@@ -1554,8 +1554,26 @@ async def stream_chat_completion_sdk(
                         transcript_builder.entry_count,
                         len(transcript_content),
                     )
-                    async with asyncio.timeout(30):
-                        await asyncio.shield(
+                    try:
+                        async with asyncio.timeout(30):
+                            await asyncio.shield(
+                                upload_transcript(
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                    content=transcript_content,
+                                    message_count=len(session.messages),
+                                    log_prefix=log_prefix,
+                                )
+                            )
+                    except TimeoutError:
+                        # Timeout fired but shield keeps upload running - track it
+                        # to prevent garbage collection (maintain strong reference)
+                        logger.warning(
+                            "%s Transcript upload exceeded 30s timeout, "
+                            "continuing in background",
+                            log_prefix,
+                        )
+                        task = asyncio.create_task(
                             upload_transcript(
                                 user_id=user_id,
                                 session_id=session_id,
@@ -1564,6 +1582,8 @@ async def stream_chat_completion_sdk(
                                 log_prefix=log_prefix,
                             )
                         )
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
             except Exception as upload_err:
                 logger.error(
                     "%s Transcript upload failed in finally: %s",
