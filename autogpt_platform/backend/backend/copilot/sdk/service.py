@@ -1075,7 +1075,10 @@ async def stream_chat_completion_sdk(
             session_id=session_id,
             trace_name="copilot-sdk",
             tags=["sdk"],
-            metadata={"resume": str(use_resume)},
+            metadata={
+                "resume": str(use_resume),
+                "conversation_turn": turn,
+            },
         )
         _otel_ctx.__enter__()
 
