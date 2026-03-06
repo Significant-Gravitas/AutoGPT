@@ -28,9 +28,9 @@ Two new browsing capabilities let AutoPilot interact with websites on your behal
 
 <figure><img src="../.gitbook/assets/web-browsing-hero.png" alt="AutoPilot browsing a website autonomously in a live browser session"><figcaption><p>AutoPilot navigating a website in a live browser session</p></figcaption></figure>
 
-## Listen to responses and share them
+## Listen to responses or copy them instantly
 
-A new speaker button on AutoPilot messages reads the response aloud using your browser's text-to-speech. There's also a share button that lets you send a response via your device's share menu, or copies it to clipboard as a fallback. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12256)
+Multitasking? Tap the speaker icon on any message to have AutoPilot read it aloud while you do something else. Need to save a response? Hit the copy button to grab it in one click — ready to paste into an email, doc, or chat. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12256)
 
 ## See when the AI is summarizing
 
