@@ -8,6 +8,7 @@ import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
+import pydantic
 from autogpt_libs.auth.dependencies import get_optional_user_id
 
 import backend.data.graph
@@ -120,7 +121,7 @@ async def get_my_waitlist_memberships(
 async def add_self_to_waitlist(
     user_id: str | None = fastapi.Security(get_optional_user_id),
     waitlist_id: str = fastapi.Path(..., description="The ID of the waitlist to join"),
-    email: str | None = fastapi.Body(
+    email: pydantic.EmailStr | None = fastapi.Body(
         default=None, embed=True, description="Email address for unauthenticated users"
     ),
 ):

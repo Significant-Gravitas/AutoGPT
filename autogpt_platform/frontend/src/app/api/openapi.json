@@ -2043,7 +2043,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                }
               }
             }
           },
@@ -8294,7 +8296,10 @@
       "Body_postV2Add_self_to_the_agent_waitlist": {
         "properties": {
           "email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "format": "email" },
+              { "type": "null" }
+            ],
             "title": "Email",
             "description": "Email address for unauthenticated users"
           }
@@ -14365,24 +14370,6 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
-      "UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -14919,6 +14906,24 @@
         },
         "type": "object",
         "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "UploadFileResponse"
+      },
+      "backend__api__model__UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
         "title": "UploadFileResponse"
       }
     },
