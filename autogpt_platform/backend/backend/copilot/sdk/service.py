@@ -1231,10 +1231,9 @@ async def stream_chat_completion_sdk(
                     # Capture SDK assistant messages in transcript.
                     if isinstance(sdk_msg, AssistantMessage):
                         content_blocks = _format_sdk_content_blocks(sdk_msg.content)
-                        model_name = getattr(sdk_msg, "model", "")
                         transcript_builder.append_assistant(
                             content_blocks=content_blocks,
-                            model=model_name,
+                            model=sdk_msg.model,
                         )
 
                     is_parallel_continuation = isinstance(
@@ -1422,6 +1421,15 @@ async def stream_chat_completion_sdk(
                             log_prefix,
                             type(response).__name__,
                             getattr(response, "toolName", "N/A"),
+                        )
+                    if isinstance(response, StreamToolOutputAvailable):
+                        transcript_builder.append_tool_result(
+                            tool_use_id=response.toolCallId,
+                            content=(
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            ),
                         )
                     yield response
 
