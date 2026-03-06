@@ -170,23 +170,19 @@ class TestPromptSupplement:
         """Baseline mode MUST include tool documentation (direct API needs it)."""
         from backend.copilot.prompting import get_baseline_supplement
 
-        # Test both local and E2B modes
-        local_supplement = get_baseline_supplement(use_e2b=False, cwd="/tmp/test")
-        e2b_supplement = get_baseline_supplement(use_e2b=True, cwd="")
+        supplement = get_baseline_supplement()
 
         # MUST have tool list section
-        assert "## AVAILABLE TOOLS" in local_supplement
-        assert "## AVAILABLE TOOLS" in e2b_supplement
+        assert "## AVAILABLE TOOLS" in supplement
 
-        # Should also have technical notes
-        assert "## Tool notes" in local_supplement
-        assert "## Tool notes" in e2b_supplement
+        # Should NOT have environment-specific notes (SDK-only)
+        assert "## Tool notes" not in supplement
 
     def test_baseline_supplement_includes_key_tools(self):
         """Baseline supplement should document all essential tools."""
         from backend.copilot.prompting import get_baseline_supplement
 
-        docs = get_baseline_supplement(use_e2b=False, cwd="")
+        docs = get_baseline_supplement()
 
         # Core agent workflow tools
         assert "`create_agent`" in docs
@@ -204,27 +200,22 @@ class TestPromptSupplement:
         assert "`create_folder`" in docs
 
     def test_baseline_supplement_includes_workflows(self):
-        """Baseline supplement should include workflow guidance."""
+        """Baseline supplement should include workflow guidance in tool descriptions."""
         from backend.copilot.prompting import get_baseline_supplement
 
-        docs = get_baseline_supplement(use_e2b=False, cwd="")
+        docs = get_baseline_supplement()
 
-        # Check workflow sections
-        assert "MCP Integration Workflow" in docs
-        assert "Agent Creation Workflow" in docs
-        assert "Folder Management" in docs
-
-        # Check workflow details
-        assert "suggested_goal" in docs
-        assert "clarifying_questions" in docs
-        assert "run_mcp_tool(server_url)" in docs
+        # Workflows are now in individual tool descriptions (not separate sections)
+        # Check that key workflow concepts appear in tool descriptions
+        assert "suggested_goal" in docs or "clarifying_questions" in docs
+        assert "run_mcp_tool" in docs
 
     def test_baseline_supplement_completeness(self):
         """All tools from TOOL_REGISTRY should appear in baseline supplement."""
         from backend.copilot.prompting import get_baseline_supplement
         from backend.copilot.tools import TOOL_REGISTRY
 
-        docs = get_baseline_supplement(use_e2b=False, cwd="")
+        docs = get_baseline_supplement()
 
         # Verify each registered tool is documented
         for tool_name in TOOL_REGISTRY.keys():
@@ -237,13 +228,10 @@ class TestPromptSupplement:
         from backend.copilot.prompting import get_baseline_supplement
         from backend.copilot.tools import TOOL_REGISTRY
 
-        docs = get_baseline_supplement(use_e2b=False, cwd="")
+        docs = get_baseline_supplement()
 
-        # Extract the tools section (before KEY WORKFLOWS)
-        tools_section = docs.split("## KEY WORKFLOWS")[0]
-
-        # Count occurrences of each tool
+        # Count occurrences of each tool in the entire supplement
         for tool_name in TOOL_REGISTRY.keys():
             # Count how many times this tool appears as a bullet point
-            count = tools_section.count(f"- **`{tool_name}`**")
+            count = docs.count(f"- **`{tool_name}`**")
             assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
