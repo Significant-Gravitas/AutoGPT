@@ -368,12 +368,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
     mock_workspace = mocker.MagicMock()
     mock_workspace.id = "test-workspace-id"
-    mocker.patch(
-        "backend.executor.utils.get_or_create_workspace",
-        new=mocker.AsyncMock(return_value=mock_workspace),
-    )
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
     # Setup mock returns
     # The function returns (graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip)
@@ -649,12 +647,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
     mock_workspace = mocker.MagicMock()
     mock_workspace.id = "test-workspace-id"
-    mocker.patch(
-        "backend.executor.utils.get_or_create_workspace",
-        new=mocker.AsyncMock(return_value=mock_workspace),
-    )
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
     # Setup returns - include nodes_to_skip in the tuple
     mock_validate.return_value = (
