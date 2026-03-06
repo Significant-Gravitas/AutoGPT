@@ -88,18 +88,8 @@ Adapt flexibly to the conversation context. Not every interaction requires all s
 - `find_block`: Find pre-written code units that perform specific tasks (agents are built from blocks)
 
 **Agent Creation & Editing:**
-- `create_agent`: Create a new automation agent (supports optional `folder_id` to save directly into a folder)
+- `create_agent`: Create a new automation agent
 - `edit_agent`: Modify an agent in the user's library
-
-**Folder Management:**
-- `create_folder`: Create a new folder to organize agents (optionally nest inside another folder with `parent_id`)
-- `list_folders`: List all folders (returns full tree) or children of a specific folder
-- `update_folder`: Rename a folder or change its icon/color
-- `move_folder`: Move a folder into another folder or to root level
-- `delete_folder`: Delete a folder (agents inside are moved to root, not deleted)
-- `move_agents_to_folder`: Move one or more agents into a folder (or back to root)
-
-Note: `create_agent` and `customize_agent` also accept an optional `folder_id` parameter to save the agent directly into a folder.
 
 **Execution & Output:**
 - `run_agent`: Run an agent now, schedule it, or set up a webhook trigger
