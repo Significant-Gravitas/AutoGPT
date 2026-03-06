@@ -1,9 +1,10 @@
--- Update the StoreSubmission view with additional fields, clearer field names, and faster joins.
+-- Update the StoreSubmission and StoreAgent views with additional fields, clearer field names, and faster joins.
 -- Steps:
 -- 1. Update `mv_agent_run_counts` to exclude runs by the agent's creator
 --   a. Drop dependent views `StoreAgent` and `Creator`
 --   b. Update `mv_agent_run_counts` and its index
---   c. Restore `StoreAgent` and `Creator` views
+--   c. Recreate `StoreAgent` view (with updates)
+--   d. Restore `Creator` view
 -- 2. Update `StoreSubmission` view
 -- 3. Update `StoreListingReview` indices to make `StoreSubmission` query more efficient
 
@@ -33,12 +34,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_mv_agent_run_counts" ON "mv_agent_run_cou
 REFRESH MATERIALIZED VIEW "mv_agent_run_counts";
 
 
--- Restore StoreAgent view as last updated in 20260228023210_optimize_store_agent_view
+-- Recreate the StoreAgent view with the following changes
+-- (compared to 20260115210000_remove_storelistingversion_search):
+-- - Narrow to *explicitly active* version (sl.activeVersionId) instead of MAX(version)
+-- - Add `recommended_schedule_cron` column
+-- - Rename `"storeListingVersionId"` -> `listing_version_id`
+-- - Rename `"agentGraphVersions"`    -> `graph_versions`
+-- - Rename `"agentGraphId"`          -> `graph_id`
+-- - Rename `"useForOnboarding"`      -> `use_for_onboarding`
 CREATE OR REPLACE VIEW "StoreAgent" AS
 WITH store_agent_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT version::text ORDER BY version) AS versions
+        array_agg(DISTINCT version::text ORDER BY version::text) AS versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
@@ -46,7 +54,7 @@ WITH store_agent_versions AS (
 agent_graph_versions AS (
     SELECT
         "storeListingId",
-        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion") AS graph_versions
+        array_agg(DISTINCT "agentGraphVersion"::text ORDER BY "agentGraphVersion"::text) AS graph_versions
     FROM "StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     GROUP BY "storeListingId"
@@ -99,7 +107,8 @@ WHERE sl."isDeleted" = false
   AND sl."hasApprovedVersion" = true;
 
 
--- Restore Creator view as last updated in 20250604130249_optimise_store_agent_and_creator_views, with minor changes:
+-- Restore Creator view as last updated in 20250604130249_optimise_store_agent_and_creator_views,
+-- with minor changes:
 -- - Ensure top_categories always TEXT[]
 -- - Filter out empty ('') categories
 CREATE OR REPLACE VIEW "Creator" AS
@@ -112,13 +121,13 @@ WITH creator_listings AS (
         sr.score,
         ar.run_count
     FROM "StoreListing" sl
-    INNER JOIN "StoreListingVersion" slv
-        ON slv."storeListingId" = sl.id
-        AND slv."submissionStatus" = 'APPROVED'
+    JOIN "StoreListingVersion" slv
+      ON slv."storeListingId" = sl.id
+     AND slv."submissionStatus" = 'APPROVED'
     LEFT JOIN "StoreListingReview" sr
-        ON sr."storeListingVersionId" = slv.id
+           ON sr."storeListingVersionId" = slv.id
     LEFT JOIN "mv_agent_run_counts" ar
-        ON ar.graph_id = slv."agentGraphId"
+           ON ar.graph_id = slv."agentGraphId"
     WHERE sl."isDeleted" = false
       AND sl."hasApprovedVersion" = true
 ),
