@@ -111,12 +111,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
-# Copy Node.js installation for Prisma
+# Copy Node.js installation for Prisma and agent-browser.
+# npm/npx are symlinks in the builder (-> ../lib/node_modules/npm/bin/*-cli.js);
+# COPY resolves them to regular files, breaking require() paths.  Recreate as
+# proper symlinks so npm/npx can find their modules.
 COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=builder /usr/bin/npm /usr/bin/npm
-COPY --from=builder /usr/bin/npx /usr/bin/npx
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install agent-browser (Copilot browser tool) + Chromium runtime dependencies.
+# These are the runtime libraries Chromium/Playwright needs on Debian 13 (trixie).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libdbus-1-3 libxkbcommon0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 \
+    libx11-6 libx11-xcb1 libxcb1 libxext6 libglib2.0-0t64 \
+    fonts-liberation libfontconfig1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g agent-browser \
+    && agent-browser install \
+    && rm -rf /tmp/* /root/.npm
 
 WORKDIR /app/autogpt_platform/backend
 
