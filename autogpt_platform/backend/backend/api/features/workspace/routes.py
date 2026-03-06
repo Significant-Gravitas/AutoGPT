@@ -131,6 +131,54 @@ class StorageUsageResponse(BaseModel):
     file_count: int
 
 
+class DownloadUrlResponse(BaseModel):
+    url: str
+    direct: bool  # True = browser can fetch URL directly (signed GCS URL)
+
+
+@router.get(
+    "/files/{file_id}/download-url",
+    summary="Get download URL for a file",
+)
+async def get_file_download_url(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+) -> DownloadUrlResponse:
+    """
+    Return a download URL for a workspace file.
+
+    For GCS storage: returns a time-limited signed URL the browser can fetch directly.
+    For local storage: returns the API download path (must still be proxied).
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    storage = await get_workspace_storage()
+
+    if file.storage_path.startswith("local://"):
+        return DownloadUrlResponse(
+            url=f"/api/workspace/files/{file_id}/download",
+            direct=False,
+        )
+
+    # GCS — try to generate signed URL
+    try:
+        url = await storage.get_download_url(file.storage_path, expires_in=300)
+        if url.startswith("/api/"):
+            return DownloadUrlResponse(url=url, direct=False)
+        return DownloadUrlResponse(url=url, direct=True)
+    except Exception:
+        return DownloadUrlResponse(
+            url=f"/api/workspace/files/{file_id}/download",
+            direct=False,
+        )
+
+
 @router.get(
     "/files/{file_id}/download",
     summary="Download file by ID",
