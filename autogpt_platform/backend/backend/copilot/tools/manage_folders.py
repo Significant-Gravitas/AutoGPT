@@ -27,6 +27,7 @@ def _folder_to_info(
     folder: library_model.LibraryFolder,
     agents: list[FolderAgentSummary] | None = None,
 ) -> FolderInfo:
+    """Convert a LibraryFolder DB model to a FolderInfo response model."""
     return FolderInfo(
         id=folder.id,
         name=folder.name,
@@ -43,6 +44,7 @@ def _tree_to_info(
     tree: library_model.LibraryFolderTree,
     agents_map: dict[str, list[FolderAgentSummary]] | None = None,
 ) -> FolderTreeInfo:
+    """Recursively convert a LibraryFolderTree to a FolderTreeInfo response."""
     return FolderTreeInfo(
         id=tree.id,
         name=tree.name,
@@ -59,6 +61,7 @@ def _tree_to_info(
 def _to_agent_summaries(
     raw: list[dict[str, str | None]],
 ) -> list[FolderAgentSummary]:
+    """Convert raw agent dicts to typed FolderAgentSummary models."""
     return [
         FolderAgentSummary(
             id=a["id"] or "",
@@ -72,6 +75,7 @@ def _to_agent_summaries(
 def _to_agent_summaries_map(
     raw: dict[str, list[dict[str, str | None]]],
 ) -> dict[str, list[FolderAgentSummary]]:
+    """Convert a folder-id-keyed dict of raw agents to typed summaries."""
     return {fid: _to_agent_summaries(agents) for fid, agents in raw.items()}
 
 
@@ -124,6 +128,7 @@ class CreateFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Create a folder with the given name and optional parent/icon/color."""
         assert user_id is not None  # guaranteed by requires_auth
         name = (kwargs.get("name") or "").strip()
         parent_id = kwargs.get("parent_id")
@@ -205,6 +210,7 @@ class ListFoldersTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """List folders as a flat list (by parent) or full tree."""
         assert user_id is not None  # guaranteed by requires_auth
         parent_id = kwargs.get("parent_id")
         include_agents = kwargs.get("include_agents", False)
@@ -298,6 +304,7 @@ class UpdateFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Update a folder's name, icon, or color."""
         assert user_id is not None  # guaranteed by requires_auth
         folder_id = (kwargs.get("folder_id") or "").strip()
         name = kwargs.get("name")
@@ -375,6 +382,7 @@ class MoveFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Move a folder to a new parent or to root level."""
         assert user_id is not None  # guaranteed by requires_auth
         folder_id = (kwargs.get("folder_id") or "").strip()
         target_parent_id = kwargs.get("target_parent_id")
@@ -443,6 +451,7 @@ class DeleteFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Soft-delete a folder; agents inside are moved to root level."""
         assert user_id is not None  # guaranteed by requires_auth
         folder_id = (kwargs.get("folder_id") or "").strip()
         session_id = session.session_id if session else None
@@ -515,6 +524,7 @@ class MoveAgentsToFolderTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Move one or more agents to a folder or to root level."""
         assert user_id is not None  # guaranteed by requires_auth
         agent_ids = kwargs.get("agent_ids", [])
         folder_id = kwargs.get("folder_id")
