@@ -16,7 +16,7 @@ You can now attach files directly in the AutoPilot chat — documents, images, s
 
 ## AutoPilot can run code and create files for you
 
-Ask AutoPilot to analyze a dataset, generate a chart, write a document, or build a quick script — it now does the work in a secure cloud environment and hands you the result. Everything stays connected between steps, so it can create a file in one step and use it in the next without losing track. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
+AutoPilot can now write and run code for you — no setup, no technical knowledge needed. Drop in a messy spreadsheet and ask it to clean the data, find trends, and generate a polished chart. It can crunch numbers, build scripts, create documents, and produce downloadable files, all inside the conversation. Each step builds on the last, so you can go from raw data to finished deliverable just by asking. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
 
 {% hint style="info" %}
 Tool outputs in chat now display richer detail — bash results show stdout and stderr, file edits show before-and-after diffs, and search results are formatted with icons by category.
