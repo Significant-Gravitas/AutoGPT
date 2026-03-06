@@ -43,7 +43,6 @@ class TranscriptBuilder:
     def __init__(self) -> None:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
-        self._pending_tool_results: list[dict[str, Any]] = []
 
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
@@ -92,10 +91,8 @@ class TranscriptBuilder:
             self._last_uuid[:12] if self._last_uuid else None,
         )
 
-    def add_user_message(
-        self, content: str | list[dict], uuid: str | None = None
-    ) -> None:
-        """Add user message to the complete context."""
+    def append_user(self, content: str | list[dict], uuid: str | None = None) -> None:
+        """Append a user entry."""
         msg_uuid = uuid or str(uuid4())
 
         self._entries.append(
@@ -108,27 +105,32 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
-    def add_tool_result(self, tool_use_id: str, content: str) -> None:
-        """Accumulate a tool result. Flushed automatically before the next assistant message."""
-        self._pending_tool_results.append(
-            {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+    def append_tool_result(self, tool_use_id: str, content: str) -> None:
+        """Append a tool result as a user entry (one per tool call)."""
+        self.append_user(
+            content=[
+                {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+            ]
         )
 
-    def flush_pending_tool_results(self) -> None:
-        """Flush any pending tool results as a single user message."""
-        if self._pending_tool_results:
-            self.add_user_message(content=list(self._pending_tool_results))
-            self._pending_tool_results.clear()
-
-    def add_assistant_message(
-        self, content_blocks: list[dict], model: str = ""
+    def append_assistant(
+        self,
+        content_blocks: list[dict],
+        model: str = "",
+        message_id: str = "",
+        stop_reason: str | None = None,
     ) -> None:
-        """Add assistant message to the complete context.
+        """Append an assistant entry.
 
-        Automatically flushes pending tool results first to maintain
-        correct transcript ordering (tool_results → assistant).
+        Args:
+            content_blocks: The content blocks for this entry.
+            model: Model name.
+            message_id: Shared across consecutive assistant entries from the
+                same API response.  The CLI uses this to merge them before
+                sending to the API on ``--resume``.
+            stop_reason: ``None`` for intermediate entries, ``"tool_use"`` or
+                ``"end_turn"`` for the last entry in a group.
         """
-        self.flush_pending_tool_results()
         msg_uuid = str(uuid4())
 
         self._entries.append(
@@ -139,39 +141,29 @@ class TranscriptBuilder:
                 message={
                     "role": "assistant",
                     "model": model,
+                    "id": message_id or f"msg_sdk_{uuid4().hex[:24]}",
+                    "type": "message",
                     "content": content_blocks,
+                    "stop_reason": stop_reason,
+                    "stop_sequence": None,
                 },
             )
         )
         self._last_uuid = msg_uuid
 
-    def _merge_consecutive_assistant_entries(self) -> list[TranscriptEntry]:
-        """Merge consecutive assistant entries into single messages.
-
-        The Claude API rejects consecutive messages of the same role.
-        The SDK streams thinking, text, and tool_use as separate
-        AssistantMessages — this merges them into one entry.
-        """
-        merged: list[TranscriptEntry] = []
-        for entry in self._entries:
-            if entry.type == "assistant" and merged and merged[-1].type == "assistant":
-                merged[-1].message["content"].extend(entry.message["content"])
-            else:
-                merged.append(entry)
-        return merged
-
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
+
+        Consecutive assistant entries are kept separate to match the
+        native CLI format — the SDK merges them internally on resume.
 
         Returns the FULL conversation state (all entries), not incremental.
         This output REPLACES any previous transcript.
         """
-        self.flush_pending_tool_results()
-        entries = self._merge_consecutive_assistant_entries()
-        if not entries:
+        if not self._entries:
             return ""
 
-        lines = [entry.model_dump_json(exclude_none=True) for entry in entries]
+        lines = [entry.model_dump_json(exclude_none=True) for entry in self._entries]
         return "\n".join(lines) + "\n"
 
     @property

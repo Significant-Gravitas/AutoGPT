@@ -1133,18 +1133,24 @@ async def stream_chat_completion_sdk(
                     json.dumps(user_msg) + "\n"
                 )
                 # Capture user message in transcript (multimodal)
-                transcript_builder.add_user_message(content=content_blocks)
+                transcript_builder.append_user(content=content_blocks)
             else:
                 await client.query(query_message, session_id=session_id)
                 # Capture actual user message in transcript (not the engineered query)
                 # query_message may include context wrappers, but transcript needs raw input
-                transcript_builder.add_user_message(content=current_message)
+                transcript_builder.append_user(content=current_message)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
             has_appended_assistant = False
             has_tool_results = False
             ended_with_stream_error = False
+            # Shared message ID for all assistant transcript entries in this
+            # turn.  The CLI uses message.id to merge consecutive assistant
+            # entries (thinking → text → tool_use) into one API message on
+            # --resume.  Without it each entry becomes a separate API message,
+            # causing tool_use/tool_result mismatch 400 errors.
+            turn_message_id = f"msg_sdk_{uuid.uuid4().hex[:24]}"
 
             # Use an explicit async iterator with non-cancelling heartbeats.
             # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
@@ -1230,14 +1236,13 @@ async def stream_chat_completion_sdk(
                     # ToolUseBlocks), we must NOT wait/flush — the prior
                     # tools are still executing concurrently.
                     # Capture SDK assistant messages in transcript.
-                    # add_assistant_message auto-flushes pending tool
-                    # results to maintain correct ordering.
                     if isinstance(sdk_msg, AssistantMessage):
                         content_blocks = _format_sdk_content_blocks(sdk_msg.content)
                         model_name = getattr(sdk_msg, "model", "")
-                        transcript_builder.add_assistant_message(
+                        transcript_builder.append_assistant(
                             content_blocks=content_blocks,
                             model=model_name,
+                            message_id=turn_message_id,
                         )
 
                     is_parallel_continuation = isinstance(
@@ -1369,7 +1374,7 @@ async def stream_chat_completion_sdk(
                                     tool_call_id=response.toolCallId,
                                 )
                             )
-                            transcript_builder.add_tool_result(
+                            transcript_builder.append_tool_result(
                                 tool_use_id=response.toolCallId,
                                 content=content,
                             )
@@ -1401,10 +1406,6 @@ async def stream_chat_completion_sdk(
                             "%s Pending __anext__ task completed during cleanup",
                             log_prefix,
                         )
-
-            # Flush any remaining tool results that weren't flushed
-            # (e.g. stream ended right after tool execution).
-            transcript_builder.flush_pending_tool_results()
 
             # Safety net: if tools are still unresolved after the
             # streaming loop (e.g. StopAsyncIteration before ResultMessage,
