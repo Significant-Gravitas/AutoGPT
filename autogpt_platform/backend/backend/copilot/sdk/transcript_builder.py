@@ -127,17 +127,8 @@ class TranscriptBuilder:
 
         Automatically flushes pending tool results first to maintain
         correct transcript ordering (tool_results → assistant).
-
-        Consecutive assistant messages are merged into a single entry
-        to avoid violating the Claude API's no-consecutive-same-role rule.
         """
         self.flush_pending_tool_results()
-
-        # Merge into the previous assistant entry if there is one
-        if self._entries and self._entries[-1].type == "assistant":
-            self._entries[-1].message["content"].extend(content_blocks)
-            return
-
         msg_uuid = str(uuid4())
 
         self._entries.append(
@@ -154,16 +145,33 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
+    def _merge_consecutive_assistant_entries(self) -> list[TranscriptEntry]:
+        """Merge consecutive assistant entries into single messages.
+
+        The Claude API rejects consecutive messages of the same role.
+        The SDK streams thinking, text, and tool_use as separate
+        AssistantMessages — this merges them into one entry.
+        """
+        merged: list[TranscriptEntry] = []
+        for entry in self._entries:
+            if entry.type == "assistant" and merged and merged[-1].type == "assistant":
+                merged[-1].message["content"].extend(entry.message["content"])
+            else:
+                merged.append(entry)
+        return merged
+
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
 
         Returns the FULL conversation state (all entries), not incremental.
         This output REPLACES any previous transcript.
         """
-        if not self._entries:
+        self.flush_pending_tool_results()
+        entries = self._merge_consecutive_assistant_entries()
+        if not entries:
             return ""
 
-        lines = [entry.model_dump_json(exclude_none=True) for entry in self._entries]
+        lines = [entry.model_dump_json(exclude_none=True) for entry in entries]
         return "\n".join(lines) + "\n"
 
     @property
