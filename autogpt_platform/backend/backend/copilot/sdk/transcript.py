@@ -223,6 +223,8 @@ def validate_transcript(content: str | None) -> bool:
     has_assistant = False
 
     for line in lines:
+        if not line.strip():
+            continue
         try:
             entry = json.loads(line)
             if entry.get("type") == "assistant":
