@@ -3,7 +3,7 @@
 from typing import Any
 
 from backend.api.features.library import model as library_model
-from backend.api.features.library.db import collect_tree_ids, count_tree
+from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
@@ -125,7 +125,7 @@ class CreateFolderTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
-        name = kwargs.get("name", "").strip()
+        name = (kwargs.get("name") or "").strip()
         parent_id = kwargs.get("parent_id")
         icon = kwargs.get("icon")
         color = kwargs.get("color")
@@ -234,19 +234,17 @@ class ListFoldersTool(BaseTool):
                 )
             else:
                 tree = await library_db().get_folder_tree(user_id=user_id)
-                flat_count = count_tree(tree)
+                all_ids = collect_tree_ids(tree)
                 raw_map = (
-                    await library_db().get_folder_agents_map(
-                        user_id, collect_tree_ids(tree)
-                    )
+                    await library_db().get_folder_agents_map(user_id, all_ids)
                     if include_agents
                     else None
                 )
                 agents_map = _to_agent_summaries_map(raw_map) if raw_map else None
                 return FolderListResponse(
-                    message=f"Found {flat_count} folder(s) in your library.",
+                    message=f"Found {len(all_ids)} folder(s) in your library.",
                     tree=[_tree_to_info(t, agents_map) for t in tree],
-                    count=flat_count,
+                    count=len(all_ids),
                     session_id=session_id,
                 )
         except Exception as e:
@@ -301,7 +299,7 @@ class UpdateFolderTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = kwargs.get("folder_id", "").strip()
+        folder_id = (kwargs.get("folder_id") or "").strip()
         name = kwargs.get("name")
         icon = kwargs.get("icon")
         color = kwargs.get("color")
@@ -378,7 +376,7 @@ class MoveFolderTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = kwargs.get("folder_id", "").strip()
+        folder_id = (kwargs.get("folder_id") or "").strip()
         target_parent_id = kwargs.get("target_parent_id")
         session_id = session.session_id if session else None
 
@@ -446,7 +444,7 @@ class DeleteFolderTool(BaseTool):
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = kwargs.get("folder_id", "").strip()
+        folder_id = (kwargs.get("folder_id") or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:

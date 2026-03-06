@@ -421,6 +421,12 @@ async def create_library_agent(
     logger.info(
         f"Creating library agent for graph #{graph.id} v{graph.version}; user:<redacted>"
     )
+
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the folder belongs to this user to prevent cross-user nesting.
+    if folder_id:
+        await get_folder(folder_id, user_id)
+
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
     )
@@ -1499,22 +1505,6 @@ def collect_tree_ids(
         ids.append(n.id)
         ids.extend(collect_tree_ids(n.children, visited))
     return ids
-
-
-def count_tree(
-    nodes: list[library_model.LibraryFolderTree],
-    visited: set[str] | None = None,
-) -> int:
-    """Count the total number of folders in a folder tree."""
-    if visited is None:
-        visited = set()
-    count = 0
-    for n in nodes:
-        if n.id in visited:
-            continue
-        visited.add(n.id)
-        count += 1 + count_tree(n.children, visited)
-    return count
 
 
 async def get_folder_agent_summaries(
