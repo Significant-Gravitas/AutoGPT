@@ -16,8 +16,6 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreatorDetails,
-  CreatorsResponse,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -43,26 +41,15 @@ import type {
   LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
-  MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
   OttoQuery,
   OttoResponse,
-  ProfileDetails,
   RefundRequest,
-  ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentsResponse,
-  StoreListingsWithVersionsResponse,
-  StoreReview,
-  StoreReviewCreate,
-  StoreSubmission,
-  StoreSubmissionRequest,
-  StoreSubmissionsResponse,
-  SubmissionStatus,
   TransactionHistory,
   User,
   UserPasswordCredentials,
@@ -445,86 +432,8 @@ export default class BackendAPI {
     return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
-  ////////////////////////////////////////
-  ///////////// V2 STORE API /////////////
-  ////////////////////////////////////////
-
-  async getStoreProfile(): Promise<ProfileDetails | null> {
-    try {
-      return await this._get("/store/profile");
-    } catch (error) {
-      if (!(error instanceof LogoutInterruptError)) {
-        Sentry.captureException(error);
-      }
-      return null;
-    }
-  }
-
-  getStoreAgents(params?: {
-    featured?: boolean;
-    creator?: string;
-    sorted_by?: string;
-    search_query?: string;
-    category?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreAgentsResponse> {
-    return this._get("/store/agents", params);
-  }
-
-  getGraphMetaByStoreListingVersionID(
-    storeListingVersionID: string,
-  ): Promise<GraphMeta> {
-    return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreCreators(params?: {
-    featured?: boolean;
-    search_query?: string;
-    sorted_by?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<CreatorsResponse> {
-    return this._get("/store/creators", params);
-  }
-
-  getStoreCreator(username: string): Promise<CreatorDetails> {
-    return this._get(`/store/creator/${encodeURIComponent(username)}`);
-  }
-
-  getStoreSubmissions(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreSubmissionsResponse> {
-    return this._get("/store/submissions", params);
-  }
-
-  createStoreSubmission(
-    submission: StoreSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request("POST", "/store/submissions", submission);
-  }
-
-  generateStoreSubmissionImage(
-    agent_id: string,
-  ): Promise<{ image_url: string }> {
-    return this._request(
-      "POST",
-      "/store/submissions/generate_image?agent_id=" + agent_id,
-    );
-  }
-
-  deleteStoreSubmission(submission_id: string): Promise<boolean> {
-    return this._request("DELETE", `/store/submissions/${submission_id}`);
-  }
-
-  uploadStoreSubmissionMedia(file: File): Promise<string> {
-    return this._uploadFile("/store/submissions/media", file);
-  }
-
-  uploadFile(
+  async uploadFile(
     file: File,
-    provider: string = "gcs",
     expiration_hours: number = 24,
     onProgress?: (progress: number) => void,
   ): Promise<{
@@ -534,81 +443,21 @@ export default class BackendAPI {
     content_type: string;
     expires_in_hours: number;
   }> {
-    return this._uploadFileWithProgress(
+    const response = await this._uploadFileWithProgress(
       "/files/upload",
       file,
-      {
-        provider,
-        expiration_hours,
-      },
+      { expiration_hours },
       onProgress,
-    ).then((response) => {
-      if (typeof response === "string") {
-        return JSON.parse(response);
-      }
-      return response;
-    });
-  }
-
-  updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
-    return this._request("POST", "/store/profile", profile);
-  }
-
-  reviewAgent(
-    username: string,
-    agentName: string,
-    review: StoreReviewCreate,
-  ): Promise<StoreReview> {
-    return this._request(
-      "POST",
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}/review`,
-      review,
     );
-  }
-
-  getMyAgents(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<MyAgentsResponse> {
-    return this._get("/store/myagents", params);
-  }
-
-  downloadStoreAgent(
-    storeListingVersionId: string,
-    version?: number,
-  ): Promise<BlobPart> {
-    const url = version
-      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
-      : `/store/download/agents/${storeListingVersionId}`;
-
-    return this._get(url);
+    if (typeof response === "string") {
+      return JSON.parse(response);
+    }
+    return response;
   }
 
   /////////////////////////////////////////
   /////////// Admin API ///////////////////
   /////////////////////////////////////////
-
-  getAdminListingsWithVersions(params?: {
-    status?: SubmissionStatus;
-    search?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreListingsWithVersionsResponse> {
-    return this._get("/store/admin/listings", params);
-  }
-
-  reviewSubmissionAdmin(
-    storeListingVersionId: string,
-    review: ReviewSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request(
-      "POST",
-      `/store/admin/submissions/${storeListingVersionId}/review`,
-      review,
-    );
-  }
 
   addUserCredits(
     user_id: string,
@@ -629,12 +478,6 @@ export default class BackendAPI {
     transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
-  }
-
-  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
-    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
-
-    return this._get(url);
   }
 
   ////////////////////////////////////////
