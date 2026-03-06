@@ -150,6 +150,17 @@ class TestValidateTranscript:
         content = valid_asst + "\n" + malformed + "\n"
         assert validate_transcript(content) is False
 
+    def test_blank_lines_are_skipped(self):
+        """Transcripts with blank lines should be valid if they contain assistant entries."""
+        content = (
+            json.dumps(USER_MSG)
+            + "\n\n"  # blank line
+            + json.dumps(ASST_MSG)
+            + "\n"
+            + "\n"  # another blank line
+        )
+        assert validate_transcript(content) is True
+
 
 # --- strip_progress_entries ---
 
