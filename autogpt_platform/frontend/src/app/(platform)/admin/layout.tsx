@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import { Users, DollarSign, UserSearch, FileText, Clock } from "lucide-react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -10,6 +10,11 @@ const sidebarLinkGroups = [
         text: "Marketplace Management",
         href: "/admin/marketplace",
         icon: <Users className="h-6 w-6" />,
+      },
+      {
+        text: "Waitlist Management",
+        href: "/admin/waitlist",
+        icon: <Clock className="h-6 w-6" />,
       },
       {
         text: "User Spending",

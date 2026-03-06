@@ -224,6 +224,102 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
     internal_comments: str | None = None  # Private admin notes
 
 
+class StoreWaitlistEntry(pydantic.BaseModel):
+    """Public waitlist entry - no PII fields exposed."""
+
+    waitlistId: str
+    slug: str
+
+    # Content fields
+    name: str
+    subHeading: str
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    imageUrls: list[str]
+    description: str
+    categories: list[str]
+
+
+class StoreWaitlistsAllResponse(pydantic.BaseModel):
+    listings: list[StoreWaitlistEntry]
+
+
+# Admin Waitlist Models
+
+
+class WaitlistCreateRequest(pydantic.BaseModel):
+    """Request model for creating a new waitlist."""
+
+    name: str
+    slug: str
+    subHeading: str
+    description: str
+    categories: list[str] = []
+    imageUrls: list[str] = []
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+
+
+class WaitlistUpdateRequest(pydantic.BaseModel):
+    """Request model for updating a waitlist."""
+
+    name: str | None = None
+    slug: str | None = None
+    subHeading: str | None = None
+    description: str | None = None
+    categories: list[str] | None = None
+    imageUrls: list[str] | None = None
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    status: prisma.enums.WaitlistExternalStatus | None = None
+    storeListingId: str | None = None  # Link to a store listing
+
+
+class WaitlistAdminResponse(pydantic.BaseModel):
+    """Admin response model with full waitlist details including internal data."""
+
+    id: str
+    createdAt: str
+    updatedAt: str
+    slug: str
+    name: str
+    subHeading: str
+    description: str
+    categories: list[str]
+    imageUrls: list[str]
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    status: prisma.enums.WaitlistExternalStatus
+    votes: int
+    signupCount: int  # Total count of joinedUsers + unaffiliatedEmailUsers
+    storeListingId: str | None = None
+    owningUserId: str
+
+
+class WaitlistSignup(pydantic.BaseModel):
+    """Individual signup entry for a waitlist."""
+
+    type: str  # "user" or "email"
+    userId: str | None = None
+    email: str | None = None
+    username: str | None = None  # For user signups
+
+
+class WaitlistSignupListResponse(pydantic.BaseModel):
+    """Response model for listing waitlist signups."""
+
+    waitlistId: str
+    signups: list[WaitlistSignup]
+    totalCount: int
+
+
+class WaitlistAdminListResponse(pydantic.BaseModel):
+    """Response model for listing all waitlists (admin view)."""
+
+    waitlists: list[WaitlistAdminResponse]
+    totalCount: int
+
+
 class UnifiedSearchResult(pydantic.BaseModel):
     """A single result from unified hybrid search across all content types."""
 
