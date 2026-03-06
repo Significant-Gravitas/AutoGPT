@@ -1305,6 +1305,59 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/title": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session title",
+        "description": "Update the title of a chat session.\n\nAllows the user to rename their chat session.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new title.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session title",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionTitleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Title"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/credits": {
       "get": {
         "tags": ["v1", "credits"],
@@ -13290,6 +13343,13 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdateSessionTitleRequest": {
+        "properties": { "title": { "type": "string", "title": "Title" } },
+        "type": "object",
+        "required": ["title"],
+        "title": "UpdateSessionTitleRequest",
+        "description": "Request model for updating a session's title."
       },
       "UpdateTimezoneRequest": {
         "properties": {
