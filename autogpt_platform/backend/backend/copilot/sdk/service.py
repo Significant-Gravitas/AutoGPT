@@ -1408,46 +1408,10 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
-        # --- Upload transcript for next-turn --resume ---
-        # After async with the SDK task group has exited, so the Stop
-        # hook has already fired and the CLI has been SIGTERMed.  The
-        # CLI uses appendFileSync, so all writes are safely on disk.
-        if config.claude_agent_use_resume and user_id:
-            # With --resume the CLI appends to the resume file (most
-            # complete).  Otherwise use the Stop hook path.
-            if use_resume and resume_file:
-                raw_transcript = read_transcript_file(resume_file)
-                logger.debug("[SDK] Transcript source: resume file")
-            elif captured_transcript.path:
-                raw_transcript = read_transcript_file(captured_transcript.path)
-                logger.debug(
-                    "[SDK] Transcript source: stop hook (%s), read result: %s",
-                    captured_transcript.path,
-                    f"{len(raw_transcript)}B" if raw_transcript else "None",
-                )
-            else:
-                raw_transcript = None
-
-            if not raw_transcript:
-                logger.debug(
-                    "[SDK] No usable transcript — CLI file had no "
-                    "conversation entries (expected for first turn "
-                    "without --resume)"
-                )
-
-            if raw_transcript:
-                # Shield the upload from generator cancellation so a
-                # client disconnect / page refresh doesn't lose the
-                # transcript.  The upload must finish even if the SSE
-                # connection is torn down.
-                await asyncio.shield(
-                    _try_upload_transcript(
-                        user_id,
-                        session_id,
-                        raw_transcript,
-                        message_count=len(session.messages),
-                    )
-                )
+        # Transcript upload is handled exclusively in the finally block
+        # to avoid double-uploads (the success path used to upload the
+        # old resume file, then the finally block overwrote it with the
+        # stop hook content — which could be smaller after compaction).
 
         logger.info(
             "[SDK] [%s] Stream completed successfully with %d messages",

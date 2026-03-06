@@ -248,9 +248,11 @@ def write_transcript_to_tempfile(
 def validate_transcript(content: str | None) -> bool:
     """Check that a transcript has actual conversation messages.
 
-    A valid transcript for resume needs at least one user message and one
-    assistant message (not just queue-operation / file-history-snapshot
-    metadata).
+    A valid transcript needs at least one assistant message (not just
+    queue-operation / file-history-snapshot metadata).  We do NOT require
+    a ``type: "user"`` entry because with ``--resume`` the user's message
+    is passed as a CLI query parameter and does not appear in the
+    transcript file.
     """
     if not content or not content.strip():
         return False
@@ -259,21 +261,18 @@ def validate_transcript(content: str | None) -> bool:
     if len(lines) < 2:
         return False
 
-    has_user = False
     has_assistant = False
 
     for line in lines:
         try:
             entry = json.loads(line)
-            msg_type = entry.get("type")
-            if msg_type == "user":
-                has_user = True
-            elif msg_type == "assistant":
+            if entry.get("type") == "assistant":
                 has_assistant = True
+                break
         except json.JSONDecodeError:
             return False
 
-    return has_user and has_assistant
+    return has_assistant
 
 
 # ---------------------------------------------------------------------------
