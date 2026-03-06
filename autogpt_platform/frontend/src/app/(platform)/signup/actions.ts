@@ -1,10 +1,11 @@
 "use server";
 
+import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
-import { getOnboardingStatus } from "../../api/helpers";
 
 export async function signup(
   email: string,
@@ -55,6 +56,17 @@ export async function signup(
 
     if (data.session) {
       await supabase.auth.setSession(data.session);
+    }
+
+    try {
+      await resolveResponse(postV1GetOrCreateUser());
+    } catch (createUserError) {
+      console.error("Error creating user during signup:", createUserError);
+      Sentry.captureException(createUserError);
+      return {
+        success: false,
+        error: "Failed to complete account setup. Please try again.",
+      };
     }
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)

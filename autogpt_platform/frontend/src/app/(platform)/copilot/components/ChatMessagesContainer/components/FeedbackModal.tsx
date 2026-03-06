@@ -15,6 +15,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
   const [comment, setComment] = useState("");
 
   function handleSubmit() {
+    if (!comment.trim()) return;
     onSubmit(comment);
     setComment("");
   }
@@ -36,7 +37,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             Your feedback helps us improve. Share details below.
           </p>
           <Textarea
@@ -48,12 +49,18 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
             className="resize-none"
           />
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-400">{comment.length}/2000</p>
+            <p className="text-xs text-muted-foreground">
+              {comment.length}/2000
+            </p>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleSubmit}>
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!comment.trim()}
+              >
                 Submit feedback
               </Button>
             </div>

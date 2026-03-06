@@ -10,12 +10,13 @@ Storage is handled via ``WorkspaceStorageBackend`` (GCS in prod, local
 filesystem for self-hosted) — no DB column needed.
 """
 
-import json
 import logging
 import os
 import re
 import time
 from dataclasses import dataclass
+
+from backend.util import json
 
 logger = logging.getLogger(__name__)
 
@@ -58,41 +59,37 @@ def strip_progress_entries(content: str) -> str:
     Removes entries whose ``type`` is in ``STRIPPABLE_TYPES`` and reparents
     any remaining child entries so the ``parentUuid`` chain stays intact.
     Typically reduces transcript size by ~30%.
+
+    Entries that are not stripped or reparented are kept as their original
+    raw JSON line to avoid unnecessary re-serialization that changes
+    whitespace or key ordering.
     """
     lines = content.strip().split("\n")
 
-    entries: list[dict] = []
+    # Parse entries, keeping the original line alongside the parsed dict.
+    parsed: list[tuple[str, dict | None]] = []
     for line in lines:
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            # Keep unparseable lines as-is (safety)
-            entries.append({"_raw": line})
+        parsed.append((line, json.loads(line, fallback=None)))
 
+    # First pass: identify stripped UUIDs and build parent map.
     stripped_uuids: set[str] = set()
     uuid_to_parent: dict[str, str] = {}
-    kept: list[dict] = []
 
-    for entry in entries:
-        if "_raw" in entry:
-            kept.append(entry)
+    for _line, entry in parsed:
+        if not isinstance(entry, dict):
             continue
         uid = entry.get("uuid", "")
         parent = entry.get("parentUuid", "")
-        entry_type = entry.get("type", "")
-
         if uid:
             uuid_to_parent[uid] = parent
+        if entry.get("type", "") in STRIPPABLE_TYPES and uid:
+            stripped_uuids.add(uid)
 
-        if entry_type in STRIPPABLE_TYPES:
-            if uid:
-                stripped_uuids.add(uid)
-        else:
-            kept.append(entry)
-
-    # Reparent: walk up chain through stripped entries to find surviving ancestor
-    for entry in kept:
-        if "_raw" in entry:
+    # Second pass: keep non-stripped entries, reparenting where needed.
+    # Preserve original line when no reparenting is required.
+    reparented: set[str] = set()
+    for _line, entry in parsed:
+        if not isinstance(entry, dict):
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
@@ -100,61 +97,30 @@ def strip_progress_entries(content: str) -> str:
             parent = uuid_to_parent.get(parent, "")
         if parent != original_parent:
             entry["parentUuid"] = parent
+            uid = entry.get("uuid", "")
+            if uid:
+                reparented.add(uid)
 
     result_lines: list[str] = []
-    for entry in kept:
-        if "_raw" in entry:
-            result_lines.append(entry["_raw"])
-        else:
+    for line, entry in parsed:
+        if not isinstance(entry, dict):
+            result_lines.append(line)
+            continue
+        if entry.get("type", "") in STRIPPABLE_TYPES:
+            continue
+        uid = entry.get("uuid", "")
+        if uid in reparented:
+            # Re-serialize only entries whose parentUuid was changed.
             result_lines.append(json.dumps(entry, separators=(",", ":")))
+        else:
+            result_lines.append(line)
 
     return "\n".join(result_lines) + "\n"
 
 
 # ---------------------------------------------------------------------------
-# Local file I/O (read from CLI's JSONL, write temp file for --resume)
+# Local file I/O (write temp file for --resume)
 # ---------------------------------------------------------------------------
-
-
-def read_transcript_file(transcript_path: str) -> str | None:
-    """Read a JSONL transcript file from disk.
-
-    Returns the raw JSONL content, or ``None`` if the file is missing, empty,
-    or only contains metadata (≤2 lines with no conversation messages).
-    """
-    if not transcript_path or not os.path.isfile(transcript_path):
-        logger.debug(f"[Transcript] File not found: {transcript_path}")
-        return None
-
-    try:
-        with open(transcript_path) as f:
-            content = f.read()
-
-        if not content.strip():
-            logger.debug("[Transcript] File is empty: %s", transcript_path)
-            return None
-
-        lines = content.strip().split("\n")
-
-        # Validate that the transcript has real conversation content
-        # (not just metadata like queue-operation entries).
-        if not validate_transcript(content):
-            logger.debug(
-                "[Transcript] No conversation content (%d lines) in %s",
-                len(lines),
-                transcript_path,
-            )
-            return None
-
-        logger.info(
-            f"[Transcript] Read {len(lines)} lines, "
-            f"{len(content)} bytes from {transcript_path}"
-        )
-        return content
-
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning(f"[Transcript] Failed to read {transcript_path}: {e}")
-        return None
 
 
 def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
@@ -171,14 +137,6 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
-def _encode_cwd_for_cli(cwd: str) -> str:
-    """Encode a working directory path the same way the Claude CLI does.
-
-    The CLI replaces all non-alphanumeric characters with ``-``.
-    """
-    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
-
-
 def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """Remove the CLI's project directory for a specific working directory.
 
@@ -188,7 +146,8 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """
     import shutil
 
-    cwd_encoded = _encode_cwd_for_cli(sdk_cwd)
+    # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
+    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
     project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
@@ -248,32 +207,29 @@ def write_transcript_to_tempfile(
 def validate_transcript(content: str | None) -> bool:
     """Check that a transcript has actual conversation messages.
 
-    A valid transcript for resume needs at least one user message and one
-    assistant message (not just queue-operation / file-history-snapshot
-    metadata).
+    A valid transcript needs at least one assistant message (not just
+    queue-operation / file-history-snapshot metadata).  We do NOT require
+    a ``type: "user"`` entry because with ``--resume`` the user's message
+    is passed as a CLI query parameter and does not appear in the
+    transcript file.
     """
     if not content or not content.strip():
         return False
 
     lines = content.strip().split("\n")
-    if len(lines) < 2:
-        return False
 
-    has_user = False
     has_assistant = False
 
     for line in lines:
-        try:
-            entry = json.loads(line)
-            msg_type = entry.get("type")
-            if msg_type == "user":
-                has_user = True
-            elif msg_type == "assistant":
-                has_assistant = True
-        except json.JSONDecodeError:
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
             return False
+        if entry.get("type") == "assistant":
+            has_assistant = True
 
-    return has_user and has_assistant
+    return has_assistant
 
 
 # ---------------------------------------------------------------------------
@@ -328,58 +284,56 @@ async def upload_transcript(
     session_id: str,
     content: str,
     message_count: int = 0,
+    log_prefix: str = "[Transcript]",
 ) -> None:
-    """Strip progress entries and upload transcript to bucket storage.
+    """Strip progress entries and upload complete transcript.
 
-    Safety: only overwrites when the new (stripped) transcript is larger than
-    what is already stored.  Since JSONL is append-only, the latest transcript
-    is always the longest.  This prevents a slow/stale background task from
-    clobbering a newer upload from a concurrent turn.
+    The transcript represents the FULL active context (atomic).
+    Each upload REPLACES the previous transcript entirely.
+
+    The executor holds a cluster lock per session, so concurrent uploads for
+    the same session cannot happen.
 
     Args:
-        message_count: ``len(session.messages)`` at upload time — used by
-            the next turn to detect staleness and compress only the gap.
+        content: Complete JSONL transcript (from TranscriptBuilder).
+        message_count: ``len(session.messages)`` at upload time.
     """
     from backend.util.workspace_storage import get_workspace_storage
 
+    # Strip metadata entries (progress, file-history-snapshot, etc.)
+    # Note: SDK-built transcripts shouldn't have these, but strip for safety
     stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
+        # Log entry types for debugging — helps identify why validation failed
+        entry_types: list[str] = []
+        for line in stripped.strip().split("\n"):
+            entry = json.loads(line, fallback={"type": "INVALID_JSON"})
+            entry_types.append(entry.get("type", "?"))
         logger.warning(
-            f"[Transcript] Skipping upload — stripped content not valid "
-            f"for session {session_id}"
+            "%s Skipping upload — stripped content not valid "
+            "(types=%s, stripped_len=%d, raw_len=%d)",
+            log_prefix,
+            entry_types,
+            len(stripped),
+            len(content),
         )
+        logger.debug("%s Raw content preview: %s", log_prefix, content[:500])
+        logger.debug("%s Stripped content: %s", log_prefix, stripped[:500])
         return
 
     storage = await get_workspace_storage()
     wid, fid, fname = _storage_path_parts(user_id, session_id)
     encoded = stripped.encode("utf-8")
-    new_size = len(encoded)
 
-    # Check existing transcript size to avoid overwriting newer with older
-    path = _build_storage_path(user_id, session_id, storage)
-    content_skipped = False
-    try:
-        existing = await storage.retrieve(path)
-        if len(existing) >= new_size:
-            logger.info(
-                f"[Transcript] Skipping content upload — existing ({len(existing)}B) "
-                f">= new ({new_size}B) for session {session_id}"
-            )
-            content_skipped = True
-    except (FileNotFoundError, Exception):
-        pass  # No existing transcript or retrieval error — proceed with upload
+    await storage.store(
+        workspace_id=wid,
+        file_id=fid,
+        filename=fname,
+        content=encoded,
+    )
 
-    if not content_skipped:
-        await storage.store(
-            workspace_id=wid,
-            file_id=fid,
-            filename=fname,
-            content=encoded,
-        )
-
-    # Always update metadata (even when content is skipped) so message_count
-    # stays current.  The gap-fill logic in _build_query_message relies on
-    # message_count to avoid re-compressing the same messages every turn.
+    # Update metadata so message_count stays current.  The gap-fill logic
+    # in _build_query_message relies on it to avoid re-compressing messages.
     try:
         meta = {"message_count": message_count, "uploaded_at": time.time()}
         mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
@@ -390,18 +344,18 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to write metadata for {session_id}: {e}")
+        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
 
     logger.info(
-        f"[Transcript] Uploaded {new_size}B "
-        f"(stripped from {len(content)}B, msg_count={message_count}, "
-        f"content_skipped={content_skipped}) "
-        f"for session {session_id}"
+        f"{log_prefix} Uploaded {len(encoded)}B "
+        f"(stripped from {len(content)}B, msg_count={message_count})"
     )
 
 
 async def download_transcript(
-    user_id: str, session_id: str
+    user_id: str,
+    session_id: str,
+    log_prefix: str = "[Transcript]",
 ) -> TranscriptDownload | None:
     """Download transcript and metadata from bucket storage.
 
@@ -417,10 +371,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug(f"[Transcript] No transcript in storage for {session_id}")
+        logger.debug(f"{log_prefix} No transcript in storage")
         return None
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to download transcript: {e}")
+        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -437,16 +391,13 @@ async def download_transcript(
             meta_path = f"local://{mwid}/{mfid}/{mfname}"
 
         meta_data = await storage.retrieve(meta_path)
-        meta = json.loads(meta_data.decode("utf-8"))
+        meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except (FileNotFoundError, json.JSONDecodeError, Exception):
+    except (FileNotFoundError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.info(
-        f"[Transcript] Downloaded {len(content)}B "
-        f"(msg_count={message_count}) for session {session_id}"
-    )
+    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
     return TranscriptDownload(
         content=content,
         message_count=message_count,

@@ -469,8 +469,16 @@ async def upsert_chat_session(
             )
             db_error = e
 
-        # Save to cache (best-effort, even if DB failed)
+        # Save to cache (best-effort, even if DB failed).
+        # Title updates (update_session_title) run *outside* this lock because
+        # they only touch the title field, not messages.  So a concurrent rename
+        # or auto-title may have written a newer title to Redis while this
+        # upsert was in progress.  Always prefer the cached title to avoid
+        # overwriting it with the stale in-memory copy.
         try:
+            existing_cached = await _get_session_from_cache(session.session_id)
+            if existing_cached and existing_cached.title:
+                session = session.model_copy(update={"title": existing_cached.title})
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -685,24 +693,34 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     return True
 
 
-async def update_session_title(session_id: str, title: str) -> bool:
-    """Update only the title of a chat session.
+async def update_session_title(
+    session_id: str,
+    user_id: str,
+    title: str,
+    *,
+    only_if_empty: bool = False,
+) -> bool:
+    """Update the title of a chat session, scoped to the owning user.
 
-    This is a lightweight operation that doesn't touch messages, avoiding
-    race conditions with concurrent message updates. Use this for background
-    title generation instead of upsert_chat_session.
+    Lightweight operation that doesn't touch messages, avoiding race conditions
+    with concurrent message updates.
 
     Args:
         session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
         title: The new title to set.
+        only_if_empty: When True, uses an atomic ``UPDATE WHERE title IS NULL``
+            so auto-generated titles never overwrite a user-set title.
 
     Returns:
-        True if updated successfully, False otherwise.
+        True if updated successfully, False otherwise (not found, wrong user,
+        or — when only_if_empty — title was already set).
     """
     try:
-        result = await chat_db().update_chat_session(session_id=session_id, title=title)
-        if result is None:
-            logger.warning(f"Session {session_id} not found for title update")
+        updated = await chat_db().update_chat_session_title(
+            session_id, user_id, title, only_if_empty=only_if_empty
+        )
+        if not updated:
             return False
 
         # Update title in cache if it exists (instead of invalidating).
@@ -714,9 +732,8 @@ async def update_session_title(session_id: str, title: str) -> bool:
                 cached.title = title
                 await cache_chat_session(cached)
         except Exception as e:
-            # Not critical - title will be correct on next full cache refresh
             logger.warning(
-                f"Failed to update title in cache for session {session_id}: {e}"
+                f"Cache title update failed for session {session_id} (non-critical): {e}"
             )
 
         return True

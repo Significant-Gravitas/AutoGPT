@@ -95,14 +95,14 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     const submissionsResponse = okData(submissionsData) as any;
     const agentSubmissions =
       submissionsResponse?.submissions?.filter(
-        (submission: StoreSubmission) => submission.agent_id === agent.graph_id,
+        (submission: StoreSubmission) => submission.graph_id === agent.graph_id,
       ) || [];
 
     const highestSubmittedVersion =
       agentSubmissions.length > 0
         ? Math.max(
             ...agentSubmissions.map(
-              (submission: StoreSubmission) => submission.agent_version,
+              (submission: StoreSubmission) => submission.graph_version,
             ),
           )
         : 0;

@@ -63,6 +63,14 @@ class CreateAgentTool(BaseTool):
                     ),
                     "default": True,
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional folder ID to save the agent into. "
+                        "If not provided, the agent is saved at root level. "
+                        "Use list_folders to find available folders."
+                    ),
+                },
             },
             "required": ["agent_json"],
         }
