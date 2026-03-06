@@ -1077,7 +1077,7 @@ async def stream_chat_completion_sdk(
             tags=["sdk"],
             metadata={
                 "resume": str(use_resume),
-                "conversation_turn": turn,
+                "conversation_turn": str(turn),
             },
         )
         _otel_ctx.__enter__()
