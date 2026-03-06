@@ -3,9 +3,9 @@
 import logging
 from typing import Any
 
-from backend.api.features.store.exceptions import AgentNotFoundError
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import store_db as get_store_db
+from backend.util.exceptions import NotFoundError
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
@@ -140,7 +140,7 @@ class CustomizeAgentTool(BaseTool):
             agent_details = await store_db.get_store_agent_details(
                 username=creator_username, agent_name=agent_slug
             )
-        except AgentNotFoundError:
+        except NotFoundError:
             return ErrorResponse(
                 message=(
                     f"Could not find marketplace agent '{agent_id}'. "

@@ -54,7 +54,7 @@ Search for agents in the store
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block searches the AutoGPT agent store using a query string. Filter results by category and sort by rating, runs, or name. Limit controls the maximum number of results returned.
+This block searches the AutoGPT agent store using a query string. Filter results by category and sort by rating, runs, name, or recency (`updated_at`). Limit controls the maximum number of results returned.
 
 Results include basic agent information and are output both as a list and individually for workflow iteration.
 <!-- END MANUAL -->
