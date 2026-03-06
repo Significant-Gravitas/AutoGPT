@@ -92,12 +92,18 @@ export function useCopilotStream({
   // Set when the user explicitly clicks stop — prevents onError from
   // triggering a reconnect cycle for the resulting AbortError.
   const isUserStoppingRef = useRef(false);
+  // Set when all reconnect attempts are exhausted — prevents hasActiveStream
+  // from keeping the UI blocked forever when the backend is slow to clear it.
+  // Must be state (not ref) so that setting it triggers a re-render and
+  // recomputes `isReconnecting`.
+  const [reconnectExhausted, setReconnectExhausted] = useState(false);
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
 
     const nextAttempt = reconnectAttemptsRef.current + 1;
     if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
+      setReconnectExhausted(true);
       toast({
         title: "Connection lost",
         description: "Unable to reconnect. Please refresh the page.",
@@ -146,7 +152,11 @@ export function useCopilotStream({
         return;
       }
 
-      // Check if backend executor is still running after clean close
+      // Check if backend executor is still running after clean close.
+      // Brief delay to let the backend clear active_stream — without this,
+      // the refetch often races and sees stale active_stream=true, triggering
+      // unnecessary reconnect cycles.
+      await new Promise((r) => setTimeout(r, 500));
       const result = await refetchSession();
       const d = result.data;
       const backendActive =
@@ -276,6 +286,7 @@ export function useCopilotStream({
     setIsReconnectScheduled(false);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
+    setReconnectExhausted(false);
     hasResumedRef.current.clear();
     return () => {
       clearTimeout(reconnectTimerRef.current);
@@ -299,6 +310,7 @@ export function useCopilotStream({
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
+        setReconnectExhausted(false);
       }
     }
   }, [status, sessionId, queryClient, isReconnectScheduled]);
@@ -358,10 +370,12 @@ export function useCopilotStream({
   }, [hasActiveStream]);
 
   // True while reconnecting or backend has active stream but we haven't connected yet.
-  // Suppressed when the user explicitly stopped — the backend may take a moment
-  // to clear active_stream but the UI should be responsive immediately.
+  // Suppressed when the user explicitly stopped or when all reconnect attempts
+  // are exhausted — the backend may be slow to clear active_stream but the UI
+  // should remain responsive.
   const isReconnecting =
     !isUserStoppingRef.current &&
+    !reconnectExhausted &&
     (isReconnectScheduled ||
       (hasActiveStream && status !== "streaming" && status !== "submitted"));
 
