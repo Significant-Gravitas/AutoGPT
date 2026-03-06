@@ -1355,16 +1355,27 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
+                            tool_result_content = (
+                                response.output
+                                if isinstance(response.output, str)
+                                else str(response.output)
+                            )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=(
-                                        response.output
-                                        if isinstance(response.output, str)
-                                        else str(response.output)
-                                    ),
+                                    content=tool_result_content,
                                     tool_call_id=response.toolCallId,
                                 )
+                            )
+                            # Capture tool result in transcript as user message with tool_result content
+                            transcript_builder.add_user_message(
+                                content=[
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": response.toolCallId,
+                                        "content": tool_result_content,
+                                    }
+                                ]
                             )
                             has_tool_results = True
 
