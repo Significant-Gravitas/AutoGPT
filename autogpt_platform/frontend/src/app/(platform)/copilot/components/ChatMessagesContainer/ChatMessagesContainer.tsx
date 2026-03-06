@@ -111,14 +111,7 @@ function splitReasoningAndResponse(parts: MessagePart[]): {
   reasoning: MessagePart[];
   response: MessagePart[];
 } {
-  // Find the index of the last tool part
-  let lastToolIndex = -1;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].type.startsWith("tool-")) {
-      lastToolIndex = i;
-      break;
-    }
-  }
+  const lastToolIndex = parts.findLastIndex((p) => p.type.startsWith("tool-"));
 
   // No tools → everything is response
   if (lastToolIndex === -1) {
