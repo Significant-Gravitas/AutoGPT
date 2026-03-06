@@ -12,7 +12,7 @@ That integration you've been waiting for? You don't need to wait anymore. AutoPi
 
 ## Upload files to AutoPilot
 
-You can now attach files directly in the AutoPilot chat — documents, images, spreadsheets, audio, and video. Hit the **+** button, pick your files, and they appear as neat chips in the input bar with a spinner while they upload. Once sent, your attachments display inline in the conversation and the AI can read and reference them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12220)
+You can now attach files directly in the AutoPilot chat — documents, images, spreadsheets, audio, and video. Hit the **+** button or drag and drop files into the chat. Once sent, your attachments display inline in the conversation and the AI can read and reference them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12220)
 
 ## Code runs in a cloud sandbox
 
