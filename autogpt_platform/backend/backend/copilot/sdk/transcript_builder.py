@@ -44,7 +44,7 @@ class TranscriptBuilder:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
 
-    def load_previous(self, content: str) -> None:
+    def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
 
         This loads the FULL previous context. As new messages come in,
@@ -62,7 +62,10 @@ class TranscriptBuilder:
             data = json.loads(line, fallback=None)
             if data is None:
                 logger.warning(
-                    "Failed to parse transcript line %d/%d", line_num, len(lines)
+                    "%s Failed to parse transcript line %d/%d",
+                    log_prefix,
+                    line_num,
+                    len(lines),
                 )
                 continue
 
@@ -82,7 +85,8 @@ class TranscriptBuilder:
             self._last_uuid = entry.uuid
 
         logger.info(
-            "Loaded %d entries from previous transcript (last_uuid=%s)",
+            "%s Loaded %d entries from previous transcript (last_uuid=%s)",
+            log_prefix,
             len(self._entries),
             self._last_uuid[:12] if self._last_uuid else None,
         )

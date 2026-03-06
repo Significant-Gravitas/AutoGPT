@@ -986,7 +986,7 @@ async def stream_chat_completion_sdk(
             )
             if is_valid:
                 # Load previous FULL context into builder
-                transcript_builder.load_previous(dl.content)
+                transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
                 resume_file = write_transcript_to_tempfile(
                     dl.content, session_id, sdk_cwd
                 )
