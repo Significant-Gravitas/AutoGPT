@@ -32,7 +32,7 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.workspace import get_or_create_workspace
+from backend.data import workspace as workspace_db
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -831,8 +831,9 @@ async def add_graph_execution(
         udb = user_db
         gdb = graph_db
         odb = onboarding_db
+        wdb = workspace_db
     else:
-        edb = udb = gdb = odb = get_database_manager_async_client()
+        edb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
     # Get or create the graph execution
     if graph_exec_id:
@@ -892,7 +893,7 @@ async def add_graph_execution(
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
-        workspace = await get_or_create_workspace(user_id)
+        workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
             # Execution identity
