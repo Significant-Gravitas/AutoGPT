@@ -153,7 +153,7 @@ export function ChatInput({
             />
           </PromptInputTools>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-4">
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
