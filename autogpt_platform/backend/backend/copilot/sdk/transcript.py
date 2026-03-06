@@ -268,7 +268,6 @@ def validate_transcript(content: str | None) -> bool:
             entry = json.loads(line)
             if entry.get("type") == "assistant":
                 has_assistant = True
-                break
         except json.JSONDecodeError:
             return False
 
