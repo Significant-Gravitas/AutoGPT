@@ -1230,9 +1230,8 @@ async def stream_chat_completion_sdk(
                     # tools are still executing concurrently.
                     # Capture SDK assistant messages in transcript.
                     if isinstance(sdk_msg, AssistantMessage):
-                        content_blocks = _format_sdk_content_blocks(sdk_msg.content)
                         transcript_builder.append_assistant(
-                            content_blocks=content_blocks,
+                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
                             model=sdk_msg.model,
                         )
 
@@ -1353,15 +1352,18 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
-                            content = (
-                                response.output
-                                if isinstance(response.output, str)
-                                else json.dumps(response.output, ensure_ascii=False)
-                            )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=content,
+                                    content=(
+                                        content := (
+                                            response.output
+                                            if isinstance(response.output, str)
+                                            else json.dumps(
+                                                response.output, ensure_ascii=False
+                                            )
+                                        )
+                                    ),
                                     tool_call_id=response.toolCallId,
                                 )
                             )
