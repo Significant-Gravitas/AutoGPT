@@ -2,7 +2,6 @@ import logging
 
 import autogpt_libs.auth
 import fastapi
-import fastapi.responses
 
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
@@ -35,18 +34,10 @@ async def create_waitlist(
     Returns:
         WaitlistAdminResponse with the created waitlist details
     """
-    try:
-        waitlist = await store_db.create_waitlist_admin(
-            admin_user_id=user_id,
-            data=request,
-        )
-        return waitlist
-    except Exception as e:
-        logger.exception("Error creating waitlist: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while creating the waitlist"},
-        )
+    return await store_db.create_waitlist_admin(
+        admin_user_id=user_id,
+        data=request,
+    )
 
 
 @router.get(
@@ -61,14 +52,7 @@ async def list_waitlists():
     Returns:
         WaitlistAdminListResponse with all waitlists
     """
-    try:
-        return await store_db.get_waitlists_admin()
-    except Exception as e:
-        logger.exception("Error listing waitlists: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while fetching waitlists"},
-        )
+    return await store_db.get_waitlists_admin()
 
 
 @router.get(
@@ -88,20 +72,7 @@ async def get_waitlist(
     Returns:
         WaitlistAdminResponse with waitlist details
     """
-    try:
-        return await store_db.get_waitlist_admin(waitlist_id)
-    except ValueError:
-        logger.warning("Waitlist not found: %s", waitlist_id)
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Waitlist not found"},
-        )
-    except Exception as e:
-        logger.exception("Error fetching waitlist: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while fetching the waitlist"},
-        )
+    return await store_db.get_waitlist_admin(waitlist_id)
 
 
 @router.put(
@@ -123,20 +94,7 @@ async def update_waitlist(
     Returns:
         WaitlistAdminResponse with updated waitlist details
     """
-    try:
-        return await store_db.update_waitlist_admin(waitlist_id, request)
-    except ValueError:
-        logger.warning("Waitlist not found for update: %s", waitlist_id)
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Waitlist not found"},
-        )
-    except Exception as e:
-        logger.exception("Error updating waitlist: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while updating the waitlist"},
-        )
+    return await store_db.update_waitlist_admin(waitlist_id, request)
 
 
 @router.delete(
@@ -155,21 +113,8 @@ async def delete_waitlist(
     Returns:
         Success message
     """
-    try:
-        await store_db.delete_waitlist_admin(waitlist_id)
-        return {"message": "Waitlist deleted successfully"}
-    except ValueError:
-        logger.warning(f"Waitlist not found for deletion: {waitlist_id}")
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Waitlist not found"},
-        )
-    except Exception as e:
-        logger.exception("Error deleting waitlist: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while deleting the waitlist"},
-        )
+    await store_db.delete_waitlist_admin(waitlist_id)
+    return {"message": "Waitlist deleted successfully"}
 
 
 @router.get(
@@ -189,20 +134,7 @@ async def get_waitlist_signups(
     Returns:
         WaitlistSignupListResponse with all signups
     """
-    try:
-        return await store_db.get_waitlist_signups_admin(waitlist_id)
-    except ValueError:
-        logger.warning("Waitlist not found for signups: %s", waitlist_id)
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Waitlist not found"},
-        )
-    except Exception as e:
-        logger.exception("Error fetching waitlist signups: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while fetching waitlist signups"},
-        )
+    return await store_db.get_waitlist_signups_admin(waitlist_id)
 
 
 @router.post(
@@ -229,23 +161,4 @@ async def link_waitlist_to_listing(
     Returns:
         WaitlistAdminResponse with updated waitlist details
     """
-    try:
-        return await store_db.link_waitlist_to_listing_admin(
-            waitlist_id, store_listing_id
-        )
-    except ValueError:
-        logger.warning(
-            "Link failed - waitlist or listing not found: %s, %s",
-            waitlist_id,
-            store_listing_id,
-        )
-        return fastapi.responses.JSONResponse(
-            status_code=404,
-            content={"detail": "Waitlist or store listing not found"},
-        )
-    except Exception as e:
-        logger.exception("Error linking waitlist to listing: %s", e)
-        return fastapi.responses.JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while linking the waitlist"},
-        )
+    return await store_db.link_waitlist_to_listing_admin(waitlist_id, store_listing_id)

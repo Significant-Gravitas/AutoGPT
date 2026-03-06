@@ -2046,11 +2046,11 @@ async def get_user_waitlist_memberships(user_id: str) -> list[str]:
     try:
         user = await prisma.models.User.prisma().find_unique(
             where={"id": user_id},
-            include={"joinedWaitlists": True},
+            include={"JoinedWaitlists": True},
         )
-        if not user or not user.joinedWaitlists:
+        if not user or not user.JoinedWaitlists:
             return []
-        return [w.id for w in user.joinedWaitlists]
+        return [w.id for w in user.JoinedWaitlists]
     except Exception as e:
         logger.error(f"Error fetching user waitlist memberships: {e}")
         raise DatabaseError("Failed to fetch waitlist memberships") from e
@@ -2072,7 +2072,7 @@ async def add_user_to_waitlist(
         # Find the waitlist
         waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
             where={"id": waitlist_id},
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         if not waitlist:
@@ -2089,7 +2089,7 @@ async def add_user_to_waitlist(
 
         if user_id:
             # Check if user already joined
-            joined_user_ids = [u.id for u in (waitlist.joinedUsers or [])]
+            joined_user_ids = [u.id for u in (waitlist.JoinedUsers or [])]
             if user_id in joined_user_ids:
                 # Already joined - return waitlist info
                 logger.debug(f"User {user_id} already joined waitlist {waitlist_id}")
@@ -2097,7 +2097,7 @@ async def add_user_to_waitlist(
                 # Connect user to waitlist
                 await prisma.models.WaitlistEntry.prisma().update(
                     where={"id": waitlist_id},
-                    data={"joinedUsers": {"connect": [{"id": user_id}]}},
+                    data={"JoinedUsers": {"connect": [{"id": user_id}]}},
                 )
                 logger.info(f"User {user_id} joined waitlist {waitlist_id}")
 
@@ -2167,7 +2167,7 @@ def _waitlist_to_admin_response(
     waitlist: prisma.models.WaitlistEntry,
 ) -> store_model.WaitlistAdminResponse:
     """Convert a WaitlistEntry to WaitlistAdminResponse."""
-    joined_count = len(waitlist.joinedUsers) if waitlist.joinedUsers else 0
+    joined_count = len(waitlist.JoinedUsers) if waitlist.JoinedUsers else 0
     email_count = (
         len(waitlist.unaffiliatedEmailUsers) if waitlist.unaffiliatedEmailUsers else 0
     )
@@ -2213,7 +2213,7 @@ async def create_waitlist_admin(
                 owningUserId=admin_user_id,
                 status=prisma.enums.WaitlistExternalStatus.NOT_STARTED,
             ),
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         return _waitlist_to_admin_response(waitlist)
@@ -2227,7 +2227,7 @@ async def get_waitlists_admin() -> store_model.WaitlistAdminListResponse:
     try:
         waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
             where=prisma.types.WaitlistEntryWhereInput(isDeleted=False),
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
             order={"createdAt": "desc"},
         )
 
@@ -2247,7 +2247,7 @@ async def get_waitlist_admin(
     try:
         waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
             where={"id": waitlist_id},
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         if not waitlist:
@@ -2311,7 +2311,7 @@ async def update_waitlist_admin(
         waitlist = await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
             data=prisma.types.WaitlistEntryUpdateInput(**update_data),
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         # We already verified existence above, so this should never be None
@@ -2358,7 +2358,7 @@ async def get_waitlist_signups_admin(
     try:
         waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
             where={"id": waitlist_id},
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         if not waitlist:
@@ -2367,7 +2367,7 @@ async def get_waitlist_signups_admin(
         signups: list[store_model.WaitlistSignup] = []
 
         # Add user signups
-        for user in waitlist.joinedUsers or []:
+        for user in waitlist.JoinedUsers or []:
             signups.append(
                 store_model.WaitlistSignup(
                     type="user",
@@ -2428,7 +2428,7 @@ async def link_waitlist_to_listing_admin(
         updated_waitlist = await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
             data={"StoreListing": {"connect": {"id": store_listing_id}}},
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         # We already verified existence above, so this should never be None
@@ -2473,7 +2473,7 @@ async def notify_waitlist_users_on_launch(
                     ]
                 },
             },
-            include={"joinedUsers": True},
+            include={"JoinedUsers": True},
         )
 
         if not waitlists:
@@ -2487,7 +2487,7 @@ async def notify_waitlist_users_on_launch(
 
         for waitlist in waitlists:
             # Track notification results for this waitlist
-            users_to_notify = waitlist.joinedUsers or []
+            users_to_notify = waitlist.JoinedUsers or []
             failed_user_ids: list[str] = []
 
             # Notify registered users

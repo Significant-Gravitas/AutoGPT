@@ -2043,9 +2043,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
               }
             }
           },
@@ -6864,34 +6862,6 @@
         "summary": "Get waitlist IDs the current user has joined",
         "description": "Returns list of waitlist IDs the authenticated user has joined.",
         "operationId": "getV2Get waitlist ids the current user has joined",
-    "/api/workspace/files/upload": {
-      "post": {
-        "tags": ["workspace"],
-        "summary": "Upload file to workspace",
-        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
-        "operationId": "postWorkspaceUpload file to workspace",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Session Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6901,7 +6871,6 @@
                   "items": { "type": "string" },
                   "type": "array",
                   "title": "Response Getv2Get Waitlist Ids The Current User Has Joined"
-                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
                 }
               }
             }
@@ -6942,6 +6911,67 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreWaitlistEntry" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload file to workspace",
+        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
+        "operationId": "postWorkspaceUpload file to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -6974,10 +7004,6 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreWaitlistEntry" }
-              }
-            }
-          },
                 "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
               }
             }
@@ -14339,6 +14365,24 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
+      "UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
+      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -14875,24 +14919,6 @@
         },
         "type": "object",
         "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
-        "title": "UploadFileResponse"
-      },
-      "backend__api__model__UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
         "title": "UploadFileResponse"
       }
     },

@@ -73,8 +73,8 @@ model User {
   OAuthRefreshTokens      OAuthRefreshToken[]
 
   // Waitlist relations
-  waitlistEntries       WaitlistEntry[]
-  joinedWaitlists       WaitlistEntry[] @relation("joinedWaitlists")
+  WaitlistEntries       WaitlistEntry[]
+  JoinedWaitlists       WaitlistEntry[] @relation("joinedWaitlists")
 }
 
 enum OnboardingStep {
@@ -993,7 +993,7 @@ model StoreListing {
 
   // Relations
   Versions        StoreListingVersion[] @relation("ListingVersions")
-  waitlistEntries WaitlistEntry[]
+  WaitlistEntries WaitlistEntry[]
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentGraphId])
@@ -1158,7 +1158,7 @@ model WaitlistEntry {
   //Waitlist specific fields
   status                 WaitlistExternalStatus @default(NOT_STARTED)
   votes                  Int                    @default(0) // Hide from frontend api
-  joinedUsers            User[]                 @relation("joinedWaitlists")
+  JoinedUsers            User[]                 @relation("joinedWaitlists")
   // NOTE: DO NOT DOUBLE SEND TO THESE USERS, IF THEY HAVE SIGNED UP SINCE THEY MAY HAVE ALREADY RECEIVED AN EMAIL
   // DOUBLE CHECK WHEN SENDING THAT THEY ARE NOT IN THE JOINED USERS LIST ALSO
   unaffiliatedEmailUsers String[]               @default([])
