@@ -1484,6 +1484,59 @@ async def bulk_move_agents_to_folder(
     return [library_model.LibraryAgent.from_db(agent) for agent in agents]
 
 
+def collect_tree_ids(
+    nodes: list[library_model.LibraryFolderTree],
+    visited: set[str] | None = None,
+) -> list[str]:
+    """Collect all folder IDs from a folder tree."""
+    if visited is None:
+        visited = set()
+    ids: list[str] = []
+    for n in nodes:
+        if n.id in visited:
+            continue
+        visited.add(n.id)
+        ids.append(n.id)
+        ids.extend(collect_tree_ids(n.children, visited))
+    return ids
+
+
+def count_tree(
+    nodes: list[library_model.LibraryFolderTree],
+    visited: set[str] | None = None,
+) -> int:
+    """Count the total number of folders in a folder tree."""
+    if visited is None:
+        visited = set()
+    count = 0
+    for n in nodes:
+        if n.id in visited:
+            continue
+        visited.add(n.id)
+        count += 1 + count_tree(n.children, visited)
+    return count
+
+
+async def get_folder_agent_summaries(
+    user_id: str, folder_id: str
+) -> list[dict[str, str | None]]:
+    """Get a lightweight list of agents in a folder (id, name, description)."""
+    resp = await list_library_agents(user_id=user_id, folder_id=folder_id)
+    return [
+        {"id": a.id, "name": a.name, "description": a.description} for a in resp.agents
+    ]
+
+
+async def get_folder_agents_map(
+    user_id: str, folder_ids: list[str]
+) -> dict[str, list[dict[str, str | None]]]:
+    """Get agent summaries for multiple folders concurrently."""
+    results = await asyncio.gather(
+        *(get_folder_agent_summaries(user_id, fid) for fid in folder_ids)
+    )
+    return dict(zip(folder_ids, results))
+
+
 ##############################################
 ########### Presets DB Functions #############
 ##############################################

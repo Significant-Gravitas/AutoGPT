@@ -9,6 +9,7 @@ from backend.api.features.library.db import (
     create_graph_in_library,
     create_library_agent,
     delete_folder,
+    get_folder_agents_map,
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
@@ -274,6 +275,7 @@ class DatabaseManager(AppService):
     move_folder = _(move_folder)
     delete_folder = _(delete_folder)
     bulk_move_agents_to_folder = _(bulk_move_agents_to_folder)
+    get_folder_agents_map = _(get_folder_agents_map)
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
@@ -456,6 +458,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     move_folder = d.move_folder
     delete_folder = d.delete_folder
     bulk_move_agents_to_folder = d.bulk_move_agents_to_folder
+    get_folder_agents_map = d.get_folder_agents_map
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs

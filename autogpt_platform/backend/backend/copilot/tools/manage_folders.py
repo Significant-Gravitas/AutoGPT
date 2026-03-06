@@ -1,9 +1,9 @@
 """Folder management tools for the copilot."""
 
-import asyncio
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.api.features.library.db import collect_tree_ids, count_tree
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
@@ -56,55 +56,23 @@ def _tree_to_info(
     )
 
 
-async def _fetch_agents_for_folder(
-    user_id: str, folder_id: str
+def _to_agent_summaries(
+    raw: list[dict[str, str | None]],
 ) -> list[FolderAgentSummary]:
-    db = library_db()
-    resp = await db.list_library_agents(user_id=user_id, folder_id=folder_id)
     return [
-        FolderAgentSummary(id=a.id, name=a.name, description=a.description)
-        for a in resp.agents
+        FolderAgentSummary(
+            id=a["id"] or "",
+            name=a["name"] or "",
+            description=a["description"] or "",
+        )
+        for a in raw
     ]
 
 
-async def _fetch_agents_map(
-    user_id: str, folder_ids: list[str]
+def _to_agent_summaries_map(
+    raw: dict[str, list[dict[str, str | None]]],
 ) -> dict[str, list[FolderAgentSummary]]:
-    results = await asyncio.gather(
-        *(_fetch_agents_for_folder(user_id, fid) for fid in folder_ids)
-    )
-    return dict(zip(folder_ids, results))
-
-
-def _collect_tree_ids(
-    nodes: list[library_model.LibraryFolderTree],
-    visited: set[str] | None = None,
-) -> list[str]:
-    if visited is None:
-        visited = set()
-    ids: list[str] = []
-    for n in nodes:
-        if n.id in visited:
-            continue
-        visited.add(n.id)
-        ids.append(n.id)
-        ids.extend(_collect_tree_ids(n.children, visited))
-    return ids
-
-
-def _count_tree(
-    nodes: list[library_model.LibraryFolderTree],
-    visited: set[str] | None = None,
-) -> int:
-    if visited is None:
-        visited = set()
-    count = 0
-    for n in nodes:
-        if n.id in visited:
-            continue
-        visited.add(n.id)
-        count += 1 + _count_tree(n.children, visited)
-    return count
+    return {fid: _to_agent_summaries(agents) for fid, agents in raw.items()}
 
 
 class CreateFolderTool(BaseTool):
@@ -247,11 +215,14 @@ class ListFoldersTool(BaseTool):
                 folders = await library_db().list_folders(
                     user_id=user_id, parent_id=parent_id
                 )
-                agents_map = (
-                    await _fetch_agents_map(user_id, [f.id for f in folders])
+                raw_map = (
+                    await library_db().get_folder_agents_map(
+                        user_id, [f.id for f in folders]
+                    )
                     if include_agents
                     else None
                 )
+                agents_map = _to_agent_summaries_map(raw_map) if raw_map else None
                 return FolderListResponse(
                     message=f"Found {len(folders)} folder(s).",
                     folders=[
@@ -263,12 +234,15 @@ class ListFoldersTool(BaseTool):
                 )
             else:
                 tree = await library_db().get_folder_tree(user_id=user_id)
-                flat_count = _count_tree(tree)
-                agents_map = (
-                    await _fetch_agents_map(user_id, _collect_tree_ids(tree))
+                flat_count = count_tree(tree)
+                raw_map = (
+                    await library_db().get_folder_agents_map(
+                        user_id, collect_tree_ids(tree)
+                    )
                     if include_agents
                     else None
                 )
+                agents_map = _to_agent_summaries_map(raw_map) if raw_map else None
                 return FolderListResponse(
                     message=f"Found {flat_count} folder(s) in your library.",
                     tree=[_tree_to_info(t, agents_map) for t in tree],
