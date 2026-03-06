@@ -1552,14 +1552,38 @@ async def stream_chat_completion_sdk(
                 logger.info(
                     "%s Transcript upload: source=%s, "
                     "stop_hook_fired=%s, captured_len=%d, "
-                    "raw_len=%d, use_resume=%s",
+                    "raw_len=%d, use_resume=%s, previous_len=%d",
                     log_prefix,
                     source,
                     bool(captured_transcript.path),
                     len(captured_transcript.raw_content),
                     len(raw_transcript) if raw_transcript else 0,
                     use_resume,
+                    (
+                        len(previous_transcript_content)
+                        if previous_transcript_content
+                        else 0
+                    ),
                 )
+
+                # When using --resume, CLI should append new turn to old transcript.
+                # But sometimes CLI writes only the new turn (incomplete).
+                # Fix: If raw_transcript is smaller than previous, manually append.
+                if (
+                    use_resume
+                    and previous_transcript_content
+                    and raw_transcript
+                    and len(raw_transcript) < len(previous_transcript_content)
+                ):
+                    logger.warning(
+                        "%s CLI transcript smaller than previous (%dB < %dB) - "
+                        "manually appending new turn to previous",
+                        log_prefix,
+                        len(raw_transcript),
+                        len(previous_transcript_content),
+                    )
+                    # Append new turn to previous transcript
+                    raw_transcript = previous_transcript_content + raw_transcript
 
                 if raw_transcript and session is not None:
                     await asyncio.shield(
