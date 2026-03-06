@@ -14,9 +14,9 @@ That integration you've been waiting for? You don't need to wait anymore. AutoPi
 
 You can now attach files directly in the AutoPilot chat — documents, images, spreadsheets, audio, and video. Hit the **+** button or drag and drop files into the chat. Once sent, your attachments display inline in the conversation and the AI can read and reference them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12220)
 
-## Code runs in a cloud sandbox
+## AutoPilot can run code and create files for you
 
-AutoPilot now executes code in a secure cloud sandbox instead of locally. Files created during code execution, image generation, or document creation all live in the same shared environment — so a script can read a file that another tool just wrote, without anything getting lost between steps. The sandbox reconnects automatically if your session is interrupted. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
+Ask AutoPilot to analyze a dataset, generate a chart, write a document, or build a quick script — it now does the work in a secure cloud environment and hands you the result. Everything stays connected between steps, so it can create a file in one step and use it in the next without losing track. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12212)
 
 {% hint style="info" %}
 Tool outputs in chat now display richer detail — bash results show stdout and stderr, file edits show before-and-after diffs, and search results are formatted with icons by category.
