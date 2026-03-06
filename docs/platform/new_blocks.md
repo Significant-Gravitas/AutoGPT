@@ -238,9 +238,10 @@ you're going to add a `credentials` parameter to the `Input` model and the `run`
 #### API key auth
 
 ```python
-from backend.data.model import APIKeyCredentials
+from typing import Literal
+
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
-from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
 
@@ -268,9 +269,10 @@ class BlockWithAPIKeyAuth(Block):
 #### OAuth
 
 ```python
-from backend.data.model import OAuth2Credentials
+from typing import Literal
+
+from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
 from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
-from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
 
@@ -298,9 +300,10 @@ class BlockWithOAuth(Block):
 #### API key auth + OAuth
 
 ```python
-from backend.data.model import Credentials
+from typing import Literal
+
+from backend.data.model import Credentials, CredentialsField, CredentialsMetaInput
 from backend.blocks._base import Block, BlockOutput, BlockSchemaInput
-from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
 
