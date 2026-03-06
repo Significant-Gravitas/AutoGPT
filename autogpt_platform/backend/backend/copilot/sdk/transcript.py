@@ -48,110 +48,6 @@ TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
 
 
 # ---------------------------------------------------------------------------
-# Transcript merging for --resume
-# ---------------------------------------------------------------------------
-
-# When using `--resume <file>`, the CLI creates synthetic placeholders for old turns.
-# We restore real content by using previous transcript entries for matching UUIDs.
-#
-# Logic:
-# - Previous transcript: real content from completed turns (UUIDs: a1, a2, ...)
-# - New transcript: placeholders (UUIDs: a1, a2) + new real content (UUID: a3)
-# - For each UUID in new: if exists in previous, use previous version (real content)
-# - For UUIDs only in new: keep new version (actually new content)
-# - Result: [a1 real, a2 real, a3 new]
-#
-# This approach is robust - no need to detect synthetic markers that could change.
-
-
-def merge_with_previous_transcript(
-    new_content: str,
-    previous_content: str | None,
-    log_prefix: str = "[Transcript]",
-) -> str:
-    """Restore real assistant content by replacing entries with matching UUIDs from previous.
-
-    When using --resume, old assistant turns have matching UUIDs but placeholder content.
-    This replaces them with real content from the previous transcript.
-    """
-    logger.info(
-        "%s merge_with_previous_transcript: new=%dB, previous=%s",
-        log_prefix,
-        len(new_content),
-        f"{len(previous_content)}B" if previous_content else "None",
-    )
-    if not previous_content or not previous_content.strip():
-        logger.warning("%s No previous content to merge!", log_prefix)
-        return new_content
-
-    # Build index: uuid -> assistant entry line from previous transcript
-    prev_by_uuid: dict[str, str] = {}
-    for line in previous_content.strip().split("\n"):
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
-            prev_by_uuid[uid] = line
-
-    logger.info(
-        "%s Indexed %d assistant UUIDs from previous: %s",
-        log_prefix,
-        len(prev_by_uuid),
-        list(prev_by_uuid.keys())[:5],  # Show first 5 UUIDs
-    )
-
-    if not prev_by_uuid:
-        logger.warning("%s No assistant entries in previous transcript!", log_prefix)
-        return new_content
-
-    # Replace assistant entries that exist in previous transcript (hydrate real content)
-    merged_lines: list[str] = []
-    replaced = 0
-    new_assistant_uuids = []
-
-    for line in new_content.strip().split("\n"):
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            merged_lines.append(line)
-            continue
-
-        # Track assistant UUIDs in new transcript
-        if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
-            new_assistant_uuids.append(uid)
-
-            # If this UUID exists in previous, use previous version
-            if uid in prev_by_uuid:
-                merged_lines.append(prev_by_uuid[uid])
-                replaced += 1
-                logger.info(
-                    "%s Replaced assistant uuid=%s with version from previous",
-                    log_prefix,
-                    uid[:12],
-                )
-            else:
-                logger.info(
-                    "%s Assistant uuid=%s NOT in previous (keeping new)",
-                    log_prefix,
-                    uid[:12],
-                )
-                merged_lines.append(line)
-        else:
-            merged_lines.append(line)
-
-    if replaced:
-        logger.info(
-            "%s Merged %d assistant entries from previous transcript",
-            log_prefix,
-            replaced,
-        )
-
-    return "\n".join(merged_lines) + "\n"
-
-
-# ---------------------------------------------------------------------------
 # Progress stripping
 # ---------------------------------------------------------------------------
 
@@ -225,49 +121,8 @@ def strip_progress_entries(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Local file I/O (read from CLI's JSONL, write temp file for --resume)
+# Local file I/O (write temp file for --resume)
 # ---------------------------------------------------------------------------
-
-
-def read_transcript_file(transcript_path: str) -> str | None:
-    """Read a JSONL transcript file from disk.
-
-    Returns the raw JSONL content, or ``None`` if the file is missing, empty,
-    or only contains metadata (≤2 lines with no conversation messages).
-    """
-    if not transcript_path or not os.path.isfile(transcript_path):
-        logger.debug(f"[Transcript] File not found: {transcript_path}")
-        return None
-
-    try:
-        with open(transcript_path) as f:
-            content = f.read()
-
-        if not content.strip():
-            logger.debug("[Transcript] File is empty: %s", transcript_path)
-            return None
-
-        lines = content.strip().split("\n")
-
-        # Validate that the transcript has real conversation content
-        # (not just metadata like queue-operation entries).
-        if not validate_transcript(content):
-            logger.debug(
-                "[Transcript] No conversation content (%d lines) in %s",
-                len(lines),
-                transcript_path,
-            )
-            return None
-
-        logger.info(
-            f"[Transcript] Read {len(lines)} lines, "
-            f"{len(content)} bytes from {transcript_path}"
-        )
-        return content
-
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning(f"[Transcript] Failed to read {transcript_path}: {e}")
-        return None
 
 
 def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
@@ -284,14 +139,6 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
-def _encode_cwd_for_cli(cwd: str) -> str:
-    """Encode a working directory path the same way the Claude CLI does.
-
-    The CLI replaces all non-alphanumeric characters with ``-``.
-    """
-    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
-
-
 def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """Remove the CLI's project directory for a specific working directory.
 
@@ -301,7 +148,8 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """
     import shutil
 
-    cwd_encoded = _encode_cwd_for_cli(sdk_cwd)
+    # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
+    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
     project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
@@ -438,31 +286,24 @@ async def upload_transcript(
     content: str,
     message_count: int = 0,
     log_prefix: str = "[Transcript]",
-    previous_content: str | None = None,
 ) -> None:
-    """Merge synthetic entries, strip progress, and upload transcript.
+    """Strip progress entries and upload complete transcript.
+
+    The transcript represents the FULL active context (atomic).
+    Each upload REPLACES the previous transcript entirely.
 
     The executor holds a cluster lock per session, so concurrent uploads for
-    the same session cannot happen.  We always overwrite — with ``--resume``
-    the CLI may compact old tool results, so neither byte size nor line count
-    is a reliable proxy for "newer".
-
-    When the CLI resumes, it writes synthetic placeholders for previous
-    assistant turns.  If *previous_content* is provided, real assistant
-    entries are restored before stripping and upload.
+    the same session cannot happen.
 
     Args:
-        message_count: ``len(session.messages)`` at upload time — used by
-            the next turn to detect staleness and compress only the gap.
-        previous_content: The previously-stored transcript (from the download
-            at the start of this turn).  Used to restore real assistant content
-            that the CLI replaced with synthetic ``"No response requested."``
-            placeholders.
+        content: Complete JSONL transcript (from TranscriptBuilder).
+        message_count: ``len(session.messages)`` at upload time.
     """
     from backend.util.workspace_storage import get_workspace_storage
 
-    merged = merge_with_previous_transcript(content, previous_content, log_prefix)
-    stripped = strip_progress_entries(merged)
+    # Strip metadata entries (progress, file-history-snapshot, etc.)
+    # Note: SDK-built transcripts shouldn't have these, but strip for safety
+    stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
         entry_types: list[str] = []

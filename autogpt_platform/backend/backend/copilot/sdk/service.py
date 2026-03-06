@@ -12,7 +12,6 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
 from typing import Any, cast
 
 import openai
@@ -74,11 +73,11 @@ from .tool_adapter import (
 from .transcript import (
     cleanup_cli_project_dir,
     download_transcript,
-    read_transcript_file,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
 )
+from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -135,19 +134,6 @@ _setup_langfuse_otel()
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
-
-
-@dataclass
-class CapturedTranscript:
-    """Info captured by the SDK Stop hook for stateless --resume."""
-
-    path: str = ""
-    sdk_session_id: str = ""
-    raw_content: str = ""
-
-    @property
-    def available(self) -> bool:
-        return bool(self.path)
 
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
@@ -449,6 +435,45 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         shutil.rmtree(normalized, ignore_errors=True)
     except OSError:
         pass
+
+
+def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
+    """Convert SDK content blocks to transcript format.
+
+    Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
+    """
+    from claude_agent_sdk import TextBlock, ThinkingBlock, ToolResultBlock
+
+    result: list[dict[str, Any]] = []
+    for block in blocks or []:
+        if isinstance(block, TextBlock):
+            result.append({"type": "text", "text": block.text})
+        elif isinstance(block, ToolUseBlock):
+            result.append(
+                {
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input,
+                }
+            )
+        elif isinstance(block, ToolResultBlock):
+            result.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.tool_use_id,
+                    "content": block.content,
+                }
+            )
+        elif isinstance(block, ThinkingBlock):
+            result.append(
+                {
+                    "type": "thinking",
+                    "thinking": block.thinking,
+                    "signature": block.signature,
+                }
+            )
+    return result
 
 
 async def _compress_messages(
@@ -832,8 +857,7 @@ async def stream_chat_completion_sdk(
     e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
-    captured_transcript = CapturedTranscript()
-    previous_transcript_content: str | None = None
+    transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
 
     # Acquire stream lock to prevent concurrent streams to the same session
@@ -954,7 +978,8 @@ async def stream_chat_completion_sdk(
                 is_valid,
             )
             if is_valid:
-                previous_transcript_content = dl.content
+                # Load previous FULL context into builder
+                transcript_builder.load_previous(dl.content)
                 resume_file = write_transcript_to_tempfile(
                     dl.content, session_id, sdk_cwd
                 )
@@ -991,48 +1016,6 @@ async def stream_chat_completion_sdk(
 
         sdk_model = _resolve_sdk_model()
 
-        # --- Transcript capture via Stop hook ---
-        # Read the file content immediately — the SDK may clean up
-        # the file before our finally block runs.
-        def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
-            captured_transcript.path = transcript_path
-            captured_transcript.sdk_session_id = sdk_session_id
-
-            # Read the raw file directly — do NOT call read_transcript_file()
-            # here.  That function runs validate_transcript() which rejects
-            # transcripts with < 2 lines or no assistant entries.  For very
-            # short responses (single-turn, no tool use) the CLI transcript
-            # can have just 1 JSONL line, causing the stop hook to "miss" it.
-            # Validation is deferred to upload_transcript() instead.
-            if not transcript_path or not os.path.isfile(transcript_path):
-                logger.warning(
-                    "%s Stop hook: file not found: %s", log_prefix, transcript_path
-                )
-                return
-
-            try:
-                with open(transcript_path) as f:
-                    content = f.read()
-            except OSError as e:
-                logger.warning("%s Stop hook: read error: %s", log_prefix, e)
-                return
-
-            if not content or not content.strip():
-                logger.warning(
-                    "%s Stop hook: file empty at %s", log_prefix, transcript_path
-                )
-                return
-
-            captured_transcript.raw_content = content
-            lines = content.strip().split("\n")
-            logger.info(
-                "%s Stop hook: captured %dB, %d lines from %s",
-                log_prefix,
-                len(content),
-                len(lines),
-                transcript_path,
-            )
-
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
 
@@ -1040,7 +1023,6 @@ async def stream_chat_completion_sdk(
             user_id,
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
-            on_stop=_on_stop if config.claude_agent_use_resume else None,
             on_compact=compaction.on_compact,
         )
 
@@ -1143,8 +1125,12 @@ async def stream_chat_completion_sdk(
                 await client._transport.write(  # noqa: SLF001
                     json.dumps(user_msg) + "\n"
                 )
+                # Capture user message in transcript (multimodal)
+                transcript_builder.add_user_message(content=content_blocks)
             else:
                 await client.query(query_message, session_id=session_id)
+                # Capture user message in transcript (text only)
+                transcript_builder.add_user_message(content=query_message)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
@@ -1221,6 +1207,15 @@ async def stream_chat_completion_sdk(
                         len(adapter.current_tool_calls),
                         len(adapter.resolved_tool_calls),
                     )
+
+                    # Capture AssistantMessage in transcript
+                    if isinstance(sdk_msg, AssistantMessage):
+                        content_blocks = _format_sdk_content_blocks(sdk_msg.content)
+                        model_name = getattr(sdk_msg, "model", "")
+                        transcript_builder.add_assistant_message(
+                            content_blocks=content_blocks,
+                            model=model_name,
+                        )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1534,73 +1529,44 @@ async def stream_chat_completion_sdk(
 
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
-        # the streaming loop raises an exception.  The CLI uses
-        # appendFileSync, so whatever was written before the error/SIGTERM
-        # is safely on disk and still useful for the next turn.
-        if config.claude_agent_use_resume and user_id:
+        # the streaming loop raises an exception.
+        # The transcript represents the COMPLETE active context (atomic).
+        if config.claude_agent_use_resume and user_id and session is not None:
             try:
-                # Prefer content captured in the Stop hook (read before
-                # cleanup removes the file).  Fall back to the resume
-                # file when the stop hook didn't fire (e.g. error before
-                # completion) so we don't lose the prior transcript.
-                raw_transcript = captured_transcript.raw_content or None
-                source = "stop_hook"
-                if not raw_transcript and use_resume and resume_file:
-                    raw_transcript = read_transcript_file(resume_file)
-                    source = "resume_file_fallback"
+                # Build complete transcript from captured SDK messages
+                transcript_content = transcript_builder.to_jsonl()
 
-                logger.info(
-                    "%s Transcript upload: source=%s, "
-                    "stop_hook_fired=%s, captured_len=%d, "
-                    "raw_len=%d, use_resume=%s, previous_len=%d",
-                    log_prefix,
-                    source,
-                    bool(captured_transcript.path),
-                    len(captured_transcript.raw_content),
-                    len(raw_transcript) if raw_transcript else 0,
-                    use_resume,
-                    (
-                        len(previous_transcript_content)
-                        if previous_transcript_content
-                        else 0
-                    ),
-                )
-
-                # When using --resume, CLI should append new turn to old transcript.
-                # But sometimes CLI writes only the new turn (incomplete).
-                # Fix: If raw_transcript is smaller than previous, manually append.
-                if (
-                    use_resume
-                    and previous_transcript_content
-                    and raw_transcript
-                    and len(raw_transcript) < len(previous_transcript_content)
-                ):
+                if not transcript_content:
                     logger.warning(
-                        "%s CLI transcript smaller than previous (%dB < %dB) - "
-                        "manually appending new turn to previous",
-                        log_prefix,
-                        len(raw_transcript),
-                        len(previous_transcript_content),
+                        "%s No transcript to upload (builder empty)", log_prefix
                     )
-                    # Append new turn to previous transcript
-                    raw_transcript = previous_transcript_content + raw_transcript
-
-                if raw_transcript and session is not None:
-                    await asyncio.shield(
-                        _try_upload_transcript(
-                            user_id,
-                            session_id,
-                            raw_transcript,
-                            message_count=len(session.messages),
-                            log_prefix=log_prefix,
-                            previous_content=previous_transcript_content,
-                        )
+                elif not validate_transcript(transcript_content):
+                    logger.warning(
+                        "%s Transcript invalid, skipping upload (entries=%d)",
+                        log_prefix,
+                        transcript_builder.entry_count,
                     )
                 else:
-                    logger.warning(f"{log_prefix} No transcript to upload")
+                    logger.info(
+                        "%s Uploading complete transcript (entries=%d, bytes=%d)",
+                        log_prefix,
+                        transcript_builder.entry_count,
+                        len(transcript_content),
+                    )
+                    await asyncio.shield(
+                        upload_transcript(
+                            user_id=user_id,
+                            session_id=session_id,
+                            content=transcript_content,
+                            message_count=len(session.messages),
+                            log_prefix=log_prefix,
+                        )
+                    )
             except Exception as upload_err:
                 logger.error(
-                    f"{log_prefix} Transcript upload failed in finally: {upload_err}",
+                    "%s Transcript upload failed in finally: %s",
+                    log_prefix,
+                    upload_err,
                     exc_info=True,
                 )
 
@@ -1609,40 +1575,6 @@ async def stream_chat_completion_sdk(
 
         # Release stream lock to allow new streams for this session
         await lock.release()
-
-
-async def _try_upload_transcript(
-    user_id: str,
-    session_id: str,
-    raw_content: str,
-    message_count: int = 0,
-    log_prefix: str = "[SDK]",
-    previous_content: str | None = None,
-) -> bool:
-    """Merge synthetic entries, strip progress, and upload (with timeout).
-
-    Returns True if the upload completed without error.
-    """
-    try:
-        async with asyncio.timeout(30):
-            await upload_transcript(
-                user_id,
-                session_id,
-                raw_content,
-                message_count=message_count,
-                log_prefix=log_prefix,
-                previous_content=previous_content,
-            )
-        return True
-    except asyncio.TimeoutError:
-        logger.warning(f"{log_prefix} Transcript upload timed out")
-        return False
-    except Exception as e:
-        logger.error(
-            f"{log_prefix} Failed to upload transcript: {e}",
-            exc_info=True,
-        )
-        return False
 
 
 async def _update_title_async(
