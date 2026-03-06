@@ -777,11 +777,6 @@ async def stream_chat_completion_sdk(
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
-    # Structured log prefix: [SDK][<session>][T<turn>]
-    # Turn = number of user messages so far (1-based).
-    turn = sum(1 for m in session.messages if m.role == "user")
-    log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
-
     # Clean up stale error markers from previous turn before starting new turn
     # If the last message contains an error marker, remove it (user is retrying)
     if (
@@ -791,8 +786,8 @@ async def stream_chat_completion_sdk(
         and COPILOT_ERROR_PREFIX in session.messages[-1].content
     ):
         logger.info(
-            "%s Removing stale error marker from previous turn",
-            log_prefix,
+            "[SDK] [%s] Removing stale error marker from previous turn",
+            session_id[:12],
         )
         session.messages.pop()
 
@@ -811,6 +806,11 @@ async def stream_chat_completion_sdk(
                 user_id=user_id, session_id=session_id, message_length=len(message)
             )
 
+    # Structured log prefix: [SDK][<session>][T<turn>]
+    # Turn = number of user messages (1-based), computed AFTER appending the new message.
+    turn = sum(1 for m in session.messages if m.role == "user")
+    log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
+
     session = await upsert_chat_session(session)
 
     # Generate title for new sessions (first user message)
@@ -828,6 +828,7 @@ async def stream_chat_completion_sdk(
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
     stream_completed = False
+    ended_with_stream_error = False
     e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
@@ -1448,11 +1449,18 @@ async def stream_chat_completion_sdk(
         # old resume file, then the finally block overwrote it with the
         # stop hook content — which could be smaller after compaction).
 
-        logger.info(
-            "%s Stream completed successfully with %d messages",
-            log_prefix,
-            len(session.messages),
-        )
+        if ended_with_stream_error:
+            logger.warning(
+                "%s Stream ended with SDK error after %d messages",
+                log_prefix,
+                len(session.messages),
+            )
+        else:
+            logger.info(
+                "%s Stream completed successfully with %d messages",
+                log_prefix,
+                len(session.messages),
+            )
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
