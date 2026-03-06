@@ -6,7 +6,7 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { WarningDiamondIcon, PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 // ------------------------------------------------------------------ //
 //  Re-export generated types for use by RunMCPTool components
@@ -212,7 +212,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return (
     <PlugsConnectedIcon
