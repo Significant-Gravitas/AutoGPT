@@ -1520,8 +1520,7 @@ async def get_folder_agent_summaries(
         if page >= resp.pagination.total_pages:
             break
     return [
-        {"id": a.id, "name": a.name, "description": a.description}
-        for a in all_agents
+        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
     ]
 
 
@@ -1538,8 +1537,7 @@ async def get_root_agent_summaries(
         if page >= resp.pagination.total_pages:
             break
     return [
-        {"id": a.id, "name": a.name, "description": a.description}
-        for a in all_agents
+        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
     ]
 
 

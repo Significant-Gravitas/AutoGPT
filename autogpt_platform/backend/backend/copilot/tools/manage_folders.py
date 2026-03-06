@@ -3,7 +3,7 @@
 from typing import Any
 
 from backend.api.features.library import model as library_model
-from backend.api.features.library.db import collect_tree_ids, get_root_agent_summaries
+from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
@@ -177,7 +177,11 @@ class ListFoldersTool(BaseTool):
         return (
             "List the user's library folders. "
             "Omit parent_id to get the full folder tree. "
-            "Provide parent_id to list only direct children of that folder."
+            "Provide parent_id to list only direct children of that folder. "
+            "Set include_agents=true to also return the agents inside each folder "
+            "and root-level agents not in any folder. Always set include_agents=true "
+            "when the user asks about agents, wants to see what's in their folders, "
+            "or mentions agents alongside folders."
         )
 
     @property
@@ -244,12 +248,10 @@ class ListFoldersTool(BaseTool):
                 agents_map = None
                 root_agents = None
                 if include_agents:
-                    raw_map = await library_db().get_folder_agents_map(
-                        user_id, all_ids
-                    )
+                    raw_map = await library_db().get_folder_agents_map(user_id, all_ids)
                     agents_map = _to_agent_summaries_map(raw_map)
                     root_agents = _to_agent_summaries(
-                        await get_root_agent_summaries(user_id)
+                        await library_db().get_root_agent_summaries(user_id)
                     )
                 return FolderListResponse(
                     message=f"Found {len(all_ids)} folder(s) in your library.",
@@ -558,7 +560,9 @@ class MoveAgentsToFolderTool(BaseTool):
         moved_ids = [a.id for a in moved]
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
-        names_str = ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
+        names_str = (
+            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
+        )
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",
             agent_ids=moved_ids,

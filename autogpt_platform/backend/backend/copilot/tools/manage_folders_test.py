@@ -107,9 +107,7 @@ async def test_create_folder_none_name(create_tool, session):
 @pytest.mark.asyncio
 async def test_create_folder_success(create_tool, session):
     folder = _make_folder(name="New Folder")
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.create_folder = AsyncMock(return_value=folder)
         result = await create_tool._execute(
             user_id=_TEST_USER_ID, session=session, name="New Folder"
@@ -122,9 +120,7 @@ async def test_create_folder_success(create_tool, session):
 
 @pytest.mark.asyncio
 async def test_create_folder_db_error(create_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.create_folder = AsyncMock(
             side_effect=Exception("db down")
         )
@@ -147,9 +143,7 @@ def list_tool():
 @pytest.mark.asyncio
 async def test_list_folders_by_parent(list_tool, session):
     folders = [_make_folder(id="f1", name="A"), _make_folder(id="f2", name="B")]
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.list_folders = AsyncMock(return_value=folders)
         result = await list_tool._execute(
             user_id=_TEST_USER_ID, session=session, parent_id="parent-1"
@@ -162,14 +156,12 @@ async def test_list_folders_by_parent(list_tool, session):
 
 @pytest.mark.asyncio
 async def test_list_folders_tree(list_tool, session):
-    tree = [_make_tree(id="r1", name="Root", children=[_make_tree(id="c1", name="Child")])]
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    tree = [
+        _make_tree(id="r1", name="Root", children=[_make_tree(id="c1", name="Child")])
+    ]
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.get_folder_tree = AsyncMock(return_value=tree)
-        result = await list_tool._execute(
-            user_id=_TEST_USER_ID, session=session
-        )
+        result = await list_tool._execute(user_id=_TEST_USER_ID, session=session)
 
     assert isinstance(result, FolderListResponse)
     assert result.count == 2  # root + child
@@ -182,18 +174,12 @@ async def test_list_folders_tree_with_agents_includes_root(list_tool, session):
     tree = [_make_tree(id="r1", name="Root")]
     raw_map = {"r1": [{"id": "a1", "name": "Foldered", "description": "In folder"}]}
     root_raw = [{"id": "a2", "name": "Loose Agent", "description": "At root"}]
-    with (
-        patch(
-            "backend.copilot.tools.manage_folders.library_db"
-        ) as mock_lib,
-        patch(
-            "backend.copilot.tools.manage_folders.get_root_agent_summaries",
-            new_callable=AsyncMock,
-            return_value=root_raw,
-        ) as mock_root,
-    ):
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.get_folder_tree = AsyncMock(return_value=tree)
         mock_lib.return_value.get_folder_agents_map = AsyncMock(return_value=raw_map)
+        mock_lib.return_value.get_root_agent_summaries = AsyncMock(
+            return_value=root_raw
+        )
         result = await list_tool._execute(
             user_id=_TEST_USER_ID, session=session, include_agents=True
         )
@@ -205,15 +191,15 @@ async def test_list_folders_tree_with_agents_includes_root(list_tool, session):
     assert result.tree is not None
     assert result.tree[0].agents is not None
     assert result.tree[0].agents[0].name == "Foldered"
-    mock_root.assert_awaited_once_with(_TEST_USER_ID)
+    mock_lib.return_value.get_root_agent_summaries.assert_awaited_once_with(
+        _TEST_USER_ID
+    )
 
 
 @pytest.mark.asyncio
 async def test_list_folders_tree_without_agents_no_root(list_tool, session):
     tree = [_make_tree(id="r1", name="Root")]
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.get_folder_tree = AsyncMock(return_value=tree)
         result = await list_tool._execute(
             user_id=_TEST_USER_ID, session=session, include_agents=False
@@ -225,15 +211,11 @@ async def test_list_folders_tree_without_agents_no_root(list_tool, session):
 
 @pytest.mark.asyncio
 async def test_list_folders_db_error(list_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.get_folder_tree = AsyncMock(
             side_effect=Exception("timeout")
         )
-        result = await list_tool._execute(
-            user_id=_TEST_USER_ID, session=session
-        )
+        result = await list_tool._execute(user_id=_TEST_USER_ID, session=session)
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "list_folders_failed"
@@ -268,9 +250,7 @@ async def test_update_folder_none_id(update_tool, session):
 @pytest.mark.asyncio
 async def test_update_folder_success(update_tool, session):
     folder = _make_folder(name="Renamed")
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.update_folder = AsyncMock(return_value=folder)
         result = await update_tool._execute(
             user_id=_TEST_USER_ID, session=session, folder_id="folder-1", name="Renamed"
@@ -282,9 +262,7 @@ async def test_update_folder_success(update_tool, session):
 
 @pytest.mark.asyncio
 async def test_update_folder_db_error(update_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.update_folder = AsyncMock(
             side_effect=Exception("not found")
         )
@@ -316,9 +294,7 @@ async def test_move_folder_missing_id(move_tool, session):
 @pytest.mark.asyncio
 async def test_move_folder_to_parent(move_tool, session):
     folder = _make_folder(name="Moved")
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.move_folder = AsyncMock(return_value=folder)
         result = await move_tool._execute(
             user_id=_TEST_USER_ID,
@@ -334,9 +310,7 @@ async def test_move_folder_to_parent(move_tool, session):
 @pytest.mark.asyncio
 async def test_move_folder_to_root(move_tool, session):
     folder = _make_folder(name="Moved")
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.move_folder = AsyncMock(return_value=folder)
         result = await move_tool._execute(
             user_id=_TEST_USER_ID,
@@ -351,12 +325,8 @@ async def test_move_folder_to_root(move_tool, session):
 
 @pytest.mark.asyncio
 async def test_move_folder_db_error(move_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
-        mock_lib.return_value.move_folder = AsyncMock(
-            side_effect=Exception("circular")
-        )
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.move_folder = AsyncMock(side_effect=Exception("circular"))
         result = await move_tool._execute(
             user_id=_TEST_USER_ID, session=session, folder_id="folder-1"
         )
@@ -384,9 +354,7 @@ async def test_delete_folder_missing_id(delete_tool, session):
 
 @pytest.mark.asyncio
 async def test_delete_folder_success(delete_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.delete_folder = AsyncMock(return_value=None)
         result = await delete_tool._execute(
             user_id=_TEST_USER_ID, session=session, folder_id="folder-1"
@@ -399,9 +367,7 @@ async def test_delete_folder_success(delete_tool, session):
 
 @pytest.mark.asyncio
 async def test_delete_folder_db_error(delete_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.delete_folder = AsyncMock(
             side_effect=Exception("permission denied")
         )
@@ -436,10 +402,10 @@ async def test_move_agents_success(move_agents_tool, session):
         _make_library_agent(id="a1", name="Agent Alpha"),
         _make_library_agent(id="a2", name="Agent Beta"),
     ]
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
-        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(return_value=agents)
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(
+            return_value=agents
+        )
         result = await move_agents_tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -457,10 +423,10 @@ async def test_move_agents_success(move_agents_tool, session):
 @pytest.mark.asyncio
 async def test_move_agents_to_root(move_agents_tool, session):
     agents = [_make_library_agent(id="a1", name="Agent One")]
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
-        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(return_value=agents)
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(
+            return_value=agents
+        )
         result = await move_agents_tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -474,9 +440,7 @@ async def test_move_agents_to_root(move_agents_tool, session):
 
 @pytest.mark.asyncio
 async def test_move_agents_db_error(move_agents_tool, session):
-    with patch(
-        "backend.copilot.tools.manage_folders.library_db"
-    ) as mock_lib:
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
         mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(
             side_effect=Exception("folder not found")
         )
