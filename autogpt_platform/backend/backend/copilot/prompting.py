@@ -81,17 +81,13 @@ def _build_storage_supplement(
 
 2. **Persistent workspace** (cloud storage):
    - Files here **survive across sessions indefinitely**
-   - Use `write_workspace_file` to save important files permanently
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from all sessions
 
 ### Moving files between storages
-- **{file_move_name_1_to_2}**: Use `write_workspace_file` with `source_path` to copy to persistent storage
-- **{file_move_name_2_to_1}**: Use `read_workspace_file` with `save_to_path` to download for processing
+- **{file_move_name_1_to_2}**: Copy to persistent workspace
+- **{file_move_name_2_to_1}**: Download for processing
 
-### File persistence workflow
-Important files (code, configs, outputs) should be saved with `write_workspace_file` to ensure they persist.
+### File persistence
+Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
 {_SHARED_TOOL_NOTES}"""
 
 
