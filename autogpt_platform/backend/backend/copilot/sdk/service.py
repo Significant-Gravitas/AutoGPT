@@ -827,7 +827,6 @@ async def stream_chat_completion_sdk(
     use_resume = False
     resume_file: str | None = None
     captured_transcript = CapturedTranscript()
-    transcript_upload_scheduled = False
     sdk_cwd = ""
 
     # Acquire stream lock to prevent concurrent streams to the same session
@@ -1437,11 +1436,11 @@ async def stream_chat_completion_sdk(
                 )
 
             if raw_transcript:
-                # Fire-and-forget: upload in background so the generator
-                # can exit promptly and mark_session_completed() runs
-                # without delay.  Blocking here kept the SSE stream alive
-                # with only heartbeats for up to 30s (the upload timeout).
-                task = asyncio.create_task(
+                # Shield the upload from generator cancellation so a
+                # client disconnect / page refresh doesn't lose the
+                # transcript.  The upload must finish even if the SSE
+                # connection is torn down.
+                await asyncio.shield(
                     _try_upload_transcript(
                         user_id,
                         session_id,
@@ -1449,9 +1448,6 @@ async def stream_chat_completion_sdk(
                         message_count=len(session.messages),
                     )
                 )
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
-                transcript_upload_scheduled = True
 
         logger.info(
             "[SDK] [%s] Stream completed successfully with %d messages",
@@ -1531,22 +1527,22 @@ async def stream_chat_completion_sdk(
                 )
 
         # --- Upload transcript for next-turn --resume ---
-        # Fire-and-forget so the generator exits promptly and
-        # mark_session_completed() in the processor runs without delay.
-        # Previously this awaited the upload (up to 30s timeout), keeping
-        # the SSE stream alive with only heartbeats.
-        if (
-            config.claude_agent_use_resume
-            and user_id
-            and not transcript_upload_scheduled
-        ):
+        # This MUST run in finally so the transcript is uploaded even when
+        # the streaming loop raises an exception.  The CLI uses
+        # appendFileSync, so whatever was written before the error/SIGTERM
+        # is safely on disk and still useful for the next turn.
+        if config.claude_agent_use_resume and user_id:
             try:
+                # Prefer content captured in the Stop hook (read before
+                # cleanup removes the file).  Fall back to the resume
+                # file when the stop hook didn't fire (e.g. error before
+                # completion) so we don't lose the prior transcript.
                 raw_transcript = captured_transcript.raw_content or None
                 if not raw_transcript and use_resume and resume_file:
                     raw_transcript = read_transcript_file(resume_file)
 
                 if raw_transcript and session is not None:
-                    task = asyncio.create_task(
+                    await asyncio.shield(
                         _try_upload_transcript(
                             user_id,
                             session_id,
@@ -1554,8 +1550,6 @@ async def stream_chat_completion_sdk(
                             message_count=len(session.messages),
                         )
                     )
-                    _background_tasks.add(task)
-                    task.add_done_callback(_background_tasks.discard)
                 else:
                     logger.warning(f"[SDK] No transcript to upload for {session_id}")
             except Exception as upload_err:
