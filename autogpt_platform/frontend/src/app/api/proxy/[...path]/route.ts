@@ -31,11 +31,11 @@ function isWorkspaceDownloadRequest(path: string[]): boolean {
 }
 
 /**
- * Handle workspace file download requests with proper binary response streaming.
+ * Handle workspace file download requests using signed URL redirect or full buffering.
  */
 async function handleWorkspaceDownload(
   req: NextRequest,
-  backendUrl: string,
+  path: string[],
 ): Promise<NextResponse> {
   const token = await getServerAuthToken();
 
@@ -44,40 +44,64 @@ async function handleWorkspaceDownload(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(backendUrl, {
+  // Build the download-url endpoint path (replace last segment)
+  const urlPath = [...path];
+  urlPath[urlPath.length - 1] = "download-url";
+  const downloadUrlEndpoint = buildBackendUrl(urlPath, "");
+
+  // Ask backend for signed URL
+  const urlResponse = await fetch(downloadUrlEndpoint, {
     method: "GET",
     headers,
-    redirect: "follow", // Follow redirects to signed URLs
   });
 
-  if (!response.ok) {
+  if (!urlResponse.ok) {
     return NextResponse.json(
-      { error: `Failed to download file: ${response.statusText}` },
-      { status: response.status },
+      { error: `Failed to get download URL: ${urlResponse.statusText}` },
+      { status: urlResponse.status },
     );
   }
 
-  // Get the content type from the backend response
-  const contentType =
-    response.headers.get("Content-Type") || "application/octet-stream";
-  const contentDisposition = response.headers.get("Content-Disposition");
+  const { url, direct } = (await urlResponse.json()) as {
+    url: string;
+    direct: boolean;
+  };
 
-  // Stream the response body
+  // Direct URL (GCS signed) — redirect browser to fetch directly from GCS
+  if (direct) {
+    return NextResponse.redirect(url, 302);
+  }
+
+  // Non-direct (local storage) — proxy with full buffering to avoid truncation
+  const backendUrl = buildBackendUrl(path, new URL(req.url).search);
+  const fileResponse = await fetch(backendUrl, {
+    method: "GET",
+    headers,
+    redirect: "follow",
+  });
+
+  if (!fileResponse.ok) {
+    return NextResponse.json(
+      { error: `Failed to download file: ${fileResponse.statusText}` },
+      { status: fileResponse.status },
+    );
+  }
+
+  const buffer = await fileResponse.arrayBuffer();
+  const contentType =
+    fileResponse.headers.get("Content-Type") || "application/octet-stream";
+  const contentDisposition = fileResponse.headers.get("Content-Disposition");
+
   const responseHeaders: Record<string, string> = {
     "Content-Type": contentType,
+    "Content-Length": String(buffer.byteLength),
   };
 
   if (contentDisposition) {
     responseHeaders["Content-Disposition"] = contentDisposition;
   }
 
-  const contentLength = response.headers.get("Content-Length");
-  if (contentLength) {
-    responseHeaders["Content-Length"] = contentLength;
-  }
-
-  // Stream the response body directly instead of buffering in memory
-  return new NextResponse(response.body, {
+  return new NextResponse(buffer, {
     status: 200,
     headers: responseHeaders,
   });
@@ -250,7 +274,7 @@ async function handler(
   try {
     // Handle workspace file downloads separately (binary response)
     if (method === "GET" && isWorkspaceDownloadRequest(path)) {
-      return await handleWorkspaceDownload(req, backendUrl);
+      return await handleWorkspaceDownload(req, path);
     }
 
     if (method === "GET" || method === "DELETE") {
