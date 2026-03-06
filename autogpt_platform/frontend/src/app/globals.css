@@ -186,7 +186,6 @@ body[data-google-picker-open="true"] [data-dialog-content] {
   color: white;
 }
 
-
 /* CoPilot chat table styling — remove left/right borders, increase padding */
 [data-streamdown="table-wrapper"] table {
   border-left: none;
