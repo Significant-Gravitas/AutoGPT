@@ -3,7 +3,7 @@ import { backgroundColor } from "./helper";
 
 interface CreatorCardProps {
   creatorName: string;
-  creatorImage: string;
+  creatorImage: string | null;
   bio: string;
   agentsUploaded: number;
   onClick: () => void;

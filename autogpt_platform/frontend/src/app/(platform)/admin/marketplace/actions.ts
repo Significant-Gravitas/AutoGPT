@@ -1,33 +1,39 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import BackendApi from "@/lib/autogpt-server-api";
 import {
-  StoreListingsWithVersionsResponse,
-  SubmissionStatus,
-} from "@/lib/autogpt-server-api/types";
+  getV2GetAdminListingsHistory,
+  postV2ReviewStoreSubmission,
+  getV2AdminDownloadAgentFile,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+import { okData } from "@/app/api/helpers";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 export async function approveAgent(formData: FormData) {
-  const data = {
-    store_listing_version_id: formData.get("id") as string,
+  const storeListingVersionId = formData.get("id") as string;
+  const comments = formData.get("comments") as string;
+
+  await postV2ReviewStoreSubmission(storeListingVersionId, {
+    store_listing_version_id: storeListingVersionId,
     is_approved: true,
-    comments: formData.get("comments") as string,
-  };
-  const api = new BackendApi();
-  await api.reviewSubmissionAdmin(data.store_listing_version_id, data);
+    comments,
+  });
 
   revalidatePath("/admin/marketplace");
 }
 
 export async function rejectAgent(formData: FormData) {
-  const data = {
-    store_listing_version_id: formData.get("id") as string,
+  const storeListingVersionId = formData.get("id") as string;
+  const comments = formData.get("comments") as string;
+  const internal_comments =
+    (formData.get("internal_comments") as string) || undefined;
+
+  await postV2ReviewStoreSubmission(storeListingVersionId, {
+    store_listing_version_id: storeListingVersionId,
     is_approved: false,
-    comments: formData.get("comments") as string,
-    internal_comments: formData.get("internal_comments") as string,
-  };
-  const api = new BackendApi();
-  await api.reviewSubmissionAdmin(data.store_listing_version_id, data);
+    comments,
+    internal_comments,
+  });
 
   revalidatePath("/admin/marketplace");
 }
@@ -37,26 +43,18 @@ export async function getAdminListingsWithVersions(
   search?: string,
   page: number = 1,
   pageSize: number = 20,
-): Promise<StoreListingsWithVersionsResponse> {
-  const data: Record<string, any> = {
+) {
+  const response = await getV2GetAdminListingsHistory({
+    status,
+    search,
     page,
     page_size: pageSize,
-  };
+  });
 
-  if (status) {
-    data.status = status;
-  }
-
-  if (search) {
-    data.search = search;
-  }
-  const api = new BackendApi();
-  const response = await api.getAdminListingsWithVersions(data);
-  return response;
+  return okData(response);
 }
 
 export async function downloadAsAdmin(storeListingVersion: string) {
-  const api = new BackendApi();
-  const file = await api.downloadStoreAgentAdmin(storeListingVersion);
-  return file;
+  const response = await getV2AdminDownloadAgentFile(storeListingVersion);
+  return okData(response);
 }
