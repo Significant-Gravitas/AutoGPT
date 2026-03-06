@@ -145,3 +145,103 @@ class TestPrepareFileAttachments:
 
         assert "Read tool" not in result.hint
         assert len(result.image_blocks) == 1
+
+
+class TestPromptSupplement:
+    """Tests for centralized prompt supplement generation."""
+
+    def test_sdk_supplement_excludes_tool_docs(self):
+        """SDK mode should NOT include tool documentation (Claude gets schemas automatically)."""
+        from backend.copilot.prompting import get_sdk_supplement
+
+        # Test both local and E2B modes
+        local_supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
+        e2b_supplement = get_sdk_supplement(use_e2b=True, cwd="")
+
+        # Should NOT have tool list section
+        assert "## AVAILABLE TOOLS" not in local_supplement
+        assert "## AVAILABLE TOOLS" not in e2b_supplement
+
+        # Should still have technical notes
+        assert "## Tool notes" in local_supplement
+        assert "## Tool notes" in e2b_supplement
+
+    def test_baseline_supplement_includes_tool_docs(self):
+        """Baseline mode MUST include tool documentation (direct API needs it)."""
+        from backend.copilot.prompting import get_baseline_supplement
+
+        supplement = get_baseline_supplement()
+
+        # MUST have tool list section
+        assert "## AVAILABLE TOOLS" in supplement
+
+        # Should NOT have environment-specific notes (SDK-only)
+        assert "## Tool notes" not in supplement
+
+    def test_baseline_supplement_includes_key_tools(self):
+        """Baseline supplement should document all essential tools."""
+        from backend.copilot.prompting import get_baseline_supplement
+        from backend.copilot.tools import TOOL_REGISTRY
+
+        docs = get_baseline_supplement()
+
+        # Core agent workflow tools (always available)
+        assert "`create_agent`" in docs
+        assert "`run_agent`" in docs
+        assert "`find_library_agent`" in docs
+        assert "`edit_agent`" in docs
+
+        # MCP integration (always available)
+        assert "`run_mcp_tool`" in docs
+
+        # Folder management (always available)
+        assert "`create_folder`" in docs
+
+        # Browser tools only if available (Playwright may not be installed in CI)
+        if (
+            TOOL_REGISTRY.get("browser_navigate")
+            and TOOL_REGISTRY["browser_navigate"].is_available
+        ):
+            assert "`browser_navigate`" in docs
+
+    def test_baseline_supplement_includes_workflows(self):
+        """Baseline supplement should include workflow guidance in tool descriptions."""
+        from backend.copilot.prompting import get_baseline_supplement
+
+        docs = get_baseline_supplement()
+
+        # Workflows are now in individual tool descriptions (not separate sections)
+        # Check that key workflow concepts appear in tool descriptions
+        assert "suggested_goal" in docs or "clarifying_questions" in docs
+        assert "run_mcp_tool" in docs
+
+    def test_baseline_supplement_completeness(self):
+        """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
+        from backend.copilot.prompting import get_baseline_supplement
+        from backend.copilot.tools import TOOL_REGISTRY
+
+        docs = get_baseline_supplement()
+
+        # Verify each available registered tool is documented
+        # (matches _generate_tool_documentation which filters by is_available)
+        for tool_name, tool in TOOL_REGISTRY.items():
+            if not tool.is_available:
+                continue
+            assert (
+                f"`{tool_name}`" in docs
+            ), f"Tool '{tool_name}' missing from baseline supplement"
+
+    def test_baseline_supplement_no_duplicate_tools(self):
+        """No tool should appear multiple times in baseline supplement."""
+        from backend.copilot.prompting import get_baseline_supplement
+        from backend.copilot.tools import TOOL_REGISTRY
+
+        docs = get_baseline_supplement()
+
+        # Count occurrences of each available tool in the entire supplement
+        for tool_name, tool in TOOL_REGISTRY.items():
+            if not tool.is_available:
+                continue
+            # Count how many times this tool appears as a bullet point
+            count = docs.count(f"- **`{tool_name}`**")
+            assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
