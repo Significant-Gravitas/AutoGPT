@@ -43,8 +43,15 @@ class TranscriptBuilder:
     def __init__(self) -> None:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
-        self._current_message_id: str = ""
-        self._last_was_assistant: bool = False
+
+    def _last_is_assistant(self) -> bool:
+        return bool(self._entries) and self._entries[-1].type == "assistant"
+
+    def _last_message_id(self) -> str:
+        """Return the message.id of the last entry, or '' if none."""
+        if self._entries:
+            return self._entries[-1].message.get("id", "")
+        return ""
 
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
@@ -85,9 +92,6 @@ class TranscriptBuilder:
             )
             self._entries.append(entry)
             self._last_uuid = entry.uuid
-            self._last_was_assistant = data["type"] == "assistant"
-            if self._last_was_assistant:
-                self._current_message_id = data.get("message", {}).get("id", "")
 
         logger.info(
             "%s Loaded %d entries from previous transcript (last_uuid=%s)",
@@ -109,7 +113,6 @@ class TranscriptBuilder:
             )
         )
         self._last_uuid = msg_uuid
-        self._last_was_assistant = False
 
     def append_tool_result(self, tool_use_id: str, content: str) -> None:
         """Append a tool result as a user entry (one per tool call)."""
@@ -133,8 +136,11 @@ class TranscriptBuilder:
         assistant entry follows a non-assistant entry (user message or tool
         result), because that marks the start of a new API response.
         """
-        if not self._last_was_assistant:
-            self._current_message_id = f"msg_sdk_{uuid4().hex[:24]}"
+        message_id = (
+            self._last_message_id()
+            if self._last_is_assistant()
+            else f"msg_sdk_{uuid4().hex[:24]}"
+        )
 
         msg_uuid = str(uuid4())
 
@@ -146,7 +152,7 @@ class TranscriptBuilder:
                 message={
                     "role": "assistant",
                     "model": model,
-                    "id": self._current_message_id,
+                    "id": message_id,
                     "type": "message",
                     "content": content_blocks,
                     "stop_reason": stop_reason,
@@ -155,7 +161,6 @@ class TranscriptBuilder:
             )
         )
         self._last_uuid = msg_uuid
-        self._last_was_assistant = True
 
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
