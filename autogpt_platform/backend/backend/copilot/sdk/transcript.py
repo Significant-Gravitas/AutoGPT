@@ -51,7 +51,24 @@ TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
 # Synthetic entry merging
 # ---------------------------------------------------------------------------
 
+# When the Claude CLI uses `--resume <file>`, it creates a NEW session and
+# writes synthetic placeholder entries for all previous assistant turns:
+#   { "type": "assistant", "message": { "model": "<synthetic>", "content": "No response requested." } }
+#
+# This is a CLI implementation detail, not exposed by the SDK. We detect these
+# entries by the `<synthetic>` model marker to replace them with real responses.
+#
+# Note: The SDK just passes --resume to the CLI; it doesn't handle synthetic entries.
+# Future SDK versions MAY expose this constant - revisit when upgrading SDK.
 _SYNTHETIC_MODEL = "<synthetic>"
+
+
+def _is_synthetic(entry: dict) -> bool:
+    """Check if entry is a synthetic assistant placeholder from --resume."""
+    return (
+        entry.get("type") == "assistant"
+        and entry.get("message", {}).get("model") == _SYNTHETIC_MODEL
+    )
 
 
 def merge_with_previous_transcript(
@@ -59,42 +76,38 @@ def merge_with_previous_transcript(
     previous_content: str | None,
     log_prefix: str = "[Transcript]",
 ) -> str:
-    """Replace synthetic assistant entries with real ones from a previous transcript.
+    """Replace synthetic assistant entries with real ones from previous transcript.
 
-    When the CLI resumes from a transcript via ``--resume``, it writes synthetic
-    placeholder entries (``model: "<synthetic>"``, ``text: "No response requested."``)
-    for all previous assistant turns.  Only the CURRENT turn gets a real response.
-
-    This function restores real assistant content by matching entries between
-    the new and previous transcripts using their ``uuid`` field.
-
-    Returns the merged JSONL content.
+    When using --resume, the CLI creates synthetic placeholders for previous assistant
+    turns. This function restores real content by matching UUIDs between transcripts.
     """
     if not previous_content or not previous_content.strip():
         return new_content
 
-    # Index real assistant entries from previous transcript by uuid
+    # Build index: uuid -> real assistant entry line
     real_by_uuid: dict[str, str] = {}
     for line in previous_content.strip().split("\n"):
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if entry.get("type") != "assistant":
-            continue
-        msg = entry.get("message", {})
-        if msg.get("model") == _SYNTHETIC_MODEL:
-            continue
-        uid = entry.get("uuid", "")
-        if uid:
+
+        if _is_synthetic(entry):
+            continue  # Skip synthetic entries in previous transcript
+
+        if entry.get("type") == "assistant" and (uid := entry.get("uuid")):
             real_by_uuid[uid] = line
+
+    logger.debug("%s Indexed %d real entries from previous", log_prefix, len(real_by_uuid))
 
     if not real_by_uuid:
         return new_content
 
-    # Walk the new transcript and replace synthetic entries with real ones
+    # Replace synthetic entries with real ones, matching by UUID
     merged_lines: list[str] = []
     replaced = 0
+    synthetic_found = 0
+
     for line in new_content.strip().split("\n"):
         try:
             entry = json.loads(line)
@@ -102,24 +115,23 @@ def merge_with_previous_transcript(
             merged_lines.append(line)
             continue
 
-        uid = entry.get("uuid", "")
-        msg = entry.get("message", {})
-        if (
-            entry.get("type") == "assistant"
-            and msg.get("model") == _SYNTHETIC_MODEL
-            and uid in real_by_uuid
-        ):
-            merged_lines.append(real_by_uuid[uid])
-            replaced += 1
-        else:
-            merged_lines.append(line)
+        if _is_synthetic(entry):
+            synthetic_found += 1
+            uid = entry.get("uuid", "")
+            if uid in real_by_uuid:
+                merged_lines.append(real_by_uuid[uid])
+                replaced += 1
+                logger.debug("%s Replaced synthetic uuid=%s", log_prefix, uid[:12])
+                continue
+
+            logger.debug("%s Synthetic uuid=%s has no match", log_prefix, uid[:12] if uid else "None")
+
+        merged_lines.append(line)
 
     if replaced:
-        logger.info(
-            "%s Merged %d synthetic entries with real assistant content",
-            log_prefix,
-            replaced,
-        )
+        logger.info("%s Merged %d synthetic entries", log_prefix, replaced)
+    elif synthetic_found:
+        logger.warning("%s Found %d synthetic entries with no UUID matches", log_prefix, synthetic_found)
 
     return "\n".join(merged_lines) + "\n"
 
