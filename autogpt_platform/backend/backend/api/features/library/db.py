@@ -454,7 +454,11 @@ async def create_library_agent(
                                 sensitive_action_safe_mode=sensitive_action_safe_mode,
                             ).model_dump()
                         ),
-                        folderId=folder_id if graph_entry is graph else None,
+                        **(
+                            {"Folder": {"connect": {"id": folder_id}}}
+                            if folder_id and graph_entry is graph
+                            else {}
+                        ),
                     ),
                     include=library_agent_include(
                         user_id, include_nodes=False, include_executions=False
