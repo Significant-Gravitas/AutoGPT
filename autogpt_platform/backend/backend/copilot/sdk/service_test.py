@@ -145,3 +145,84 @@ class TestPrepareFileAttachments:
 
         assert "Read tool" not in result.hint
         assert len(result.image_blocks) == 1
+
+
+class TestTryUploadTranscript:
+    """Tests for _try_upload_transcript to prevent regression of double-upload bug.
+
+    Background: Previously transcripts were uploaded twice per turn (once in success path,
+    once in finally block), causing new data to be overwritten with stale data.
+    The fix was to remove the success path upload and only upload in the finally block.
+
+    Note: Full integration test of stream_chat_completion_sdk upload behavior requires
+    extensive mocking of SDK, locks, sessions, and sandbox infrastructure. This is
+    deferred to follow-up work. The code structure ensures single upload by having
+    only one call site in the finally block at service.py:1563-1570.
+    """
+
+    @pytest.mark.asyncio
+    async def test_upload_succeeds_with_valid_transcript(self):
+        """_try_upload_transcript should return True when upload succeeds."""
+        from backend.copilot.sdk.service import _try_upload_transcript
+
+        # Mock upload_transcript to succeed
+        with patch(
+            "backend.copilot.sdk.service.upload_transcript", new_callable=AsyncMock
+        ) as mock_upload:
+            mock_upload.return_value = None  # upload_transcript returns None on success
+
+            result = await _try_upload_transcript(
+                user_id="test-user",
+                session_id="test-session",
+                raw_content='{"type":"assistant","message":{"role":"assistant","content":"test"}}\n',
+                message_count=1,
+                log_prefix="[TEST]",
+            )
+
+            assert result is True
+            assert mock_upload.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_upload_returns_false_on_timeout(self):
+        """_try_upload_transcript should return False when upload times out."""
+        import asyncio
+
+        from backend.copilot.sdk.service import _try_upload_transcript
+
+        # Mock upload_transcript to timeout
+        async def timeout_upload(*args, **kwargs):
+            await asyncio.sleep(100)  # Longer than the 30s timeout
+
+        with patch(
+            "backend.copilot.sdk.service.upload_transcript", side_effect=timeout_upload
+        ):
+            result = await _try_upload_transcript(
+                user_id="test-user",
+                session_id="test-session",
+                raw_content='{"type":"assistant"}\n',
+                message_count=1,
+                log_prefix="[TEST]",
+            )
+
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_upload_returns_false_on_exception(self):
+        """_try_upload_transcript should return False and log when upload raises exception."""
+        from backend.copilot.sdk.service import _try_upload_transcript
+
+        # Mock upload_transcript to raise exception
+        with patch(
+            "backend.copilot.sdk.service.upload_transcript", new_callable=AsyncMock
+        ) as mock_upload:
+            mock_upload.side_effect = Exception("Upload failed")
+
+            result = await _try_upload_transcript(
+                user_id="test-user",
+                session_id="test-session",
+                raw_content='{"type":"assistant"}\n',
+                message_count=1,
+                log_prefix="[TEST]",
+            )
+
+            assert result is False
