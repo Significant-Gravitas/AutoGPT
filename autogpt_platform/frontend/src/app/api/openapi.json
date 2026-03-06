@@ -986,7 +986,11 @@
                     { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
-                    { "$ref": "#/components/schemas/DocPageResponse" }
+                    { "$ref": "#/components/schemas/DocPageResponse" },
+                    {
+                      "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
+                    },
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1290,6 +1294,59 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/title": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session title",
+        "description": "Update the title of a chat session.\n\nAllows the user to rename their chat session.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new title.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session title",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionTitleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Title"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2004,16 +2061,6 @@
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "provider",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "gcs",
-              "title": "Provider"
-            }
-          },
-          {
             "name": "expiration_hours",
             "in": "query",
             "required": false,
@@ -2039,7 +2086,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                }
               }
             }
           },
@@ -4653,6 +4702,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/mcp/token": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Store a bearer token for an MCP server",
+        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "operationId": "postV2Store a bearer token for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPStoreTokenRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -5500,7 +5589,7 @@
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
-        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
+        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    Paginated listings with their versions",
         "operationId": "getV2Get admin listings history",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5544,7 +5633,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreListingsWithVersionsResponse"
+                  "$ref": "#/components/schemas/StoreListingsWithVersionsAdminViewResponse"
                 }
               }
             }
@@ -5606,7 +5695,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmissionAdminView with updated review information",
         "operationId": "postV2Review store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5632,7 +5721,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+                "schema": {
+                  "$ref": "#/components/schemas/StoreSubmissionAdminView"
+                }
               }
             }
           },
@@ -5654,7 +5745,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the marketplace,\nwith optional filtering and sorting.\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -5663,9 +5754,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Filter to only show featured agents",
               "default": false,
               "title": "Featured"
-            }
+            },
+            "description": "Filter to only show featured agents"
           },
           {
             "name": "creator",
@@ -5673,32 +5766,10 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by creator username",
               "title": "Creator"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["rating", "runs", "name", "updated_at"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
+            },
+            "description": "Filter agents by creator username"
           },
           {
             "name": "category",
@@ -5706,20 +5777,57 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by category",
               "title": "Category"
-            }
+            },
+            "description": "Filter agents by category"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreAgentsSortOptions" },
+                { "type": "null" }
+              ],
+              "description": "Property to sort results by. Ignored if search_query is provided.",
+              "title": "Sorted By"
+            },
+            "description": "Property to sort results by. Ignored if search_query is provided."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -5742,49 +5850,11 @@
         }
       }
     },
-    "/api/store/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store"],
-        "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.",
-        "operationId": "getV2Get agent by version",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "store_listing_version_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Store Listing Version Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/store/agents/{username}/{agent_name}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page.\n\nIt returns the store listing agents details.",
+        "description": "Get details of a marketplace agent",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -5834,7 +5904,7 @@
       "post": {
         "tags": ["v2", "store"],
         "summary": "Create agent review",
-        "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
+        "description": "Post a user review on a marketplace agent listing",
         "operationId": "postV2Create agent review",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5882,11 +5952,96 @@
         }
       }
     },
-    "/api/store/creator/{username}": {
+    "/api/store/creators": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store creators",
+        "description": "List or search marketplace creators",
+        "operationId": "getV2List store creators",
+        "parameters": [
+          {
+            "name": "featured",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Filter to only show featured creators",
+              "default": false,
+              "title": "Featured"
+            },
+            "description": "Filter to only show featured creators"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreCreatorsSortOptions" },
+                { "type": "null" }
+              ],
+              "title": "Sorted By"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/creators/{username}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator.\n- Creator Details Page",
+        "description": "Get details on a marketplace creator",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -5916,103 +6071,31 @@
         }
       }
     },
-    "/api/store/creators": {
+    "/api/store/listings/versions/{store_listing_version_id}": {
       "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
-        "operationId": "getV2List store creators",
-        "parameters": [
-          {
-            "name": "featured",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Featured"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["agent_rating", "agent_runs", "num_agents"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/store/download/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "Download agent file",
-        "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
-        "operationId": "getV2Download agent file",
+        "tags": ["v2", "store"],
+        "summary": "Get agent by version",
+        "operationId": "getV2Get agent by version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string",
-              "description": "The ID of the agent to download",
-              "title": "Store Listing Version Id"
-            },
-            "description": "The ID of the agent to download"
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -6025,11 +6108,11 @@
         }
       }
     },
-    "/api/store/graph/{store_listing_version_id}": {
+    "/api/store/listings/versions/{store_listing_version_id}/graph": {
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.",
+        "description": "Get outline of graph belonging to a specific marketplace listing version",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6065,6 +6148,36 @@
         }
       }
     },
+    "/api/store/listings/versions/{store_listing_version_id}/graph/download": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Download agent file",
+        "description": "Download agent graph file for a specific marketplace listing version",
+        "operationId": "getV2Download agent file",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -6079,11 +6192,11 @@
         }
       }
     },
-    "/api/store/myagents": {
+    "/api/store/my-unpublished-agents": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.",
+        "description": "List the authenticated user's unpublished agents",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6115,7 +6228,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/MyUnpublishedAgentsResponse"
+                }
               }
             }
           },
@@ -6157,7 +6272,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
-        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    ProfileDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "description": "Update the store profile for the authenticated user.",
         "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
@@ -6195,7 +6310,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Unified search across all content types",
-        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "description": "Search across all content types (marketplace agents, blocks, documentation)\nusing hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.",
         "operationId": "getV2Unified search across all content types",
         "security": [{ "HTTPBearer": [] }],
         "parameters": [
@@ -6211,25 +6326,38 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "array", "items": { "type": "string" } },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ContentType" }
+                },
                 { "type": "null" }
               ],
-              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "description": "Content types to search. If not specified, searches all.",
               "title": "Content Types"
             },
-            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+            "description": "Content types to search. If not specified, searches all."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -6258,7 +6386,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "List the authenticated user's marketplace listing submissions",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6266,13 +6394,23 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -6302,7 +6440,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Create store submission",
-        "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
+        "description": "Submit a new marketplace listing for review",
         "operationId": "postV2Create store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -6342,21 +6480,25 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Generate submission image",
-        "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
+        "description": "Generate an image for a marketplace listing submission based on the properties\nof a given graph.",
         "operationId": "postV2Generate submission image",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "graph_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "title": "Agent Id" }
+            "schema": { "type": "string", "title": "Graph Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImageURLResponse" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6376,7 +6518,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media (images/videos) for a store listing submission.\n\nArgs:\n    file (UploadFile): The media file to upload\n    user_id (str): ID of the authenticated user uploading the media\n\nReturns:\n    str: URL of the uploaded media file\n\nRaises:\n    HTTPException: If there is an error uploading the media",
+        "description": "Upload media for a marketplace listing submission",
         "operationId": "postV2Upload submission media",
         "requestBody": {
           "content": {
@@ -6391,7 +6533,14 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "title": "Response Postv2Upload Submission Media"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6412,7 +6561,7 @@
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",
-        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "description": "Update a pending marketplace listing submission",
         "operationId": "putV2Edit store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6460,7 +6609,7 @@
       "delete": {
         "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
-        "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
+        "description": "Delete a marketplace listing submission",
         "operationId": "deleteV2Delete store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6480,6 +6629,97 @@
                   "type": "boolean",
                   "title": "Response Deletev2Delete Store Submission"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload file to workspace",
+        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
+        "operationId": "postWorkspaceUpload file to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete a workspace file",
+        "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
+        "operationId": "deleteWorkspaceDelete a workspace file",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
               }
             }
           },
@@ -6529,6 +6769,30 @@
             }
           }
         }
+      }
+    },
+    "/api/workspace/storage/usage": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Get workspace storage usage",
+        "description": "Get storage usage information for the user's workspace.",
+        "operationId": "getWorkspaceGet workspace storage usage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/health": {
@@ -6657,12 +6921,25 @@
           "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
-          "READ_STORE",
           "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
-          "DELETE_INTEGRATIONS"
+          "DELETE_INTEGRATIONS",
+          "READ_SCHEDULE",
+          "WRITE_SCHEDULE",
+          "READ_STORE",
+          "WRITE_STORE",
+          "READ_LIBRARY",
+          "RUN_AGENT",
+          "READ_RUN",
+          "WRITE_RUN",
+          "SHARE_RUN",
+          "READ_RUN_REVIEW",
+          "WRITE_RUN_REVIEW",
+          "READ_CREDITS",
+          "UPLOAD_FILES",
+          "DOWNLOAD_FILES"
         ],
         "title": "APIKeyPermission"
       },
@@ -7768,6 +8045,14 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "Body_postWorkspaceUpload_file_to_workspace": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postWorkspaceUpload file to workspace"
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -7866,6 +8151,17 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "ContentType": {
+        "type": "string",
+        "enum": [
+          "STORE_AGENT",
+          "BLOCK",
+          "INTEGRATION",
+          "DOCUMENTATION",
+          "LIBRARY_AGENT"
+        ],
+        "title": "ContentType"
       },
       "CountResponse": {
         "properties": {
@@ -8100,6 +8396,12 @@
         "type": "string",
         "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
+      },
+      "DeleteFileResponse": {
+        "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
+        "type": "object",
+        "required": ["deleted"],
+        "title": "DeleteFileResponse"
       },
       "DeleteGraphResponse": {
         "properties": {
@@ -9346,6 +9648,14 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "ImageURLResponse": {
+        "properties": {
+          "image_url": { "type": "string", "title": "Image Url" }
+        },
+        "type": "object",
+        "required": ["image_url"],
+        "title": "ImageURLResponse"
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -9960,6 +10270,63 @@
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
+      "MCPStoreTokenRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "MCP server URL the token authenticates against"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "format": "password",
+            "title": "Token",
+            "description": "Bearer token / API key for the MCP server",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": ["server_url", "token"],
+        "title": "MCPStoreTokenRequest",
+        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+      },
+      "MCPToolInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolInfo",
+        "description": "Information about a single MCP tool discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
       "MCPToolResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -9974,6 +10341,29 @@
         "required": ["name", "description", "input_schema"],
         "title": "MCPToolResponse",
         "description": "A single MCP tool returned by discovery."
+      },
+      "MCPToolsDiscoveredResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tools_discovered"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolInfo" },
+            "type": "array",
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tools"],
+        "title": "MCPToolsDiscoveredResponse",
+        "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
       "MarketplaceListing": {
         "properties": {
@@ -10019,10 +10409,10 @@
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
       },
-      "MyAgent": {
+      "MyUnpublishedAgent": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_image": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -10041,18 +10431,18 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "agent_name",
           "description",
           "last_edited"
         ],
-        "title": "MyAgent"
+        "title": "MyUnpublishedAgent"
       },
-      "MyAgentsResponse": {
+      "MyUnpublishedAgentsResponse": {
         "properties": {
           "agents": {
-            "items": { "$ref": "#/components/schemas/MyAgent" },
+            "items": { "$ref": "#/components/schemas/MyUnpublishedAgent" },
             "type": "array",
             "title": "Agents"
           },
@@ -10060,7 +10450,7 @@
         },
         "type": "object",
         "required": ["agents", "pagination"],
-        "title": "MyAgentsResponse"
+        "title": "MyUnpublishedAgentsResponse"
       },
       "NeedLoginResponse": {
         "properties": {
@@ -10990,7 +11380,7 @@
           "is_featured"
         ],
         "title": "ProfileDetails",
-        "description": "Marketplace profile (including read-only fields)"
+        "description": "Marketplace user profile (including read-only fields)"
       },
       "Provider": {
         "properties": {
@@ -11159,10 +11549,21 @@
           "operation_in_progress",
           "input_validation_error",
           "web_fetch",
+          "browser_navigate",
+          "browser_act",
+          "browser_screenshot",
           "bash_exec",
           "feature_request_search",
           "feature_request_created",
-          "suggested_goal"
+          "suggested_goal",
+          "mcp_tools_discovered",
+          "mcp_tool_output",
+          "folder_created",
+          "folder_list",
+          "folder_updated",
+          "folder_moved",
+          "folder_deleted",
+          "agents_moved_to_folder"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -11584,6 +11985,17 @@
         "type": "object",
         "title": "Stats"
       },
+      "StorageUsageResponse": {
+        "properties": {
+          "used_bytes": { "type": "integer", "title": "Used Bytes" },
+          "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
+          "used_percent": { "type": "number", "title": "Used Percent" },
+          "file_count": { "type": "integer", "title": "File Count" }
+        },
+        "type": "object",
+        "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
+        "title": "StorageUsageResponse"
+      },
       "StoreAgent": {
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
@@ -11666,13 +12078,12 @@
             "title": "Recommended Schedule Cron"
           },
           "active_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Active Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
-            "title": "Has Approved Version",
-            "default": false
+            "title": "Has Approved Version"
           },
           "changelog": {
             "anyOf": [
@@ -11703,7 +12114,9 @@
           "versions",
           "graph_id",
           "graph_versions",
-          "last_updated"
+          "last_updated",
+          "active_version_id",
+          "has_approved_version"
         ],
         "title": "StoreAgentDetails"
       },
@@ -11720,14 +12133,24 @@
         "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
       },
-      "StoreListingWithVersions": {
+      "StoreAgentsSortOptions": {
+        "type": "string",
+        "enum": ["rating", "runs", "name", "updated_at"],
+        "title": "StoreAgentsSortOptions"
+      },
+      "StoreCreatorsSortOptions": {
+        "type": "string",
+        "enum": ["agent_rating", "agent_runs", "num_agents"],
+        "title": "StoreCreatorsSortOptions"
+      },
+      "StoreListingWithVersionsAdminView": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "active_version_id": {
+          "active_listing_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Active Version Id"
+            "title": "Active Listing Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
@@ -11740,27 +12163,29 @@
           },
           "latest_version": {
             "anyOf": [
-              { "$ref": "#/components/schemas/StoreSubmission" },
+              { "$ref": "#/components/schemas/StoreSubmissionAdminView" },
               { "type": "null" }
             ]
           },
           "versions": {
-            "items": { "$ref": "#/components/schemas/StoreSubmission" },
+            "items": {
+              "$ref": "#/components/schemas/StoreSubmissionAdminView"
+            },
             "type": "array",
             "title": "Versions",
             "default": []
           }
         },
         "type": "object",
-        "required": ["listing_id", "slug", "agent_id"],
-        "title": "StoreListingWithVersions",
+        "required": ["listing_id", "graph_id", "slug"],
+        "title": "StoreListingWithVersionsAdminView",
         "description": "A store listing with its version history"
       },
-      "StoreListingsWithVersionsResponse": {
+      "StoreListingsWithVersionsAdminViewResponse": {
         "properties": {
           "listings": {
             "items": {
-              "$ref": "#/components/schemas/StoreListingWithVersions"
+              "$ref": "#/components/schemas/StoreListingWithVersionsAdminView"
             },
             "type": "array",
             "title": "Listings"
@@ -11769,7 +12194,7 @@
         },
         "type": "object",
         "required": ["listings", "pagination"],
-        "title": "StoreListingsWithVersionsResponse",
+        "title": "StoreListingsWithVersionsAdminViewResponse",
         "description": "Response model for listings with version history"
       },
       "StoreReview": {
@@ -11803,59 +12228,31 @@
       "StoreSubmission": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
-          "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Instructions"
           },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Image Urls"
-          },
-          "date_submitted": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Date Submitted"
-          },
-          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
-          "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id"
-          },
-          "version": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Version"
-          },
-          "reviewer_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewer Id"
-          },
-          "review_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Review Comments"
-          },
-          "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Internal Comments"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed At"
-          },
-          "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Changes Summary"
           },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -11865,29 +12262,179 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agent Output Demo Url"
           },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories",
-            "default": []
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
           }
         },
         "type": "object",
         "required": [
           "listing_id",
-          "agent_id",
-          "agent_version",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
           "name",
           "sub_heading",
-          "slug",
           "description",
+          "instructions",
+          "categories",
           "image_urls",
-          "date_submitted",
-          "status",
-          "runs",
-          "rating"
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionAdminView": {
+        "properties": {
+          "listing_id": { "type": "string", "title": "Listing Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
+          },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "listing_id",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
+          "name",
+          "sub_heading",
+          "description",
+          "instructions",
+          "categories",
+          "image_urls",
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status",
+          "internal_comments"
+        ],
+        "title": "StoreSubmissionAdminView"
       },
       "StoreSubmissionEditRequest": {
         "properties": {
@@ -11937,17 +12484,17 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": {
+          "graph_id": {
             "type": "string",
             "minLength": 1,
-            "title": "Agent Id",
-            "description": "Agent ID cannot be empty"
+            "title": "Graph Id",
+            "description": "Graph ID cannot be empty"
           },
-          "agent_version": {
+          "graph_version": {
             "type": "integer",
             "exclusiveMinimum": 0.0,
-            "title": "Agent Version",
-            "description": "Agent version must be greater than 0"
+            "title": "Graph Version",
+            "description": "Graph version must be greater than 0"
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
@@ -11992,8 +12539,8 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "slug",
           "name",
           "sub_heading"
@@ -12030,6 +12577,17 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
           }
         },
         "type": "object",
@@ -13000,6 +13558,13 @@
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
+      "UpdateSessionTitleRequest": {
+        "properties": { "title": { "type": "string", "title": "Title" } },
+        "type": "object",
+        "required": ["title"],
+        "title": "UpdateSessionTitleRequest",
+        "description": "Request model for updating a session's title."
+      },
       "UpdateTimezoneRequest": {
         "properties": {
           "timezone": {
@@ -13611,24 +14176,6 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
-      "UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -13957,6 +14504,36 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "backend__api__features__workspace__routes__UploadFileResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "UploadFileResponse"
+      },
+      "backend__api__model__UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

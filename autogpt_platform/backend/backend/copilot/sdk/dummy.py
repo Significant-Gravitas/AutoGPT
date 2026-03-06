@@ -10,6 +10,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from ..model import ChatSession
 from ..response_model import StreamBaseResponse, StreamStart, StreamTextDelta
@@ -26,6 +27,7 @@ async def stream_chat_completion_dummy(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,
+    **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream dummy chat completion for testing.
 

@@ -699,7 +699,10 @@ def json_to_graph(agent_json: dict[str, Any]) -> Graph:
 
 
 async def save_agent_to_library(
-    agent_json: dict[str, Any], user_id: str, is_update: bool = False
+    agent_json: dict[str, Any],
+    user_id: str,
+    is_update: bool = False,
+    folder_id: str | None = None,
 ) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
@@ -707,6 +710,7 @@ async def save_agent_to_library(
         agent_json: Agent JSON dict
         user_id: User ID
         is_update: Whether this is an update to an existing agent
+        folder_id: Optional folder ID to place the agent in
 
     Returns:
         Tuple of (created Graph, LibraryAgent)
@@ -715,7 +719,7 @@ async def save_agent_to_library(
     db = library_db()
     if is_update:
         return await db.update_graph_in_library(graph, user_id)
-    return await db.create_graph_in_library(graph, user_id)
+    return await db.create_graph_in_library(graph, user_id, folder_id=folder_id)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:

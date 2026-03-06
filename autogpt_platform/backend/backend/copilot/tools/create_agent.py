@@ -94,6 +94,14 @@ class CreateAgentTool(BaseTool):
                     ),
                     "default": True,
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional folder ID to save the agent into. "
+                        "If not provided, the agent is saved at root level. "
+                        "Use list_folders to find available folders."
+                    ),
+                },
             },
             "required": ["description"],
         }
@@ -115,6 +123,7 @@ class CreateAgentTool(BaseTool):
         context = kwargs.get("context", "")
         library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
+        folder_id = kwargs.get("folder_id")
         session_id = session.session_id if session else None
 
         logger.info(
@@ -346,7 +355,7 @@ class CreateAgentTool(BaseTool):
 
         try:
             created_graph, library_agent = await save_agent_to_library(
-                agent_json, user_id
+                agent_json, user_id, folder_id=folder_id
             )
 
             logger.info(

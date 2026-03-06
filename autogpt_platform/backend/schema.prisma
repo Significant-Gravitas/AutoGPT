@@ -281,7 +281,6 @@ model AgentGraph {
 
   Presets              AgentPreset[]
   LibraryAgents        LibraryAgent[]
-  StoreListing         StoreListing?         @relation(fields: [id], references: [agentGraphId], onDelete: NoAction)
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
@@ -859,9 +858,9 @@ view Creator {
 }
 
 view StoreAgent {
-  listing_id            String   @id
-  listing_version_id    String
-  updated_at            DateTime
+  listing_id         String   @id
+  listing_version_id String
+  updated_at         DateTime
 
   slug              String
   agent_name        String
@@ -897,41 +896,52 @@ view StoreAgent {
 }
 
 view StoreSubmission {
-  listing_id               String           @id
-  user_id                  String
-  slug                     String
-  name                     String
-  sub_heading              String
-  description              String
-  image_urls               String[]
-  date_submitted           DateTime
-  status                   SubmissionStatus
-  runs                     Int
-  rating                   Float
-  agent_id                 String
-  agent_version            Int
-  store_listing_version_id String
-  reviewer_id              String?
-  review_comments          String?
-  internal_comments        String?
-  reviewed_at              DateTime?
-  changes_summary          String?
-  video_url                String?
-  categories               String[]
+  // From StoreListing:
+  listing_id String
+  user_id    String
+  slug       String
 
-  // Index or unique are not applied to views
+  // From StoreListingVersion:
+  listing_version_id String @id
+  listing_version    Int
+  graph_id           String
+  graph_version      Int
+
+  name                  String
+  sub_heading           String
+  description           String
+  instructions          String?
+  categories            String[]
+  image_urls            String[]
+  video_url             String?
+  agent_output_demo_url String?
+
+  submitted_at      DateTime?
+  changes_summary   String?
+  status            SubmissionStatus
+  reviewed_at       DateTime?
+  reviewer_id       String?
+  review_comments   String?
+  internal_comments String?
+
+  is_deleted Boolean
+
+  // Aggregated from AgentGraphExecutions and StoreListingReviews:
+  run_count         Int
+  review_count      Int
+  review_avg_rating Float
 }
 
 // Note: This is actually a MATERIALIZED VIEW in the database
 // Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
 view mv_agent_run_counts {
-  agentGraphId String @unique
-  run_count    Int
+  graph_id  String @unique
+  run_count Int // excluding runs by the graph's creator
 
-  // Pre-aggregated count of AgentGraphExecution records by agentGraphId
-  // Used by StoreAgent and Creator views for performance optimization
-  // Unique index created automatically on agentGraphId for fast lookups
-  // Refresh uses CONCURRENTLY to avoid blocking reads
+  // Pre-aggregated count of AgentGraphExecution records by agentGraphId.
+  // Used by StoreAgent, Creator, and StoreSubmission views for performance optimization.
+  // - Should have a unique index on graph_id for fast lookups
+  // - Refresh should use CONCURRENTLY to avoid blocking reads
 }
 
 // Note: This is actually a MATERIALIZED VIEW in the database
@@ -980,8 +990,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String       @unique
-  AgentGraph   AgentGraph[]
+  agentGraphId String @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])
@@ -1113,8 +1122,9 @@ model StoreListingReview {
   score    Int
   comments String?
 
+  // Enforce one review per user per listing version
   @@unique([storeListingVersionId, reviewByUserId])
-  @@index([reviewByUserId])
+  @@index([storeListingVersionId])
 }
 
 enum SubmissionStatus {

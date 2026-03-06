@@ -141,11 +141,17 @@ def library_agent_include(
         if result["AgentGraph"] is True:
             result["AgentGraph"] = {"include": {}}
 
-        result["AgentGraph"]["include"]["StoreListing"] = {
-            "include": {
-                "ActiveVersion": True,
-                "Creator": True,
+        # We can't get StoreListing directly from AgentGraph, so we take the
+        # latest published listing version and get it from there:
+        result["AgentGraph"]["include"]["StoreListingVersions"] = {
+            "order_by": {"version": "desc"},
+            "take": 1,
+            "where": {
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                "isDeleted": False,
+                "isAvailable": True,
             },
+            "include": {"StoreListing": {"include": {"CreatorProfile": True}}},
         }
 
     return result

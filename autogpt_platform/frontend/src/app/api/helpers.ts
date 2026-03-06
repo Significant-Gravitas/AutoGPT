@@ -53,6 +53,8 @@ export function getPaginationNextPageNumber(
   if (!hasValidPaginationInfo(lastPage)) return undefined;
 
   const { pagination } = lastPage.data;
+  if (!pagination) return undefined;
+
   const hasMore =
     pagination.current_page * pagination.page_size < pagination.total_items;
   return hasMore ? pagination.current_page + 1 : undefined;

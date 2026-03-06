@@ -90,6 +90,14 @@ class CustomizeAgentTool(BaseTool):
                     ),
                     "default": True,
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional folder ID to save the agent into. "
+                        "If not provided, the agent is saved at root level. "
+                        "Use list_folders to find available folders."
+                    ),
+                },
             },
             "required": ["agent_id", "modifications"],
         }
@@ -112,6 +120,7 @@ class CustomizeAgentTool(BaseTool):
         modifications = kwargs.get("modifications", "").strip()
         context = kwargs.get("context", "")
         save = kwargs.get("save", True)
+        folder_id = kwargs.get("folder_id")
         session_id = session.session_id if session else None
 
         if not agent_id:
@@ -320,7 +329,7 @@ class CustomizeAgentTool(BaseTool):
         # Save to user's library
         try:
             created_graph, library_agent = await save_agent_to_library(
-                customized_agent, user_id, is_update=False
+                customized_agent, user_id, is_update=False, folder_id=folder_id
             )
 
             return AgentSavedResponse(
