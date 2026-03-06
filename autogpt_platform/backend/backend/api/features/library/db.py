@@ -1511,9 +1511,17 @@ async def get_folder_agent_summaries(
     user_id: str, folder_id: str
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of agents in a folder (id, name, description)."""
-    resp = await list_library_agents(user_id=user_id, folder_id=folder_id)
+    all_agents: list[library_model.LibraryAgent] = []
+    for page in itertools.count(1):
+        resp = await list_library_agents(
+            user_id=user_id, folder_id=folder_id, page=page
+        )
+        all_agents.extend(resp.agents)
+        if page >= resp.pagination.total_pages:
+            break
     return [
-        {"id": a.id, "name": a.name, "description": a.description} for a in resp.agents
+        {"id": a.id, "name": a.name, "description": a.description}
+        for a in all_agents
     ]
 
 
