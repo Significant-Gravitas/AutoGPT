@@ -2,6 +2,7 @@ import {
   getGetV2ListSessionsQueryKey,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
+  type getV2ListSessionsResponse,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
@@ -14,6 +15,9 @@ import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotStream } from "./useCopilotStream";
+
+const TITLE_POLL_INTERVAL_MS = 2_000;
+const TITLE_POLL_MAX_ATTEMPTS = 5;
 
 interface UploadedFile {
   file_id: string;
@@ -257,6 +261,52 @@ export function useCopilotPage() {
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  // Start title polling when stream ends cleanly — sidebar title animates in
+  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
+  const prevStatusRef = useRef(status);
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    const wasActive = prev === "streaming" || prev === "submitted";
+    const isNowReady = status === "ready";
+
+    if (!wasActive || !isNowReady || !sessionId || isReconnecting) return;
+
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+    });
+    const sid = sessionId;
+    let attempts = 0;
+    clearInterval(titlePollRef.current);
+    titlePollRef.current = setInterval(() => {
+      const data = queryClient.getQueryData<getV2ListSessionsResponse>(
+        getGetV2ListSessionsQueryKey({ limit: 50 }),
+      );
+      const hasTitle =
+        data?.status === 200 &&
+        data.data.sessions.some((s) => s.id === sid && s.title);
+      if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
+        clearInterval(titlePollRef.current);
+        titlePollRef.current = undefined;
+        return;
+      }
+      attempts += 1;
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+      });
+    }, TITLE_POLL_INTERVAL_MS);
+  }, [status, sessionId, isReconnecting, queryClient]);
+
+  // Clean up polling on session change or unmount
+  useEffect(() => {
+    return () => {
+      clearInterval(titlePollRef.current);
+      titlePollRef.current = undefined;
+    };
+  }, [sessionId]);
 
   // --- Mobile drawer handlers ---
   function handleOpenDrawer() {
