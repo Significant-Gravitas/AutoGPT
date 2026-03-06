@@ -3,7 +3,7 @@
 from typing import Any
 
 from backend.api.features.library import model as library_model
-from backend.api.features.library.db import collect_tree_ids
+from backend.api.features.library.db import collect_tree_ids, get_root_agent_summaries
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
@@ -241,15 +241,20 @@ class ListFoldersTool(BaseTool):
             else:
                 tree = await library_db().get_folder_tree(user_id=user_id)
                 all_ids = collect_tree_ids(tree)
-                raw_map = (
-                    await library_db().get_folder_agents_map(user_id, all_ids)
-                    if include_agents
-                    else None
-                )
-                agents_map = _to_agent_summaries_map(raw_map) if raw_map else None
+                agents_map = None
+                root_agents = None
+                if include_agents:
+                    raw_map = await library_db().get_folder_agents_map(
+                        user_id, all_ids
+                    )
+                    agents_map = _to_agent_summaries_map(raw_map)
+                    root_agents = _to_agent_summaries(
+                        await get_root_agent_summaries(user_id)
+                    )
                 return FolderListResponse(
                     message=f"Found {len(all_ids)} folder(s) in your library.",
                     tree=[_tree_to_info(t, agents_map) for t in tree],
+                    root_agents=root_agents,
                     count=len(all_ids),
                     session_id=session_id,
                 )

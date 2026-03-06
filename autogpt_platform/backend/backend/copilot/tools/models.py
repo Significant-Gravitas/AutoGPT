@@ -591,6 +591,7 @@ class FolderListResponse(ToolResponseBase):
     type: ResponseType = ResponseType.FOLDER_LIST
     folders: list[FolderInfo] = Field(default_factory=list)
     tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
     count: int = 0
 
 

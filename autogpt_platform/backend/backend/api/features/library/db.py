@@ -1525,6 +1525,24 @@ async def get_folder_agent_summaries(
     ]
 
 
+async def get_root_agent_summaries(
+    user_id: str,
+) -> list[dict[str, str | None]]:
+    """Get a lightweight list of root-level agents (folderId IS NULL)."""
+    all_agents: list[library_model.LibraryAgent] = []
+    for page in itertools.count(1):
+        resp = await list_library_agents(
+            user_id=user_id, include_root_only=True, page=page
+        )
+        all_agents.extend(resp.agents)
+        if page >= resp.pagination.total_pages:
+            break
+    return [
+        {"id": a.id, "name": a.name, "description": a.description}
+        for a in all_agents
+    ]
+
+
 async def get_folder_agents_map(
     user_id: str, folder_ids: list[str]
 ) -> dict[str, list[dict[str, str | None]]]:
