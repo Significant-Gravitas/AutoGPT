@@ -11,13 +11,6 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = """\
 
-### Web search and research
-- **`web_search(query)`** — Search the web for current information (uses Claude's
-  native web search). Use this when you need up-to-date information, facts,
-  statistics, or current events that are beyond your knowledge cutoff.
-- **`web_fetch(url)`** — Retrieve and analyze content from a specific URL.
-  Use this when you have a specific URL to read (documentation, articles, etc.).
-
 ### Sharing files with the user
 After saving a file to the persistent workspace with `write_workspace_file`,
 share it with the user by embedding the `download_url` from the response in
@@ -32,18 +25,6 @@ your message as a Markdown link or image:
 
 The `download_url` field in the `write_workspace_file` response is already
 in the correct format — paste it directly after the `(` in the Markdown.
-
-### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
-
-### Large tool outputs
-When a tool output exceeds the display limit, it is automatically saved to
-the persistent workspace.  The truncated output includes a
-`<tool-output-truncated>` tag with the workspace path.  Use
-`read_workspace_file(path="...", offset=N, length=50000)` to retrieve
-additional sections.
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
