@@ -31,101 +31,91 @@ in the correct format — paste it directly after the `(` in the Markdown.
   All tasks must run in the foreground.
 """
 
-# Local mode supplement (ephemeral working directory)
-_LOCAL_TOOL_SUPPLEMENT = (
+# Environment-specific supplement templates
+def _build_storage_supplement(
+    environment: str,
+    working_dir: str,
+    sandbox_type: str,
+    storage_system_1_name: str,
+    storage_system_1_desc: str,
+    storage_system_1_persistence: str,
+    file_move_name_1_to_2: str,
+    file_move_name_2_to_1: str,
+) -> str:
+    """Build storage/filesystem supplement for a specific environment.
+
+    Args:
+        environment: "local_storage" or "cloud_sandbox"
+        working_dir: Working directory path
+        sandbox_type: Description of bash_exec sandbox
+        storage_system_1_name: Name of primary storage (ephemeral or cloud)
+        storage_system_1_desc: Description of primary storage
+        storage_system_1_persistence: Persistence characteristics
+        file_move_name_1_to_2: Direction label for primary→persistent
+        file_move_name_2_to_1: Direction label for persistent→primary
     """
+    return f"""
 
 ## Tool notes
 
 ### Shell commands
 - The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a network-isolated sandbox.
+  for shell commands — it runs {sandbox_type}.
 
 ### Working directory
-- Your working directory is: `{cwd}`
-- All SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec` operate inside this
-  directory.  This is the ONLY writable path — do not attempt to read or write
-  anywhere else on the filesystem.
-- Use relative paths or absolute paths under `{cwd}` for all file operations.
+- Your working directory is: `{working_dir}`
+- All SDK file tools AND `bash_exec` operate on the same filesystem
+- Use relative paths or absolute paths under `{working_dir}` for all file operations
 
 ### Two storage systems — CRITICAL to understand
 
-1. **Ephemeral working directory** (`{cwd}`):
-   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
-   - Files here are **lost between turns** — do NOT rely on them persisting
-   - Use for temporary work: running scripts, processing data, etc.
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across turns and sessions**
-   - Use `write_workspace_file` to save important files (code, outputs, configs)
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
-
-### Moving files between ephemeral and persistent storage
-- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
-  - `content` param (plain text) — for text files
-  - `source_path` param — to copy any file directly from the ephemeral dir
-- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
-  param to download a workspace file to the ephemeral dir for processing
-
-### File persistence workflow
-When you create or modify important files (code, configs, outputs), you MUST:
-1. Save them using `write_workspace_file` so they persist
-2. At the start of a new turn, call `list_workspace_files` to see what files
-   are available from previous turns
-"""
-    + _SHARED_TOOL_NOTES
-)
-
-# E2B mode supplement (persistent cloud sandbox)
-_E2B_TOOL_SUPPLEMENT = (
-    """
-
-## Tool notes
-
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a cloud sandbox with full internet access.
-
-### Working directory
-- Your working directory is: `/home/user` (cloud sandbox)
-- All file tools (`read_file`, `write_file`, `edit_file`, `glob`, `grep`)
-  AND `bash_exec` operate on the **same cloud sandbox filesystem**.
-- Files created by `bash_exec` are immediately visible to `read_file` and
-  vice-versa — they share one filesystem.
-- Use relative paths (resolved from `/home/user`) or absolute paths.
-
-### Two storage systems — CRITICAL to understand
-
-1. **Cloud sandbox** (`/home/user`):
-   - Shared by all file tools AND `bash_exec` — same filesystem
-   - Files **persist across turns** within the current session
-   - Full Linux environment with internet access
-   - Lost when the session expires (12 h inactivity)
+1. **{storage_system_1_name}** (`{working_dir}`):
+   {storage_system_1_desc}
+   {storage_system_1_persistence}
 
 2. **Persistent workspace** (cloud storage):
    - Files here **survive across sessions indefinitely**
    - Use `write_workspace_file` to save important files permanently
    - Use `read_workspace_file` to retrieve previously saved files
    - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
+   - Call `list_workspace_files(include_all_sessions=True)` to see files from all sessions
 
-### Moving files between sandbox and persistent storage
-- **Sandbox → Persistent**: Use `write_workspace_file` with `source_path`
-  to copy from the sandbox to permanent storage
-- **Persistent → Sandbox**: Use `read_workspace_file` with `save_to_path`
-  to download into the sandbox for processing
+### Moving files between storages
+- **{file_move_name_1_to_2}**: Use `write_workspace_file` with `source_path` to copy to persistent storage
+- **{file_move_name_2_to_1}**: Use `read_workspace_file` with `save_to_path` to download for processing
 
 ### File persistence workflow
-Important files that must survive beyond this session should be saved with
-`write_workspace_file`.  Sandbox files persist across turns but are lost
-when the session expires.
-"""
-    + _SHARED_TOOL_NOTES
-)
+Important files (code, configs, outputs) should be saved with `write_workspace_file` to ensure they persist.
+{_SHARED_TOOL_NOTES}"""
+
+
+# Pre-built supplements for common environments
+def _get_local_storage_supplement(cwd: str) -> str:
+    """Local ephemeral storage (files lost between turns)."""
+    return _build_storage_supplement(
+        environment="local_storage",
+        working_dir=cwd,
+        sandbox_type="in a network-isolated sandbox",
+        storage_system_1_name="Ephemeral working directory",
+        storage_system_1_desc="   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`",
+        storage_system_1_persistence="   - Files here are **lost between turns** — do NOT rely on them persisting\n   - Use for temporary work: running scripts, processing data, etc.",
+        file_move_name_1_to_2="Ephemeral → Persistent",
+        file_move_name_2_to_1="Persistent → Ephemeral",
+    )
+
+
+def _get_cloud_sandbox_supplement() -> str:
+    """Cloud persistent sandbox (files survive across turns in session)."""
+    return _build_storage_supplement(
+        environment="cloud_sandbox",
+        working_dir="/home/user",
+        sandbox_type="in a cloud sandbox with full internet access",
+        storage_system_1_name="Cloud sandbox",
+        storage_system_1_desc="   - Shared by all file tools AND `bash_exec` — same filesystem\n   - Full Linux environment with internet access",
+        storage_system_1_persistence="   - Files **persist across turns** within the current session\n   - Lost when the session expires (12 h inactivity)",
+        file_move_name_1_to_2="Sandbox → Persistent",
+        file_move_name_2_to_1="Persistent → Sandbox",
+    )
 
 
 def _generate_tool_documentation() -> str:
@@ -160,14 +150,14 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
 
     Args:
         use_e2b: Whether E2B cloud sandbox is being used
-        cwd: Current working directory (only used in local mode)
+        cwd: Current working directory (only used in local_storage mode)
 
     Returns:
         The supplement string to append to the system prompt
     """
     if use_e2b:
-        return _E2B_TOOL_SUPPLEMENT
-    return _LOCAL_TOOL_SUPPLEMENT.format(cwd=cwd)
+        return _get_cloud_sandbox_supplement()
+    return _get_local_storage_supplement(cwd)
 
 
 def get_baseline_supplement() -> str:
