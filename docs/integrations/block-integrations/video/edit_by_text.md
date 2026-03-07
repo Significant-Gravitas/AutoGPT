@@ -13,7 +13,7 @@ Takes a video and a modified version of its transcript, then produces a new vide
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block sends the input video and the desired transcript to the Replicate API using the `jd7h/edit-video-by-editing-text` model in "edit" mode. The model aligns the provided transcript against the original speech in the video and removes any video segments whose speech is not present in the supplied transcript. The `split_at` parameter controls alignment granularity: `word` (default) aligns cuts at word boundaries for natural-sounding edits, while `character` allows finer sub-word alignment for more precise control. The block returns the URL of the edited video along with the transcript that was used.
+The block sends the input video and the desired transcript to the Replicate API using the `jd7h/edit-video-by-editing-text` model in "edit" mode. The model aligns the provided transcript against the original speech in the video and removes any video segments whose speech is not present in the supplied transcript. The `split_at` parameter controls alignment granularity: `word` (default) aligns cuts at word boundaries for natural-sounding edits, while `character` allows finer sub-word alignment for more precise control. The block returns the edited video (stored via the workspace file system) along with the transcript that was used.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +29,7 @@ The block sends the input video and the desired transcript to the Replicate API 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| video_url | URL of the edited video | str |
+| video_out | Edited video file (path or data URI) | str (file) |
 | transcription | Transcription used for editing | str |
 
 ### Possible use case

@@ -48,8 +48,8 @@ class EditVideoByTextBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        video_url: str = SchemaField(
-            description="URL of the edited video",
+        video_out: MediaFileType = SchemaField(
+            description="Edited video file (path or data URI)",
         )
         transcription: str = SchemaField(
             description="Transcription used for editing",
@@ -68,12 +68,13 @@ class EditVideoByTextBlock(Block):
                 "transcription": "edited transcript",
             },
             test_output=[
-                ("video_url", "https://replicate.com/output/video.mp4"),
+                ("video_out", str),
                 ("transcription", "edited transcript"),
             ],
             test_mock={
                 "_edit_video": lambda *args: "https://replicate.com/output/video.mp4",
                 "_store_input_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
+                "_store_output_video": lambda *args, **kwargs: "edited_video.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -86,6 +87,16 @@ class EditVideoByTextBlock(Block):
             file=file,
             execution_context=execution_context,
             return_format="for_external_api",
+        )
+
+    async def _store_output_video(
+        self, execution_context: ExecutionContext, file: MediaFileType
+    ) -> MediaFileType:
+        """Store output video. Extracted for testability."""
+        return await store_media_file(
+            file=file,
+            execution_context=execution_context,
+            return_format="for_block_output",
         )
 
     async def _edit_video(
@@ -146,7 +157,12 @@ class EditVideoByTextBlock(Block):
                 credentials.api_key.get_secret_value(),
             )
 
-            yield "video_url", video_url
+            # Store output through workspace so CoPilot gets workspace:// URIs
+            video_out = await self._store_output_video(
+                execution_context, MediaFileType(video_url)
+            )
+
+            yield "video_out", video_out
             yield "transcription", input_data.transcription
 
         except BlockExecutionError:
