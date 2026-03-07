@@ -202,7 +202,7 @@ export function ChatSidebar() {
             >
               <div className="flex flex-col items-center gap-2">
                 <SidebarTrigger />
-                {sessionId && (
+                {sessionId ? (
                   <Button
                     variant="ghost"
                     onClick={handleNewChat}
@@ -211,7 +211,7 @@ export function ChatSidebar() {
                     <PlusCircleIcon className="!size-5" />
                     <span className="sr-only">New Chat</span>
                   </Button>
-                )}
+                ) : null}
               </div>
             </motion.div>
           </SidebarHeader>
@@ -232,7 +232,7 @@ export function ChatSidebar() {
                   <SidebarTrigger />
                 </div>
               </div>
-              {sessionId && (
+              {sessionId ? (
                 <Button
                   variant="primary"
                   size="small"
@@ -242,7 +242,7 @@ export function ChatSidebar() {
                 >
                   New Chat
                 </Button>
-              )}
+              ) : null}
             </motion.div>
           </SidebarHeader>
         )}

@@ -71,7 +71,7 @@ export function MobileDrawer({
                 <X width="1rem" height="1rem" />
               </Button>
             </div>
-            {currentSessionId && (
+            {currentSessionId ? (
               <div className="mt-2">
                 <Button
                   variant="primary"
@@ -83,7 +83,7 @@ export function MobileDrawer({
                   New Chat
                 </Button>
               </div>
-            )}
+            ) : null}
           </div>
           <div
             className={cn(
