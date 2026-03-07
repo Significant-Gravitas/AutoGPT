@@ -1,0 +1,68 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Key, storage } from "@/services/storage/local-storage";
+import { BellRinging } from "@phosphor-icons/react";
+import { useState } from "react";
+
+export function NotificationDialog() {
+  const [dismissed, setDismissed] = useState(
+    () => storage.get(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED) === "true",
+  );
+  const [permission, setPermission] = useState(() =>
+    typeof Notification !== "undefined" ? Notification.permission : "denied",
+  );
+
+  const shouldShow =
+    typeof Notification !== "undefined" &&
+    permission === "default" &&
+    !dismissed;
+
+  function handleEnable() {
+    Notification.requestPermission().then((result) => {
+      setPermission(result);
+    });
+  }
+
+  function handleDismiss() {
+    storage.set(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED, "true");
+    setDismissed(true);
+  }
+
+  return (
+    <Dialog
+      title="Stay in the loop"
+      styling={{ maxWidth: "28rem", minWidth: "auto" }}
+      controlled={{
+        isOpen: shouldShow,
+        set: async (open) => {
+          if (!open) handleDismiss();
+        },
+      }}
+      onClose={handleDismiss}
+    >
+      <Dialog.Content>
+        <div className="flex flex-col items-center gap-4 py-2">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">
+            <BellRinging className="h-6 w-6 text-violet-600" weight="fill" />
+          </div>
+          <Text variant="body" className="text-center text-neutral-600">
+            Otto can notify you when a response is ready, even if you switch
+            tabs or close this page. Enable notifications so you never miss a
+            response.
+          </Text>
+        </div>
+        <Dialog.Footer>
+          <Button variant="secondary" onClick={handleDismiss}>
+            Not now
+          </Button>
+          <Button variant="primary" onClick={handleEnable}>
+            Enable notifications
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog>
+  );
+}

@@ -745,6 +745,36 @@ async def mark_session_completed(
 
     # Clean up local session reference if exists
     _local_sessions.pop(session_id, None)
+
+    # Publish copilot completion notification via WebSocket
+    if meta:
+        parsed = _parse_session_meta(meta, session_id)
+        if parsed.user_id:
+            try:
+                from backend.api.model import CopilotCompletionPayload
+                from backend.data.notification_bus import (
+                    AsyncRedisNotificationEventBus,
+                    NotificationEvent,
+                )
+
+                bus = AsyncRedisNotificationEventBus()
+                await bus.publish(
+                    NotificationEvent(
+                        user_id=parsed.user_id,
+                        payload=CopilotCompletionPayload(
+                            type="copilot_completion",
+                            event="session_completed",
+                            session_id=session_id,
+                            status=status,
+                        ),
+                    )
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to publish copilot completion notification "
+                    f"for session {session_id}: {e}"
+                )
+
     return True
 
 

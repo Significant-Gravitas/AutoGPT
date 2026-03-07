@@ -23,18 +23,33 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  CheckCircle,
+  DotsThree,
+  PlusCircleIcon,
+  PlusIcon,
+  SpeakerHigh,
+  SpeakerSlash,
+} from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCopilotUIStore } from "../../store";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
+import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
+  const {
+    sessionToDelete,
+    setSessionToDelete,
+    completedSessionIDs,
+    clearCompletedSession,
+    isSoundEnabled,
+    toggleSound,
+  } = useCopilotUIStore();
 
   const queryClient = useQueryClient();
 
@@ -171,8 +186,30 @@ export function ChatSidebar() {
               <Text variant="h3" size="body-medium">
                 Your chats
               </Text>
-              <div className="relative left-6">
-                <SidebarTrigger />
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={toggleSound}
+                  className="rounded p-1 text-zinc-400 transition-colors hover:text-zinc-600"
+                  aria-label={
+                    isSoundEnabled
+                      ? "Disable notification sound"
+                      : "Enable notification sound"
+                  }
+                  title={
+                    isSoundEnabled
+                      ? "Sound notifications on"
+                      : "Sound notifications off"
+                  }
+                >
+                  {isSoundEnabled ? (
+                    <SpeakerHigh className="h-4 w-4" />
+                  ) : (
+                    <SpeakerSlash className="h-4 w-4" />
+                  )}
+                </button>
+                <div className="relative left-6">
+                  <SidebarTrigger />
+                </div>
               </div>
             </motion.div>
           )}
@@ -204,11 +241,16 @@ export function ChatSidebar() {
                     )}
                   >
                     <button
-                      onClick={() => handleSelectSession(session.id)}
+                      onClick={() => {
+                        handleSelectSession(session.id);
+                        if (completedSessionIDs.has(session.id)) {
+                          clearCompletedSession(session.id);
+                        }
+                      }}
                       className="w-full px-3 py-2.5 pr-10 text-left"
                     >
                       <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                        <div className="min-w-0 max-w-full">
+                        <div className="flex min-w-0 max-w-full items-center gap-1.5">
                           <Text
                             variant="body"
                             className={cn(
@@ -220,6 +262,17 @@ export function ChatSidebar() {
                           >
                             {session.title || `Untitled chat`}
                           </Text>
+                          {session.is_processing &&
+                            session.id !== sessionId && (
+                              <PulseLoader size={8} className="shrink-0" />
+                            )}
+                          {completedSessionIDs.has(session.id) &&
+                            session.id !== sessionId && (
+                              <CheckCircle
+                                className="h-4 w-4 shrink-0 text-green-500"
+                                weight="fill"
+                              />
+                            )}
                         </div>
                         <Text variant="small" className="text-neutral-400">
                           {formatDate(session.updated_at)}

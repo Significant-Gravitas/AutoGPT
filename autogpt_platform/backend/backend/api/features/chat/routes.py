@@ -125,6 +125,7 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    is_processing: bool = False
 
 
 class ListSessionsResponse(BaseModel):
@@ -169,6 +170,26 @@ async def list_sessions(
     """
     sessions, total_count = await get_user_sessions(user_id, limit, offset)
 
+    # Batch-check Redis for active stream status on each session
+    processing_set: set[str] = set()
+    if sessions:
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        chat_config = ChatConfig()
+        pipe = redis.pipeline()
+        for session in sessions:
+            pipe.hget(
+                f"{chat_config.session_meta_prefix}{session.session_id}",
+                "status",
+            )
+        statuses = await pipe.execute()
+        processing_set = {
+            session.session_id
+            for session, st in zip(sessions, statuses)
+            if st == b"running"
+        }
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -176,6 +197,7 @@ async def list_sessions(
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
                 title=session.title,
+                is_processing=session.session_id in processing_set,
             )
             for session in sessions
         ],

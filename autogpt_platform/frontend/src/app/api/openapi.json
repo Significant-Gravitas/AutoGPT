@@ -11680,6 +11680,11 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
+          },
+          "is_processing": {
+            "type": "boolean",
+            "title": "Is Processing",
+            "default": false
           }
         },
         "type": "object",

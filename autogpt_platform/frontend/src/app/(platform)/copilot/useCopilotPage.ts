@@ -13,6 +13,7 @@ import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 
 interface UploadedFile {
@@ -56,6 +57,8 @@ export function useCopilotPage() {
     hasActiveStream,
     refetchSession,
   });
+
+  useCopilotNotifications(sessionId);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
