@@ -21,6 +21,9 @@ export interface ChatContainerProps {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   headerSlot?: ReactNode;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
@@ -40,6 +43,9 @@ export const ChatContainer = ({
   onSend,
   onStop,
   isUploadingFiles,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   headerSlot,
   droppedFiles,
   onDroppedFilesConsumed,
@@ -65,6 +71,9 @@ export const ChatContainer = ({
                 isLoading={isLoadingSession}
                 headerSlot={headerSlot}
                 sessionID={sessionId}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
               />
               <motion.div
                 initial={{ opacity: 0 }}

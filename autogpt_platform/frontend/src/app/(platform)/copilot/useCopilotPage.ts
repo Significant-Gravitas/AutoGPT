@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotStream } from "./useCopilotStream";
+import { useLoadMoreMessages } from "./useLoadMoreMessages";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
 const TITLE_POLL_MAX_ATTEMPTS = 5;
@@ -39,6 +40,8 @@ export function useCopilotPage() {
     setSessionId,
     hydratedMessages,
     hasActiveStream,
+    hasMoreMessages,
+    oldestSequence,
     isLoadingSession,
     isSessionError,
     createSession,
@@ -47,7 +50,7 @@ export function useCopilotPage() {
   } = useChatSession();
 
   const {
-    messages,
+    messages: currentMessages,
     sendMessage,
     stop,
     status,
@@ -60,6 +63,19 @@ export function useCopilotPage() {
     hasActiveStream,
     refetchSession,
   });
+
+  const { olderMessages, hasMore, isLoadingMore, loadMore } =
+    useLoadMoreMessages({
+      sessionId,
+      initialOldestSequence: oldestSequence,
+      initialHasMore: hasMoreMessages,
+    });
+
+  // Combine older (paginated) messages with current page messages
+  const messages =
+    olderMessages.length > 0
+      ? [...olderMessages, ...currentMessages]
+      : currentMessages;
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -364,6 +380,10 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
+    // Pagination
+    hasMoreMessages: hasMore,
+    isLoadingMore,
+    loadMore,
     // Mobile drawer
     isMobile,
     isDrawerOpen,

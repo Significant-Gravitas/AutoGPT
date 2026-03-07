@@ -17,8 +17,8 @@ export const Conversation = ({ className, ...props }: ConversationProps) => (
       scrollbarStyles,
       className,
     )}
-    initial="smooth"
-    resize="smooth"
+    initial="instant"
+    resize="instant"
     role="log"
     {...props}
   />

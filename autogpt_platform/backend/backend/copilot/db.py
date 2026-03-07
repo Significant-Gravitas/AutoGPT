@@ -32,6 +32,70 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
     return ChatSession.from_db(session) if session else None
 
 
+async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
+    """Get chat session metadata (without messages) for ownership validation."""
+    session = await PrismaChatSession.prisma().find_unique(
+        where={"id": session_id},
+    )
+    return ChatSessionInfo.from_db(session) if session else None
+
+
+async def get_chat_messages_paginated(
+    session_id: str,
+    limit: int = 50,
+    before_sequence: int | None = None,
+) -> tuple[list[ChatMessage], bool, int | None]:
+    """Get paginated messages for a session, newest first.
+
+    Returns:
+        Tuple of (messages in ascending order, has_more, oldest_sequence).
+    """
+    where: dict = {"sessionId": session_id}
+    if before_sequence is not None:
+        where["sequence"] = {"lt": before_sequence}
+
+    results = await PrismaChatMessage.prisma().find_many(
+        where=where,
+        order={"sequence": "desc"},
+        take=limit + 1,
+    )
+
+    has_more = len(results) > limit
+    if has_more:
+        results = results[:limit]
+
+    # Reverse to ascending order
+    results.reverse()
+
+    # Tool-call boundary fix: if the oldest message is a tool message,
+    # expand backward to include the preceding assistant message that
+    # owns the tool_calls, so convertChatSessionMessagesToUiMessages
+    # can pair them correctly.
+    if results and results[0].role == "tool":
+        boundary_where: dict = {
+            "sessionId": session_id,
+            "sequence": {"lt": results[0].sequence},
+        }
+        extra = await PrismaChatMessage.prisma().find_many(
+            where=boundary_where,
+            order={"sequence": "desc"},
+            take=10,
+        )
+        # Find the first non-tool message (should be the assistant)
+        boundary_msgs = []
+        for msg in extra:
+            boundary_msgs.insert(0, msg)
+            if msg.role != "tool":
+                break
+        results = boundary_msgs + results
+        has_more = True  # There may be more before the expanded boundary
+
+    messages = [ChatMessage.from_db(m) for m in results]
+    oldest_sequence = messages[0].sequence if messages else None
+
+    return messages, has_more, oldest_sequence
+
+
 async def create_chat_session(
     session_id: str,
     user_id: str,

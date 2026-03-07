@@ -6,6 +6,8 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { parseSpecialMarkers } from "./helpers";
@@ -21,6 +23,9 @@ interface Props {
   isLoading: boolean;
   headerSlot?: React.ReactNode;
   sessionID?: string | null;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /** Collect all messages belonging to a turn: the user message + every
@@ -40,6 +45,82 @@ function getTurnMessages(
   return messages.slice(start, end);
 }
 
+function LoadMoreSentinel({
+  hasMore,
+  isLoading,
+  onLoadMore,
+}: {
+  hasMore: boolean;
+  isLoading: boolean;
+  onLoadMore: () => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const { scrollRef } = useStickToBottomContext();
+  const prevScrollDataRef = useRef({ scrollHeight: 0, scrollTop: 0 });
+
+  // Capture scroll position before loading more
+  function handleLoadMore() {
+    const el = scrollRef.current;
+    if (el) {
+      prevScrollDataRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      };
+    }
+    onLoadMore();
+  }
+
+  // IntersectionObserver to trigger load when sentinel is near viewport
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || isLoading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !isLoading) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: "200px 0px 0px 0px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, isLoading]);
+
+  return (
+    <div ref={sentinelRef} className="flex justify-center py-1">
+      {isLoading && <LoadingSpinner className="h-5 w-5 text-neutral-400" />}
+    </div>
+  );
+}
+
+function ScrollPreserver({ messageCount }: { messageCount: number }) {
+  const { scrollRef } = useStickToBottomContext();
+  const prevRef = useRef({ scrollHeight: 0, scrollTop: 0, count: 0 });
+
+  // Capture before any render that might prepend
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) {
+      prevRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+        count: messageCount,
+      };
+    }
+  });
+
+  // Restore scroll position after prepend
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || prevRef.current.scrollHeight === 0) return;
+    const delta = el.scrollHeight - prevRef.current.scrollHeight;
+    if (delta > 0 && prevRef.current.scrollTop > 0) {
+      el.scrollTop = prevRef.current.scrollTop + delta;
+    }
+  }, [messageCount]);
+
+  return null;
+}
+
 export function ChatMessagesContainer({
   messages,
   status,
@@ -47,6 +128,9 @@ export function ChatMessagesContainer({
   isLoading,
   headerSlot,
   sessionID,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
 
@@ -77,6 +161,14 @@ export function ChatMessagesContainer({
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+        <ScrollPreserver messageCount={messages.length} />
+        {hasMoreMessages && onLoadMore && (
+          <LoadMoreSentinel
+            hasMore={hasMoreMessages}
+            isLoading={!!isLoadingMore}
+            onLoadMore={onLoadMore}
+          />
+        )}
         {headerSlot}
         {isLoading && messages.length === 0 && (
           <div

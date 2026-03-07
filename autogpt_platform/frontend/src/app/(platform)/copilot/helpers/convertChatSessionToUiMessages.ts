@@ -6,6 +6,7 @@ interface SessionChatMessage {
   content: string | null;
   tool_call_id: string | null;
   tool_calls: unknown[] | null;
+  sequence: number | null;
 }
 
 function coerceSessionChatMessages(
@@ -34,6 +35,7 @@ function coerceSessionChatMessages(
               ? null
               : String(msg.tool_call_id),
         tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
+        sequence: typeof msg.sequence === "number" ? msg.sequence : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -182,7 +184,7 @@ export function convertChatSessionMessagesToUiMessages(
     if (parts.length === 0) return;
 
     uiMessages.push({
-      id: `${sessionId}-${index}`,
+      id: `${sessionId}-seq-${msg.sequence ?? index}`,
       role: msg.role,
       parts,
     });

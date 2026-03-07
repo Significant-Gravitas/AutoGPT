@@ -54,6 +54,7 @@ class ChatMessage(BaseModel):
     refusal: str | None = None
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
+    sequence: int | None = None
 
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
@@ -66,6 +67,7 @@ class ChatMessage(BaseModel):
             refusal=prisma_message.refusal,
             tool_calls=_parse_json_field(prisma_message.toolCalls),
             function_call=_parse_json_field(prisma_message.functionCall),
+            sequence=prisma_message.sequence,
         )
 
 
@@ -392,6 +394,39 @@ async def get_chat_session(
         logger.warning(f"Failed to cache session {session_id}: {e}")
 
     return session
+
+
+async def get_chat_session_metadata(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSessionInfo | None:
+    """Get session metadata (without messages) for ownership validation.
+
+    Checks Redis cache first, falls back to a lightweight DB query.
+    """
+    # Try cache first (cache stores full session, but we only need metadata)
+    try:
+        session = await _get_session_from_cache(session_id)
+        if session:
+            if user_id is not None and session.user_id != user_id:
+                return None
+            return ChatSessionInfo(
+                **{k: v for k, v in session.model_dump().items() if k != "messages"}
+            )
+    except RedisError:
+        pass
+    except Exception:
+        pass
+
+    # Fall back to lightweight DB query (no messages)
+    from backend.copilot.db import get_chat_session_metadata as _db_get_metadata
+
+    info = await _db_get_metadata(session_id)
+    if info is None:
+        return None
+    if user_id is not None and info.user_id != user_id:
+        return None
+    return info
 
 
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
