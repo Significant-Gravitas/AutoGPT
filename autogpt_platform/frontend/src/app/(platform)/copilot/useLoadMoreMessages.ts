@@ -48,7 +48,7 @@ export function useLoadMoreMessages({
     setIsLoadingMore(true);
     try {
       const response = await getV2GetSession(sessionId, {
-        limit: 10,
+        limit: 50,
         before_sequence: oldestSequence,
       });
 

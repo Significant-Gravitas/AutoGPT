@@ -326,7 +326,7 @@ async def update_session_title_route(
 async def get_session(
     session_id: str,
     user_id: Annotated[str | None, Depends(auth.get_user_id)],
-    limit: int = Query(default=10, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=200),
     before_sequence: int | None = Query(default=None, ge=0),
 ) -> SessionDetailResponse:
     """

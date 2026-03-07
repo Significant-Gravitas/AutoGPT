@@ -83,10 +83,20 @@ async def get_chat_messages_paginated(
         )
         # Find the first non-tool message (should be the assistant)
         boundary_msgs = []
+        found_owner = False
         for msg in extra:
             boundary_msgs.insert(0, msg)
             if msg.role != "tool":
+                found_owner = True
                 break
+        if not found_owner:
+            logger.warning(
+                "Boundary expansion did not find owning assistant message "
+                "for session=%s before sequence=%s (%d msgs scanned)",
+                session_id,
+                results[0].sequence,
+                len(extra),
+            )
         results = boundary_msgs + results
         has_more = True  # There may be more before the expanded boundary
 

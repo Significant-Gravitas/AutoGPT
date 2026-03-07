@@ -1131,7 +1131,7 @@
               "type": "integer",
               "maximum": 200,
               "minimum": 1,
-              "default": 10,
+              "default": 50,
               "title": "Limit"
             }
           },
