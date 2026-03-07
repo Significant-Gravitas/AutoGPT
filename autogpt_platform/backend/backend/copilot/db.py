@@ -97,8 +97,9 @@ async def get_chat_messages_paginated(
                 results[0].sequence,
                 len(extra),
             )
-        results = boundary_msgs + results
-        has_more = True  # There may be more before the expanded boundary
+        if boundary_msgs:
+            results = boundary_msgs + results
+            has_more = True  # There may be more before the expanded boundary
 
     messages = [ChatMessage.from_db(m) for m in results]
     oldest_sequence = messages[0].sequence if messages else None

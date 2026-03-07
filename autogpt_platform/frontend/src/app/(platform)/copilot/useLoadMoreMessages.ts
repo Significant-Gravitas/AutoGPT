@@ -22,29 +22,53 @@ export function useLoadMoreMessages({
   );
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isLoadingMoreRef = useRef(false);
 
-  // Track the sessionId to reset state on change
+  // Track the sessionId and initial cursor to reset state on change
   const prevSessionIdRef = useRef(sessionId);
+  const prevInitialOldestRef = useRef(initialOldestSequence);
 
   // Sync initial values from parent when they change
   useEffect(() => {
     if (prevSessionIdRef.current !== sessionId) {
+      // Session changed — full reset
       prevSessionIdRef.current = sessionId;
+      prevInitialOldestRef.current = initialOldestSequence;
       setOlderMessages([]);
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
+      isLoadingMoreRef.current = false;
+    } else if (
+      prevInitialOldestRef.current !== initialOldestSequence &&
+      olderMessages.length > 0
+    ) {
+      // Same session but initial window shifted (e.g. new messages arrived) —
+      // clear paged state to avoid gaps/duplicates
+      prevInitialOldestRef.current = initialOldestSequence;
+      setOlderMessages([]);
+      setOldestSequence(initialOldestSequence);
+      setHasMore(initialHasMore);
+      setIsLoadingMore(false);
+      isLoadingMoreRef.current = false;
     } else {
       // Update from parent when initial data changes (e.g. refetch)
+      prevInitialOldestRef.current = initialOldestSequence;
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
     }
   }, [sessionId, initialOldestSequence, initialHasMore]);
 
   async function loadMore() {
-    if (!sessionId || !hasMore || isLoadingMore || oldestSequence === null)
+    if (
+      !sessionId ||
+      !hasMore ||
+      isLoadingMoreRef.current ||
+      oldestSequence === null
+    )
       return;
 
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
       const response = await getV2GetSession(sessionId, {
@@ -64,6 +88,7 @@ export function useLoadMoreMessages({
       setOldestSequence(response.data.oldest_sequence ?? null);
       setHasMore(!!response.data.has_more_messages);
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
   }
