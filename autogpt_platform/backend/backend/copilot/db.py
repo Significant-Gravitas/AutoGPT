@@ -16,7 +16,7 @@ from prisma.types import (
 )
 
 from backend.data import db
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, sanitize_string
 
 from .model import ChatMessage, ChatSession, ChatSessionInfo
 
@@ -81,6 +81,35 @@ async def update_chat_session(
     return ChatSession.from_db(session) if session else None
 
 
+async def update_chat_session_title(
+    session_id: str,
+    user_id: str,
+    title: str,
+    *,
+    only_if_empty: bool = False,
+) -> bool:
+    """Update the title of a chat session, scoped to the owning user.
+
+    Always filters by (session_id, user_id) so callers cannot mutate another
+    user's session even when they know the session_id.
+
+    Args:
+        only_if_empty: When True, uses an atomic ``UPDATE WHERE title IS NULL``
+            guard so auto-generated titles never overwrite a user-set title.
+
+    Returns True if a row was updated, False otherwise (session not found,
+    wrong user, or — when only_if_empty — title was already set).
+    """
+    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
+    if only_if_empty:
+        where["title"] = None
+    result = await PrismaChatSession.prisma().update_many(
+        where=where,
+        data={"title": title, "updatedAt": datetime.now(UTC)},
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,
@@ -101,15 +130,16 @@ async def add_chat_message(
         "sequence": sequence,
     }
 
-    # Add optional string fields
+    # Add optional string fields — sanitize to strip PostgreSQL-incompatible
+    # control characters (null bytes etc.) that may appear in tool outputs.
     if content is not None:
-        data["content"] = content
+        data["content"] = sanitize_string(content)
     if name is not None:
         data["name"] = name
     if tool_call_id is not None:
         data["toolCallId"] = tool_call_id
     if refusal is not None:
-        data["refusal"] = refusal
+        data["refusal"] = sanitize_string(refusal)
 
     # Add optional JSON fields only when they have values
     if tool_calls is not None:
@@ -170,15 +200,16 @@ async def add_chat_messages_batch(
                         "createdAt": now,
                     }
 
-                    # Add optional string fields
+                    # Add optional string fields — sanitize to strip
+                    # PostgreSQL-incompatible control characters.
                     if msg.get("content") is not None:
-                        data["content"] = msg["content"]
+                        data["content"] = sanitize_string(msg["content"])
                     if msg.get("name") is not None:
                         data["name"] = msg["name"]
                     if msg.get("tool_call_id") is not None:
                         data["toolCallId"] = msg["tool_call_id"]
                     if msg.get("refusal") is not None:
-                        data["refusal"] = msg["refusal"]
+                        data["refusal"] = sanitize_string(msg["refusal"])
 
                     # Add optional JSON fields only when they have values
                     if msg.get("tool_calls") is not None:
@@ -312,7 +343,7 @@ async def update_tool_message_content(
                 "toolCallId": tool_call_id,
             },
             data={
-                "content": new_content,
+                "content": sanitize_string(new_content),
             },
         )
         if result == 0:

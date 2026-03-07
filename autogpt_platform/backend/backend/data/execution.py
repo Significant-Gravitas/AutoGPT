@@ -344,7 +344,7 @@ class GraphExecution(GraphExecutionMeta):
             ),
             **{
                 # input from webhook-triggered block
-                "payload": exec.input_data["payload"]
+                "payload": exec.input_data.get("payload")
                 for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
