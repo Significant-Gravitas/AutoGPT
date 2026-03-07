@@ -696,17 +696,36 @@ class AgentValidator:
                     )
                     valid = False
 
-            # Check for missing required sub-agent inputs
+            # Check for missing required sub-agent inputs.
+            # An input is satisfied if it is linked OR has an allowed
+            # hardcoded value (i.e. equals the schema default — the
+            # previous check already flags non-default hardcoded values).
+            hardcoded_inputs_dict = (
+                hardcoded_inputs if isinstance(hardcoded_inputs, dict) else {}
+            )
             for req_input in sub_agent_required_inputs:
-                if req_input not in linked_sub_agent_inputs:
-                    self.add_error(
-                        f"AgentExecutorBlock node '{node_id}' is "
-                        f"missing required sub-agent input "
-                        f"'{req_input}'. Create a link to this node "
-                        f"using sink_name '{req_input}' to connect "
-                        f"the input."
+                if req_input in linked_sub_agent_inputs:
+                    continue
+                # Check if fixer populated it with a schema default value
+                if req_input in hardcoded_inputs_dict:
+                    prop_schema = schema_properties.get(req_input, {})
+                    schema_default = (
+                        prop_schema.get("default")
+                        if isinstance(prop_schema, dict)
+                        else None
                     )
-                    valid = False
+                    if schema_default is not None and self._values_equal(
+                        hardcoded_inputs_dict[req_input], schema_default
+                    ):
+                        continue
+                self.add_error(
+                    f"AgentExecutorBlock node '{node_id}' is "
+                    f"missing required sub-agent input "
+                    f"'{req_input}'. Create a link to this node "
+                    f"using sink_name '{req_input}' to connect "
+                    f"the input."
+                )
+                valid = False
 
         return valid
 

@@ -461,6 +461,69 @@ class TestValidateAgentExecutorBlocks:
         assert v.validate_agent_executor_blocks(agent, library_agents) is False
         assert any("mismatched graph_version" in e for e in v.errors)
 
+    def test_required_input_satisfied_by_schema_default_passes(self):
+        """Required sub-agent inputs filled with their schema default by the fixer
+        should NOT be flagged as missing."""
+        v = AgentValidator()
+        lib_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_default={
+                "graph_id": lib_id,
+                "input_schema": {
+                    "properties": {"mode": {"type": "string", "default": "fast"}}
+                },
+                "inputs": {"mode": "fast"},  # fixer populated with schema default
+            },
+        )
+        agent = _make_agent(nodes=[node])
+        library_agents = [
+            {
+                "graph_id": lib_id,
+                "graph_version": 1,
+                "name": "Sub",
+                "input_schema": {
+                    "required": ["mode"],
+                    "properties": {"mode": {"type": "string", "default": "fast"}},
+                },
+                "output_schema": {},
+            }
+        ]
+
+        assert v.validate_agent_executor_blocks(agent, library_agents) is True
+        assert v.errors == []
+
+    def test_required_input_not_linked_and_no_default_fails(self):
+        """Required sub-agent inputs without a link or schema default must fail."""
+        v = AgentValidator()
+        lib_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_default={
+                "graph_id": lib_id,
+                "input_schema": {"properties": {"query": {"type": "string"}}},
+                "inputs": {},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+        library_agents = [
+            {
+                "graph_id": lib_id,
+                "graph_version": 1,
+                "name": "Sub",
+                "input_schema": {
+                    "required": ["query"],
+                    "properties": {"query": {"type": "string"}},
+                },
+                "output_schema": {},
+            }
+        ]
+
+        assert v.validate_agent_executor_blocks(agent, library_agents) is False
+        assert any("missing required sub-agent input" in e for e in v.errors)
+
 
 # ============================================================================
 # validate_io_blocks
