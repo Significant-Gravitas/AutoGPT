@@ -12,7 +12,6 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
 from typing import Any, cast
 
 import openai
@@ -21,6 +20,9 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
 )
 from langfuse import propagate_attributes
@@ -42,6 +44,7 @@ from ..model import (
     update_session_title,
     upsert_chat_session,
 )
+from ..prompting import get_sdk_supplement
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -74,11 +77,11 @@ from .tool_adapter import (
 from .transcript import (
     cleanup_cli_project_dir,
     download_transcript,
-    read_transcript_file,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
 )
+from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -137,158 +140,11 @@ _setup_langfuse_otel()
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
-@dataclass
-class CapturedTranscript:
-    """Info captured by the SDK Stop hook for stateless --resume."""
-
-    path: str = ""
-    sdk_session_id: str = ""
-    raw_content: str = ""
-
-    @property
-    def available(self) -> bool:
-        return bool(self.path)
-
-
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
-
-
-# Appended to the system prompt to inform the agent about available tools.
-# The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
-# which has kernel-level network isolation (unshare --net).
-_SHARED_TOOL_NOTES = """\
-
-### Sharing files with the user
-After saving a file to the persistent workspace with `write_workspace_file`,
-share it with the user by embedding the `download_url` from the response in
-your message as a Markdown link or image:
-
-- **Any file** — shows as a clickable download link:
-  `[report.csv](workspace://file_id#text/csv)`
-- **Image** — renders inline in chat:
-  `![chart](workspace://file_id#image/png)`
-- **Video** — renders inline in chat with player controls:
-  `![recording](workspace://file_id#video/mp4)`
-
-The `download_url` field in the `write_workspace_file` response is already
-in the correct format — paste it directly after the `(` in the Markdown.
-
-### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
-
-### Large tool outputs
-When a tool output exceeds the display limit, it is automatically saved to
-the persistent workspace.  The truncated output includes a
-`<tool-output-truncated>` tag with the workspace path.  Use
-`read_workspace_file(path="...", offset=N, length=50000)` to retrieve
-additional sections.
-
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
-"""
-
-
-_LOCAL_TOOL_SUPPLEMENT = (
-    """
-
-## Tool notes
-
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a network-isolated sandbox.
-
-### Working directory
-- Your working directory is: `{cwd}`
-- All SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec` operate inside this
-  directory.  This is the ONLY writable path — do not attempt to read or write
-  anywhere else on the filesystem.
-- Use relative paths or absolute paths under `{cwd}` for all file operations.
-
-### Two storage systems — CRITICAL to understand
-
-1. **Ephemeral working directory** (`{cwd}`):
-   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
-   - Files here are **lost between turns** — do NOT rely on them persisting
-   - Use for temporary work: running scripts, processing data, etc.
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across turns and sessions**
-   - Use `write_workspace_file` to save important files (code, outputs, configs)
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
-
-### Moving files between ephemeral and persistent storage
-- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
-  - `content` param (plain text) — for text files
-  - `source_path` param — to copy any file directly from the ephemeral dir
-- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
-  param to download a workspace file to the ephemeral dir for processing
-
-### File persistence workflow
-When you create or modify important files (code, configs, outputs), you MUST:
-1. Save them using `write_workspace_file` so they persist
-2. At the start of a new turn, call `list_workspace_files` to see what files
-   are available from previous turns
-"""
-    + _SHARED_TOOL_NOTES
-)
-
-
-_E2B_TOOL_SUPPLEMENT = (
-    """
-
-## Tool notes
-
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a cloud sandbox with full internet access.
-
-### Working directory
-- Your working directory is: `/home/user` (cloud sandbox)
-- All file tools (`read_file`, `write_file`, `edit_file`, `glob`, `grep`)
-  AND `bash_exec` operate on the **same cloud sandbox filesystem**.
-- Files created by `bash_exec` are immediately visible to `read_file` and
-  vice-versa — they share one filesystem.
-- Use relative paths (resolved from `/home/user`) or absolute paths.
-
-### Two storage systems — CRITICAL to understand
-
-1. **Cloud sandbox** (`/home/user`):
-   - Shared by all file tools AND `bash_exec` — same filesystem
-   - Files **persist across turns** within the current session
-   - Full Linux environment with internet access
-   - Lost when the session expires (12 h inactivity)
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across sessions indefinitely**
-   - Use `write_workspace_file` to save important files permanently
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
-
-### Moving files between sandbox and persistent storage
-- **Sandbox → Persistent**: Use `write_workspace_file` with `source_path`
-  to copy from the sandbox to permanent storage
-- **Persistent → Sandbox**: Use `read_workspace_file` with `save_to_path`
-  to download into the sandbox for processing
-
-### File persistence workflow
-Important files that must survive beyond this session should be saved with
-`write_workspace_file`.  Sandbox files persist across turns but are lost
-when the session expires.
-"""
-    + _SHARED_TOOL_NOTES
-)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -449,6 +305,50 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         shutil.rmtree(normalized, ignore_errors=True)
     except OSError:
         pass
+
+
+def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
+    """Convert SDK content blocks to transcript format.
+
+    Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
+    Unknown block types are logged and skipped.
+    """
+    result: list[dict[str, Any]] = []
+    for block in blocks or []:
+        if isinstance(block, TextBlock):
+            result.append({"type": "text", "text": block.text})
+        elif isinstance(block, ToolUseBlock):
+            result.append(
+                {
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input,
+                }
+            )
+        elif isinstance(block, ToolResultBlock):
+            tool_result_entry: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": block.tool_use_id,
+                "content": block.content,
+            }
+            if block.is_error:
+                tool_result_entry["is_error"] = True
+            result.append(tool_result_entry)
+        elif isinstance(block, ThinkingBlock):
+            result.append(
+                {
+                    "type": "thinking",
+                    "thinking": block.thinking,
+                    "signature": block.signature,
+                }
+            )
+        else:
+            logger.warning(
+                f"[SDK] Unknown content block type: {type(block).__name__}. "
+                f"This may indicate a new SDK version with additional block types."
+            )
+    return result
 
 
 async def _compress_messages(
@@ -806,6 +706,11 @@ async def stream_chat_completion_sdk(
                 user_id=user_id, session_id=session_id, message_length=len(message)
             )
 
+    # Structured log prefix: [SDK][<session>][T<turn>]
+    # Turn = number of user messages (1-based), computed AFTER appending the new message.
+    turn = sum(1 for m in session.messages if m.role == "user")
+    log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
+
     session = await upsert_chat_session(session)
 
     # Generate title for new sessions (first user message)
@@ -823,10 +728,11 @@ async def stream_chat_completion_sdk(
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
     stream_completed = False
+    ended_with_stream_error = False
     e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
-    captured_transcript = CapturedTranscript()
+    transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
 
     # Acquire stream lock to prevent concurrent streams to the same session
@@ -841,7 +747,7 @@ async def stream_chat_completion_sdk(
     if lock_owner != stream_id:
         # Another stream is active
         logger.warning(
-            f"[SDK] Session {session_id} already has an active stream: {lock_owner}"
+            f"{log_prefix} Session already has an active stream: {lock_owner}"
         )
         yield StreamError(
             errorText="Another stream is already active for this session. "
@@ -865,7 +771,7 @@ async def stream_chat_completion_sdk(
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
         except (ValueError, OSError) as e:
-            logger.error("[SDK] [%s] Invalid SDK cwd: %s", session_id[:12], e)
+            logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
             yield StreamError(
                 errorText="Unable to initialize working directory.",
                 code="sdk_cwd_error",
@@ -909,12 +815,13 @@ async def stream_chat_completion_sdk(
             ):
                 return None
             try:
-                return await download_transcript(user_id, session_id)
+                return await download_transcript(
+                    user_id, session_id, log_prefix=log_prefix
+                )
             except Exception as transcript_err:
                 logger.warning(
-                    "[SDK] [%s] Transcript download failed, continuing without "
-                    "--resume: %s",
-                    session_id[:12],
+                    "%s Transcript download failed, continuing without " "--resume: %s",
+                    log_prefix,
                     transcript_err,
                 )
                 return None
@@ -926,21 +833,27 @@ async def stream_chat_completion_sdk(
         )
 
         use_e2b = e2b_sandbox is not None
-        system_prompt = base_system_prompt + (
-            _E2B_TOOL_SUPPLEMENT
-            if use_e2b
-            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        # Append appropriate supplement (Claude gets tool schemas automatically)
+        system_prompt = base_system_prompt + get_sdk_supplement(
+            use_e2b=use_e2b, cwd=sdk_cwd
         )
 
         # Process transcript download result
         transcript_msg_count = 0
         if dl:
             is_valid = validate_transcript(dl.content)
+            dl_lines = dl.content.strip().split("\n") if dl.content else []
+            logger.info(
+                "%s Downloaded transcript: %dB, %d lines, " "msg_count=%d, valid=%s",
+                log_prefix,
+                len(dl.content),
+                len(dl_lines),
+                dl.message_count,
+                is_valid,
+            )
             if is_valid:
-                logger.info(
-                    f"[SDK] Transcript available for session {session_id}: "
-                    f"{len(dl.content)}B, msg_count={dl.message_count}"
-                )
+                # Load previous FULL context into builder
+                transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
                 resume_file = write_transcript_to_tempfile(
                     dl.content, session_id, sdk_cwd
                 )
@@ -948,16 +861,14 @@ async def stream_chat_completion_sdk(
                     use_resume = True
                     transcript_msg_count = dl.message_count
                     logger.debug(
-                        f"[SDK] Using --resume ({len(dl.content)}B, "
+                        f"{log_prefix} Using --resume ({len(dl.content)}B, "
                         f"msg_count={transcript_msg_count})"
                     )
             else:
-                logger.warning(
-                    f"[SDK] Transcript downloaded but invalid for {session_id}"
-                )
+                logger.warning(f"{log_prefix} Transcript downloaded but invalid")
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
-                f"[SDK] No transcript available for {session_id} "
+                f"{log_prefix} No transcript available "
                 f"({len(session.messages)} messages in session)"
             )
 
@@ -979,25 +890,6 @@ async def stream_chat_completion_sdk(
 
         sdk_model = _resolve_sdk_model()
 
-        # --- Transcript capture via Stop hook ---
-        # Read the file content immediately — the SDK may clean up
-        # the file before our finally block runs.
-        def _on_stop(transcript_path: str, sdk_session_id: str) -> None:
-            captured_transcript.path = transcript_path
-            captured_transcript.sdk_session_id = sdk_session_id
-            content = read_transcript_file(transcript_path)
-            if content:
-                captured_transcript.raw_content = content
-                logger.info(
-                    f"[SDK] Stop hook: captured {len(content)}B from "
-                    f"{transcript_path}"
-                )
-            else:
-                logger.warning(
-                    f"[SDK] Stop hook: transcript file empty/missing at "
-                    f"{transcript_path}"
-                )
-
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
 
@@ -1005,7 +897,6 @@ async def stream_chat_completion_sdk(
             user_id,
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
-            on_stop=_on_stop if config.claude_agent_use_resume else None,
             on_compact=compaction.on_compact,
         )
 
@@ -1040,7 +931,10 @@ async def stream_chat_completion_sdk(
             session_id=session_id,
             trace_name="copilot-sdk",
             tags=["sdk"],
-            metadata={"resume": str(use_resume)},
+            metadata={
+                "resume": str(use_resume),
+                "conversation_turn": str(turn),
+            },
         )
         _otel_ctx.__enter__()
 
@@ -1074,9 +968,9 @@ async def stream_chat_completion_sdk(
                 query_message = f"{query_message}\n\n{attachments.hint}"
 
             logger.info(
-                "[SDK] [%s] Sending query — resume=%s, total_msgs=%d, "
+                "%s Sending query — resume=%s, total_msgs=%d, "
                 "query_len=%d, attached_files=%d, image_blocks=%d",
-                session_id[:12],
+                log_prefix,
                 use_resume,
                 len(session.messages),
                 len(query_message),
@@ -1105,15 +999,19 @@ async def stream_chat_completion_sdk(
                 await client._transport.write(  # noqa: SLF001
                     json.dumps(user_msg) + "\n"
                 )
+                # Capture user message in transcript (multimodal)
+                transcript_builder.append_user(content=content_blocks)
             else:
                 await client.query(query_message, session_id=session_id)
+                # Capture actual user message in transcript (not the engineered query)
+                # query_message may include context wrappers, but transcript needs raw input
+                transcript_builder.append_user(content=current_message)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
             has_appended_assistant = False
             has_tool_results = False
             ended_with_stream_error = False
-
             # Use an explicit async iterator with non-cancelling heartbeats.
             # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
             # (via asyncio.timeout or wait_for) corrupts the SDK's internal
@@ -1150,8 +1048,8 @@ async def stream_chat_completion_sdk(
                         sdk_msg = done.pop().result()
                     except StopAsyncIteration:
                         logger.info(
-                            "[SDK] [%s] Stream ended normally (StopAsyncIteration)",
-                            session_id[:12],
+                            "%s Stream ended normally (StopAsyncIteration)",
+                            log_prefix,
                         )
                         break
                     except Exception as stream_err:
@@ -1160,8 +1058,8 @@ async def stream_chat_completion_sdk(
                         # so the session can still be saved and the
                         # frontend gets a clean finish.
                         logger.error(
-                            "[SDK] [%s] Stream error from SDK: %s",
-                            session_id[:12],
+                            "%s Stream error from SDK: %s",
+                            log_prefix,
                             stream_err,
                             exc_info=True,
                         )
@@ -1173,9 +1071,9 @@ async def stream_chat_completion_sdk(
                         break
 
                     logger.info(
-                        "[SDK] [%s] Received: %s %s "
+                        "%s Received: %s %s "
                         "(unresolved=%d, current=%d, resolved=%d)",
-                        session_id[:12],
+                        log_prefix,
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
                         len(adapter.current_tool_calls)
@@ -1210,10 +1108,10 @@ async def stream_chat_completion_sdk(
                             await asyncio.sleep(0)
                         else:
                             logger.warning(
-                                "[SDK] [%s] Timed out waiting for "
+                                "%s Timed out waiting for "
                                 "PostToolUse hook stash "
                                 "(%d unresolved tool calls)",
-                                session_id[:12],
+                                log_prefix,
                                 len(adapter.current_tool_calls)
                                 - len(adapter.resolved_tool_calls),
                             )
@@ -1221,9 +1119,9 @@ async def stream_chat_completion_sdk(
                     # Log ResultMessage details for debugging
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
-                            "[SDK] [%s] Received: ResultMessage %s "
+                            "%s Received: ResultMessage %s "
                             "(unresolved=%d, current=%d, resolved=%d)",
-                            session_id[:12],
+                            log_prefix,
                             sdk_msg.subtype,
                             len(adapter.current_tool_calls)
                             - len(adapter.resolved_tool_calls),
@@ -1232,8 +1130,8 @@ async def stream_chat_completion_sdk(
                         )
                         if sdk_msg.subtype in ("error", "error_during_execution"):
                             logger.error(
-                                "[SDK] [%s] SDK execution failed with error: %s",
-                                session_id[:12],
+                                "%s SDK execution failed with error: %s",
+                                log_prefix,
                                 sdk_msg.result or "(no error message provided)",
                             )
 
@@ -1258,8 +1156,8 @@ async def stream_chat_completion_sdk(
                                 out_len = len(str(response.output))
                                 extra = f", output_len={out_len}"
                             logger.info(
-                                "[SDK] [%s] Tool event: %s, tool=%s%s",
-                                session_id[:12],
+                                "%s Tool event: %s, tool=%s%s",
+                                log_prefix,
                                 type(response).__name__,
                                 getattr(response, "toolName", "N/A"),
                                 extra,
@@ -1268,8 +1166,8 @@ async def stream_chat_completion_sdk(
                         # Log errors being sent to frontend
                         if isinstance(response, StreamError):
                             logger.error(
-                                "[SDK] [%s] Sending error to frontend: %s (code=%s)",
-                                session_id[:12],
+                                "%s Sending error to frontend: %s (code=%s)",
+                                log_prefix,
                                 response.errorText,
                                 response.code,
                             )
@@ -1314,29 +1212,44 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
+                            content = (
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=(
-                                        response.output
-                                        if isinstance(response.output, str)
-                                        else str(response.output)
-                                    ),
+                                    content=content,
                                     tool_call_id=response.toolCallId,
                                 )
+                            )
+                            transcript_builder.append_tool_result(
+                                tool_use_id=response.toolCallId,
+                                content=content,
                             )
                             has_tool_results = True
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
 
+                    # Append assistant entry AFTER convert_message so that
+                    # any stashed tool results from the previous turn are
+                    # recorded first, preserving the required API order:
+                    # assistant(tool_use) → tool_result → assistant(text).
+                    if isinstance(sdk_msg, AssistantMessage):
+                        transcript_builder.append_assistant(
+                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
+                            model=sdk_msg.model,
+                        )
+
             except asyncio.CancelledError:
                 # Task/generator was cancelled (e.g. client disconnect,
                 # server shutdown).  Log and let the safety-net / finally
                 # blocks handle cleanup.
                 logger.warning(
-                    "[SDK] [%s] Streaming loop cancelled (asyncio.CancelledError)",
-                    session_id[:12],
+                    "%s Streaming loop cancelled (asyncio.CancelledError)",
+                    log_prefix,
                 )
                 raise
             finally:
@@ -1350,7 +1263,8 @@ async def stream_chat_completion_sdk(
                     except (asyncio.CancelledError, StopAsyncIteration):
                         # Expected: task was cancelled or exhausted during cleanup
                         logger.info(
-                            "[SDK] Pending __anext__ task completed during cleanup"
+                            "%s Pending __anext__ task completed during cleanup",
+                            log_prefix,
                         )
 
             # Safety net: if tools are still unresolved after the
@@ -1359,9 +1273,9 @@ async def stream_chat_completion_sdk(
             # them now so the frontend stops showing spinners.
             if adapter.has_unresolved_tool_calls:
                 logger.warning(
-                    "[SDK] [%s] %d unresolved tool(s) after stream loop — "
+                    "%s %d unresolved tool(s) after stream loop — "
                     "flushing as safety net",
-                    session_id[:12],
+                    log_prefix,
                     len(adapter.current_tool_calls) - len(adapter.resolved_tool_calls),
                 )
                 safety_responses: list[StreamBaseResponse] = []
@@ -1372,10 +1286,19 @@ async def stream_chat_completion_sdk(
                         (StreamToolInputAvailable, StreamToolOutputAvailable),
                     ):
                         logger.info(
-                            "[SDK] [%s] Safety flush: %s, tool=%s",
-                            session_id[:12],
+                            "%s Safety flush: %s, tool=%s",
+                            log_prefix,
                             type(response).__name__,
                             getattr(response, "toolName", "N/A"),
+                        )
+                    if isinstance(response, StreamToolOutputAvailable):
+                        transcript_builder.append_tool_result(
+                            tool_use_id=response.toolCallId,
+                            content=(
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            ),
                         )
                     yield response
 
@@ -1386,8 +1309,8 @@ async def stream_chat_completion_sdk(
             # StreamFinish is published by mark_session_completed in the processor.
             if not stream_completed and not ended_with_stream_error:
                 logger.info(
-                    "[SDK] [%s] Stream ended without ResultMessage (stopped by user)",
-                    session_id[:12],
+                    "%s Stream ended without ResultMessage (stopped by user)",
+                    log_prefix,
                 )
                 closing_responses: list[StreamBaseResponse] = []
                 adapter._end_text_if_open(closing_responses)
@@ -1408,69 +1331,36 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
-        # --- Upload transcript for next-turn --resume ---
-        # After async with the SDK task group has exited, so the Stop
-        # hook has already fired and the CLI has been SIGTERMed.  The
-        # CLI uses appendFileSync, so all writes are safely on disk.
-        if config.claude_agent_use_resume and user_id:
-            # With --resume the CLI appends to the resume file (most
-            # complete).  Otherwise use the Stop hook path.
-            if use_resume and resume_file:
-                raw_transcript = read_transcript_file(resume_file)
-                logger.debug("[SDK] Transcript source: resume file")
-            elif captured_transcript.path:
-                raw_transcript = read_transcript_file(captured_transcript.path)
-                logger.debug(
-                    "[SDK] Transcript source: stop hook (%s), read result: %s",
-                    captured_transcript.path,
-                    f"{len(raw_transcript)}B" if raw_transcript else "None",
-                )
-            else:
-                raw_transcript = None
+        # Transcript upload is handled exclusively in the finally block
+        # to avoid double-uploads (the success path used to upload the
+        # old resume file, then the finally block overwrote it with the
+        # stop hook content — which could be smaller after compaction).
 
-            if not raw_transcript:
-                logger.debug(
-                    "[SDK] No usable transcript — CLI file had no "
-                    "conversation entries (expected for first turn "
-                    "without --resume)"
-                )
-
-            if raw_transcript:
-                # Shield the upload from generator cancellation so a
-                # client disconnect / page refresh doesn't lose the
-                # transcript.  The upload must finish even if the SSE
-                # connection is torn down.
-                await asyncio.shield(
-                    _try_upload_transcript(
-                        user_id,
-                        session_id,
-                        raw_transcript,
-                        message_count=len(session.messages),
-                    )
-                )
-
-        logger.info(
-            "[SDK] [%s] Stream completed successfully with %d messages",
-            session_id[:12],
-            len(session.messages),
-        )
+        if ended_with_stream_error:
+            logger.warning(
+                "%s Stream ended with SDK error after %d messages",
+                log_prefix,
+                len(session.messages),
+            )
+        else:
+            logger.info(
+                "%s Stream completed successfully with %d messages",
+                log_prefix,
+                len(session.messages),
+            )
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
         if isinstance(e, asyncio.CancelledError):
-            logger.warning("[SDK] [%s] Session cancelled", session_id[:12])
+            logger.warning("%s Session cancelled", log_prefix)
             error_msg = "Operation cancelled"
         else:
             error_msg = str(e) or type(e).__name__
             # SDK cleanup RuntimeError is expected during cancellation, log as warning
             if isinstance(e, RuntimeError) and "cancel scope" in str(e):
-                logger.warning(
-                    "[SDK] [%s] SDK cleanup error: %s", session_id[:12], error_msg
-                )
+                logger.warning("%s SDK cleanup error: %s", log_prefix, error_msg)
             else:
-                logger.error(
-                    f"[SDK] [%s] Error: {error_msg}", session_id[:12], exc_info=True
-                )
+                logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
         # Append error marker to session (non-invasive text parsing approach)
         # The finally block will persist the session with this error marker
@@ -1481,8 +1371,8 @@ async def stream_chat_completion_sdk(
                 )
             )
             logger.debug(
-                "[SDK] [%s] Appended error marker, will be persisted in finally",
-                session_id[:12],
+                "%s Appended error marker, will be persisted in finally",
+                log_prefix,
             )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
@@ -1514,47 +1404,61 @@ async def stream_chat_completion_sdk(
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
-                    "[SDK] [%s] Session persisted in finally with %d messages",
-                    session_id[:12],
+                    "%s Session persisted in finally with %d messages",
+                    log_prefix,
                     len(session.messages),
                 )
             except Exception as persist_err:
                 logger.error(
-                    "[SDK] [%s] Failed to persist session in finally: %s",
-                    session_id[:12],
+                    "%s Failed to persist session in finally: %s",
+                    log_prefix,
                     persist_err,
                     exc_info=True,
                 )
 
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
-        # the streaming loop raises an exception.  The CLI uses
-        # appendFileSync, so whatever was written before the error/SIGTERM
-        # is safely on disk and still useful for the next turn.
-        if config.claude_agent_use_resume and user_id:
+        # the streaming loop raises an exception.
+        # The transcript represents the COMPLETE active context (atomic).
+        if config.claude_agent_use_resume and user_id and session is not None:
             try:
-                # Prefer content captured in the Stop hook (read before
-                # cleanup removes the file).  Fall back to the resume
-                # file when the stop hook didn't fire (e.g. error before
-                # completion) so we don't lose the prior transcript.
-                raw_transcript = captured_transcript.raw_content or None
-                if not raw_transcript and use_resume and resume_file:
-                    raw_transcript = read_transcript_file(resume_file)
+                # Build complete transcript from captured SDK messages
+                transcript_content = transcript_builder.to_jsonl()
 
-                if raw_transcript and session is not None:
-                    await asyncio.shield(
-                        _try_upload_transcript(
-                            user_id,
-                            session_id,
-                            raw_transcript,
-                            message_count=len(session.messages),
-                        )
+                if not transcript_content:
+                    logger.warning(
+                        "%s No transcript to upload (builder empty)", log_prefix
+                    )
+                elif not validate_transcript(transcript_content):
+                    logger.warning(
+                        "%s Transcript invalid, skipping upload (entries=%d)",
+                        log_prefix,
+                        transcript_builder.entry_count,
                     )
                 else:
-                    logger.warning(f"[SDK] No transcript to upload for {session_id}")
+                    logger.info(
+                        "%s Uploading complete transcript (entries=%d, bytes=%d)",
+                        log_prefix,
+                        transcript_builder.entry_count,
+                        len(transcript_content),
+                    )
+                    # Shield upload from cancellation - let it complete even if
+                    # the finally block is interrupted. No timeout to avoid race
+                    # conditions where backgrounded uploads overwrite newer transcripts.
+                    await asyncio.shield(
+                        upload_transcript(
+                            user_id=user_id,
+                            session_id=session_id,
+                            content=transcript_content,
+                            message_count=len(session.messages),
+                            log_prefix=log_prefix,
+                        )
+                    )
             except Exception as upload_err:
                 logger.error(
-                    f"[SDK] Transcript upload failed in finally: {upload_err}",
+                    "%s Transcript upload failed in finally: %s",
+                    log_prefix,
+                    upload_err,
                     exc_info=True,
                 )
 
@@ -1563,33 +1467,6 @@ async def stream_chat_completion_sdk(
 
         # Release stream lock to allow new streams for this session
         await lock.release()
-
-
-async def _try_upload_transcript(
-    user_id: str,
-    session_id: str,
-    raw_content: str,
-    message_count: int = 0,
-) -> bool:
-    """Strip progress entries and upload transcript (with timeout).
-
-    Returns True if the upload completed without error.
-    """
-    try:
-        async with asyncio.timeout(30):
-            await upload_transcript(
-                user_id, session_id, raw_content, message_count=message_count
-            )
-        return True
-    except asyncio.TimeoutError:
-        logger.warning(f"[SDK] Transcript upload timed out for {session_id}")
-        return False
-    except Exception as e:
-        logger.error(
-            f"[SDK] Failed to upload transcript for {session_id}: {e}",
-            exc_info=True,
-        )
-        return False
 
 
 async def _update_title_async(

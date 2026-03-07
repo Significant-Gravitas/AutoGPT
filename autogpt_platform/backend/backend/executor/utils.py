@@ -15,6 +15,7 @@ from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
+from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
@@ -32,7 +33,6 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.workspace import get_or_create_workspace
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -481,6 +481,22 @@ async def _construct_starting_node_execution_input(
         if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
             input_data.update(node_input_mask)
 
+        # Webhook-triggered agents cannot be executed directly without payload data.
+        # Legitimate webhook triggers provide payload via nodes_input_masks above.
+        if (
+            block.block_type
+            in (
+                BlockType.WEBHOOK,
+                BlockType.WEBHOOK_MANUAL,
+            )
+            and "payload" not in input_data
+        ):
+            raise ValueError(
+                "This agent is triggered by an external event (webhook) "
+                "and cannot be executed directly. "
+                "Please use the appropriate trigger to run this agent."
+            )
+
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
             raise ValueError(error)
@@ -831,8 +847,9 @@ async def add_graph_execution(
         udb = user_db
         gdb = graph_db
         odb = onboarding_db
+        wdb = workspace_db
     else:
-        edb = udb = gdb = odb = get_database_manager_async_client()
+        edb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
     # Get or create the graph execution
     if graph_exec_id:
@@ -892,7 +909,7 @@ async def add_graph_execution(
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
-        workspace = await get_or_create_workspace(user_id)
+        workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
             # Execution identity
