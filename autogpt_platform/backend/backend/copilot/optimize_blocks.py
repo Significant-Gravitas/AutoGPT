@@ -141,16 +141,10 @@ def optimize_block_descriptions() -> dict[str, int]:
         f"{stats['failed']} failed, {stats['skipped']} skipped"
     )
 
-    # Invalidate the block dict cache so the next agent-gen call picks up
-    # the new optimized descriptions without requiring a process restart.
+    # Update in-memory block descriptions first, then invalidate the cache.
+    # Updating first ensures that when the cache is rebuilt after reset,
+    # it uses the new descriptions instead of stale ones.
     if stats["success"] > 0:
-        from backend.copilot.tools.agent_generator.blocks import _reset_caches
-
-        _reset_caches()
-
-        # Also update _optimized_description on in-memory Block classes
-        # so that find_block and other code reading Block instances see
-        # the new descriptions immediately.
         try:
             from backend.blocks import get_blocks
 
@@ -163,5 +157,11 @@ def optimize_block_descriptions() -> dict[str, int]:
             )
         except Exception:
             logger.debug("Could not update in-memory block descriptions", exc_info=True)
+
+        # Invalidate cache after descriptions are updated so the next
+        # agent-gen call rebuilds it with the fresh descriptions.
+        from backend.copilot.tools.agent_generator.blocks import _reset_caches
+
+        _reset_caches()
 
     return stats

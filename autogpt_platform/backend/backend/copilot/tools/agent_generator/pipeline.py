@@ -12,6 +12,7 @@ from backend.copilot.tools.models import (
 )
 
 from .blocks import get_blocks_as_dicts
+from .core import get_library_agents_by_ids, save_agent_to_library
 from .fixer import AgentFixer
 from .validator import AgentValidator
 
@@ -31,8 +32,6 @@ async def fetch_library_agents(
     if not user_id or not library_agent_ids:
         return None
     try:
-        from .core import get_library_agents_by_ids
-
         agents = await get_library_agents_by_ids(
             user_id=user_id,
             agent_ids=library_agent_ids,
@@ -54,6 +53,7 @@ async def fix_validate_and_save(
     preview_message: str | None = None,
     save_message: str | None = None,
     library_agents: list[dict[str, Any]] | None = None,
+    folder_id: str | None = None,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -170,12 +170,9 @@ async def fix_validate_and_save(
             session_id=session_id,
         )
 
-    # Lazy import to avoid circular dependency
-    from .core import save_agent_to_library
-
     try:
         created_graph, library_agent = await save_agent_to_library(
-            agent_json, user_id, is_update=is_update
+            agent_json, user_id, is_update=is_update, folder_id=folder_id
         )
         return AgentSavedResponse(
             message=(

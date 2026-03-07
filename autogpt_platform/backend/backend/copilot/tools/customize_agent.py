@@ -90,6 +90,7 @@ class CustomizeAgentTool(BaseTool):
 
         save = kwargs.get("save", True)
         library_agent_ids = kwargs.get("library_agent_ids", [])
+        folder_id: str | None = kwargs.get("folder_id")
 
         nodes = agent_json.get("nodes", [])
         if not nodes:
@@ -116,4 +117,5 @@ class CustomizeAgentTool(BaseTool):
             is_update=False,
             default_name="Customized Agent",
             library_agents=library_agents,
+            folder_id=folder_id,
         )
