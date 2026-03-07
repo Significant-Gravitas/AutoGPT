@@ -25,10 +25,12 @@ export function useChatSession() {
     },
   });
 
-  // When the user navigates away from a session, invalidate its query cache.
+  // Invalidate query cache on session switch.
   // useChat destroys its Chat instance on id change, so messages are lost.
-  // Invalidating ensures the next visit fetches fresh data from the API
-  // instead of hydrating from stale cache that's missing recent messages.
+  // We invalidate BOTH the old session (stale after leaving) and the new
+  // session (may have been cached before the user sent their last message,
+  // so active_stream and messages could be outdated). This guarantees a
+  // fresh fetch that gives the resume effect accurate hasActiveStream state.
   const prevSessionIdRef = useRef(sessionId);
 
   useEffect(() => {
@@ -39,15 +41,21 @@ export function useChatSession() {
         queryKey: getGetV2GetSessionQueryKey(prev),
       });
     }
+    if (sessionId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+    }
   }, [sessionId, queryClient]);
 
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
   const hasActiveStream = useMemo(() => {
+    if (sessionQuery.isFetching) return false;
     if (sessionQuery.data?.status !== 200) return false;
     return !!sessionQuery.data.data.active_stream;
-  }, [sessionQuery.data, sessionId]);
+  }, [sessionQuery.data, sessionQuery.isFetching, sessionId]);
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.

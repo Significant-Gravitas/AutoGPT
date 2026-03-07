@@ -3,9 +3,9 @@
 import logging
 from typing import Any
 
-from backend.api.features.store.exceptions import AgentNotFoundError
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import store_db as get_store_db
+from backend.util.exceptions import NotFoundError
 
 from .agent_generator import (
     AgentGeneratorNotConfiguredError,
@@ -80,6 +80,14 @@ class CustomizeAgentTool(BaseTool):
                     ),
                     "default": True,
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional folder ID to save the agent into. "
+                        "If not provided, the agent is saved at root level. "
+                        "Use list_folders to find available folders."
+                    ),
+                },
             },
             "required": ["agent_id", "modifications"],
         }
@@ -102,6 +110,7 @@ class CustomizeAgentTool(BaseTool):
         modifications = kwargs.get("modifications", "").strip()
         context = kwargs.get("context", "")
         save = kwargs.get("save", True)
+        folder_id = kwargs.get("folder_id")
         session_id = session.session_id if session else None
 
         if not agent_id:
@@ -140,7 +149,7 @@ class CustomizeAgentTool(BaseTool):
             agent_details = await store_db.get_store_agent_details(
                 username=creator_username, agent_name=agent_slug
             )
-        except AgentNotFoundError:
+        except NotFoundError:
             return ErrorResponse(
                 message=(
                     f"Could not find marketplace agent '{agent_id}'. "
@@ -310,7 +319,7 @@ class CustomizeAgentTool(BaseTool):
         # Save to user's library
         try:
             created_graph, library_agent = await save_agent_to_library(
-                customized_agent, user_id, is_update=False
+                customized_agent, user_id, is_update=False, folder_id=folder_id
             )
 
             return AgentSavedResponse(
