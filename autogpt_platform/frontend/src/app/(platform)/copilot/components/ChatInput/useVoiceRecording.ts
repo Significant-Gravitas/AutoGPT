@@ -14,7 +14,6 @@ interface Args {
   disabled?: boolean;
   isStreaming?: boolean;
   value: string;
-  baseHandleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   inputId?: string;
 }
 
@@ -23,7 +22,6 @@ export function useVoiceRecording({
   disabled = false,
   isStreaming = false,
   value,
-  baseHandleKeyDown,
   inputId,
 }: Args) {
   const [isRecording, setIsRecording] = useState(false);
@@ -237,9 +235,9 @@ export function useVoiceRecording({
         event.preventDefault();
         return;
       }
-      baseHandleKeyDown(event);
+      // Let PromptInputTextarea handle remaining keys (Enter → submit, etc.)
     },
-    [value, isTranscribing, stopRecording, startRecording, baseHandleKeyDown],
+    [value, isTranscribing, stopRecording, startRecording],
   );
 
   const showMicButton = isSupported;

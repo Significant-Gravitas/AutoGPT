@@ -13,7 +13,7 @@ import { useEditAgentForm } from "./useEditAgentForm";
 interface EditAgentFormProps {
   submission: StoreSubmissionEditRequest & {
     store_listing_version_id: string | undefined;
-    agent_id: string;
+    graph_id: string;
   };
   onClose: () => void;
   onSuccess: (submission: StoreSubmission) => void;
@@ -70,7 +70,7 @@ export function EditAgentForm({
           />
 
           <ThumbnailImages
-            agentId={submission.agent_id}
+            agentId={submission.graph_id}
             onImagesChange={handleImagesChange}
             initialImages={Array.from(new Set(submission.image_urls || []))}
             initialSelectedImage={submission.image_urls?.[0] || null}

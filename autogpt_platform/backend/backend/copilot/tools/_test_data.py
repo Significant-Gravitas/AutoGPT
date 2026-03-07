@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 from os import getenv
@@ -12,11 +13,33 @@ from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.copilot.model import ChatSession
+from backend.data import db as db_module
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
+
+_logger = logging.getLogger(__name__)
+
+
+async def _ensure_db_connected() -> None:
+    """Ensure the Prisma connection is alive on the current event loop.
+
+    On Python 3.11, the httpx transport inside Prisma can reference a stale
+    (closed) event loop when session-scoped async fixtures are evaluated long
+    after the initial ``server`` fixture connected Prisma.  A cheap health-check
+    followed by a reconnect fixes this without affecting other fixtures.
+    """
+    try:
+        await prisma.query_raw("SELECT 1")
+    except Exception:
+        _logger.info("Prisma connection stale – reconnecting")
+        try:
+            await db_module.disconnect()
+        except Exception:
+            pass
+        await db_module.connect()
 
 
 def make_session(user_id: str):
@@ -43,6 +66,8 @@ async def setup_test_data(server):
 
     Depends on ``server`` to ensure Prisma is connected.
     """
+    await _ensure_db_connected()
+
     # 1. Create a test user
     user_data = {
         "sub": f"test-user-{uuid.uuid4()}",
@@ -126,8 +151,8 @@ async def setup_test_data(server):
     unique_slug = f"test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Test Agent",
         description="A simple test agent",
@@ -136,10 +161,10 @@ async def setup_test_data(server):
         image_urls=["https://example.com/image.jpg"],
     )
 
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     # 4. Approve the store listing version
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval",
@@ -164,6 +189,8 @@ async def setup_llm_test_data(server):
 
     Depends on ``server`` to ensure Prisma is connected.
     """
+    await _ensure_db_connected()
+
     key = getenv("OPENAI_API_KEY")
     if not key:
         return pytest.skip("OPENAI_API_KEY is not set")
@@ -294,8 +321,8 @@ async def setup_llm_test_data(server):
     unique_slug = f"llm-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="LLM Test Agent",
         description="An agent with LLM capabilities",
@@ -303,9 +330,9 @@ async def setup_llm_test_data(server):
         categories=["testing", "ai"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for LLM agent",
@@ -330,6 +357,8 @@ async def setup_firecrawl_test_data(server):
 
     Depends on ``server`` to ensure Prisma is connected.
     """
+    await _ensure_db_connected()
+
     # 1. Create a test user
     user_data = {
         "sub": f"test-user-{uuid.uuid4()}",
@@ -447,8 +476,8 @@ async def setup_firecrawl_test_data(server):
     unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Firecrawl Test Agent",
         description="An agent with Firecrawl integration (no credentials)",
@@ -456,9 +485,9 @@ async def setup_firecrawl_test_data(server):
         categories=["testing", "scraping"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for Firecrawl agent",

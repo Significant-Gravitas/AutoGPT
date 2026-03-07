@@ -394,7 +394,6 @@ async def main():
         listing = await db.storelisting.create(
             data={
                 "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
                 "owningUserId": user.id,
                 "hasApprovedVersion": random.choice([True, False]),
                 "slug": slug,

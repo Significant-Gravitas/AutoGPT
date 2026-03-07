@@ -6,7 +6,6 @@ ensuring multi-user isolation and preventing unauthorized operations.
 
 import json
 import logging
-import os
 import re
 from collections.abc import Callable
 from typing import Any, cast
@@ -16,6 +15,7 @@ from .tool_adapter import (
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
+    is_allowed_local_path,
     stash_pending_tool_output,
 )
 
@@ -38,40 +38,20 @@ def _validate_workspace_path(
 ) -> dict[str, Any]:
     """Validate that a workspace-scoped tool only accesses allowed paths.
 
-    Allowed directories:
+    Delegates to :func:`is_allowed_local_path` which permits:
     - The SDK working directory (``/tmp/copilot-<session>/``)
-    - The SDK tool-results directory (``~/.claude/projects/…/tool-results/``)
+    - The current session's tool-results directory
+      (``~/.claude/projects/<encoded-cwd>/tool-results/``)
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
 
-    # Resolve relative paths against sdk_cwd (the SDK sets cwd so the LLM
-    # naturally uses relative paths like "test.txt" instead of absolute ones).
-    # Tilde paths (~/) are home-dir references, not relative — expand first.
-    if path.startswith("~"):
-        resolved = os.path.realpath(os.path.expanduser(path))
-    elif not os.path.isabs(path) and sdk_cwd:
-        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
-    else:
-        resolved = os.path.realpath(path)
-
-    # Allow access within the SDK working directory
-    if sdk_cwd:
-        norm_cwd = os.path.realpath(sdk_cwd)
-        if resolved.startswith(norm_cwd + os.sep) or resolved == norm_cwd:
-            return {}
-
-    # Allow access to ~/.claude/projects/*/tool-results/ (big tool results)
-    claude_dir = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-    tool_results_seg = os.sep + "tool-results" + os.sep
-    if resolved.startswith(claude_dir + os.sep) and tool_results_seg in resolved:
+    if is_allowed_local_path(path, sdk_cwd):
         return {}
 
-    logger.warning(
-        f"Blocked {tool_name} outside workspace: {path} (resolved={resolved})"
-    )
+    logger.warning(f"Blocked {tool_name} outside workspace: {path}")
     workspace_hint = f" Allowed workspace: {sdk_cwd}" if sdk_cwd else ""
     return _deny(
         f"[SECURITY] Tool '{tool_name}' can only access files within the workspace "
@@ -146,7 +126,7 @@ def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
-    on_stop: Callable[[str, str], None] | None = None,
+    on_compact: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -155,15 +135,12 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
-    - Stop: Capture transcript path for stateless resume (when *on_stop* is provided)
 
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
         max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
-        on_stop: Callback ``(transcript_path, sdk_session_id)`` invoked when
-            the SDK finishes processing — used to read the JSONL transcript
-            before the CLI process exits.
+        on_compact: Callback invoked when SDK starts compacting context.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -326,30 +303,8 @@ def create_security_hooks(
             logger.info(
                 f"[SDK] Context compaction triggered: {trigger}, user={user_id}"
             )
-            return cast(SyncHookJSONOutput, {})
-
-        # --- Stop hook: capture transcript path for stateless resume ---
-        async def stop_hook(
-            input_data: HookInput,
-            tool_use_id: str | None,
-            context: HookContext,
-        ) -> SyncHookJSONOutput:
-            """Capture transcript path when SDK finishes processing.
-
-            The Stop hook fires while the CLI process is still alive, giving us
-            a reliable window to read the JSONL transcript before SIGTERM.
-            """
-            _ = context, tool_use_id
-            transcript_path = cast(str, input_data.get("transcript_path", ""))
-            sdk_session_id = cast(str, input_data.get("session_id", ""))
-
-            if transcript_path and on_stop:
-                logger.info(
-                    f"[SDK] Stop hook: transcript_path={transcript_path}, "
-                    f"sdk_session_id={sdk_session_id[:12]}..."
-                )
-                on_stop(transcript_path, sdk_session_id)
-
+            if on_compact is not None:
+                on_compact()
             return cast(SyncHookJSONOutput, {})
 
         hooks: dict[str, Any] = {
@@ -360,9 +315,6 @@ def create_security_hooks(
             ],
             "PreCompact": [HookMatcher(matcher="*", hooks=[pre_compact_hook])],
         }
-
-        if on_stop is not None:
-            hooks["Stop"] = [HookMatcher(matcher=None, hooks=[stop_hook])]
 
         return hooks
     except ImportError:
