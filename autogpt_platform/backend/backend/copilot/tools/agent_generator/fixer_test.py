@@ -871,3 +871,43 @@ class TestFixDataTypeMismatch:
 
         assert len(result["links"]) == 1
         assert fixer.fixes_applied == []
+
+    def test_multiple_mismatches_insert_multiple_converters(self):
+        """Each incompatible link gets its own converter node."""
+        fixer = AgentFixer()
+        src_block_id = generate_uuid()
+        sink_block_id = generate_uuid()
+
+        src_node = _make_node(node_id="src", block_id=src_block_id)
+        sink1 = _make_node(node_id="sink1", block_id=sink_block_id)
+        sink2 = _make_node(node_id="sink2", block_id=sink_block_id)
+        link1 = _make_link(
+            source_id="src", source_name="out", sink_id="sink1", sink_name="count"
+        )
+        link2 = _make_link(
+            source_id="src", source_name="out", sink_id="sink2", sink_name="count"
+        )
+        agent = _make_agent(nodes=[src_node, sink1, sink2], links=[link1, link2])
+
+        blocks = [
+            self._make_block(
+                src_block_id,
+                output_schema={"properties": {"out": {"type": "string"}}},
+            ),
+            self._make_block(
+                sink_block_id,
+                input_schema={"properties": {"count": {"type": "integer"}}},
+            ),
+        ]
+
+        result = fixer.fix_data_type_mismatch(agent, blocks)
+
+        converter_nodes = [
+            n
+            for n in result["nodes"]
+            if n["block_id"] == _UNIVERSAL_TYPE_CONVERTER_BLOCK_ID
+        ]
+        assert len(converter_nodes) == 2
+        # Each original link becomes two links through its own converter
+        assert len(result["links"]) == 4
+        assert len(fixer.fixes_applied) == 2

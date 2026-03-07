@@ -22,6 +22,7 @@ from backend.copilot.model import (
     update_session_title,
     upsert_chat_session,
 )
+from backend.copilot.prompting import get_baseline_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -180,13 +181,16 @@ async def stream_chat_completion_baseline(
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
     if is_first_turn:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id, has_conversation_history=False
         )
     else:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id=None, has_conversation_history=True
         )
+
+    # Append tool documentation and technical notes
+    system_prompt = base_system_prompt + get_baseline_supplement()
 
     # Append agent generation guide when the user's message suggests
     # they want to create/build an agent (includes MCP & sub-agent guidance).

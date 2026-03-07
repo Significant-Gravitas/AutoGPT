@@ -42,7 +42,7 @@ class AgentValidator:
         return val1 == val2
 
     def validate_block_existence(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
     ) -> bool:
         """
         Validate that all block IDs used in the agent actually exist in the
@@ -78,7 +78,7 @@ class AgentValidator:
 
         return valid
 
-    def validate_link_node_references(self, agent: dict[str, Any]) -> bool:
+    def validate_link_node_references(self, agent: AgentDict) -> bool:
         """
         Validate that all node IDs referenced in links actually exist in the
         agent's nodes. Returns True if all link references are valid, False
@@ -135,7 +135,7 @@ class AgentValidator:
         return valid
 
     def validate_required_inputs(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
     ) -> bool:
         """
         Validate that all required inputs are provided for each node.
@@ -182,7 +182,7 @@ class AgentValidator:
         return valid
 
     def validate_data_type_compatibility(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
     ) -> bool:
         """
         Validate that linked data types are compatible between source and sink.
@@ -248,7 +248,7 @@ class AgentValidator:
         return valid
 
     def validate_nested_sink_links(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
     ) -> bool:
         """
         Validate nested sink links (links with _#_ notation).
@@ -332,7 +332,7 @@ class AgentValidator:
 
         return valid
 
-    def validate_prompt_double_curly_braces_spaces(self, agent: dict[str, Any]) -> bool:
+    def validate_prompt_double_curly_braces_spaces(self, agent: AgentDict) -> bool:
         """
         Validate that prompt parameters do not contain spaces in double curly
         braces.
@@ -388,7 +388,7 @@ class AgentValidator:
         return valid
 
     def validate_source_output_existence(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
     ) -> bool:
         """
         Validate that all source_names in links exist in the corresponding
@@ -535,7 +535,7 @@ class AgentValidator:
 
         return valid
 
-    def validate_io_blocks(self, agent: dict[str, Any]) -> bool:
+    def validate_io_blocks(self, agent: AgentDict) -> bool:
         """
         Validate that the agent has at least one AgentInputBlock and one
         AgentOutputBlock. These blocks define the agent's interface.
@@ -570,7 +570,7 @@ class AgentValidator:
 
     def validate_agent_executor_blocks(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         library_agents: list[dict[str, Any]] | None = None,
     ) -> bool:
         """
@@ -712,7 +712,7 @@ class AgentValidator:
 
     def validate_agent_executor_block_schemas(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
     ) -> bool:
         """
         Validate that AgentExecutorBlock nodes have valid input_schema and
@@ -790,7 +790,7 @@ class AgentValidator:
 
         return valid
 
-    def validate_mcp_tool_blocks(self, agent: dict[str, Any]) -> bool:
+    def validate_mcp_tool_blocks(self, agent: AgentDict) -> bool:
         """Validate that MCPToolBlock nodes have required fields.
 
         Checks that each MCPToolBlock node has:

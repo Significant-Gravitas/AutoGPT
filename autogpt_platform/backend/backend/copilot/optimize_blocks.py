@@ -11,7 +11,6 @@ import time
 import openai
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.tools.agent_generator.blocks import _reset_caches
 from backend.util.clients import get_database_manager_client
 
 logger = logging.getLogger(__name__)
@@ -145,6 +144,8 @@ def optimize_block_descriptions() -> dict[str, int]:
     # Invalidate the block dict cache so the next agent-gen call picks up
     # the new optimized descriptions without requiring a process restart.
     if stats["success"] > 0:
+        from backend.copilot.tools.agent_generator.blocks import _reset_caches
+
         _reset_caches()
 
         # Also update _optimized_description on in-memory Block classes

@@ -45,6 +45,7 @@ from ..model import (
     update_session_title,
     upsert_chat_session,
 )
+from ..prompting import get_sdk_supplement
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -522,13 +523,14 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                 }
             )
         elif isinstance(block, ToolResultBlock):
-            result.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.tool_use_id,
-                    "content": block.content,
-                }
-            )
+            tool_result_entry: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": block.tool_use_id,
+                "content": block.content,
+            }
+            if block.is_error:
+                tool_result_entry["is_error"] = True
+            result.append(tool_result_entry)
         elif isinstance(block, ThinkingBlock):
             result.append(
                 {
@@ -1002,10 +1004,9 @@ async def stream_chat_completion_sdk(
         )
 
         use_e2b = e2b_sandbox is not None
-        system_prompt = base_system_prompt + (
-            _E2B_TOOL_SUPPLEMENT
-            if use_e2b
-            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        # Append appropriate supplement (Claude gets tool schemas automatically)
+        system_prompt = base_system_prompt + get_sdk_supplement(
+            use_e2b=use_e2b, cwd=sdk_cwd
         )
         if _needs_agent_generation_guide(message):
             system_prompt += build_agent_generation_guide()
@@ -1178,19 +1179,18 @@ async def stream_chat_completion_sdk(
                     json.dumps(user_msg) + "\n"
                 )
                 # Capture user message in transcript (multimodal)
-                transcript_builder.add_user_message(content=content_blocks)
+                transcript_builder.append_user(content=content_blocks)
             else:
                 await client.query(query_message, session_id=session_id)
                 # Capture actual user message in transcript (not the engineered query)
                 # query_message may include context wrappers, but transcript needs raw input
-                transcript_builder.add_user_message(content=current_message)
+                transcript_builder.append_user(content=current_message)
 
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
             has_appended_assistant = False
             has_tool_results = False
             ended_with_stream_error = False
-
             # Use an explicit async iterator with non-cancelling heartbeats.
             # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
             # (via asyncio.timeout or wait_for) corrupts the SDK's internal
@@ -1263,14 +1263,13 @@ async def stream_chat_completion_sdk(
 
                     # Log AssistantMessage API errors (e.g. invalid_request)
                     # so we can debug Anthropic API 400s surfaced by the CLI.
-                    if isinstance(sdk_msg, AssistantMessage) and getattr(
-                        sdk_msg, "error", None
-                    ):
+                    sdk_error = getattr(sdk_msg, "error", None)
+                    if isinstance(sdk_msg, AssistantMessage) and sdk_error:
                         logger.error(
                             "[SDK] [%s] AssistantMessage has error=%s, "
                             "content_blocks=%d, content_preview=%s",
                             session_id[:12],
-                            sdk_msg.error,
+                            sdk_error,
                             len(sdk_msg.content),
                             str(sdk_msg.content)[:500],
                         )
@@ -1279,7 +1278,7 @@ async def stream_chat_completion_sdk(
                     if isinstance(sdk_msg, AssistantMessage):
                         content_blocks = _format_sdk_content_blocks(sdk_msg.content)
                         model_name = getattr(sdk_msg, "model", "")
-                        transcript_builder.add_assistant_message(
+                        transcript_builder.append_assistant(
                             content_blocks=content_blocks,
                             model=model_name,
                         )
@@ -1414,21 +1413,36 @@ async def stream_chat_completion_sdk(
                                 has_appended_assistant = True
 
                         elif isinstance(response, StreamToolOutputAvailable):
+                            content = (
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            )
                             session.messages.append(
                                 ChatMessage(
                                     role="tool",
-                                    content=(
-                                        response.output
-                                        if isinstance(response.output, str)
-                                        else str(response.output)
-                                    ),
+                                    content=content,
                                     tool_call_id=response.toolCallId,
                                 )
+                            )
+                            transcript_builder.append_tool_result(
+                                tool_use_id=response.toolCallId,
+                                content=content,
                             )
                             has_tool_results = True
 
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
+
+                    # Append assistant entry AFTER convert_message so that
+                    # any stashed tool results from the previous turn are
+                    # recorded first, preserving the required API order:
+                    # assistant(tool_use) → tool_result → assistant(text).
+                    if isinstance(sdk_msg, AssistantMessage):
+                        transcript_builder.append_assistant(
+                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
+                            model=sdk_msg.model,
+                        )
 
             except asyncio.CancelledError:
                 # Task/generator was cancelled (e.g. client disconnect,
@@ -1477,6 +1491,15 @@ async def stream_chat_completion_sdk(
                             log_prefix,
                             type(response).__name__,
                             getattr(response, "toolName", "N/A"),
+                        )
+                    if isinstance(response, StreamToolOutputAvailable):
+                        transcript_builder.append_tool_result(
+                            tool_use_id=response.toolCallId,
+                            content=(
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            ),
                         )
                     yield response
 

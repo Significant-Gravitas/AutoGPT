@@ -42,7 +42,7 @@ class AgentFixer:
 
     @staticmethod
     def _build_node_lookup(
-        agent: dict[str, Any],
+        agent: AgentDict,
     ) -> dict[str, dict[str, Any]]:
         """Build a node-id → node dict from the agent's nodes list."""
         return {node.get("id", ""): node for node in agent.get("nodes", [])}
@@ -51,7 +51,7 @@ class AgentFixer:
         """Add a fix description to the applied fixes list."""
         self.fixes_applied.append(fix_description)
 
-    def fix_agent_ids(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_agent_ids(self, agent: AgentDict) -> AgentDict:
         """
         Fix agent and link IDs to ensure they are valid UUIDs.
 
@@ -83,7 +83,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_storevalue_before_condition(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_storevalue_before_condition(self, agent: AgentDict) -> AgentDict:
         """
         Add a StoreValueBlock before each ConditionBlock to provide a value for 'value2'.
 
@@ -228,7 +228,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_double_curly_braces(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_double_curly_braces(self, agent: AgentDict) -> AgentDict:
         """
         Fix single curly braces to double curly braces in nodes with prompt or
         format fields. Also ensures that prompt_values (passed via links) are
@@ -350,7 +350,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_addtolist_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_addtolist_blocks(self, agent: AgentDict) -> AgentDict:
         """
         Fix AddToList blocks by adding a prerequisite empty AddToList block.
 
@@ -618,7 +618,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_addtodictionary_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_addtodictionary_blocks(self, agent: AgentDict) -> AgentDict:
         """
         Fix AddToDictionary blocks by removing empty CreateDictionaryBlock nodes
         that are linked to them.
@@ -680,10 +680,10 @@ class AgentFixer:
 
     def fix_link_static_properties(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         blocks: list[dict[str, Any]],
         node_lookup: dict[str, dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Fix the is_static property of links based on the source block's
         staticOutput property.
@@ -699,7 +699,8 @@ class AgentFixer:
             The fixed agent dictionary
         """
         block_map = {block.get("id"): block for block in blocks}
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         for link in agent.get("links", []):
             source_node = node_lookup.get(link.get("source_id", ""))
@@ -727,7 +728,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_code_execution_output(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_code_execution_output(self, agent: AgentDict) -> AgentDict:
         """
         Fix CodeExecutionBlock output by changing source_name from "response"
         to "stdout_logs" in links.
@@ -759,7 +760,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_data_sampling_sample_size(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_data_sampling_sample_size(self, agent: AgentDict) -> AgentDict:
         """
         Fix DataSamplingBlock by setting sample_size to 1 as default.
         If old value is set as default, just reset to 1.
@@ -819,10 +820,10 @@ class AgentFixer:
 
     def fix_ai_model_parameter(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         blocks: list[dict[str, Any]],
         default_model: str = "gpt-4o",
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Add or fix the model parameter on AI blocks.
 
@@ -890,8 +891,8 @@ class AgentFixer:
         return agent
 
     def fix_data_type_mismatch(
-        self, agent: dict[str, Any], blocks: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, agent: AgentDict, blocks: list[dict[str, Any]]
+    ) -> AgentDict:
         """
         Fix data type mismatches by inserting UniversalTypeConverterBlock between
         incompatible connections.
@@ -915,9 +916,7 @@ class AgentFixer:
         block_lookup = {block.get("id", ""): block for block in blocks}
         node_lookup = {node.get("id", ""): node for node in nodes}
 
-        def get_target_type_for_conversion(
-            source_type: str, sink_type: str  # noqa: ARG001
-        ) -> str:
+        def get_target_type_for_conversion(sink_type: str) -> str:
             """Determine the target type for conversion based on sink
             requirements."""
             type_mapping = {
@@ -973,7 +972,7 @@ class AgentFixer:
             ):
                 # Create UniversalTypeConverterBlock node
                 converter_node_id = generate_uuid()
-                target_type = get_target_type_for_conversion(source_type, sink_type)
+                target_type = get_target_type_for_conversion(sink_type)
 
                 converter_node = {
                     "id": converter_node_id,
@@ -1034,9 +1033,9 @@ class AgentFixer:
 
     def fix_node_x_coordinates(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         node_lookup: dict[str, dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Fix node x-coordinates to ensure adjacent nodes (connected via links)
         have at least 800 units difference in their x-coordinates.
@@ -1099,7 +1098,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_getcurrentdate_offset(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_getcurrentdate_offset(self, agent: AgentDict) -> AgentDict:
         """
         Fix GetCurrentDateBlock offset to ensure it's a positive value.
 
@@ -1133,9 +1132,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_addtolist_gmail_self_reference(
-        self, agent: dict[str, Any]
-    ) -> dict[str, Any]:
+    def fix_addtolist_gmail_self_reference(self, agent: AgentDict) -> AgentDict:
         """
         Remove self-referencing links from AddToList blocks that are connected
         to GmailSendBlock.
@@ -1203,7 +1200,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_text_replace_new_parameter(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_text_replace_new_parameter(self, agent: AgentDict) -> AgentDict:
         """
         Fix TextReplaceBlock's 'new' parameter by changing empty string to space.
 
@@ -1232,7 +1229,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_credentials(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_credentials(self, agent: AgentDict) -> AgentDict:
         """
         Delete credentials from input_default if it exists.
 
@@ -1259,9 +1256,9 @@ class AgentFixer:
 
     def fix_agent_executor_blocks(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         library_agents: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Fix AgentExecutorBlock nodes to ensure they have valid graph_id
         references.
@@ -1467,10 +1464,10 @@ class AgentFixer:
 
     def fix_invalid_nested_sink_links(
         self,
-        agent: dict[str, Any],
+        agent: AgentDict,
         blocks: list[dict[str, Any]],
         node_lookup: dict[str, dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> AgentDict:
         """
         Fix invalid nested sink links (links with _#_ notation pointing to
         array indices).
@@ -1501,6 +1498,9 @@ class AgentFixer:
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
 
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
+
         links = agent.get("links", [])
         links_to_remove: list[str] = []
 
@@ -1512,14 +1512,7 @@ class AgentFixer:
 
                 # Check if child is a numeric index (invalid for _#_ notation)
                 if child.isdigit():
-                    sink_node = next(
-                        (
-                            node
-                            for node in agent.get("nodes", [])
-                            if node.get("id") == link.get("sink_id")
-                        ),
-                        None,
-                    )
+                    sink_node = node_lookup.get(link.get("sink_id", ""))
                     if sink_node:
                         block_id = sink_node.get("block_id")
                         block_name = block_names.get(block_id, "Unknown Block")
@@ -1533,14 +1526,7 @@ class AgentFixer:
                     continue
 
                 # Check if parent property exists and child is valid
-                sink_node = next(
-                    (
-                        node
-                        for node in agent.get("nodes", [])
-                        if node.get("id") == link.get("sink_id")
-                    ),
-                    None,
-                )
+                sink_node = node_lookup.get(link.get("sink_id", ""))
                 if sink_node:
                     block_id = sink_node.get("block_id")
                     input_props = block_input_schemas.get(block_id, {})
@@ -1568,7 +1554,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_mcp_tool_blocks(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_mcp_tool_blocks(self, agent: AgentDict) -> AgentDict:
         """Fix MCPToolBlock nodes to ensure they have required fields.
 
         Ensures:
@@ -1624,7 +1610,7 @@ class AgentFixer:
 
         return agent
 
-    def fix_dynamic_block_sink_names(self, agent: dict[str, Any]) -> dict[str, Any]:
+    def fix_dynamic_block_sink_names(self, agent: AgentDict) -> AgentDict:
         """Fix links that use _#_ notation for dynamic block sink names.
 
         MCPToolBlock and AgentExecutorBlock use dynamic input schemas where
