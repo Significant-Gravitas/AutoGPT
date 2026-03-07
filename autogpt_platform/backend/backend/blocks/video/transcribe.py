@@ -47,7 +47,7 @@ class TranscribeVideoBlock(Block):
     def __init__(self):
         super().__init__(
             id="fa49dad0-a5fc-441c-ba04-2ac206e392d8",
-            description="Transcribe speech from a video file to text",
+            description="Extract spoken words from a video and return them as a text transcription",
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,

@@ -6,10 +6,7 @@ This block transcribes speech from a video file to text using the Replicate API.
 ## Transcribe Video
 
 ### What it is
-Transcribe speech from a video file to text
-
-### What it does
-Extracts spoken words from a video and returns them as a text transcription. The block accepts video input as a URL, data URI, or local path and outputs the full transcript as a string.
+Extract spoken words from a video and return them as a text transcription
 
 ### How it works
 <!-- MANUAL: how_it_works -->

@@ -58,7 +58,7 @@ class EditVideoByTextBlock(Block):
     def __init__(self):
         super().__init__(
             id="98d40049-a1de-465f-bba1-47411298ad1a",
-            description="Edit a video by modifying its transcript",
+            description="Edit a video by modifying its transcript — segments you remove from the transcript are cut from the output video",
             categories={BlockCategory.MULTIMEDIA},
             input_schema=self.Input,
             output_schema=self.Output,

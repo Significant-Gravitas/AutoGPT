@@ -6,10 +6,7 @@ This block edits a video by modifying its transcript — segments absent from th
 ## Edit Video By Text
 
 ### What it is
-Edit a video by modifying its transcript
-
-### What it does
-Takes a video and a modified version of its transcript, then produces a new video with only the segments that match the provided transcript. Any spoken segments you remove from the transcript will be cut from the output video.
+Edit a video by modifying its transcript — segments you remove from the transcript are cut from the output video
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -22,7 +19,7 @@ The block sends the input video and the desired transcript to the Replicate API 
 |-------|-------------|------|----------|
 | video_in | Input video file to edit (URL, data URI, or local path) | str (file) | Yes |
 | transcription | Modified transcript of the input video — segments absent from this text will be cut from the output video | str | Yes |
-| split_at | Alignment granularity for transcript matching: `word` aligns cuts at word boundaries (default), `character` allows finer sub-word alignment | "word" \| "character" | No (default: `word`) |
+| split_at | Alignment granularity for transcript matching: 'word' aligns cuts at word boundaries, 'character' allows finer sub-word alignment | "word" \| "character" | No |
 
 ### Outputs
 
