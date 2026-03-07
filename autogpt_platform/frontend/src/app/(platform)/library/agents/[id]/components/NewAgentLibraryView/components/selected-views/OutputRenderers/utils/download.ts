@@ -35,15 +35,22 @@ async function fetchFileAsBlob(url: string): Promise<Blob | null> {
   }
 }
 
+/** Strip path traversal components from a filename to prevent ZIP slip attacks. */
+function sanitizeFilename(filename: string): string {
+  // Remove path separators and parent-directory references
+  return filename.replace(/[/\\]/g, "_").replace(/\.\./g, "_");
+}
+
 function getUniqueFilename(filename: string, usedNames: Set<string>): string {
-  if (!usedNames.has(filename)) {
-    usedNames.add(filename);
-    return filename;
+  const safe = sanitizeFilename(filename);
+  if (!usedNames.has(safe)) {
+    usedNames.add(safe);
+    return safe;
   }
 
-  const dotIndex = filename.lastIndexOf(".");
-  const baseName = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
-  const extension = dotIndex > 0 ? filename.slice(dotIndex) : "";
+  const dotIndex = safe.lastIndexOf(".");
+  const baseName = dotIndex > 0 ? safe.slice(0, dotIndex) : safe;
+  const extension = dotIndex > 0 ? safe.slice(dotIndex) : "";
 
   let counter = 1;
   let newName = `${baseName}_${counter}${extension}`;
@@ -95,7 +102,15 @@ export async function downloadOutputs(items: DownloadItem[]) {
             sourceUrl = downloadContent.data;
             blob = await fetchFileAsBlob(downloadContent.data);
           } else if (downloadContent.data.startsWith("data:")) {
-            blob = await fetch(downloadContent.data).then((r) => r.blob());
+            const dataBlob = await fetch(downloadContent.data).then((r) =>
+              r.blob(),
+            );
+            blob = dataBlob.size <= MAX_FILE_SIZE_BYTES ? dataBlob : null;
+            if (!blob) {
+              console.warn(
+                `Skipping data URL: too large (${(dataBlob.size / 1024 / 1024).toFixed(1)} MB)`,
+              );
+            }
           } else {
             console.warn(
               `Skipping unsupported URL format: ${downloadContent.data.slice(0, 50)}...`,
@@ -129,8 +144,12 @@ export async function downloadOutputs(items: DownloadItem[]) {
     const linksContent = unfetchableUrls
       .map((url, i) => `${i + 1}. ${url}`)
       .join("\n");
-    zip.file(
+    const manifestFilename = getUniqueFilename(
       "unfetched_files.txt",
+      usedFilenames,
+    );
+    zip.file(
+      manifestFilename,
       `The following files could not be included in the zip (CORS restriction or size limit).\nYou can download them directly from these URLs:\n\n${linksContent}\n`,
     );
     hasFiles = true;
