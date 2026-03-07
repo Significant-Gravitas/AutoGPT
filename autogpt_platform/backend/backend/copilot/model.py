@@ -410,13 +410,15 @@ async def get_chat_session_metadata(
         if session:
             if user_id is not None and session.user_id != user_id:
                 return None
-            return ChatSessionInfo(
-                **{k: v for k, v in session.model_dump().items() if k != "messages"}
-            )
+            return ChatSessionInfo(**session.model_dump(exclude={"messages"}))
     except RedisError:
-        pass
+        logger.warning("Redis error fetching session metadata for %s", session_id)
     except Exception:
-        pass
+        logger.warning(
+            "Unexpected error fetching session metadata for %s",
+            session_id,
+            exc_info=True,
+        )
 
     # Fall back to lightweight DB query (no messages)
     from backend.copilot.db import get_chat_session_metadata as _db_get_metadata

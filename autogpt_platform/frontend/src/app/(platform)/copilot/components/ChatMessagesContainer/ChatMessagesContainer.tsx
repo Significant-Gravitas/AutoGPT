@@ -185,28 +185,15 @@ function LoadMoreSentinel({
   onLoadMore: () => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const { scrollRef } = useStickToBottomContext();
-  const prevScrollDataRef = useRef({ scrollHeight: 0, scrollTop: 0 });
-
-  // Capture scroll position before loading more
-  function handleLoadMore() {
-    const el = scrollRef.current;
-    if (el) {
-      prevScrollDataRef.current = {
-        scrollHeight: el.scrollHeight,
-        scrollTop: el.scrollTop,
-      };
-    }
-    onLoadMore();
-  }
 
   // IntersectionObserver to trigger load when sentinel is near viewport
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || isLoading) return;
+    const loadMoreRef = onLoadMore;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && hasMore && !isLoading) {
-          handleLoadMore();
+          loadMoreRef();
         }
       },
       { rootMargin: "200px 0px 0px 0px" },
