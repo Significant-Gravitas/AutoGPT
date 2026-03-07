@@ -185,15 +185,16 @@ function LoadMoreSentinel({
   onLoadMore: () => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
 
   // IntersectionObserver to trigger load when sentinel is near viewport
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || isLoading) return;
-    const loadMoreRef = onLoadMore;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && hasMore && !isLoading) {
-          loadMoreRef();
+        if (entry.isIntersecting) {
+          onLoadMoreRef.current();
         }
       },
       { rootMargin: "200px 0px 0px 0px" },

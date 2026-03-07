@@ -9,6 +9,8 @@ interface UseLoadMoreMessagesArgs {
   initialHasMore: boolean;
 }
 
+const MAX_CONSECUTIVE_ERRORS = 3;
+
 export function useLoadMoreMessages({
   sessionId,
   initialOldestSequence,
@@ -23,6 +25,7 @@ export function useLoadMoreMessages({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isLoadingMoreRef = useRef(false);
+  const consecutiveErrorsRef = useRef(0);
 
   // Track the sessionId and initial cursor to reset state on change
   const prevSessionIdRef = useRef(sessionId);
@@ -39,6 +42,7 @@ export function useLoadMoreMessages({
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
       isLoadingMoreRef.current = false;
+      consecutiveErrorsRef.current = 0;
     } else if (
       prevInitialOldestRef.current !== initialOldestSequence &&
       olderMessages.length > 0
@@ -51,6 +55,7 @@ export function useLoadMoreMessages({
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
       isLoadingMoreRef.current = false;
+      consecutiveErrorsRef.current = 0;
     } else {
       // Update from parent when initial data changes (e.g. refetch)
       prevInitialOldestRef.current = initialOldestSequence;
@@ -76,7 +81,18 @@ export function useLoadMoreMessages({
         before_sequence: oldestSequence,
       });
 
-      if (response.status !== 200) return;
+      if (response.status !== 200) {
+        consecutiveErrorsRef.current += 1;
+        console.warn(
+          `[loadMore] Failed to load messages (status=${response.status}, attempt=${consecutiveErrorsRef.current})`,
+        );
+        if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+          setHasMore(false);
+        }
+        return;
+      }
+
+      consecutiveErrorsRef.current = 0;
 
       const newMessages = convertChatSessionMessagesToUiMessages(
         sessionId,
@@ -87,6 +103,12 @@ export function useLoadMoreMessages({
       setOlderMessages((prev) => [...newMessages, ...prev]);
       setOldestSequence(response.data.oldest_sequence ?? null);
       setHasMore(!!response.data.has_more_messages);
+    } catch (error) {
+      consecutiveErrorsRef.current += 1;
+      console.warn("[loadMore] Network error:", error);
+      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+        setHasMore(false);
+      }
     } finally {
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
