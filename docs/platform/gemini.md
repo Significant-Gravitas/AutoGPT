@@ -58,7 +58,7 @@ In the **LLM Model** dropdown, select one of the available Gemini models:
 | `google/gemini-2.5-flash` | Fast, efficient performance | Quick responses, high-volume tasks |
 | `google/gemini-2.5-flash-lite-preview-06-17` | Lightweight preview | Simple tasks, low latency requirements |
 | `google/gemini-2.0-flash-001` | Balanced speed and quality | General-purpose applications |
-| `google/gemini-2.0-flash-lite` | Lightweight, cost-effective | Simple tasks, low latency requirements |
+| `google/gemini-2.0-flash-lite-001` | Lightweight, cost-effective | Simple tasks, low latency requirements |
 
 > Select the models prefixed with `google/` in the dropdown.
 
