@@ -212,7 +212,7 @@ class TestPromptSupplement:
 
         # Workflows are now in individual tool descriptions (not separate sections)
         # Check that key workflow concepts appear in tool descriptions
-        assert "suggested_goal" in docs or "clarifying_questions" in docs
+        assert "agent_json" in docs or "find_block" in docs
         assert "run_mcp_tool" in docs
 
     def test_baseline_supplement_completeness(self):
