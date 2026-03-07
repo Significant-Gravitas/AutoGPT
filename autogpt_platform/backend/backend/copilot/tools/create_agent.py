@@ -39,9 +39,13 @@ class CreateAgentTool(BaseTool):
         return (
             "Create a new agent workflow from a natural language description. "
             "First generates a preview, then saves to library if save=true. "
-            "\n\nIMPORTANT: Before calling this tool, search for relevant existing agents "
-            "using find_library_agent that could be used as building blocks. "
-            "Pass their IDs in the library_agent_ids parameter so the generator can compose them."
+            "\n\nWorkflow: (1) Always check find_library_agent first for existing building blocks. "
+            "(2) Call create_agent with description and library_agent_ids. "
+            "(3) If response contains suggested_goal: Present to user, ask for confirmation, "
+            "then call again with the suggested goal if accepted. "
+            "(4) If response contains clarifying_questions: Present to user, collect answers, "
+            "then call again with original description AND answers in the context parameter. "
+            "\n\nThis feedback loop ensures the generated agent matches user intent."
         )
 
     @property
@@ -84,6 +88,14 @@ class CreateAgentTool(BaseTool):
                     ),
                     "default": True,
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional folder ID to save the agent into. "
+                        "If not provided, the agent is saved at root level. "
+                        "Use list_folders to find available folders."
+                    ),
+                },
             },
             "required": ["description"],
         }
@@ -105,6 +117,7 @@ class CreateAgentTool(BaseTool):
         context = kwargs.get("context", "")
         library_agent_ids = kwargs.get("library_agent_ids", [])
         save = kwargs.get("save", True)
+        folder_id = kwargs.get("folder_id")
         session_id = session.session_id if session else None
 
         logger.info(
@@ -336,7 +349,7 @@ class CreateAgentTool(BaseTool):
 
         try:
             created_graph, library_agent = await save_agent_to_library(
-                agent_json, user_id
+                agent_json, user_id, folder_id=folder_id
             )
 
             logger.info(

@@ -55,6 +55,13 @@ class ResponseType(str, Enum):
     # MCP tool types
     MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
     MCP_TOOL_OUTPUT = "mcp_tool_output"
+    # Folder management types
+    FOLDER_CREATED = "folder_created"
+    FOLDER_LIST = "folder_list"
+    FOLDER_UPDATED = "folder_updated"
+    FOLDER_MOVED = "folder_moved"
+    FOLDER_DELETED = "folder_deleted"
+    AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
 
 
 # Base response model
@@ -539,3 +546,82 @@ class BrowserScreenshotResponse(ToolResponseBase):
     type: ResponseType = ResponseType.BROWSER_SCREENSHOT
     file_id: str  # Workspace file ID — use read_workspace_file to retrieve
     filename: str
+
+
+# Folder management models
+
+
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class FolderInfo(BaseModel):
+    """Information about a folder."""
+
+    id: str
+    name: str
+    parent_id: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
+
+
+class FolderTreeInfo(FolderInfo):
+    """Folder with nested children for tree display."""
+
+    children: list["FolderTreeInfo"] = []
+
+
+class FolderCreatedResponse(ToolResponseBase):
+    """Response when a folder is created."""
+
+    type: ResponseType = ResponseType.FOLDER_CREATED
+    folder: FolderInfo
+
+
+class FolderListResponse(ToolResponseBase):
+    """Response for listing folders."""
+
+    type: ResponseType = ResponseType.FOLDER_LIST
+    folders: list[FolderInfo] = Field(default_factory=list)
+    tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
+    count: int = 0
+
+
+class FolderUpdatedResponse(ToolResponseBase):
+    """Response when a folder is updated."""
+
+    type: ResponseType = ResponseType.FOLDER_UPDATED
+    folder: FolderInfo
+
+
+class FolderMovedResponse(ToolResponseBase):
+    """Response when a folder is moved."""
+
+    type: ResponseType = ResponseType.FOLDER_MOVED
+    folder: FolderInfo
+    target_parent_id: str | None = None
+
+
+class FolderDeletedResponse(ToolResponseBase):
+    """Response when a folder is deleted."""
+
+    type: ResponseType = ResponseType.FOLDER_DELETED
+    folder_id: str
+
+
+class AgentsMovedToFolderResponse(ToolResponseBase):
+    """Response when agents are moved to a folder."""
+
+    type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
+    agent_ids: list[str]
+    agent_names: list[str] = []
+    folder_id: str | None = None
+    count: int = 0

@@ -181,6 +181,14 @@ export function convertChatSessionMessagesToUiMessages(
 
     if (parts.length === 0) return;
 
+    // Merge consecutive assistant messages into a single UIMessage
+    // to avoid split bubbles on page reload.
+    const prevUI = uiMessages[uiMessages.length - 1];
+    if (msg.role === "assistant" && prevUI && prevUI.role === "assistant") {
+      prevUI.parts.push(...parts);
+      return;
+    }
+
     uiMessages.push({
       id: `${sessionId}-${index}`,
       role: msg.role,

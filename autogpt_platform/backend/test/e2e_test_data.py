@@ -128,7 +128,7 @@ class TestDataCreator:
                     email = "test123@gmail.com"
                 else:
                     email = faker.unique.email()
-                password = "testpassword123"  # Standard test password
+                password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
                 user_id = f"test-user-{i}-{faker.uuid4()}"
 
                 # Create user in Supabase Auth (if needed)
@@ -571,8 +571,8 @@ class TestDataCreator:
         if test_user and self.agent_graphs:
             test_submission_data = {
                 "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"],
-                "agent_version": 1,
+                "graph_id": self.agent_graphs[0]["id"],
+                "graph_version": 1,
                 "slug": "test-agent-submission",
                 "name": "Test Agent Submission",
                 "sub_heading": "A test agent for frontend testing",
@@ -593,9 +593,9 @@ class TestDataCreator:
                 print("✅ Created special test store submission for test123@gmail.com")
 
                 # ALWAYS approve and feature the test submission
-                if test_submission.store_listing_version_id:
+                if test_submission.listing_version_id:
                     approved_submission = await review_store_submission(
-                        store_listing_version_id=test_submission.store_listing_version_id,
+                        store_listing_version_id=test_submission.listing_version_id,
                         is_approved=True,
                         external_comments="Test submission approved",
                         internal_comments="Auto-approved test submission",
@@ -605,7 +605,7 @@ class TestDataCreator:
                     print("✅ Approved test store submission")
 
                     await prisma.storelistingversion.update(
-                        where={"id": test_submission.store_listing_version_id},
+                        where={"id": test_submission.listing_version_id},
                         data={"isFeatured": True},
                     )
                     featured_count += 1
@@ -640,8 +640,8 @@ class TestDataCreator:
 
                     submission = await create_store_submission(
                         user_id=user["id"],
-                        agent_id=graph["id"],
-                        agent_version=graph.get("version", 1),
+                        graph_id=graph["id"],
+                        graph_version=graph.get("version", 1),
                         slug=faker.slug(),
                         name=graph.get("name", faker.sentence(nb_words=3)),
                         sub_heading=faker.sentence(),
@@ -654,7 +654,7 @@ class TestDataCreator:
                     submissions.append(submission.model_dump())
                     print(f"✅ Created store submission: {submission.name}")
 
-                    if submission.store_listing_version_id:
+                    if submission.listing_version_id:
                         # DETERMINISTIC: First N submissions are always approved
                         # First GUARANTEED_FEATURED_AGENTS of those are always featured
                         should_approve = (
@@ -667,7 +667,7 @@ class TestDataCreator:
                             try:
                                 reviewer_id = random.choice(self.users)["id"]
                                 approved_submission = await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=True,
                                     external_comments="Auto-approved for E2E testing",
                                     internal_comments="Automatically approved by E2E test data script",
@@ -683,9 +683,7 @@ class TestDataCreator:
                                 if should_feature:
                                     try:
                                         await prisma.storelistingversion.update(
-                                            where={
-                                                "id": submission.store_listing_version_id
-                                            },
+                                            where={"id": submission.listing_version_id},
                                             data={"isFeatured": True},
                                         )
                                         featured_count += 1
@@ -699,9 +697,7 @@ class TestDataCreator:
                                 elif random.random() < 0.2:
                                     try:
                                         await prisma.storelistingversion.update(
-                                            where={
-                                                "id": submission.store_listing_version_id
-                                            },
+                                            where={"id": submission.listing_version_id},
                                             data={"isFeatured": True},
                                         )
                                         featured_count += 1
@@ -721,7 +717,7 @@ class TestDataCreator:
                             try:
                                 reviewer_id = random.choice(self.users)["id"]
                                 await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=False,
                                     external_comments="Submission rejected - needs improvements",
                                     internal_comments="Automatically rejected by E2E test data script",

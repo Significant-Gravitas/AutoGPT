@@ -1,4 +1,4 @@
-"""Tests for tool_adapter helpers: _text_from_mcp_result, truncation stash."""
+"""Tests for tool_adapter helpers: truncation, stash, context vars."""
 
 import pytest
 
@@ -7,6 +7,7 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _text_from_mcp_result,
+    get_sdk_cwd,
     pop_pending_tool_output,
     set_execution_context,
     stash_pending_tool_output,
@@ -52,6 +53,30 @@ class TestTextFromMcpResult:
     def test_missing_text_field(self):
         result = {"content": [{"type": "text"}]}
         assert _text_from_mcp_result(result) == ""
+
+
+# ---------------------------------------------------------------------------
+# get_sdk_cwd
+# ---------------------------------------------------------------------------
+
+
+class TestGetSdkCwd:
+    def test_returns_empty_string_by_default(self):
+        set_execution_context(
+            user_id="test",
+            session=None,  # type: ignore[arg-type]
+            sandbox=None,
+        )
+        assert get_sdk_cwd() == ""
+
+    def test_returns_set_value(self):
+        set_execution_context(
+            user_id="test",
+            session=None,  # type: ignore[arg-type]
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-test-123",
+        )
+        assert get_sdk_cwd() == "/tmp/copilot-test-123"
 
 
 # ---------------------------------------------------------------------------
