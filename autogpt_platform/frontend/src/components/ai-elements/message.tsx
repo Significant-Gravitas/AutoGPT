@@ -7,6 +7,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { Button as AtomButton } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
@@ -16,6 +19,7 @@ import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
+import type { LinkSafetyModalProps } from "streamdown";
 import { Streamdown } from "streamdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -307,6 +311,46 @@ function isSameOriginLink(url: string): boolean {
   }
 }
 
+function ExternalLinkModal({
+  url,
+  isOpen,
+  onClose,
+  onConfirm,
+}: LinkSafetyModalProps) {
+  return (
+    <Dialog
+      title="Open external link"
+      styling={{ maxWidth: "30rem", minWidth: "auto" }}
+      controlled={{
+        isOpen,
+        set: async (open) => {
+          if (!open) onClose();
+        },
+      }}
+    >
+      <Dialog.Content>
+        <Text variant="body">
+          You&apos;re about to visit an external website:
+        </Text>
+        <Text
+          variant="small"
+          className="mt-2 break-all rounded-md bg-neutral-100 p-3 font-mono"
+        >
+          {url}
+        </Text>
+        <Dialog.Footer>
+          <AtomButton variant="secondary" onClick={onClose}>
+            Cancel
+          </AtomButton>
+          <AtomButton variant="primary" onClick={onConfirm}>
+            Open link
+          </AtomButton>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -318,6 +362,7 @@ export const MessageResponse = memo(
       linkSafety={{
         enabled: true,
         onLinkCheck: isSameOriginLink,
+        renderModal: (modalProps) => <ExternalLinkModal {...modalProps} />,
       }}
       {...props}
     />

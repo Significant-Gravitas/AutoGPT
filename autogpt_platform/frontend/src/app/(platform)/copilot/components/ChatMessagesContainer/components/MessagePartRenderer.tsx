@@ -10,6 +10,7 @@ import {
   SearchFeatureRequestsTool,
 } from "../../../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../../../tools/FindAgents/FindAgents";
+import { FolderTool } from "../../../tools/FolderTool/FolderTool";
 import { FindBlocksTool } from "../../../tools/FindBlocks/FindBlocks";
 import { GenericTool } from "../../../tools/GenericTool/GenericTool";
 import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
@@ -145,6 +146,13 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
       return <SearchFeatureRequestsTool key={key} part={part as ToolUIPart} />;
     case "tool-create_feature_request":
       return <CreateFeatureRequestTool key={key} part={part as ToolUIPart} />;
+    case "tool-create_folder":
+    case "tool-list_folders":
+    case "tool-update_folder":
+    case "tool-move_folder":
+    case "tool-delete_folder":
+    case "tool-move_agents_to_folder":
+      return <FolderTool key={key} part={part as ToolUIPart} />;
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool
