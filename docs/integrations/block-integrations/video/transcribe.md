@@ -1,6 +1,6 @@
 # Video Transcribe
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+This block transcribes speech from a video file to text using the Replicate API.
 <!-- END MANUAL -->
 
 ## Transcribe Video
@@ -8,9 +8,12 @@ _Add a description of this category of blocks._
 ### What it is
 Transcribe speech from a video file to text
 
+### What it does
+Extracts spoken words from a video and returns them as a text transcription. The block accepts video input as a URL, data URI, or local path and outputs the full transcript as a string.
+
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block sends the input video to the Replicate API using the `jd7h/edit-video-by-editing-text` model in "transcribe" mode. This model analyzes the audio track of the video, performs speech recognition, and returns the detected speech as text. The block handles multiple API response formats (dictionary, list, string, and file output) to reliably extract the transcript text.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Subtitle Generation**: Transcribe video dialogue to create subtitle or caption files for accessibility and localization.
+
+**Searchable Video Archives**: Convert speech in recorded meetings, interviews, or lectures into searchable text for indexing and retrieval.
+
+**LLM Content Pipeline**: Feed video transcripts into language models for summarization, analysis, or content repurposing workflows.
 <!-- END MANUAL -->
 
 ---

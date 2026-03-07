@@ -7,18 +7,18 @@ import logging
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.blocks.replicate._auth import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    ReplicateCredentials,
-    ReplicateCredentialsInput,
-)
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.replicate._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    ReplicateCredentials,
+    ReplicateCredentialsInput,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, SchemaField
@@ -95,7 +95,8 @@ class TranscribeVideoBlock(Block):
         # Handle list formats
         if isinstance(output, list) and len(output) > 0:
             if isinstance(output[0], FileOutput):
-                return output[0].url
+                content = await output[0].aread()
+                return content.decode("utf-8")
             if isinstance(output[0], dict) and "text" in output[0]:
                 return " ".join(
                     segment.get("text", "") for segment in output  # type: ignore
@@ -103,7 +104,8 @@ class TranscribeVideoBlock(Block):
             return str(output[0])
 
         if isinstance(output, FileOutput):
-            return output.url
+            content = await output.aread()
+            return content.decode("utf-8")
 
         if isinstance(output, str):
             return output

@@ -8,18 +8,18 @@ from typing import Literal
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.blocks.replicate._auth import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    ReplicateCredentials,
-    ReplicateCredentialsInput,
-)
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.replicate._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    ReplicateCredentials,
+    ReplicateCredentialsInput,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, SchemaField
@@ -40,10 +40,10 @@ class EditVideoByTextBlock(Block):
             description="Input video file to edit (URL, data URI, or local path)",
         )
         transcription: str = SchemaField(
-            description="Desired transcript for the output video",
+            description="Modified transcript of the input video — segments absent from this text will be cut from the output video",
         )
         split_at: Literal["word", "character"] = SchemaField(
-            description="Granularity for transcript matching",
+            description="Alignment granularity for transcript matching: 'word' aligns cuts at word boundaries, 'character' allows finer sub-word alignment",
             default="word",
         )
 
