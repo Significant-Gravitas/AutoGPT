@@ -112,9 +112,15 @@ class ChatConfig(BaseSettings):
         description="E2B sandbox template to use for copilot sessions.",
     )
     e2b_sandbox_timeout: int = Field(
-        default=43200,  # 12 hours — same as session_ttl
-        description="E2B sandbox keepalive timeout in seconds.",
+        default=14400,  # 4 hours — sandbox auto-pauses after this; Redis key outlives it
+        description="E2B sandbox running-time before auto-pause (seconds). "
+        "The per-turn explicit pause is the primary mechanism; this is the safety net.",
     )
+
+    @property
+    def e2b_active(self) -> bool:
+        """True when E2B is enabled and an API key is available."""
+        return self.use_e2b_sandbox and bool(self.e2b_api_key)
 
     @field_validator("use_e2b_sandbox", mode="before")
     @classmethod

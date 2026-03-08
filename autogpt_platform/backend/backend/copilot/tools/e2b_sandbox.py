@@ -27,6 +27,7 @@ mechanism; the lifecycle setting is a safety net.
 
 import asyncio
 import logging
+from typing import Callable, Coroutine
 
 from e2b import AsyncSandbox
 
@@ -159,6 +160,59 @@ async def get_or_create_sandbox(
     return sandbox
 
 
+async def _act_on_sandbox(
+    session_id: str,
+    api_key: str,
+    action: str,
+    fn: Callable[[AsyncSandbox], Coroutine],
+    *,
+    delete_redis: bool = False,
+) -> bool:
+    """Connect to the sandbox for *session_id* and run *fn* on it.
+
+    Shared by ``pause_sandbox`` and ``kill_sandbox``.  Returns ``True`` on
+    success, ``False`` when no sandbox is found or the action fails.
+    If *delete_redis* is ``True``, the Redis key is removed before acting
+    (used by kill so the session is unregistered even if the API call fails).
+    """
+    redis = await get_redis_async()
+    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
+    raw = await redis.get(redis_key)
+    if not raw:
+        return False
+
+    sandbox_id = raw if isinstance(raw, str) else raw.decode()
+
+    if delete_redis:
+        await redis.delete(redis_key)
+
+    if sandbox_id == _CREATING:
+        return False
+
+    async def _connect_and_act():
+        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+        await fn(sandbox)
+
+    try:
+        await asyncio.wait_for(_connect_and_act(), timeout=10)
+        logger.info(
+            "[E2B] %s sandbox %.12s for session %.12s",
+            action.capitalize(),
+            sandbox_id,
+            session_id,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Failed to %s sandbox %.12s for session %.12s: %s",
+            action,
+            sandbox_id,
+            session_id,
+            exc,
+        )
+        return False
+
+
 async def pause_sandbox(session_id: str, api_key: str) -> bool:
     """Pause the E2B sandbox for *session_id* to stop billing between turns.
 
@@ -168,37 +222,7 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
     Returns ``True`` if the sandbox was found and paused, ``False`` otherwise.
     Safe to call even when no sandbox exists for the session.
     """
-    redis = await get_redis_async()
-    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
-    raw = await redis.get(redis_key)
-    if not raw:
-        return False
-
-    sandbox_id = raw if isinstance(raw, str) else raw.decode()
-    if sandbox_id == _CREATING:
-        return False
-
-    try:
-
-        async def _connect_and_pause():
-            sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-            await sandbox.pause()
-
-        await asyncio.wait_for(_connect_and_pause(), timeout=10)
-        logger.info(
-            "[E2B] Paused sandbox %.12s for session %.12s",
-            sandbox_id,
-            session_id,
-        )
-        return True
-    except Exception as exc:
-        logger.warning(
-            "[E2B] Failed to pause sandbox %.12s for session %.12s: %s",
-            sandbox_id,
-            session_id,
-            exc,
-        )
-        return False
+    return await _act_on_sandbox(session_id, api_key, "pause", lambda sb: sb.pause())
 
 
 async def kill_sandbox(session_id: str, api_key: str) -> bool:
@@ -207,36 +231,6 @@ async def kill_sandbox(session_id: str, api_key: str) -> bool:
     Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
     Safe to call even when no sandbox exists for the session.
     """
-    redis = await get_redis_async()
-    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
-    raw = await redis.get(redis_key)
-    if not raw:
-        return False
-
-    sandbox_id = raw if isinstance(raw, str) else raw.decode()
-    await redis.delete(redis_key)
-
-    if sandbox_id == _CREATING:
-        return False
-
-    try:
-
-        async def _connect_and_kill():
-            sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-            await sandbox.kill()
-
-        await asyncio.wait_for(_connect_and_kill(), timeout=10)
-        logger.info(
-            "[E2B] Killed sandbox %.12s for session %.12s",
-            sandbox_id,
-            session_id,
-        )
-        return True
-    except Exception as exc:
-        logger.warning(
-            "[E2B] Failed to kill sandbox %.12s for session %.12s: %s",
-            sandbox_id,
-            session_id,
-            exc,
-        )
-        return False
+    return await _act_on_sandbox(
+        session_id, api_key, "kill", lambda sb: sb.kill(), delete_redis=True
+    )
