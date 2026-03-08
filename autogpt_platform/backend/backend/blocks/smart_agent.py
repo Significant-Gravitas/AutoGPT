@@ -225,7 +225,7 @@ class SmartAgentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c1a2u3d4-e5a6-g7e8-n9t0-b1l2o3c4k5d6",
+            id="dbe509c8-5078-49c5-ba1a-41a9ef9b459a",
             description=(
                 "An AI agent powered by Claude Agent SDK that executes connected AutoGPT tool nodes. "
                 "Combines Claude's native agent capabilities with AutoGPT's tool ecosystem."
