@@ -260,6 +260,10 @@ async def _execute_tool_sync(
     args: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute a tool synchronously and return MCP-formatted response."""
+    from backend.copilot.sdk.file_ref import expand_file_refs_in_args
+
+    args = await expand_file_refs_in_args(args, user_id, session)
+
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -320,42 +324,135 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
 
 
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
-    """Read a local file with optional offset/limit.
+    """Read a file with optional offset/limit.
 
-    Only allows paths that pass :func:`is_allowed_local_path` — the current
-    session's tool-results directory and ephemeral working directory.
+    Supports three location types:
+    - ``workspace://<id>`` or ``workspace:///<path>`` — workspace file
+      (requires an active session with user_id).
+    - Locally allowed paths (sdk_cwd / tool-results) — host filesystem.
+    - Any path that resolves inside the E2B sandbox when one is active.
     """
     file_path = args.get("file_path", "")
     offset = args.get("offset", 0)
     limit = args.get("limit", 2000)
 
-    if not is_allowed_local_path(file_path):
+    if not file_path:
         return {
-            "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
+            "content": [{"type": "text", "text": "file_path is required"}],
             "isError": True,
         }
 
-    resolved = os.path.realpath(os.path.expanduser(file_path))
-    try:
-        with open(resolved) as f:
-            selected = list(itertools.islice(f, offset, offset + limit))
-        content = "".join(selected)
-        # Cleanup happens in _cleanup_sdk_tool_results after session ends;
-        # don't delete here — the SDK may read in multiple chunks.
-        return {
-            "content": [{"type": "text", "text": content}],
-            "isError": False,
-        }
-    except FileNotFoundError:
-        return {
-            "content": [{"type": "text", "text": f"File not found: {file_path}"}],
-            "isError": True,
-        }
-    except Exception as e:
-        return {
-            "content": [{"type": "text", "text": f"Error reading file: {e}"}],
-            "isError": True,
-        }
+    # ------------------------------------------------------------------
+    # Workspace URI  (workspace://<id>  or  workspace:///<path>)
+    # ------------------------------------------------------------------
+    if file_path.startswith("workspace://"):
+        user_id, session = get_execution_context()
+        if not user_id or session is None:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "workspace:// paths require an authenticated session",
+                    }
+                ],
+                "isError": True,
+            }
+        try:
+            from backend.copilot.tools.workspace_files import get_manager
+            from backend.util.file import parse_workspace_uri
+
+            # Strip MIME fragment before parsing (e.g. workspace://id#mime)
+            plain = file_path.split("#")[0]
+            manager = await get_manager(user_id, session.session_id)
+            ws = parse_workspace_uri(plain)
+            if ws.is_path:
+                raw = await manager.read_file(ws.file_ref)
+            else:
+                raw = await manager.read_file_by_id(ws.file_ref)
+            text = raw.decode("utf-8", errors="replace")
+            lines = text.splitlines(keepends=True)
+            selected = list(itertools.islice(lines, offset, offset + limit))
+            numbered = "".join(
+                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+            )
+            return {"content": [{"type": "text", "text": numbered}], "isError": False}
+        except Exception as exc:
+            return {
+                "content": [
+                    {"type": "text", "text": f"Error reading workspace file: {exc}"}
+                ],
+                "isError": True,
+            }
+
+    # ------------------------------------------------------------------
+    # Locally allowed path (sdk_cwd / tool-results)
+    # ------------------------------------------------------------------
+    if is_allowed_local_path(file_path):
+        resolved = os.path.realpath(os.path.expanduser(file_path))
+        try:
+            with open(resolved) as f:
+                selected = list(itertools.islice(f, offset, offset + limit))
+            content = "".join(selected)
+            # Cleanup happens in _cleanup_sdk_tool_results after session ends;
+            # don't delete here — the SDK may read in multiple chunks.
+            return {
+                "content": [{"type": "text", "text": content}],
+                "isError": False,
+            }
+        except FileNotFoundError:
+            return {
+                "content": [{"type": "text", "text": f"File not found: {file_path}"}],
+                "isError": True,
+            }
+        except Exception as e:
+            return {
+                "content": [{"type": "text", "text": f"Error reading file: {e}"}],
+                "isError": True,
+            }
+
+    # ------------------------------------------------------------------
+    # E2B sandbox path (when a sandbox is active)
+    # ------------------------------------------------------------------
+    sandbox = _current_sandbox.get()
+    if sandbox is not None:
+        from backend.copilot.sdk.e2b_file_tools import _resolve_remote
+
+        try:
+            remote = _resolve_remote(file_path)
+        except ValueError:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Access denied: {file_path} is not within the sandbox",
+                    }
+                ],
+                "isError": True,
+            }
+        try:
+            raw_bytes = await sandbox.files.read(remote, format="bytes")
+            text = bytes(raw_bytes).decode("utf-8", errors="replace")
+            lines = text.splitlines(keepends=True)
+            selected = list(itertools.islice(lines, offset, offset + limit))
+            numbered = "".join(
+                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+            )
+            return {
+                "content": [{"type": "text", "text": numbered}],
+                "isError": False,
+            }
+        except Exception as exc:
+            return {
+                "content": [
+                    {"type": "text", "text": f"Error reading from sandbox: {exc}"}
+                ],
+                "isError": True,
+            }
+
+    return {
+        "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
+        "isError": True,
+    }
 
 
 _READ_TOOL_NAME = "Read"
