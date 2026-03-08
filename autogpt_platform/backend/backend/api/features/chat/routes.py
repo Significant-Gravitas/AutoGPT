@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
+from backend.copilot.db import get_session_metadata
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
@@ -28,6 +29,7 @@ from backend.copilot.model import (
     update_session_title,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -259,10 +261,9 @@ async def delete_session(
     # Fetch metadata before deleting so sandbox_id is available after the
     # session row is gone.
     config = ChatConfig()
+    e2b_api_key = config.active_e2b_api_key
     e2b_sandbox_id: str | None = None
-    if config.use_e2b_sandbox and config.e2b_api_key:
-        from backend.copilot.db import get_session_metadata
-
+    if e2b_api_key:
         meta = await get_session_metadata(session_id)
         e2b_sandbox_id = meta.e2b_sandbox_id
 
@@ -275,12 +276,14 @@ async def delete_session(
         )
 
     # Best-effort cleanup of the E2B sandbox (if any).
-    if config.use_e2b_sandbox and config.e2b_api_key and e2b_sandbox_id:
-        from backend.copilot.tools.e2b_sandbox import kill_sandbox
-
+    # clear_metadata=False because the session row is already deleted.
+    if e2b_api_key and e2b_sandbox_id:
         try:
             await kill_sandbox(
-                session_id, config.e2b_api_key, e2b_sandbox_id=e2b_sandbox_id
+                session_id,
+                e2b_api_key,
+                e2b_sandbox_id=e2b_sandbox_id,
+                clear_metadata=False,
             )
         except Exception:
             logger.warning(

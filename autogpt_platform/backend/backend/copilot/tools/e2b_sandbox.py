@@ -147,15 +147,15 @@ async def get_or_create_sandbox(
             timeout=pause_timeout,
             lifecycle={"on_timeout": "pause"},
         )
+        meta = await get_session_metadata(session_id)
+        await update_session_metadata(
+            session_id, meta.model_copy(update={"e2b_sandbox_id": sandbox.sandbox_id})
+        )
     except Exception:
-        await redis.delete(lock_key)
         raise
-
-    meta = await get_session_metadata(session_id)
-    await update_session_metadata(
-        session_id, meta.model_copy(update={"e2b_sandbox_id": sandbox.sandbox_id})
-    )
-    await redis.delete(lock_key)
+    finally:
+        # Always release the creation lock so other callers can proceed.
+        await redis.delete(lock_key)
     logger.info(
         "[E2B] Created sandbox %.12s for session %.12s",
         sandbox.sandbox_id,
@@ -236,7 +236,10 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
 
 
 async def kill_sandbox(
-    session_id: str, api_key: str, e2b_sandbox_id: str | None = None
+    session_id: str,
+    api_key: str,
+    e2b_sandbox_id: str | None = None,
+    clear_metadata: bool = True,
 ) -> bool:
     """Kill the E2B sandbox for *session_id* and clear its metadata entry.
 
@@ -246,12 +249,16 @@ async def kill_sandbox(
     *e2b_sandbox_id* may be supplied by the caller when the metadata is
     already available (e.g. fetched before the session record was deleted),
     avoiding a redundant — and potentially failing — DB round-trip.
+
+    *clear_metadata*: set to ``False`` when the session record has already been
+    deleted (e.g. called from the delete-session route) to avoid a spurious
+    DB update attempt on a non-existent row.
     """
     return await _act_on_sandbox(
         session_id,
         api_key,
         "kill",
         lambda sb: sb.kill(),
-        clear_metadata=True,
+        clear_metadata=clear_metadata,
         e2b_sandbox_id=e2b_sandbox_id,
     )

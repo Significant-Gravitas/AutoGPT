@@ -103,7 +103,7 @@ class TestTryReconnect:
 
         assert result is None
         mock_update.assert_awaited_once()
-        _, (_, updated_meta) = mock_update.call_args
+        _, updated_meta = mock_update.call_args.args
         assert updated_meta.e2b_sandbox_id is None
 
     def test_reconnect_exception_clears_metadata(self):
@@ -167,7 +167,7 @@ class TestGetOrCreateSandbox:
         assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
         # Metadata should be updated with the new sandbox_id
         mock_update.assert_awaited_once()
-        _, (_, saved_meta) = mock_update.call_args
+        _, saved_meta = mock_update.call_args.args
         assert saved_meta.e2b_sandbox_id == "sb-new"
         # Lock released
         redis.delete.assert_awaited_once()
@@ -262,7 +262,7 @@ class TestKillSandbox:
         sb.kill.assert_awaited_once()
         # Metadata cleared after successful kill
         mock_update.assert_awaited_once()
-        _, (_, cleared_meta) = mock_update.call_args
+        _, cleared_meta = mock_update.call_args.args
         assert cleared_meta.e2b_sandbox_id is None
 
     def test_kill_no_sandbox(self):
@@ -271,6 +271,31 @@ class TestKillSandbox:
             result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is False
+
+    def test_kill_clear_metadata_false_skips_metadata_update(self):
+        """When clear_metadata=False, metadata is NOT updated after kill.
+
+        Used by the delete-session route where the session row is already gone,
+        so attempting to write metadata would fail with a not-found error.
+        """
+        sb = _mock_sandbox()
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_update_metadata() as mock_update,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(
+                kill_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    e2b_sandbox_id=_SANDBOX_ID,
+                    clear_metadata=False,
+                )
+            )
+
+        assert result is True
+        sb.kill.assert_awaited_once()
+        mock_update.assert_not_awaited()
 
     def test_kill_connect_failure_keeps_metadata(self):
         """Returns False and leaves metadata intact when connect/kill fails.

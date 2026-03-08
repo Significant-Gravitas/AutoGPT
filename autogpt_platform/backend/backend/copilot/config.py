@@ -112,7 +112,7 @@ class ChatConfig(BaseSettings):
         description="E2B sandbox template to use for copilot sessions.",
     )
     e2b_sandbox_timeout: int = Field(
-        default=14400,  # 4 hours — sandbox auto-pauses after this; Redis key outlives it
+        default=14400,  # 4 hours — sandbox auto-pauses after this
         description="E2B sandbox running-time before auto-pause (seconds). "
         "The per-turn explicit pause is the primary mechanism; this is the safety net.",
     )
