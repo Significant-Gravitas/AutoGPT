@@ -36,19 +36,17 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from backend.copilot.model import ChatSession
-from backend.copilot.sdk._context import (
+from backend.copilot._context import (
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,
 )
+from backend.copilot.model import ChatSession
+from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
 from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +102,6 @@ async def read_file_bytes(
 
     Raises :class:`ValueError` if the URI cannot be resolved.
     """
-    from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
-
     # Strip MIME fragment (e.g. workspace://id#mime) before dispatching.
     plain = uri.split("#")[0] if uri.startswith("workspace://") else uri
 

@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from backend.copilot.model import ChatSession
-from backend.copilot.sdk._context import get_execution_context
-from backend.copilot.sdk._context import (
+from backend.copilot._context import get_execution_context
+from backend.copilot._context import (
     set_execution_context as _set_base_execution_context,
 )
-from backend.copilot.sdk.file_ref import read_file_bytes
+from backend.copilot.model import ChatSession
+from backend.copilot.sdk.file_ref import expand_file_refs_in_args, read_file_bytes
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
@@ -41,9 +41,8 @@ MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
-_pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
-    "pending_tool_outputs",
-    default=None,  # type: ignore[arg-type]
+_pending_tool_outputs: ContextVar[dict[str, list[str]] | None] = ContextVar(
+    "pending_tool_outputs"
 )
 # Event signaled whenever stash_pending_tool_output() adds a new entry.
 # Used by the streaming loop to wait for PostToolUse hooks to complete
@@ -170,8 +169,6 @@ async def _execute_tool_sync(
     args: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute a tool synchronously and return MCP-formatted response."""
-    from backend.copilot.sdk.file_ref import expand_file_refs_in_args
-
     args = await expand_file_refs_in_args(args, user_id, session)
 
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"

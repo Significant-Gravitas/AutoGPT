@@ -120,7 +120,7 @@ def test_read_no_cwd_denies_absolute():
 
 
 def test_read_tool_results_allowed():
-    from backend.copilot.sdk._context import _current_project_dir
+    from backend.copilot._context import _current_project_dir
 
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/tool-results/12345.txt"
@@ -135,7 +135,7 @@ def test_read_tool_results_allowed():
 
 def test_read_claude_projects_session_dir_allowed():
     """Files within the current session's project dir are allowed."""
-    from backend.copilot.sdk._context import _current_project_dir
+    from backend.copilot._context import _current_project_dir
 
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"

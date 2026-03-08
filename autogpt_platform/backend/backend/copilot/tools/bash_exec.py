@@ -21,8 +21,8 @@ from typing import Any
 from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
+from backend.copilot._context import get_current_sandbox
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk._context import get_current_sandbox
 
 from .base import BaseTool
 from .e2b_sandbox import E2B_WORKDIR

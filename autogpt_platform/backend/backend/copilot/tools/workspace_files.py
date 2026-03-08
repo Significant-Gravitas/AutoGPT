@@ -7,9 +7,12 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.copilot._context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    resolve_sandbox_path,
+)
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk._context import get_current_sandbox
-from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 from backend.copilot.tools.sandbox import make_session_path
 from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
@@ -87,8 +90,6 @@ def _resolve_sandbox_path(
     Delegates to :func:`~backend.copilot.sdk.e2b_file_tools.resolve_sandbox_path`
     and wraps any ``ValueError`` into an :class:`ErrorResponse`.
     """
-    from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
-
     try:
         return resolve_sandbox_path(path)
     except ValueError:

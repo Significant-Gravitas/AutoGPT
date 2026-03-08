@@ -64,6 +64,21 @@ def get_sdk_cwd() -> str:
     return _current_sdk_cwd.get()
 
 
+E2B_WORKDIR = "/home/user"
+
+
+def resolve_sandbox_path(path: str) -> str:
+    """Normalise *path* to an absolute sandbox path under ``/home/user``.
+
+    Raises :class:`ValueError` if the resolved path escapes the sandbox.
+    """
+    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
+    normalized = os.path.normpath(candidate)
+    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
+        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
+    return normalized
+
+
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
     """Return True if *path* is within an allowed host-filesystem location.
 

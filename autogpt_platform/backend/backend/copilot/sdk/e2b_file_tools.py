@@ -15,8 +15,12 @@ import os
 import shlex
 from typing import Any, Callable
 
-from backend.copilot.sdk._context import get_current_sandbox, is_allowed_local_path
-from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
+from backend.copilot._context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    is_allowed_local_path,
+    resolve_sandbox_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,18 +31,6 @@ def _get_sandbox():
 
 def _is_allowed_local(path: str) -> bool:
     return is_allowed_local_path(path)
-
-
-def resolve_sandbox_path(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``.
-
-    Raises :class:`ValueError` if the resolved path escapes the sandbox.
-    """
-    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
-    normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
-    return normalized
 
 
 def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:
