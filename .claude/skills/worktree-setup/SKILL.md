@@ -11,9 +11,13 @@ metadata:
 
 ## Preferred: Use Branchlet
 
-The repo has a `.branchlet.json` config. Just run `branchlet create` — it handles env file copying, dependency installation, and Prisma generation automatically.
+The repo has a `.branchlet.json` config — it handles env file copying, dependency installation, and Prisma generation automatically.
 
-Install: `npm install -g branchlet`
+```bash
+npm install -g branchlet                                      # install once
+branchlet create -n <name> -s <source-branch> -b <new-branch>
+branchlet list --json   # list all worktrees
+```
 
 ## Manual Fallback
 

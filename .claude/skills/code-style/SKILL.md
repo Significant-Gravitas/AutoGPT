@@ -27,4 +27,8 @@ metadata:
 
 ## Review Checklist
 
-Always review written code for opportunities to simplify: fewer lines, less nesting, clearer intent.
+Before finishing, always ask:
+- Can any function be split into smaller pieces?
+- Is there unnecessary nesting that an early return would eliminate?
+- Can any loop be a comprehension?
+- Is there a simpler way to express this logic?

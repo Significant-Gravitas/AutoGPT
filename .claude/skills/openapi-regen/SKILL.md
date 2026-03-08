@@ -16,11 +16,11 @@ metadata:
    cd autogpt_platform/backend && poetry run rest &
    REST_PID=$!
    # Wait for readiness
-   until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; done
+   WAIT=0; until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; WAIT=$((WAIT+1)); [ $WAIT -ge 60 ] && echo "Timed out" && exit 1; done
    ```
-2. **Regenerate client** (from frontend dir): `cd autogpt_platform/frontend && pnpm generate:api:force`
+2. **Regenerate client**: `cd autogpt_platform/frontend && pnpm generate:api:force`
 3. **Stop backend**: `kill $REST_PID`
-4. **Verify** (from frontend dir): `pnpm types && pnpm format`
+4. **Verify**: `cd autogpt_platform/frontend && pnpm types && pnpm lint && pnpm format`
 
 ## Rules
 

@@ -9,7 +9,7 @@ metadata:
 
 # New Block Creation
 
-Read `docs/content/platform/block-sdk-guide.md` first for the full guide.
+Read `docs/platform/block-sdk-guide.md` first for the full guide.
 
 ## Steps
 
