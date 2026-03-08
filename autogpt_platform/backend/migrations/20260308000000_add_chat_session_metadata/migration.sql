@@ -1,3 +1,0 @@
--- This migration is intentionally a no-op.
--- The metadata column added in an earlier draft was reverted; E2B sandbox IDs
--- are stored in Redis instead of the DB, so no schema change is required.

@@ -113,9 +113,11 @@ class ChatConfig(BaseSettings):
         description="E2B sandbox template to use for copilot sessions.",
     )
     e2b_sandbox_timeout: int = Field(
-        default=3600,  # 1 hour safety net; per-turn explicit pause is the primary mechanism
+        default=3
+        * 3600,  # 3 hours — wall-clock timeout, not idle; explicit pause is primary
         description="E2B sandbox running-time timeout (seconds). "
-        "The per-turn explicit pause is the primary mechanism; this is the safety net.",
+        "E2B timeout is wall-clock (not idle). Explicit per-turn pause is the primary "
+        "mechanism; this is the safety net.",
     )
     e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
         default="pause",

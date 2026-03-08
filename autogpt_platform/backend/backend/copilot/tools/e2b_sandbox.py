@@ -57,7 +57,8 @@ _MAX_WAIT_ATTEMPTS = 20  # 20 × 0.5 s = 10 s max wait
 
 # How long the sandbox may run continuously before e2b auto-pauses it (safety
 # net; per-turn explicit pause is the primary mechanism).
-_E2B_TIMEOUT = 3600  # 1 hour
+# E2B timeout is wall-clock (not idle), so keep it generous enough for long turns.
+_E2B_TIMEOUT = 3 * 3600  # 3 hours
 
 # Redis TTL for the sandbox key.  Must be ≥ the E2B project "paused sandbox
 # lifetime" setting (recommended: set both to 48 h).
