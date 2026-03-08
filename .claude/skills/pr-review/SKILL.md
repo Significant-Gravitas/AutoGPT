@@ -28,17 +28,16 @@ metadata:
    - **Top-level reviews**: no reaction API — address in code, reply via issue comment if needed
 5. **Include autogpt-reviewer bot fixes** too
 6. **Format**: `poetry run format` (backend), `pnpm format` (frontend)
-7. **Commit & push**, then re-fetch — new comments may appear. Repeat until all reacted.
-8. **Verify CI**: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT` — wait until green.
+7. **Commit & push**
+8. **Wait for CI**: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT` — poll until all green. If any fail, fix and go back to step 6.
+9. **Re-fetch all comments** — new ones may appear after each push. If any are unreacted, go back to step 4.
+10. **Done** only when: all comments reacted AND CI is green.
 
 ## CRITICAL: Do Not Stop
 
-**Keep looping until ALL of these are true:**
-- Every comment has a +1 or -1 reaction
-- No new unaddressed comments remain (new ones appear after each push)
-- `gh pr checks` shows all CI checks green
+**Loop is: address comments → format → commit → push → wait CI → re-check comments → repeat.**
 
-If CI fails, investigate and fix. If new comments appear, address them. Do not stop early.
+Never stop early. New comments can appear after every push. CI must be fully green before declaring done.
 
 ## Rules
 
