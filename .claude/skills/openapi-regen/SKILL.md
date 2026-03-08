@@ -11,16 +11,15 @@ metadata:
 
 ## Steps
 
-1. **Start backend** (background, from backend dir):
+1. **Run end-to-end** in a single shell block (so `REST_PID` persists):
    ```bash
    cd autogpt_platform/backend && poetry run rest &
    REST_PID=$!
-   # Wait for readiness
-   WAIT=0; until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; WAIT=$((WAIT+1)); [ $WAIT -ge 60 ] && echo "Timed out" && exit 1; done
+   WAIT=0; until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; WAIT=$((WAIT+1)); [ $WAIT -ge 60 ] && echo "Timed out" && kill $REST_PID && exit 1; done
+   cd ../frontend && pnpm generate:api:force
+   kill $REST_PID
+   pnpm types && pnpm lint && pnpm format
    ```
-2. **Regenerate client**: `cd autogpt_platform/frontend && pnpm generate:api:force`
-3. **Stop backend**: `kill $REST_PID`
-4. **Verify**: `cd autogpt_platform/frontend && pnpm types && pnpm lint && pnpm format`
 
 ## Rules
 

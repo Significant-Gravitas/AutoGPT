@@ -14,7 +14,7 @@ Read `docs/platform/block-sdk-guide.md` first for the full guide.
 ## Steps
 
 1. **Provider config** (if external service): create `_config.py` with `ProviderBuilder`
-2. **Block file** in `backend/backend/blocks/`:
+2. **Block file** in `backend/blocks/` (from `autogpt_platform/backend/`):
    - Generate a UUID once with `uuid.uuid4()`, then **hard-code that string** as `id` (IDs must be stable across imports)
    - `Input(BlockSchema)` and `Output(BlockSchema)` classes
    - `async def run` that `yield`s output fields
