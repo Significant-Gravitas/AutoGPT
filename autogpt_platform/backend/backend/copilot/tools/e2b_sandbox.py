@@ -8,13 +8,13 @@ share a single coherent filesystem with no local sync required.
 
 Lifecycle
 ---------
-1. **Turn start** – connect to the existing sandbox (sandbox_id in Redis) or
-   create a new one via ``get_or_create_sandbox()``.  ``connect()`` in e2b v2
-   auto-resumes paused sandboxes.
+1. **Turn start** – connect to the existing sandbox (sandbox_id in
+   ``ChatSession.metadata``) or create a new one via ``get_or_create_sandbox()``.
+   ``connect()`` in e2b v2 auto-resumes paused sandboxes.
 2. **Execution** – ``bash_exec`` and MCP file tools operate directly on the
    sandbox's ``/home/user`` filesystem.
 3. **Turn end** – the sandbox is paused via ``pause_sandbox()`` so idle time
-   between turns costs nothing.
+   between turns costs nothing.  Paused sandboxes have no compute cost.
 4. **Session delete** – ``kill_sandbox()`` fully terminates the sandbox.
 
 Cost control
@@ -23,6 +23,11 @@ Sandboxes are created with ``lifecycle={"on_timeout": "pause"}`` so they
 auto-pause (rather than terminate) if they somehow remain running past the
 timeout.  The explicit per-turn ``pause_sandbox()`` call is the primary
 mechanism; the lifecycle setting is a safety net.
+
+The sandbox_id is stored in ``ChatSession.metadata`` (DB) via
+``ChatSessionMetadata.e2b_sandbox_id``.  Redis is only used for the
+short-lived creation lock that prevents two concurrent requests from creating
+two sandboxes for the same session.
 """
 
 import asyncio
@@ -31,13 +36,13 @@ from typing import Callable, Coroutine
 
 from e2b import AsyncSandbox
 
+from backend.copilot.db import get_session_metadata, update_session_metadata
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
-_SANDBOX_REDIS_PREFIX = "copilot:e2b:sandbox:"
+_CREATION_LOCK_PREFIX = "copilot:e2b:creating:"
 E2B_WORKDIR = "/home/user"
-_CREATING = "__creating__"
 _CREATION_LOCK_TTL = 60
 _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait
 
@@ -45,27 +50,29 @@ _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait
 # net; per-turn explicit pause is the primary mechanism).
 _E2B_PAUSE_TIMEOUT = 14400  # 4 hours in seconds
 
-# How long the sandbox_id Redis key is kept.  When this expires the sandbox is
-# no longer reachable from this service and is considered abandoned.
-_E2B_KILL_TIMEOUT = 43200  # 12 hours in seconds
+# Sessions not updated within this window are considered abandoned; the hourly
+# cleanup job will kill their paused sandboxes.  Paused sandboxes are free,
+# so a generous window avoids disrupting long-lived but occasionally active
+# sessions.
+_E2B_KILL_TIMEOUT = 7 * 24 * 3600  # 7 days in seconds
 
 
 async def _try_reconnect(
-    sandbox_id: str, api_key: str, redis_key: str, kill_timeout: int
+    sandbox_id: str, session_id: str, api_key: str
 ) -> "AsyncSandbox | None":
     """Try to reconnect to an existing sandbox. Returns None on failure."""
     try:
         sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
         if await sandbox.is_running():
-            redis = await get_redis_async()
-            await redis.expire(redis_key, kill_timeout)
             return sandbox
     except Exception as exc:
         logger.warning("[E2B] Reconnect to %.12s failed: %s", sandbox_id, exc)
 
-    # Stale — clear Redis so a new sandbox can be created.
-    redis = await get_redis_async()
-    await redis.delete(redis_key)
+    # Stale — clear the sandbox_id from metadata so a new one can be created.
+    meta = await get_session_metadata(session_id)
+    await update_session_metadata(
+        session_id, meta.model_copy(update={"e2b_sandbox_id": None})
+    )
     return None
 
 
@@ -74,66 +81,52 @@ async def get_or_create_sandbox(
     api_key: str,
     template: str = "base",
     pause_timeout: int = _E2B_PAUSE_TIMEOUT,
-    kill_timeout: int = _E2B_KILL_TIMEOUT,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
-    The sandbox_id is persisted in Redis so the same sandbox is reused
-    across turns. Concurrent calls for the same session are serialised
-    via a Redis ``SET NX`` creation lock.
+    The sandbox_id is persisted in ``ChatSession.metadata`` (DB) so the same
+    sandbox is reused across turns and service restarts.  Concurrent calls
+    for the same session are serialised via a Redis ``SET NX`` creation lock.
 
     *pause_timeout* controls how long the e2b sandbox may run continuously
     before the ``on_timeout: pause`` lifecycle rule fires (default: 4 h).
-    *kill_timeout* controls how long the sandbox_id is kept in Redis; when
-    the key expires the sandbox is considered abandoned (default: 12 h).
     """
     redis = await get_redis_async()
-    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
+    lock_key = f"{_CREATION_LOCK_PREFIX}{session_id}"
 
     # 1. Try reconnecting to an existing sandbox.
-    raw = await redis.get(redis_key)
-    if raw:
-        sandbox_id = raw if isinstance(raw, str) else raw.decode()
-        if sandbox_id != _CREATING:
-            sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, kill_timeout)
-            if sandbox:
-                logger.info(
-                    "[E2B] Reconnected to %.12s for session %.12s",
-                    sandbox_id,
-                    session_id,
-                )
-                return sandbox
+    meta = await get_session_metadata(session_id)
+    if meta.e2b_sandbox_id:
+        sandbox = await _try_reconnect(meta.e2b_sandbox_id, session_id, api_key)
+        if sandbox:
+            logger.info(
+                "[E2B] Reconnected to %.12s for session %.12s",
+                meta.e2b_sandbox_id,
+                session_id,
+            )
+            return sandbox
 
     # 2. Claim creation lock. If another request holds it, wait for the result.
-    claimed = await redis.set(redis_key, _CREATING, nx=True, ex=_CREATION_LOCK_TTL)
+    claimed = await redis.set(lock_key, "1", nx=True, ex=_CREATION_LOCK_TTL)
     if not claimed:
         for _ in range(_MAX_WAIT_ATTEMPTS):
             await asyncio.sleep(0.5)
-            raw = await redis.get(redis_key)
-            if not raw:
-                break  # Lock expired — fall through to retry creation
-            sandbox_id = raw if isinstance(raw, str) else raw.decode()
-            if sandbox_id != _CREATING:
-                sandbox = await _try_reconnect(
-                    sandbox_id, api_key, redis_key, kill_timeout
-                )
+            meta = await get_session_metadata(session_id)
+            if meta.e2b_sandbox_id:
+                sandbox = await _try_reconnect(meta.e2b_sandbox_id, session_id, api_key)
                 if sandbox:
                     return sandbox
                 break  # Stale sandbox cleared — fall through to create
 
         # Try to claim creation lock again after waiting.
-        claimed = await redis.set(redis_key, _CREATING, nx=True, ex=_CREATION_LOCK_TTL)
+        claimed = await redis.set(lock_key, "1", nx=True, ex=_CREATION_LOCK_TTL)
         if not claimed:
             # Another process may have created a sandbox — try to use it.
-            raw = await redis.get(redis_key)
-            if raw:
-                sandbox_id = raw if isinstance(raw, str) else raw.decode()
-                if sandbox_id != _CREATING:
-                    sandbox = await _try_reconnect(
-                        sandbox_id, api_key, redis_key, kill_timeout
-                    )
-                    if sandbox:
-                        return sandbox
+            meta = await get_session_metadata(session_id)
+            if meta.e2b_sandbox_id:
+                sandbox = await _try_reconnect(meta.e2b_sandbox_id, session_id, api_key)
+                if sandbox:
+                    return sandbox
             raise RuntimeError(
                 f"Could not acquire E2B creation lock for session {session_id[:12]}"
             )
@@ -147,10 +140,14 @@ async def get_or_create_sandbox(
             lifecycle={"on_timeout": "pause"},
         )
     except Exception:
-        await redis.delete(redis_key)
+        await redis.delete(lock_key)
         raise
 
-    await redis.setex(redis_key, kill_timeout, sandbox.sandbox_id)
+    meta = await get_session_metadata(session_id)
+    await update_session_metadata(
+        session_id, meta.model_copy(update={"e2b_sandbox_id": sandbox.sandbox_id})
+    )
+    await redis.delete(lock_key)
     logger.info(
         "[E2B] Created sandbox %.12s for session %.12s",
         sandbox.sandbox_id,
@@ -165,25 +162,20 @@ async def _act_on_sandbox(
     action: str,
     fn: Callable[[AsyncSandbox], Coroutine],
     *,
-    delete_redis: bool = False,
+    clear_metadata: bool = False,
 ) -> bool:
     """Connect to the sandbox for *session_id* and run *fn* on it.
 
     Shared by ``pause_sandbox`` and ``kill_sandbox``.  Returns ``True`` on
     success, ``False`` when no sandbox is found or the action fails.
-    If *delete_redis* is ``True``, the Redis key is removed only after the
-    action succeeds so a failed kill can be retried.
+    If *clear_metadata* is ``True``, the sandbox_id is removed from metadata
+    only after the action succeeds so a failed kill can be retried.
     """
-    redis = await get_redis_async()
-    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
-    raw = await redis.get(redis_key)
-    if not raw:
+    meta = await get_session_metadata(session_id)
+    if not meta.e2b_sandbox_id:
         return False
 
-    sandbox_id = raw if isinstance(raw, str) else raw.decode()
-
-    if sandbox_id == _CREATING:
-        return False
+    sandbox_id = meta.e2b_sandbox_id
 
     async def _connect_and_act():
         sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
@@ -191,8 +183,10 @@ async def _act_on_sandbox(
 
     try:
         await asyncio.wait_for(_connect_and_act(), timeout=10)
-        if delete_redis:
-            await redis.delete(redis_key)
+        if clear_metadata:
+            await update_session_metadata(
+                session_id, meta.model_copy(update={"e2b_sandbox_id": None})
+            )
         logger.info(
             "[E2B] %s sandbox %.12s for session %.12s",
             action.capitalize(),
@@ -224,11 +218,11 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
 
 
 async def kill_sandbox(session_id: str, api_key: str) -> bool:
-    """Kill the E2B sandbox for *session_id* and clean up its Redis entry.
+    """Kill the E2B sandbox for *session_id* and clear its metadata entry.
 
     Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
     Safe to call even when no sandbox exists for the session.
     """
     return await _act_on_sandbox(
-        session_id, api_key, "kill", lambda sb: sb.kill(), delete_redis=True
+        session_id, api_key, "kill", lambda sb: sb.kill(), clear_metadata=True
     )

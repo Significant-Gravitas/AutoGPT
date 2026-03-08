@@ -118,9 +118,16 @@ class ChatConfig(BaseSettings):
     )
 
     @property
-    def e2b_active(self) -> bool:
-        """True when E2B is enabled and an API key is available."""
-        return self.use_e2b_sandbox and bool(self.e2b_api_key)
+    def active_e2b_api_key(self) -> str | None:
+        """Return the E2B API key when E2B is enabled and configured, else None.
+
+        Combines the ``use_e2b_sandbox`` flag check and key presence into one.
+        Use in callers::
+
+            if api_key := config.active_e2b_api_key:
+                # E2B is active; api_key is narrowed to str
+        """
+        return self.e2b_api_key if self.use_e2b_sandbox else None
 
     @field_validator("use_e2b_sandbox", mode="before")
     @classmethod

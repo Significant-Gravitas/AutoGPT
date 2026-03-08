@@ -784,21 +784,20 @@ async def stream_chat_completion_sdk(
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
-            if config.use_e2b_sandbox and not config.e2b_api_key:
+            if config.use_e2b_sandbox and not config.active_e2b_api_key:
                 logger.warning(
                     "[E2B] [%s] E2B sandbox enabled but no API key configured "
                     "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
                     session_id[:12],
                 )
                 return None
-            if config.use_e2b_sandbox and (e2b_api_key := config.e2b_api_key):
+            if e2b_api_key := config.active_e2b_api_key:
                 try:
                     return await get_or_create_sandbox(
                         session_id,
                         api_key=e2b_api_key,
                         template=config.e2b_sandbox_template,
                         pause_timeout=config.e2b_sandbox_timeout,
-                        kill_timeout=config.session_ttl,
                     )
                 except Exception as e2b_err:
                     logger.error(
@@ -1421,7 +1420,7 @@ async def stream_chat_completion_sdk(
         # Run BEFORE transcript upload: the transcript asyncio.shield has no
         # timeout, so pausing first ensures the sandbox stops billing at turn
         # end regardless of how long the upload takes.
-        if config.use_e2b_sandbox and (e2b_api_key := config.e2b_api_key):
+        if e2b_api_key := config.active_e2b_api_key:
             try:
                 await pause_sandbox(session_id=session_id, api_key=e2b_api_key)
             except BaseException as pause_err:

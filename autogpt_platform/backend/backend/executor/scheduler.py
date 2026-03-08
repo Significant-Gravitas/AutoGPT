@@ -241,29 +241,46 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
 
 
 def cleanup_abandoned_e2b_sandboxes():
-    """Kill paused E2B sandboxes that have been abandoned (past kill timeout)."""
+    """Kill paused E2B sandboxes belonging to sessions abandoned for >7 days.
+
+    Uses DB queries (ChatSession.metadata) to find sessions that still have an
+    active sandbox_id but have not been updated in _E2B_KILL_TIMEOUT seconds.
+    Kills each sandbox by ID (no connection to the running session needed) then
+    clears the sandbox_id from session metadata so the record stays clean.
+    """
 
     async def _cleanup():
         from datetime import datetime, timedelta, timezone
 
         from e2b import AsyncSandbox
-        from e2b.sandbox.sandbox_api import SandboxQuery, SandboxState
 
+        from backend.copilot.db import (
+            get_sessions_with_e2b_sandbox,
+            update_session_metadata,
+        )
+        from backend.copilot.model import ChatSessionMetadata
         from backend.copilot.tools.e2b_sandbox import _E2B_KILL_TIMEOUT
 
         api_key = Secrets().e2b_api_key
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=_E2B_KILL_TIMEOUT)
+        sessions = await get_sessions_with_e2b_sandbox(cutoff)
         killed = 0
 
-        paginator = AsyncSandbox.list(
-            query=SandboxQuery(state=[SandboxState.PAUSED]),
-            api_key=api_key,
-        )
-        while paginator.has_next:
-            for sandbox in await paginator.next_items():
-                if sandbox.started_at < cutoff:
-                    await AsyncSandbox.kill(sandbox.sandbox_id, api_key=api_key)
-                    killed += 1
+        for session_id, sandbox_id in sessions:
+            try:
+                await AsyncSandbox.kill(sandbox_id, api_key=api_key)
+                await update_session_metadata(
+                    session_id,
+                    ChatSessionMetadata(e2b_sandbox_id=None),
+                )
+                killed += 1
+            except Exception as exc:
+                logger.warning(
+                    "[E2B] Failed to kill abandoned sandbox %s (session %s): %s",
+                    sandbox_id[:12],
+                    session_id[:12],
+                    exc,
+                )
 
         if killed:
             logger.info("[E2B] Cleaned up %d abandoned paused sandboxes", killed)
