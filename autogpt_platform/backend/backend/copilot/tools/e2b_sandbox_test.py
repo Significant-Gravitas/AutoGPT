@@ -399,6 +399,23 @@ class TestPauseSandbox:
 
         assert result is False
 
+    def test_pause_timeout_returns_false(self):
+        """Returns False and preserves Redis entry when the E2B API call times out."""
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
+        with (
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.wait_for",
+                new_callable=AsyncMock,
+                side_effect=asyncio.TimeoutError,
+            ),
+        ):
+            result = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY))
+
+        assert result is False
+        # sandbox_id must remain in Redis so the next turn can reconnect
+        redis.delete.assert_not_awaited()
+
     def test_pause_then_reconnect_reuses_sandbox(self):
         """After pause, get_or_create_sandbox reconnects the same sandbox.
 

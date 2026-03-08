@@ -124,6 +124,16 @@ class ChatConfig(BaseSettings):
     )
 
     @property
+    def e2b_active(self) -> bool:
+        """True when E2B is enabled and the API key is present.
+
+        Single source of truth for "should we use E2B right now?".
+        Prefer this over combining ``use_e2b_sandbox`` and ``e2b_api_key``
+        separately at call sites.
+        """
+        return self.use_e2b_sandbox and bool(self.e2b_api_key)
+
+    @property
     def active_e2b_api_key(self) -> str | None:
         """Return the E2B API key when E2B is enabled and configured, else None.
 

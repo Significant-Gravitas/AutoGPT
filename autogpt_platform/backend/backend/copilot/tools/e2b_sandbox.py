@@ -55,6 +55,10 @@ _CREATION_LOCK_TTL = 60  # seconds
 
 _MAX_WAIT_ATTEMPTS = 20  # 20 × 0.5 s = 10 s max wait
 
+# Timeout for E2B API calls (pause/kill) — short because these are control-plane
+# operations; if the sandbox is unreachable, fail fast and retry on the next turn.
+_E2B_API_TIMEOUT_SECONDS = 10
+
 # How long the sandbox may run continuously before e2b auto-pauses it (safety
 # net; per-turn explicit pause is the primary mechanism).
 # E2B timeout is wall-clock (not idle), so keep it generous enough for long turns.
@@ -209,7 +213,7 @@ async def _act_on_sandbox(
         await fn(await AsyncSandbox.connect(sandbox_id, api_key=api_key))
 
     try:
-        await asyncio.wait_for(_run(), timeout=10)
+        await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)
         if clear_stored_id:
             await _clear_stored_sandbox_id(session_id)
         logger.info(
@@ -256,7 +260,7 @@ async def pause_sandbox_direct(sandbox: "AsyncSandbox", session_id: str) -> bool
     Returns ``True`` on success, ``False`` on failure or timeout.
     """
     try:
-        await asyncio.wait_for(sandbox.pause(), timeout=10)
+        await asyncio.wait_for(sandbox.pause(), timeout=_E2B_API_TIMEOUT_SECONDS)
         logger.info(
             "[E2B] Paused sandbox %.12s for session %.12s",
             sandbox.sandbox_id,
