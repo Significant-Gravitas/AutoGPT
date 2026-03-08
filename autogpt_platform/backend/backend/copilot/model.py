@@ -691,16 +691,15 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
 
     # Kill E2B sandbox to free resources (best-effort).
-    try:
-        import os
+    # Inline import required: tools/* import ChatSession from this module,
+    # so a top-level import from tools.* would create a circular dependency.
+    if config.e2b_active:
+        try:
+            from .tools.e2b_sandbox import kill_sandbox
 
-        from .tools.e2b_sandbox import kill_sandbox
-
-        e2b_api_key = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
-        if e2b_api_key:
-            await kill_sandbox(session_id, e2b_api_key)
-    except Exception as e:
-        logger.debug(f"E2B sandbox cleanup for session {session_id}: {e}")
+            await kill_sandbox(session_id, config.e2b_api_key)  # type: ignore[arg-type]
+        except Exception as e:
+            logger.debug(f"E2B sandbox cleanup for session {session_id}: {e}")
 
     return True
 
