@@ -1461,15 +1461,18 @@ class GithubListCommitsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        commits = await self.list_commits(
-            credentials,
-            input_data.repo_url,
-            input_data.branch,
-            input_data.per_page,
-        )
-        yield "commits", commits
-        for commit in commits:
-            yield "commit", commit
+        try:
+            commits = await self.list_commits(
+                credentials,
+                input_data.repo_url,
+                input_data.branch,
+                input_data.per_page,
+            )
+            yield "commits", commits
+            for commit in commits:
+                yield "commit", commit
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubSearchCodeBlock(Block):
