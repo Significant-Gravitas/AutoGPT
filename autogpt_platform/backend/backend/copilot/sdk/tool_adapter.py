@@ -19,9 +19,11 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.workspace_files import get_manager
+from backend.util.file import parse_workspace_uri
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, _resolve_remote
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -323,6 +325,20 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     }
 
 
+def _read_ok(text: str, offset: int, limit: int) -> dict[str, Any]:
+    """Slice *text* by line range and return a successful MCP read result."""
+    lines = text.splitlines(keepends=True)
+    selected = list(itertools.islice(lines, offset, offset + limit))
+    numbered = "".join(
+        f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+    )
+    return {"content": [{"type": "text", "text": numbered}], "isError": False}
+
+
+def _read_err(msg: str) -> dict[str, Any]:
+    return {"content": [{"type": "text", "text": msg}], "isError": True}
+
+
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     """Read a file with optional offset/limit.
 
@@ -337,10 +353,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     limit = args.get("limit", 2000)
 
     if not file_path:
-        return {
-            "content": [{"type": "text", "text": "file_path is required"}],
-            "isError": True,
-        }
+        return _read_err("file_path is required")
 
     # ------------------------------------------------------------------
     # Workspace URI  (workspace://<id>  or  workspace:///<path>)
@@ -348,41 +361,20 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     if file_path.startswith("workspace://"):
         user_id, session = get_execution_context()
         if not user_id or session is None:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "workspace:// paths require an authenticated session",
-                    }
-                ],
-                "isError": True,
-            }
+            return _read_err("workspace:// paths require an authenticated session")
         try:
-            from backend.copilot.tools.workspace_files import get_manager
-            from backend.util.file import parse_workspace_uri
-
             # Strip MIME fragment before parsing (e.g. workspace://id#mime)
             plain = file_path.split("#")[0]
             manager = await get_manager(user_id, session.session_id)
             ws = parse_workspace_uri(plain)
-            if ws.is_path:
-                raw = await manager.read_file(ws.file_ref)
-            else:
-                raw = await manager.read_file_by_id(ws.file_ref)
-            text = raw.decode("utf-8", errors="replace")
-            lines = text.splitlines(keepends=True)
-            selected = list(itertools.islice(lines, offset, offset + limit))
-            numbered = "".join(
-                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+            raw = await (
+                manager.read_file(ws.file_ref)
+                if ws.is_path
+                else manager.read_file_by_id(ws.file_ref)
             )
-            return {"content": [{"type": "text", "text": numbered}], "isError": False}
+            return _read_ok(raw.decode("utf-8", errors="replace"), offset, limit)
         except Exception as exc:
-            return {
-                "content": [
-                    {"type": "text", "text": f"Error reading workspace file: {exc}"}
-                ],
-                "isError": True,
-            }
+            return _read_err(f"Error reading workspace file: {exc}")
 
     # ------------------------------------------------------------------
     # Locally allowed path (sdk_cwd / tool-results)
@@ -390,71 +382,34 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     if is_allowed_local_path(file_path, sdk_cwd=get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(file_path))
         try:
-            with open(resolved) as f:
-                selected = list(itertools.islice(f, offset, offset + limit))
-            numbered = "".join(
-                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
-            )
             # Cleanup happens in _cleanup_sdk_tool_results after session ends;
             # don't delete here — the SDK may read in multiple chunks.
-            return {
-                "content": [{"type": "text", "text": numbered}],
-                "isError": False,
-            }
+            with open(resolved) as f:
+                text = "".join(itertools.islice(f, offset + limit))
+            return _read_ok(text, offset, limit)
         except FileNotFoundError:
-            return {
-                "content": [{"type": "text", "text": f"File not found: {file_path}"}],
-                "isError": True,
-            }
+            return _read_err(f"File not found: {file_path}")
         except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Error reading file: {e}"}],
-                "isError": True,
-            }
+            return _read_err(f"Error reading file: {e}")
 
     # ------------------------------------------------------------------
     # E2B sandbox path (when a sandbox is active)
     # ------------------------------------------------------------------
     sandbox = _current_sandbox.get()
     if sandbox is not None:
-        from backend.copilot.sdk.e2b_file_tools import _resolve_remote
-
         try:
             remote = _resolve_remote(file_path)
         except ValueError:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Access denied: {file_path} is not within the sandbox",
-                    }
-                ],
-                "isError": True,
-            }
+            return _read_err(f"Access denied: {file_path} is not within the sandbox")
         try:
             raw_bytes = await sandbox.files.read(remote, format="bytes")
-            text = bytes(raw_bytes).decode("utf-8", errors="replace")
-            lines = text.splitlines(keepends=True)
-            selected = list(itertools.islice(lines, offset, offset + limit))
-            numbered = "".join(
-                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+            return _read_ok(
+                bytes(raw_bytes).decode("utf-8", errors="replace"), offset, limit
             )
-            return {
-                "content": [{"type": "text", "text": numbered}],
-                "isError": False,
-            }
         except Exception as exc:
-            return {
-                "content": [
-                    {"type": "text", "text": f"Error reading from sandbox: {exc}"}
-                ],
-                "isError": True,
-            }
+            return _read_err(f"Error reading from sandbox: {exc}")
 
-    return {
-        "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
-        "isError": True,
-    }
+    return _read_err(f"Access denied: {file_path}")
 
 
 _READ_TOOL_NAME = "Read"
