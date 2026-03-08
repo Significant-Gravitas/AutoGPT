@@ -791,12 +791,11 @@ async def stream_chat_completion_sdk(
                     session_id[:12],
                 )
                 return None
-            if config.e2b_active:
-                assert config.e2b_api_key  # guaranteed by e2b_active
+            if config.use_e2b_sandbox and (e2b_api_key := config.e2b_api_key):
                 try:
                     return await get_or_create_sandbox(
                         session_id,
-                        api_key=config.e2b_api_key,
+                        api_key=e2b_api_key,
                         template=config.e2b_sandbox_template,
                         pause_timeout=config.e2b_sandbox_timeout,
                         redis_ttl=config.session_ttl,
@@ -1422,9 +1421,9 @@ async def stream_chat_completion_sdk(
         # Run BEFORE transcript upload: the transcript asyncio.shield has no
         # timeout, so pausing first ensures the sandbox stops billing at turn
         # end regardless of how long the upload takes.
-        if config.e2b_active:
+        if config.use_e2b_sandbox and (e2b_api_key := config.e2b_api_key):
             try:
-                await pause_sandbox(session_id=session_id, api_key=config.e2b_api_key)  # type: ignore[arg-type]
+                await pause_sandbox(session_id=session_id, api_key=e2b_api_key)
             except BaseException as pause_err:
                 logger.warning(
                     "%s Failed to pause E2B sandbox: %s", log_prefix, pause_err
