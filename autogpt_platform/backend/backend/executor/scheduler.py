@@ -254,11 +254,7 @@ def cleanup_abandoned_e2b_sandboxes():
 
         from e2b import AsyncSandbox
 
-        from backend.copilot.db import (
-            get_sessions_with_e2b_sandbox,
-            update_session_metadata,
-        )
-        from backend.copilot.model import ChatSessionMetadata
+        from backend.copilot.db import get_sessions_with_e2b_sandbox
         from backend.copilot.tools.e2b_sandbox import _E2B_KILL_TIMEOUT
 
         api_key = Secrets().e2b_api_key
@@ -269,10 +265,6 @@ def cleanup_abandoned_e2b_sandboxes():
         for session_id, sandbox_id in sessions:
             try:
                 await AsyncSandbox.kill(sandbox_id, api_key=api_key)
-                await update_session_metadata(
-                    session_id,
-                    ChatSessionMetadata(e2b_sandbox_id=None),
-                )
                 killed += 1
             except Exception as exc:
                 logger.warning(
