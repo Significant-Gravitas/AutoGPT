@@ -19,7 +19,7 @@ from .e2b_sandbox import (
 )
 
 _KEY = f"{_SANDBOX_REDIS_PREFIX}sess-123"
-_API_KEY = "test-api-key"
+_API_KEY = "test-api-key"  # pragma: allowlist secret
 _TIMEOUT = 300
 
 

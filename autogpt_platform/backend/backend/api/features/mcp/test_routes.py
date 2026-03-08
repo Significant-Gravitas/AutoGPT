@@ -282,7 +282,7 @@ class TestOAuthLogin:
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
-                "client_secret": "registered-secret",
+                "client_secret": "registered-secret",  # pragma: allowlist secret
             }
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-token-123", "code-challenge-abc")
@@ -383,7 +383,7 @@ class TestOAuthCallback:
                 "authorize_url": "https://auth.sentry.io/authorize",
                 "token_url": "https://auth.sentry.io/token",
                 "client_id": "test-client-id",
-                "client_secret": "test-secret",
+                "client_secret": "test-secret",  # pragma: allowlist secret
                 "server_url": "https://mcp.sentry.dev/mcp",
             }
             mock_state.scopes = ["openid"]
