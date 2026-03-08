@@ -171,8 +171,8 @@ async def _act_on_sandbox(
 
     Shared by ``pause_sandbox`` and ``kill_sandbox``.  Returns ``True`` on
     success, ``False`` when no sandbox is found or the action fails.
-    If *delete_redis* is ``True``, the Redis key is removed before acting
-    (used by kill so the session is unregistered even if the API call fails).
+    If *delete_redis* is ``True``, the Redis key is removed only after the
+    action succeeds so a failed kill can be retried.
     """
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
@@ -181,9 +181,6 @@ async def _act_on_sandbox(
         return False
 
     sandbox_id = raw if isinstance(raw, str) else raw.decode()
-
-    if delete_redis:
-        await redis.delete(redis_key)
 
     if sandbox_id == _CREATING:
         return False
@@ -194,6 +191,8 @@ async def _act_on_sandbox(
 
     try:
         await asyncio.wait_for(_connect_and_act(), timeout=10)
+        if delete_redis:
+            await redis.delete(redis_key)
         logger.info(
             "[E2B] %s sandbox %.12s for session %.12s",
             action.capitalize(),
