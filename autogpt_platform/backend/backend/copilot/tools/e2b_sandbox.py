@@ -81,12 +81,17 @@ async def get_or_create_sandbox(
     api_key: str,
     template: str = "base",
     pause_timeout: int = _E2B_PAUSE_TIMEOUT,
+    e2b_sandbox_id: str | None = None,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
     The sandbox_id is persisted in ``ChatSession.metadata`` (DB) so the same
     sandbox is reused across turns and service restarts.  Concurrent calls
     for the same session are serialised via a Redis ``SET NX`` creation lock.
+
+    *e2b_sandbox_id* may be supplied by the caller when the session metadata
+    is already loaded (e.g. from the session object), avoiding a redundant DB
+    round-trip.  When omitted the function fetches it from the DB.
 
     *pause_timeout* controls how long the e2b sandbox may run continuously
     before the ``on_timeout: pause`` lifecycle rule fires (default: 4 h).
@@ -95,13 +100,16 @@ async def get_or_create_sandbox(
     lock_key = f"{_CREATION_LOCK_PREFIX}{session_id}"
 
     # 1. Try reconnecting to an existing sandbox.
-    meta = await get_session_metadata(session_id)
-    if meta.e2b_sandbox_id:
-        sandbox = await _try_reconnect(meta.e2b_sandbox_id, session_id, api_key)
+    # Use the caller-supplied sandbox_id when available to avoid a DB round-trip.
+    if e2b_sandbox_id is None:
+        meta = await get_session_metadata(session_id)
+        e2b_sandbox_id = meta.e2b_sandbox_id
+    if e2b_sandbox_id:
+        sandbox = await _try_reconnect(e2b_sandbox_id, session_id, api_key)
         if sandbox:
             logger.info(
                 "[E2B] Reconnected to %.12s for session %.12s",
-                meta.e2b_sandbox_id,
+                e2b_sandbox_id,
                 session_id,
             )
             return sandbox

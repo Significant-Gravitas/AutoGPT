@@ -1,6 +1,7 @@
 """Database operations for chat sessions."""
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -368,11 +369,13 @@ async def get_session_metadata(session_id: str) -> ChatSessionMetadata:
     )
     if not session:
         return ChatSessionMetadata()
-    raw = getattr(session, "metadata", None)
-    if isinstance(raw, str):
-        import json as _json
+    return _parse_session_metadata(session.metadata)
 
-        raw = _json.loads(raw)
+
+def _parse_session_metadata(raw: object) -> ChatSessionMetadata:
+    """Parse raw JSON field value into a typed ``ChatSessionMetadata``."""
+    if isinstance(raw, str):
+        raw = json.loads(raw)
     return ChatSessionMetadata.model_validate(raw if isinstance(raw, dict) else {})
 
 

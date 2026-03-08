@@ -798,6 +798,7 @@ async def stream_chat_completion_sdk(
                         api_key=e2b_api_key,
                         template=config.e2b_sandbox_template,
                         pause_timeout=config.e2b_sandbox_timeout,
+                        e2b_sandbox_id=session.metadata.e2b_sandbox_id,
                     )
                 except Exception as e2b_err:
                     logger.error(
