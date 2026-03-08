@@ -254,18 +254,21 @@ def cleanup_abandoned_e2b_sandboxes():
 
         from e2b import AsyncSandbox
 
-        from backend.copilot.db import get_sessions_with_e2b_sandbox
+        from backend.copilot.db import (
+            clear_e2b_sandbox_ids,
+            get_sessions_with_e2b_sandbox,
+        )
         from backend.copilot.tools.e2b_sandbox import _E2B_KILL_TIMEOUT
 
         api_key = Secrets().e2b_api_key
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=_E2B_KILL_TIMEOUT)
         sessions = await get_sessions_with_e2b_sandbox(cutoff)
-        killed = 0
+        killed_session_ids: list[str] = []
 
         for session_id, sandbox_id in sessions:
             try:
                 await AsyncSandbox.kill(sandbox_id, api_key=api_key)
-                killed += 1
+                killed_session_ids.append(session_id)
             except Exception as exc:
                 logger.warning(
                     "[E2B] Failed to kill abandoned sandbox %s (session %s): %s",
@@ -274,8 +277,12 @@ def cleanup_abandoned_e2b_sandboxes():
                     exc,
                 )
 
-        if killed:
-            logger.info("[E2B] Cleaned up %d abandoned paused sandboxes", killed)
+        if killed_session_ids:
+            await clear_e2b_sandbox_ids(killed_session_ids)
+            logger.info(
+                "[E2B] Cleaned up %d abandoned paused sandboxes",
+                len(killed_session_ids),
+            )
 
     run_async(_cleanup())
 

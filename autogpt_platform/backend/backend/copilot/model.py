@@ -671,13 +671,6 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     Returns:
         True if deleted successfully, False otherwise.
     """
-    # Fetch metadata now so kill_sandbox can use the sandbox_id after the
-    # session record is deleted (get_session_metadata returns empty when the
-    # row is gone).
-    from .db import get_session_metadata
-
-    meta = await get_session_metadata(session_id)
-
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
     deleted = await chat_db().delete_chat_session(session_id, user_id)
@@ -706,21 +699,6 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await close_browser_session(session_id, user_id=user_id)
     except Exception as e:
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
-
-    # Kill E2B sandbox to free resources (best-effort).
-    # Inline import required: tools/* import ChatSession from this module,
-    # so a top-level import from tools.* would create a circular dependency.
-    if e2b_api_key := config.active_e2b_api_key:
-        try:
-            from .tools.e2b_sandbox import kill_sandbox
-
-            await kill_sandbox(
-                session_id,
-                e2b_api_key,
-                e2b_sandbox_id=meta.e2b_sandbox_id,
-            )
-        except Exception as e:
-            logger.debug(f"E2B sandbox cleanup for session {session_id}: {e}")
 
     return True
 

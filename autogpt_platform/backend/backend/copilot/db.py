@@ -362,18 +362,11 @@ async def update_tool_message_content(
 
 
 async def get_session_metadata(session_id: str) -> ChatSessionMetadata:
-    """Return the typed metadata for *session_id*, defaulting to an empty instance.
-
-    Uses a targeted SELECT to fetch only the ``metadata`` column, avoiding a
-    full row load when only the metadata is needed.
-    """
-    results = await db.query_raw_with_schema(
-        'SELECT "metadata" FROM {schema_prefix}"ChatSession" WHERE "id" = $1 LIMIT 1',
-        session_id,
-    )
-    if not results:
+    """Return the typed metadata for *session_id*, defaulting to an empty instance."""
+    session = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    if not session:
         return ChatSessionMetadata()
-    return _parse_session_metadata(results[0]["metadata"])
+    return _parse_session_metadata(session.metadata)
 
 
 def _parse_session_metadata(raw: object) -> ChatSessionMetadata:
@@ -386,7 +379,7 @@ def _parse_session_metadata(raw: object) -> ChatSessionMetadata:
 async def update_session_metadata(
     session_id: str, metadata: ChatSessionMetadata
 ) -> None:
-    """Persist *metadata* for *session_id*, merging with any existing keys.
+    """Persist *metadata* for *session_id*.
 
     Serialises via Pydantic so only defined fields are stored, using
     ``exclude_none=True`` to keep the JSON compact.
@@ -395,6 +388,19 @@ async def update_session_metadata(
         where={"id": session_id},
         data={"metadata": SafeJson(metadata.model_dump(exclude_none=True))},
     )
+
+
+async def clear_e2b_sandbox_ids(session_ids: list[str]) -> None:
+    """Remove ``e2b_sandbox_id`` from metadata for the given sessions.
+
+    Used by the cleanup scheduler after successfully killing abandoned sandboxes
+    so they are not queried again on the next run.
+    """
+    for session_id in session_ids:
+        meta = await get_session_metadata(session_id)
+        await update_session_metadata(
+            session_id, meta.model_copy(update={"e2b_sandbox_id": None})
+        )
 
 
 async def get_sessions_with_e2b_sandbox(

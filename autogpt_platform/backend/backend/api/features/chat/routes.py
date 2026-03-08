@@ -256,6 +256,16 @@ async def delete_session(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
+    # Fetch metadata before deleting so sandbox_id is available after the
+    # session row is gone.
+    config = ChatConfig()
+    e2b_sandbox_id: str | None = None
+    if config.use_e2b_sandbox and config.e2b_api_key:
+        from backend.copilot.db import get_session_metadata
+
+        meta = await get_session_metadata(session_id)
+        e2b_sandbox_id = meta.e2b_sandbox_id
+
     deleted = await delete_chat_session(session_id, user_id)
 
     if not deleted:
@@ -265,12 +275,13 @@ async def delete_session(
         )
 
     # Best-effort cleanup of the E2B sandbox (if any).
-    config = ChatConfig()
-    if config.use_e2b_sandbox and config.e2b_api_key:
+    if config.use_e2b_sandbox and config.e2b_api_key and e2b_sandbox_id:
         from backend.copilot.tools.e2b_sandbox import kill_sandbox
 
         try:
-            await kill_sandbox(session_id, config.e2b_api_key)
+            await kill_sandbox(
+                session_id, config.e2b_api_key, e2b_sandbox_id=e2b_sandbox_id
+            )
         except Exception:
             logger.warning(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]
