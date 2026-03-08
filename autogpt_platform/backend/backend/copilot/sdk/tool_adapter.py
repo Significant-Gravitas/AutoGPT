@@ -392,11 +392,13 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         try:
             with open(resolved) as f:
                 selected = list(itertools.islice(f, offset, offset + limit))
-            content = "".join(selected)
+            numbered = "".join(
+                f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+            )
             # Cleanup happens in _cleanup_sdk_tool_results after session ends;
             # don't delete here — the SDK may read in multiple chunks.
             return {
-                "content": [{"type": "text", "text": content}],
+                "content": [{"type": "text", "text": numbered}],
                 "isError": False,
             }
         except FileNotFoundError:
