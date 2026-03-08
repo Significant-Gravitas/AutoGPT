@@ -166,9 +166,11 @@ async def _execute_tool_sync(
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response."""
-    args = await expand_file_refs_in_args(args, user_id, session)
+    """Execute a tool synchronously and return MCP-formatted response.
 
+    Note: ``@file:`` expansion is handled upstream in the ``_truncating`` wrapper
+    so all registered handlers (BaseTool, E2B, Read) expand uniformly.
+    """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -326,9 +328,15 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         SDK's 10 MB JSON buffer, and stash the (truncated) output for the
         response adapter before the SDK can apply its own head-truncation.
 
+        Also expands ``@file:`` references in args so every registered tool
+        (BaseTool, E2B file tools, Read) receives resolved content uniformly.
+
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            user_id, session = get_execution_context()
+            if session is not None:
+                args = await expand_file_refs_in_args(args, user_id, session)
             result = await fn(args)
             truncated = truncate(result, _MCP_MAX_CHARS)
 
