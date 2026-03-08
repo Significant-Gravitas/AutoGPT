@@ -27,7 +27,7 @@ metadata:
      - No threaded replies — post a new issue comment if needed
    - **Top-level reviews**: no reaction API — address in code, reply via issue comment if needed
 5. **Include autogpt-reviewer bot fixes** too
-6. **Format**: `poetry run format` (backend), `pnpm format` (frontend)
+6. **Format**: `cd autogpt_platform/backend && poetry run format`, `cd autogpt_platform/frontend && pnpm format`
 7. **Commit & push**
 8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI
 9. **Stay productive while CI runs** — don't idle. In priority order:
@@ -47,5 +47,5 @@ Never idle. If CI is running and you have nothing to address, run local tests. W
 ## Rules
 
 - One todo per comment
-- Reply on existing threads, never new top-level comments
+- For inline review comments: reply on existing threads. For PR conversation comments: post a new issue comment (API doesn't support threaded replies)
 - React to every comment: +1 addressed, -1 disagreed (with explanation)

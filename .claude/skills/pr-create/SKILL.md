@@ -17,8 +17,8 @@ metadata:
 4. **Draft PR title**: Use conventional commits format (see CLAUDE.md for types and scopes)
 5. **Fill out PR template** as the body — be thorough in the Changes section
 6. **Format first** (if relevant changes exist):
-   - Backend: `poetry run format` in `backend/`
-   - Frontend: `pnpm format` in `frontend/`
+   - Backend: `cd autogpt_platform/backend && poetry run format`
+   - Frontend: `cd autogpt_platform/frontend && pnpm format`
    - Fix any lint errors, then commit formatting changes before pushing
 7. **Push**: `git push -u origin HEAD`
 8. **Create PR**: `gh pr create --base dev`
