@@ -128,7 +128,7 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(return_value=sb)
             result = asyncio.run(
                 get_or_create_sandbox(
-                    "sess-123", _API_KEY, pause_timeout=_TIMEOUT, redis_ttl=_TIMEOUT
+                    "sess-123", _API_KEY, pause_timeout=_TIMEOUT, kill_timeout=_TIMEOUT
                 )
             )
 

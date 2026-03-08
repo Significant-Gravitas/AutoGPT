@@ -41,20 +41,24 @@ _CREATING = "__creating__"
 _CREATION_LOCK_TTL = 60
 _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait
 
-# Sandbox running-time before e2b auto-pauses it (safety net; per-turn explicit
-# pause is the primary mechanism).  4 hours matches typical long-running sessions.
-_E2B_SANDBOX_TIMEOUT = 14400  # 4 hours in seconds
+# How long the sandbox may run continuously before e2b auto-pauses it (safety
+# net; per-turn explicit pause is the primary mechanism).
+_E2B_PAUSE_TIMEOUT = 14400  # 4 hours in seconds
+
+# How long the sandbox_id Redis key is kept.  When this expires the sandbox is
+# no longer reachable from this service and is considered abandoned.
+_E2B_KILL_TIMEOUT = 43200  # 12 hours in seconds
 
 
 async def _try_reconnect(
-    sandbox_id: str, api_key: str, redis_key: str, timeout: int
+    sandbox_id: str, api_key: str, redis_key: str, kill_timeout: int
 ) -> "AsyncSandbox | None":
     """Try to reconnect to an existing sandbox. Returns None on failure."""
     try:
         sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
         if await sandbox.is_running():
             redis = await get_redis_async()
-            await redis.expire(redis_key, timeout)
+            await redis.expire(redis_key, kill_timeout)
             return sandbox
     except Exception as exc:
         logger.warning("[E2B] Reconnect to %.12s failed: %s", sandbox_id, exc)
@@ -69,8 +73,8 @@ async def get_or_create_sandbox(
     session_id: str,
     api_key: str,
     template: str = "base",
-    pause_timeout: int = _E2B_SANDBOX_TIMEOUT,
-    redis_ttl: int = 43200,
+    pause_timeout: int = _E2B_PAUSE_TIMEOUT,
+    kill_timeout: int = _E2B_KILL_TIMEOUT,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -80,9 +84,8 @@ async def get_or_create_sandbox(
 
     *pause_timeout* controls how long the e2b sandbox may run continuously
     before the ``on_timeout: pause`` lifecycle rule fires (default: 4 h).
-    *redis_ttl* controls how long the sandbox_id is kept in Redis; defaults
-    to 12 h (session lifetime) so we can reconnect to a paused sandbox for
-    the full duration of the session.
+    *kill_timeout* controls how long the sandbox_id is kept in Redis; when
+    the key expires the sandbox is considered abandoned (default: 12 h).
     """
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
@@ -92,7 +95,7 @@ async def get_or_create_sandbox(
     if raw:
         sandbox_id = raw if isinstance(raw, str) else raw.decode()
         if sandbox_id != _CREATING:
-            sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, redis_ttl)
+            sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, kill_timeout)
             if sandbox:
                 logger.info(
                     "[E2B] Reconnected to %.12s for session %.12s",
@@ -112,7 +115,7 @@ async def get_or_create_sandbox(
             sandbox_id = raw if isinstance(raw, str) else raw.decode()
             if sandbox_id != _CREATING:
                 sandbox = await _try_reconnect(
-                    sandbox_id, api_key, redis_key, redis_ttl
+                    sandbox_id, api_key, redis_key, kill_timeout
                 )
                 if sandbox:
                     return sandbox
@@ -127,7 +130,7 @@ async def get_or_create_sandbox(
                 sandbox_id = raw if isinstance(raw, str) else raw.decode()
                 if sandbox_id != _CREATING:
                     sandbox = await _try_reconnect(
-                        sandbox_id, api_key, redis_key, redis_ttl
+                        sandbox_id, api_key, redis_key, kill_timeout
                     )
                     if sandbox:
                         return sandbox
@@ -147,7 +150,7 @@ async def get_or_create_sandbox(
         await redis.delete(redis_key)
         raise
 
-    await redis.setex(redis_key, redis_ttl, sandbox.sandbox_id)
+    await redis.setex(redis_key, kill_timeout, sandbox.sandbox_id)
     logger.info(
         "[E2B] Created sandbox %.12s for session %.12s",
         sandbox.sandbox_id,
