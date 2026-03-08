@@ -9,6 +9,8 @@ import os
 
 import pytest
 
+from backend.copilot._context import _current_project_dir
+
 from .security_hooks import _validate_tool_access, _validate_user_isolation
 from .service import _is_tool_error_or_denial
 
@@ -120,8 +122,6 @@ def test_read_no_cwd_denies_absolute():
 
 
 def test_read_tool_results_allowed():
-    from backend.copilot._context import _current_project_dir
-
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/tool-results/12345.txt"
     # is_allowed_local_path requires the session's encoded cwd to be set
@@ -133,16 +133,14 @@ def test_read_tool_results_allowed():
         _current_project_dir.reset(token)
 
 
-def test_read_claude_projects_session_dir_allowed():
-    """Files within the current session's project dir are allowed."""
-    from backend.copilot._context import _current_project_dir
-
+def test_read_claude_projects_settings_json_denied():
+    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/ is."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
         result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert not _is_denied(result)
+        assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 
