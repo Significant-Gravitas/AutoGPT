@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from backend.copilot._context import _current_project_dir
+from backend.copilot.context import _current_project_dir
 
 from .security_hooks import _validate_tool_access, _validate_user_isolation
 from .service import _is_tool_error_or_denial

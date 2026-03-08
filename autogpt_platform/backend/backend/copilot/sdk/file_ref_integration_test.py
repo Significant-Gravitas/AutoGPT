@@ -51,7 +51,7 @@ async def test_resolve_file_ref_local_path():
             f.write("line1\nline2\nline3\n")
 
         session = _make_session()
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var:
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
             mock_cwd_var.get.return_value = sdk_cwd
 
             ref = FileRef(uri=test_file, start_line=None, end_line=None)
@@ -70,7 +70,7 @@ async def test_resolve_file_ref_local_path_with_line_range():
             f.writelines(lines)
 
         session = _make_session()
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var:
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
             mock_cwd_var.get.return_value = sdk_cwd
 
             ref = FileRef(uri=test_file, start_line=3, end_line=5)
@@ -83,8 +83,8 @@ async def test_resolve_file_ref_local_path_with_line_range():
 async def test_resolve_file_ref_rejects_path_outside_sdk_cwd():
     """resolve_file_ref raises ValueError for paths outside sdk_cwd."""
     with tempfile.TemporaryDirectory() as sdk_cwd:
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var, patch(
-            "backend.copilot._context._current_sandbox"
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var, patch(
+            "backend.copilot.context._current_sandbox"
         ) as mock_sandbox_var:
             mock_cwd_var.get.return_value = sdk_cwd
             mock_sandbox_var.get.return_value = None
@@ -107,7 +107,7 @@ async def test_expand_string_with_real_file():
         with open(test_file, "w") as f:
             f.write("hello world\n")
 
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var:
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
             mock_cwd_var.get.return_value = sdk_cwd
 
             result = await expand_file_refs_in_string(
@@ -125,7 +125,7 @@ async def test_expand_string_missing_file_is_surfaced_inline():
     with tempfile.TemporaryDirectory() as sdk_cwd:
         missing = os.path.join(sdk_cwd, "does_not_exist.txt")
 
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var:
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
             mock_cwd_var.get.return_value = sdk_cwd
 
             result = await expand_file_refs_in_string(
@@ -154,7 +154,7 @@ async def test_expand_args_replaces_file_ref_in_nested_dict():
         with open(file_b, "w") as f:
             f.write("BBB")
 
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var:
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
             mock_cwd_var.get.return_value = sdk_cwd
 
             result = await expand_file_refs_in_args(
@@ -188,8 +188,8 @@ async def test_read_file_handler_local_file():
         with open(test_file, "w") as f:
             f.writelines(lines)
 
-        with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd_var, patch(
-            "backend.copilot._context._current_project_dir"
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var, patch(
+            "backend.copilot.context._current_project_dir"
         ) as mock_proj_var:
             mock_cwd_var.get.return_value = sdk_cwd
             mock_proj_var.get.return_value = ""
@@ -244,8 +244,8 @@ async def test_read_file_handler_workspace_uri_no_session():
 @pytest.mark.asyncio
 async def test_read_file_handler_access_denied():
     """_read_file_handler rejects paths outside allowed locations."""
-    with patch("backend.copilot._context._current_sdk_cwd") as mock_cwd, patch(
-        "backend.copilot._context._current_sandbox"
+    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
+        "backend.copilot.context._current_sandbox"
     ) as mock_sandbox:
         mock_cwd.get.return_value = "/tmp/safe-dir"
         mock_sandbox.get.return_value = None

@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from backend.copilot._context import (
+from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,

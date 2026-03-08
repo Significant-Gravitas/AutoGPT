@@ -10,7 +10,7 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from backend.copilot._context import is_allowed_local_path
+from backend.copilot.context import is_allowed_local_path
 
 from .tool_adapter import (
     BLOCKED_TOOLS,

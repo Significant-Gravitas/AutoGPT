@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.copilot._context import get_sdk_cwd
+from backend.copilot.context import get_sdk_cwd
 from backend.util.truncate import truncate
 
 from .tool_adapter import (

@@ -14,10 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from backend.copilot._context import get_execution_context
-from backend.copilot._context import (
-    set_execution_context as _set_base_execution_context,
-)
+from backend.copilot.context import get_execution_context
+from backend.copilot.context import set_execution_context as _set_base_execution_context
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import expand_file_refs_in_args, read_file_bytes
 from backend.copilot.tools import TOOL_REGISTRY

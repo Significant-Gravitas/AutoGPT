@@ -15,7 +15,7 @@ import os
 import shlex
 from typing import Any, Callable
 
-from backend.copilot._context import (
+from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
     is_allowed_local_path,

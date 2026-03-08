@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from backend.copilot._context import _current_project_dir
+from backend.copilot.context import _current_project_dir
 
 from .e2b_file_tools import _read_local, resolve_sandbox_path
 

@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from backend.copilot._context import (
+from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
     resolve_sandbox_path,
