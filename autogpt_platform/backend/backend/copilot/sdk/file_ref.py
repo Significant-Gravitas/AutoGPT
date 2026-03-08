@@ -31,16 +31,24 @@ Examples
     @file:/home/user/script.sh
 """
 
-from __future__ import annotations
-
 import itertools
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from backend.copilot.model import ChatSession
+from backend.copilot.sdk._context import (
+    get_current_sandbox,
+    get_sdk_cwd,
+    is_allowed_local_path,
+)
+from backend.copilot.tools.workspace_files import get_manager
+from backend.util.file import parse_workspace_uri
+
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -87,100 +95,68 @@ def _apply_line_range(text: str, start: int | None, end: int | None) -> str:
     return "".join(selected)
 
 
+async def read_file_bytes(
+    uri: str,
+    user_id: str | None,
+    session: ChatSession,
+) -> bytes:
+    """Resolve *uri* to raw bytes using workspace, local, or E2B path logic.
+
+    Raises :class:`ValueError` if the URI cannot be resolved.
+    """
+    from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
+
+    # Strip MIME fragment (e.g. workspace://id#mime) before dispatching.
+    plain = uri.split("#")[0] if uri.startswith("workspace://") else uri
+
+    if plain.startswith("workspace://"):
+        if not user_id:
+            raise ValueError("workspace:// file references require authentication")
+        manager = await get_manager(user_id, session.session_id)
+        ws = parse_workspace_uri(plain)
+        return await (
+            manager.read_file(ws.file_ref)
+            if ws.is_path
+            else manager.read_file_by_id(ws.file_ref)
+        )
+
+    if is_allowed_local_path(plain, get_sdk_cwd()):
+        resolved = os.path.realpath(os.path.expanduser(plain))
+        try:
+            with open(resolved, "rb") as fh:
+                return fh.read()
+        except FileNotFoundError:
+            raise ValueError(f"File not found: {plain}")
+        except Exception as exc:
+            raise ValueError(f"Failed to read {plain}: {exc}") from exc
+
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        try:
+            remote = resolve_sandbox_path(plain)
+        except ValueError as exc:
+            raise ValueError(
+                f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
+            ) from exc
+        try:
+            return bytes(await sandbox.files.read(remote, format="bytes"))
+        except Exception as exc:
+            raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
+
+    raise ValueError(
+        f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
+    )
+
+
 async def resolve_file_ref(
     ref: FileRef,
     user_id: str | None,
-    session: "ChatSession",
+    session: ChatSession,
 ) -> str:
-    """Resolve a :class:`FileRef` to its text content.
-
-    Resolution order:
-    1. ``workspace://`` URI  → workspace manager
-    2. Locally allowed path (sdk_cwd / tool-results) → host filesystem
-    3. E2B sandbox path (when sandbox is active)
-
-    Raises :class:`ValueError` if the reference cannot be resolved.
-    """
-    from backend.copilot.sdk.tool_adapter import (
-        get_current_sandbox,
-        get_sdk_cwd,
-        is_allowed_local_path,
-    )
-
-    uri = ref.uri
-    # Strip any MIME type fragment from workspace URIs (e.g. workspace://id#mime)
-    # so we can dispatch cleanly.
-    plain_uri = uri.split("#")[0] if uri.startswith("workspace://") else uri
-
-    # ------------------------------------------------------------------
-    # 1. Workspace file
-    # ------------------------------------------------------------------
-    if plain_uri.startswith("workspace://"):
-        if not user_id:
-            raise ValueError("workspace:// file references require authentication")
-
-        from backend.copilot.tools.workspace_files import get_manager
-        from backend.util.file import parse_workspace_uri
-
-        manager = await get_manager(user_id, session.session_id)
-        ws = parse_workspace_uri(plain_uri)
-
-        if ws.is_path:
-            raw = await manager.read_file(ws.file_ref)
-        else:
-            raw = await manager.read_file_by_id(ws.file_ref)
-
-        text = raw.decode("utf-8", errors="replace")
-        return _apply_line_range(text, ref.start_line, ref.end_line)
-
-    # ------------------------------------------------------------------
-    # 2. Host-local path (sdk_cwd or tool-results)
-    # ------------------------------------------------------------------
-    sdk_cwd = get_sdk_cwd()
-    if is_allowed_local_path(plain_uri, sdk_cwd):
-        import os
-
-        resolved = os.path.realpath(os.path.expanduser(plain_uri))
-        try:
-            with open(resolved, errors="replace") as fh:
-                if ref.start_line is None and ref.end_line is None:
-                    text = fh.read()
-                else:
-                    s = (ref.start_line - 1) if ref.start_line else 0
-                    e = ref.end_line if ref.end_line else None
-                    lines = list(itertools.islice(fh, s, e))
-                    text = "".join(lines)
-            return text
-        except FileNotFoundError:
-            raise ValueError(f"File not found: {plain_uri}")
-        except Exception as exc:
-            raise ValueError(f"Failed to read {plain_uri}: {exc}") from exc
-
-    # ------------------------------------------------------------------
-    # 3. E2B sandbox path
-    # ------------------------------------------------------------------
-    sandbox = get_current_sandbox()
-    if sandbox is not None:
-        from backend.copilot.sdk.e2b_file_tools import _resolve_remote
-
-        try:
-            remote = _resolve_remote(plain_uri)
-        except ValueError as exc:
-            raise ValueError(
-                f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain_uri}"
-            ) from exc
-
-        try:
-            raw_bytes = await sandbox.files.read(remote, format="bytes")
-            text = bytes(raw_bytes).decode("utf-8", errors="replace")
-            return _apply_line_range(text, ref.start_line, ref.end_line)
-        except Exception as exc:
-            raise ValueError(
-                f"Failed to read from sandbox: {plain_uri}: {exc}"
-            ) from exc
-
-    raise ValueError(
-        f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain_uri}"
+    """Resolve a :class:`FileRef` to its text content."""
+    raw = await read_file_bytes(ref.uri, user_id, session)
+    return _apply_line_range(
+        raw.decode("utf-8", errors="replace"), ref.start_line, ref.end_line
     )
 
 

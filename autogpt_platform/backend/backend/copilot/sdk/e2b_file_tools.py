@@ -8,8 +8,6 @@ SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
-from __future__ import annotations
-
 import itertools
 import json
 import logging
@@ -17,27 +15,21 @@ import os
 import shlex
 from typing import Any, Callable
 
+from backend.copilot.sdk._context import get_current_sandbox, is_allowed_local_path
 from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 
 logger = logging.getLogger(__name__)
 
 
-# Lazy imports to break circular dependency with tool_adapter.
-
-
-def _get_sandbox():  # type: ignore[return]
-    from .tool_adapter import get_current_sandbox  # noqa: E402
-
+def _get_sandbox():
     return get_current_sandbox()
 
 
 def _is_allowed_local(path: str) -> bool:
-    from .tool_adapter import is_allowed_local_path  # noqa: E402
-
     return is_allowed_local_path(path)
 
 
-def _resolve_remote(path: str) -> str:
+def resolve_sandbox_path(path: str) -> str:
     """Normalise *path* to an absolute sandbox path under ``/home/user``.
 
     Raises :class:`ValueError` if the resolved path escapes the sandbox.
@@ -63,7 +55,7 @@ def _get_sandbox_and_path(
     if sandbox is None:
         return _mcp("No E2B sandbox available", error=True)
     try:
-        remote = _resolve_remote(file_path)
+        remote = resolve_sandbox_path(file_path)
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return sandbox, remote
@@ -183,7 +175,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
+        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -210,7 +202,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
+        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 

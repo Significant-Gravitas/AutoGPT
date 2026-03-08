@@ -8,6 +8,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk._context import get_current_sandbox
 from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 from backend.copilot.tools.sandbox import make_session_path
 from backend.data.db_accessors import workspace_db
@@ -83,13 +84,13 @@ def _resolve_sandbox_path(
 ) -> str | ErrorResponse:
     """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
 
-    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools._resolve_remote`
+    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools.resolve_sandbox_path`
     and wraps any ``ValueError`` into an :class:`ErrorResponse`.
     """
-    from backend.copilot.sdk.e2b_file_tools import _resolve_remote
+    from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
 
     try:
-        return _resolve_remote(path)
+        return resolve_sandbox_path(path)
     except ValueError:
         return ErrorResponse(
             message=f"{param_name} must be within {E2B_WORKDIR}",
@@ -99,7 +100,6 @@ def _resolve_sandbox_path(
 
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
     """Read *source_path* from E2B sandbox or local ephemeral directory."""
-    from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is not None:
@@ -143,7 +143,6 @@ async def _save_to_path(
 
     Returns the resolved path on success, or an ``ErrorResponse`` on failure.
     """
-    from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is not None:

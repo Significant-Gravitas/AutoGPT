@@ -8,8 +8,6 @@ import asyncio
 import itertools
 import json
 import logging
-import os
-import re
 import uuid
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
@@ -17,96 +15,28 @@ from typing import TYPE_CHECKING, Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk._context import get_execution_context
+from backend.copilot.sdk._context import (
+    set_execution_context as _set_base_execution_context,
+)
+from backend.copilot.sdk.file_ref import read_file_bytes
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
-from backend.copilot.tools.workspace_files import get_manager
-from backend.util.file import parse_workspace_uri
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, _resolve_remote
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
 logger = logging.getLogger(__name__)
 
-# Allowed base directory for the Read tool (SDK saves oversized tool results here).
-# Restricted to ~/.claude/projects/ and further validated to require "tool-results"
-# in the path — prevents reading settings, credentials, or other sensitive files.
-_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-
 # Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
 _MCP_MAX_CHARS = 500_000
-
-# Context variable holding the encoded project directory name for the current
-# session (e.g. "-private-tmp-copilot-<uuid>").  Set by set_execution_context()
-# so that path validation can scope tool-results reads to the current session.
-_current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
-
-
-def _encode_cwd_for_cli(cwd: str) -> str:
-    """Encode a working directory path the same way the Claude CLI does.
-
-    The CLI replaces all non-alphanumeric characters with ``-``.
-    """
-    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
-
-
-def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
-    """Check whether *path* is an allowed host-filesystem path.
-
-    Allowed:
-    - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/`` — the SDK's
-      project directory for this session (tool-results, transcripts, etc.)
-
-    Both checks are scoped to the **current session** so sessions cannot
-    read each other's data.
-    """
-    if not path:
-        return False
-
-    if path.startswith("~"):
-        resolved = os.path.realpath(os.path.expanduser(path))
-    elif not os.path.isabs(path) and sdk_cwd:
-        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
-    else:
-        resolved = os.path.realpath(path)
-
-    # Allow access within the SDK working directory
-    if sdk_cwd:
-        norm_cwd = os.path.realpath(sdk_cwd)
-        if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
-            return True
-
-    # Allow access within the current session's CLI project directory
-    # (~/.claude/projects/<encoded-cwd>/).
-    encoded = _current_project_dir.get("")
-    if encoded:
-        session_project = os.path.join(_SDK_PROJECTS_DIR, encoded)
-        if resolved == session_project or resolved.startswith(session_project + os.sep):
-            return True
-
-    return False
-
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
-
-# Context variables to pass user/session info to tool execution
-_current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
-_current_session: ContextVar[ChatSession | None] = ContextVar(
-    "current_session", default=None
-)
-# E2B cloud sandbox for the current turn (None when E2B is not configured).
-# Passed to bash_exec so commands run on E2B instead of the local bwrap sandbox.
-_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
-    "_current_sandbox", default=None
-)
-# Raw SDK working directory path (e.g. /tmp/copilot-<session_id>).
-# Used by workspace tools to save binary files for the CLI's built-in Read.
-_current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -142,31 +72,9 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
     """
-    _current_user_id.set(user_id)
-    _current_session.set(session)
-    _current_sandbox.set(sandbox)
-    _current_sdk_cwd.set(sdk_cwd or "")
-    _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _set_base_execution_context(user_id, session, sandbox=sandbox, sdk_cwd=sdk_cwd)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
-
-
-def get_current_sandbox() -> "AsyncSandbox | None":
-    """Return the E2B sandbox for the current turn, or None."""
-    return _current_sandbox.get()
-
-
-def get_sdk_cwd() -> str:
-    """Return the SDK ephemeral working directory for the current turn."""
-    return _current_sdk_cwd.get()
-
-
-def get_execution_context() -> tuple[str | None, ChatSession | None]:
-    """Get the current execution context."""
-    return (
-        _current_user_id.get(),
-        _current_session.get(),
-    )
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -342,11 +250,8 @@ def _read_err(msg: str) -> dict[str, Any]:
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     """Read a file with optional offset/limit.
 
-    Supports three location types:
-    - ``workspace://<id>`` or ``workspace:///<path>`` — workspace file
-      (requires an active session with user_id).
-    - Locally allowed paths (sdk_cwd / tool-results) — host filesystem.
-    - Any path that resolves inside the E2B sandbox when one is active.
+    Supports workspace URIs (``workspace://``), locally allowed paths
+    (sdk_cwd / tool-results), and paths inside an active E2B sandbox.
     """
     file_path = args.get("file_path", "")
     offset = args.get("offset", 0)
@@ -355,61 +260,16 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     if not file_path:
         return _read_err("file_path is required")
 
-    # ------------------------------------------------------------------
-    # Workspace URI  (workspace://<id>  or  workspace:///<path>)
-    # ------------------------------------------------------------------
-    if file_path.startswith("workspace://"):
-        user_id, session = get_execution_context()
-        if not user_id or session is None:
-            return _read_err("workspace:// paths require an authenticated session")
-        try:
-            # Strip MIME fragment before parsing (e.g. workspace://id#mime)
-            plain = file_path.split("#")[0]
-            manager = await get_manager(user_id, session.session_id)
-            ws = parse_workspace_uri(plain)
-            raw = await (
-                manager.read_file(ws.file_ref)
-                if ws.is_path
-                else manager.read_file_by_id(ws.file_ref)
-            )
-            return _read_ok(raw.decode("utf-8", errors="replace"), offset, limit)
-        except Exception as exc:
-            return _read_err(f"Error reading workspace file: {exc}")
+    user_id, session = get_execution_context()
+    if session is None:
+        return _read_err("No active session")
 
-    # ------------------------------------------------------------------
-    # Locally allowed path (sdk_cwd / tool-results)
-    # ------------------------------------------------------------------
-    if is_allowed_local_path(file_path, sdk_cwd=get_sdk_cwd()):
-        resolved = os.path.realpath(os.path.expanduser(file_path))
-        try:
-            # Cleanup happens in _cleanup_sdk_tool_results after session ends;
-            # don't delete here — the SDK may read in multiple chunks.
-            with open(resolved) as f:
-                text = "".join(itertools.islice(f, offset + limit))
-            return _read_ok(text, offset, limit)
-        except FileNotFoundError:
-            return _read_err(f"File not found: {file_path}")
-        except Exception as e:
-            return _read_err(f"Error reading file: {e}")
+    try:
+        raw = await read_file_bytes(file_path, user_id, session)
+    except ValueError as exc:
+        return _read_err(str(exc))
 
-    # ------------------------------------------------------------------
-    # E2B sandbox path (when a sandbox is active)
-    # ------------------------------------------------------------------
-    sandbox = _current_sandbox.get()
-    if sandbox is not None:
-        try:
-            remote = _resolve_remote(file_path)
-        except ValueError:
-            return _read_err(f"Access denied: {file_path} is not within the sandbox")
-        try:
-            raw_bytes = await sandbox.files.read(remote, format="bytes")
-            return _read_ok(
-                bytes(raw_bytes).decode("utf-8", errors="replace"), offset, limit
-            )
-        except Exception as exc:
-            return _read_err(f"Error reading from sandbox: {exc}")
-
-    return _read_err(f"Access denied: {file_path}")
+    return _read_ok(raw.decode("utf-8", errors="replace"), offset, limit)
 
 
 _READ_TOOL_NAME = "Read"
