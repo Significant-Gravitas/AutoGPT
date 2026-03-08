@@ -18,7 +18,7 @@ from langfuse.openai import (
 
 from backend.data.db_accessors import understanding_db
 from backend.data.understanding import format_understanding_for_prompt
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
@@ -298,6 +298,12 @@ async def assign_user_to_session(
     session = await get_chat_session(session_id, None)
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
+    if session.user_id is not None and session.user_id != user_id:
+        logger.warning(
+            f"[SECURITY] Attempt to claim session {session_id} by user {user_id}, "
+            f"but it already belongs to user {session.user_id}"
+        )
+        raise NotAuthorizedError(f"Not authorized to claim session {session_id}")
     session.user_id = user_id
     session = await upsert_chat_session(session)
     return session

@@ -753,7 +753,6 @@ async def resume_session_stream(
 @router.patch(
     "/sessions/{session_id}/assign-user",
     dependencies=[Security(auth.requires_user)],
-    status_code=200,
 )
 async def session_assign_user(
     session_id: str,
