@@ -19,7 +19,7 @@ metadata:
 6. **Format first** (if relevant changes exist):
    - Backend: `poetry run format` in `backend/`
    - Frontend: `pnpm format` in `frontend/`
-   - Check for lint errors and fix them
+   - Fix any lint errors, then commit formatting changes before pushing
 7. **Push**: `git push -u origin HEAD`
 8. **Create PR**: `gh pr create --base dev`
 9. **Output** the PR URL
