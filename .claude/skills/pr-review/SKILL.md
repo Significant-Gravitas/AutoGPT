@@ -29,16 +29,20 @@ metadata:
 5. **Include autogpt-reviewer bot fixes** too
 6. **Format**: `poetry run format` (backend), `pnpm format` (frontend)
 7. **Commit & push**
-8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI (don't sit idle)
-9. **Wait for CI**: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT` — poll until all green. If any fail, fix and go back to step 6.
-10. **Re-fetch comments again** — address anything that appeared while CI was running
-11. **Done** only when: all comments reacted AND CI is green.
+8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI
+9. **Stay productive while CI runs** — don't idle. In priority order:
+   - Run any pending local tests (`poetry run pytest`, e2e, etc.) and fix failures
+   - Address any remaining comments
+   - Only poll `gh pr checks {N}` as the last resort when there's truly nothing left to do
+10. **If CI fails** — fix, go back to step 6
+11. **Re-fetch comments again** after CI is green — address anything that appeared while CI was running
+12. **Done** only when: all comments reacted AND CI is green.
 
 ## CRITICAL: Do Not Stop
 
-**Loop is: address → format → commit → push → re-check comments → wait CI → re-check comments → repeat.**
+**Loop is: address → format → commit → push → re-check comments → run local tests → wait CI → re-check comments → repeat.**
 
-Check comments both before and after CI — never sit idle while CI runs if there are open comments to address.
+Never idle. If CI is running and you have nothing to address, run local tests. Waiting on CI is the last resort.
 
 ## Rules
 
