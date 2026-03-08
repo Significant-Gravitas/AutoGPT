@@ -792,12 +792,13 @@ async def stream_chat_completion_sdk(
                 )
                 return None
             if config.e2b_active:
+                assert config.e2b_api_key  # guaranteed by e2b_active
                 try:
                     return await get_or_create_sandbox(
                         session_id,
                         api_key=config.e2b_api_key,
                         template=config.e2b_sandbox_template,
-                        sandbox_timeout=config.e2b_sandbox_timeout,
+                        pause_timeout=config.e2b_sandbox_timeout,
                         redis_ttl=config.session_ttl,
                     )
                 except Exception as e2b_err:

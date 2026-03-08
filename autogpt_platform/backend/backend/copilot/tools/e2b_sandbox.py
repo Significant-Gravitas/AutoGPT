@@ -69,8 +69,8 @@ async def get_or_create_sandbox(
     session_id: str,
     api_key: str,
     template: str = "base",
-    sandbox_timeout: int = _E2B_SANDBOX_TIMEOUT,
-    redis_ttl: int = _E2B_SANDBOX_TIMEOUT,
+    pause_timeout: int = _E2B_SANDBOX_TIMEOUT,
+    redis_ttl: int = 43200,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -78,11 +78,11 @@ async def get_or_create_sandbox(
     across turns. Concurrent calls for the same session are serialised
     via a Redis ``SET NX`` creation lock.
 
-    *sandbox_timeout* controls how long the e2b sandbox may run continuously
-    before the ``on_timeout: pause`` lifecycle rule fires.
+    *pause_timeout* controls how long the e2b sandbox may run continuously
+    before the ``on_timeout: pause`` lifecycle rule fires (default: 4 h).
     *redis_ttl* controls how long the sandbox_id is kept in Redis; defaults
-    to ``_E2B_SANDBOX_TIMEOUT`` so the Redis key expires when the e2b
-    timeout would have fired.
+    to 12 h (session lifetime) so we can reconnect to a paused sandbox for
+    the full duration of the session.
     """
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
@@ -140,7 +140,7 @@ async def get_or_create_sandbox(
         sandbox = await AsyncSandbox.create(
             template=template,
             api_key=api_key,
-            timeout=sandbox_timeout,
+            timeout=pause_timeout,
             lifecycle={"on_timeout": "pause"},
         )
     except Exception:
