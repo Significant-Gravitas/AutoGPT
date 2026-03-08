@@ -215,7 +215,7 @@ async def test_read_file_handler_workspace_uri():
         "backend.copilot.sdk.tool_adapter.get_execution_context",
         return_value=("user-1", mock_session),
     ), patch(
-        "backend.copilot.tools.workspace_files.get_manager",
+        "backend.copilot.sdk.file_ref.get_manager",
         new=AsyncMock(return_value=mock_manager),
     ):
         result = await _read_file_handler(
