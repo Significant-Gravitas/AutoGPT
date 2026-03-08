@@ -3,6 +3,44 @@
 Blocks for managing GitHub repositories, branches, files, and repository metadata.
 <!-- END MANUAL -->
 
+## Github Compare Branches
+
+### What it is
+This block compares two branches or commits in a GitHub repository.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository | str | Yes |
+| base | Base branch or commit SHA | str | Yes |
+| head | Head branch or commit SHA to compare against base | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if comparison failed | str |
+| status | Comparison status: ahead, behind, diverged, or identical | str |
+| ahead_by | Number of commits head is ahead of base | int |
+| behind_by | Number of commits head is behind base | int |
+| total_commits | Total number of commits in the comparison | int |
+| diff | Unified diff of all file changes | str |
+| file | A changed file with its diff | Changed File |
+| files | List of changed files with their diffs | List[FileChange] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Github Create File
 
 ### What it is
@@ -122,6 +160,112 @@ Protected branches cannot be deleted unless protection rules are first removed.
 
 ---
 
+## Github Fork Repository
+
+### What it is
+This block forks a GitHub repository to your account or an organization.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository to fork | str | Yes |
+| organization | Organization to fork into (leave empty to fork to your account) | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the fork failed | str |
+| url | URL of the forked repository | str |
+| clone_url | Git clone URL of the fork | str |
+| full_name | Full name of the fork (owner/repo) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Github Get Repository Info
+
+### What it is
+This block retrieves metadata about a GitHub repository.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if fetching repo info failed | str |
+| name | Repository name | str |
+| full_name | Full repository name (owner/repo) | str |
+| description | Repository description | str |
+| default_branch | Default branch name (e.g. main) | str |
+| private | Whether the repository is private | bool |
+| html_url | Web URL of the repository | str |
+| clone_url | Git clone URL | str |
+| stars | Number of stars | int |
+| forks | Number of forks | int |
+| open_issues | Number of open issues | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Github Get Repository Tree
+
+### What it is
+This block lists the entire file tree of a GitHub repository recursively.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository | str | Yes |
+| branch | Branch name to get the tree from | str | No |
+| recursive | Whether to recursively list the entire tree | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if getting tree failed | str |
+| entry | A file or directory in the tree | Tree Entry |
+| entries | List of all files and directories in the tree | List[TreeEntry] |
+| truncated | Whether the tree was truncated due to size | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Github List Branches
 
 ### What it is
@@ -155,6 +299,39 @@ This provides visibility into all development streams in a repository.
 **Naming Convention Validation**: Check branch names against team conventions.
 
 **Active Development Tracking**: Monitor which branches exist to track parallel development efforts.
+<!-- END MANUAL -->
+
+---
+
+## Github List Commits
+
+### What it is
+This block lists commits on a branch in a GitHub repository.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository | str | Yes |
+| branch | Branch name to list commits from | str | No |
+| per_page | Number of commits to return (max 100) | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if listing commits failed | str |
+| commit | A commit with its details | Commit |
+| commits | List of commits with their details | List[CommitItem] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
@@ -346,6 +523,40 @@ The new branch immediately contains all the code from the source branch at the t
 
 ---
 
+## Github Multi File Commit
+
+### What it is
+This block creates a single commit with multiple file create/update/delete operations using the Git Trees API.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository | str | Yes |
+| branch | Branch to commit to | str | Yes |
+| commit_message | Commit message | str | Yes |
+| files | List of file operations. Each item has: 'path' (file path), 'content' (file content, omit for delete), 'operation' (create/update/delete) | List[FileOperationInput] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the commit failed | str |
+| sha | SHA of the new commit | str |
+| url | URL of the new commit | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Github Read File
 
 ### What it is
@@ -421,6 +632,40 @@ You can specify which branch to read from; it defaults to master if not specifie
 **File Discovery**: Find specific file types in directories for batch processing.
 
 **Directory Monitoring**: Check for expected files in specific locations.
+<!-- END MANUAL -->
+
+---
+
+## Github Search Code
+
+### What it is
+This block searches for code in GitHub repositories.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| query | Search query (GitHub code search syntax) | str | Yes |
+| repo | Restrict search to a repository (owner/repo format, optional) | str | No |
+| per_page | Number of results to return (max 100) | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if search failed | str |
+| result | A code search result | Result |
+| results | List of code search results | List[SearchResult] |
+| total_count | Total number of matching results | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---

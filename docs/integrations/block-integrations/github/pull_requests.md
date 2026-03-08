@@ -155,6 +155,41 @@ For cross-repository PRs, format the head branch as "username:branch". The branc
 
 ---
 
+## Github Merge Pull Request
+
+### What it is
+This block merges a pull request using merge, squash, or rebase.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| pr_url | URL of the GitHub pull request | str | Yes |
+| merge_method | Merge method to use: merge, squash, or rebase | "merge" \| "squash" \| "rebase" | No |
+| commit_title | Title for the merge commit (optional, used for merge and squash) | str | No |
+| commit_message | Message for the merge commit (optional, used for merge and squash) | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the merge failed | str |
+| sha | SHA of the merge commit | str |
+| merged | Whether the PR was merged | bool |
+| message | Merge status message | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Github Read Pull Request
 
 ### What it is
