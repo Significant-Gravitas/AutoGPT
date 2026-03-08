@@ -222,7 +222,7 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
         return _mcp(f"Path not allowed: {file_path}", error=True)
     expanded = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(expanded) as fh:
+        with open(expanded, encoding="utf-8", errors="replace") as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)

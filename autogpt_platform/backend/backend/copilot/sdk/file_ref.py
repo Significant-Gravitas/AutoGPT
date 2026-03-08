@@ -42,9 +42,9 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,
+    resolve_sandbox_path,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.e2b_file_tools import resolve_sandbox_path
 from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
 
@@ -187,6 +187,16 @@ async def expand_file_refs_in_string(
         result.append(text[last_end : m.start()])
         start = int(m.group(2)) if m.group(2) else None
         end = int(m.group(3)) if m.group(3) else None
+        if (start is not None and start < 1) or (end is not None and end < 1):
+            result.append(f"[file-ref error: line numbers must be >= 1: {m.group(0)}]")
+            last_end = m.end()
+            continue
+        if start is not None and end is not None and end < start:
+            result.append(
+                f"[file-ref error: end line must be >= start line: {m.group(0)}]"
+            )
+            last_end = m.end()
+            continue
         ref = FileRef(uri=m.group(1), start_line=start, end_line=end)
         try:
             content = await resolve_file_ref(ref, user_id, session)
