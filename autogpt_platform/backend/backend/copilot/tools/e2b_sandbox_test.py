@@ -22,6 +22,7 @@ from .e2b_sandbox import (
     get_or_create_sandbox,
     kill_sandbox,
     pause_sandbox,
+    pause_sandbox_direct,
 )
 
 _SESSION_ID = "sess-123"
@@ -425,3 +426,38 @@ class TestPauseSandbox:
 
         assert result is sb
         mock_cls.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# pause_sandbox_direct
+# ---------------------------------------------------------------------------
+
+
+class TestPauseSandboxDirect:
+    def test_pause_direct_success(self):
+        """Pauses the sandbox directly without a Redis lookup or reconnect."""
+        sb = _mock_sandbox()
+        result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
+
+        assert result is True
+        sb.pause.assert_awaited_once()
+
+    def test_pause_direct_failure_returns_false(self):
+        """Returns False when sandbox.pause() raises."""
+        sb = _mock_sandbox()
+        sb.pause = AsyncMock(side_effect=RuntimeError("e2b error"))
+        result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
+
+        assert result is False
+
+    def test_pause_direct_timeout_returns_false(self):
+        """Returns False when sandbox.pause() exceeds the 10s timeout."""
+        sb = _mock_sandbox()
+        with patch(
+            "backend.copilot.tools.e2b_sandbox.asyncio.wait_for",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError,
+        ):
+            result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
+
+        assert result is False

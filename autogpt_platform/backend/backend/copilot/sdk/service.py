@@ -60,7 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox
+from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
@@ -1421,10 +1421,10 @@ async def stream_chat_completion_sdk(
         # Fire-and-forget: pausing is best-effort and must not block the
         # response or the transcript upload.  The task is anchored to
         # _background_tasks to prevent garbage collection.
-        if e2b_api_key := config.active_e2b_api_key:
-            task = asyncio.create_task(
-                pause_sandbox(session_id=session_id, api_key=e2b_api_key)
-            )
+        # Use pause_sandbox_direct to skip the Redis lookup and reconnect
+        # round-trip — e2b_sandbox is the live object from this turn.
+        if e2b_sandbox is not None:
+            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
 

@@ -237,10 +237,40 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
     ``get_or_create_sandbox()`` on the next turn (via ``AsyncSandbox.connect()``).
     The sandbox_id is kept in Redis so reconnection works seamlessly.
 
+    Prefer ``pause_sandbox_direct()`` when the sandbox object is already in
+    scope — it skips the Redis lookup and reconnect round-trip.
+
     Returns ``True`` if the sandbox was found and paused, ``False`` otherwise.
     Safe to call even when no sandbox exists for the session.
     """
     return await _act_on_sandbox(session_id, api_key, "pause", lambda sb: sb.pause())
+
+
+async def pause_sandbox_direct(sandbox: "AsyncSandbox", session_id: str) -> bool:
+    """Pause an already-connected sandbox without a reconnect round-trip.
+
+    Use this in callers that already hold the live sandbox object (e.g. turn
+    teardown in ``service.py``).  Saves the Redis lookup and
+    ``AsyncSandbox.connect()`` call that ``pause_sandbox()`` would make.
+
+    Returns ``True`` on success, ``False`` on failure or timeout.
+    """
+    try:
+        await asyncio.wait_for(sandbox.pause(), timeout=10)
+        logger.info(
+            "[E2B] Paused sandbox %.12s for session %.12s",
+            sandbox.sandbox_id,
+            session_id,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Failed to pause sandbox %.12s for session %.12s: %s",
+            sandbox.sandbox_id,
+            session_id,
+            exc,
+        )
+        return False
 
 
 async def kill_sandbox(
