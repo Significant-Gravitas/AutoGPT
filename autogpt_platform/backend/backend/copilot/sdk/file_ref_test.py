@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.sdk.file_ref import (
+    _MAX_EXPAND_CHARS,
     FileRef,
     _apply_line_range,
     expand_file_refs_in_args,
@@ -298,3 +299,54 @@ async def test_expand_args_no_refs():
         session=_make_session(),
     )
     assert result == {"key": "no refs here", "num": 1}
+
+
+# ---------------------------------------------------------------------------
+# Per-file truncation and aggregate budget
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expand_per_file_truncation():
+    """Content exceeding _MAX_EXPAND_CHARS is truncated with a marker."""
+    oversized = "x" * (_MAX_EXPAND_CHARS + 100)
+
+    async def _resolve_oversized(ref: FileRef, _uid: str | None, _s: object) -> str:
+        return oversized
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve_oversized),
+    ):
+        result = await expand_file_refs_in_string(
+            "@file:workspace://big-file",
+            user_id="u1",
+            session=_make_session(),
+        )
+
+    assert len(result) <= _MAX_EXPAND_CHARS + len("\n... [truncated]") + 10
+    assert "[truncated]" in result
+
+
+@pytest.mark.asyncio
+async def test_expand_aggregate_budget_exhausted():
+    """When the aggregate budget is exhausted, later refs get the budget message."""
+    # Each file returns just under 300K; after ~4 files the 1M budget is used.
+    big_chunk = "y" * 300_000
+
+    async def _resolve_big(ref: FileRef, _uid: str | None, _s: object) -> str:
+        return big_chunk
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve_big),
+    ):
+        # 5 refs @ 300K each = 1.5M → last ref(s) should hit the aggregate limit
+        refs = " ".join(f"@file:workspace://f{i}" for i in range(5))
+        result = await expand_file_refs_in_string(
+            refs,
+            user_id="u1",
+            session=_make_session(),
+        )
+
+    assert "budget exhausted" in result

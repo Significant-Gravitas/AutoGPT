@@ -53,14 +53,17 @@ def set_execution_context(
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
+    """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
+    """Return the E2B sandbox for the current session, or None if not active."""
     return _current_sandbox.get()
 
 
 def get_sdk_cwd() -> str:
+    """Return the SDK working directory for the current session (empty string if unset)."""
     return _current_sdk_cwd.get()
 
 

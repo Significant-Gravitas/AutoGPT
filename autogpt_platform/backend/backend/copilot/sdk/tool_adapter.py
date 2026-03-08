@@ -9,6 +9,7 @@ import itertools
 import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -323,7 +324,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     :func:`get_sdk_disallowed_tools`.
     """
 
-    def _truncating(fn, tool_name: str):
+    def _truncating(fn: Callable[..., Awaitable[dict[str, Any]]], tool_name: str):
         """Wrap a tool handler so its response is truncated to stay under the
         SDK's 10 MB JSON buffer, and stash the (truncated) output for the
         response adapter before the SDK can apply its own head-truncation.

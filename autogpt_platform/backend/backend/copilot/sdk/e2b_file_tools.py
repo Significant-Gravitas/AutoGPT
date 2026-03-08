@@ -18,6 +18,7 @@ from typing import Any, Callable
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
+    get_sdk_cwd,
     is_allowed_local_path,
     resolve_sandbox_path,
 )
@@ -30,7 +31,7 @@ def _get_sandbox():
 
 
 def _is_allowed_local(path: str) -> bool:
-    return is_allowed_local_path(path)
+    return is_allowed_local_path(path, get_sdk_cwd())
 
 
 def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:

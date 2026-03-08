@@ -58,6 +58,8 @@ _FILE_REF_RE = re.compile(r"@file:([^\[\s]+)(?:\[(\d+)-(\d+)\])?")
 
 # Maximum characters returned for a single file reference expansion.
 _MAX_EXPAND_CHARS = 200_000
+# Maximum total characters across all @file: expansions in one string.
+_MAX_TOTAL_EXPAND_CHARS = 1_000_000
 
 
 @dataclass
@@ -183,6 +185,7 @@ async def expand_file_refs_in_string(
 
     result: list[str] = []
     last_end = 0
+    total_chars = 0
     for m in _FILE_REF_RE.finditer(text):
         result.append(text[last_end : m.start()])
         start = int(m.group(2)) if m.group(2) else None
@@ -202,6 +205,12 @@ async def expand_file_refs_in_string(
             content = await resolve_file_ref(ref, user_id, session)
             if len(content) > _MAX_EXPAND_CHARS:
                 content = content[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
+            remaining = _MAX_TOTAL_EXPAND_CHARS - total_chars
+            if remaining <= 0:
+                content = "[file-ref budget exhausted: total expansion limit reached]"
+            elif len(content) > remaining:
+                content = content[:remaining] + "\n... [total budget exhausted]"
+            total_chars += len(content)
             result.append(content)
         except ValueError as exc:
             logger.warning("file-ref expansion failed for %r: %s", m.group(0), exc)

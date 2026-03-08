@@ -21,6 +21,7 @@ from backend.copilot.sdk.file_ref import (
     FileRef,
     expand_file_refs_in_args,
     expand_file_refs_in_string,
+    read_file_bytes,
     resolve_file_ref,
 )
 from backend.copilot.sdk.tool_adapter import _read_file_handler
@@ -260,3 +261,68 @@ async def test_read_file_handler_access_denied():
 
     assert result["isError"]
     assert "not allowed" in result["content"][0]["text"].lower()
+
+
+# ---------------------------------------------------------------------------
+# read_file_bytes — workspace:///path (virtual path) and E2B sandbox branch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_read_file_bytes_workspace_virtual_path():
+    """workspace:///path resolves via manager.read_file (is_path=True path)."""
+    session = _make_session()
+    mock_manager = AsyncMock()
+    mock_manager.read_file.return_value = b"virtual path content"
+
+    with patch(
+        "backend.copilot.sdk.file_ref.get_manager",
+        new=AsyncMock(return_value=mock_manager),
+    ):
+        result = await read_file_bytes("workspace:///reports/q1.md", "user-1", session)
+
+    assert result == b"virtual path content"
+    mock_manager.read_file.assert_awaited_once_with("/reports/q1.md")
+
+
+@pytest.mark.asyncio
+async def test_read_file_bytes_e2b_sandbox_branch():
+    """read_file_bytes reads from the E2B sandbox when a sandbox is active."""
+    session = _make_session()
+    mock_sandbox = AsyncMock()
+    mock_sandbox.files.read.return_value = bytearray(b"sandbox content")
+
+    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
+        "backend.copilot.context._current_sandbox"
+    ) as mock_sandbox_var, patch(
+        "backend.copilot.context._current_project_dir"
+    ) as mock_proj:
+        mock_cwd.get.return_value = ""
+        mock_sandbox_var.get.return_value = mock_sandbox
+        mock_proj.get.return_value = ""
+
+        result = await read_file_bytes("/home/user/script.sh", None, session)
+
+    assert result == b"sandbox content"
+    mock_sandbox.files.read.assert_awaited_once_with(
+        "/home/user/script.sh", format="bytes"
+    )
+
+
+@pytest.mark.asyncio
+async def test_read_file_bytes_e2b_path_escapes_sandbox_raises():
+    """read_file_bytes raises ValueError for paths that escape the sandbox root."""
+    session = _make_session()
+    mock_sandbox = AsyncMock()
+
+    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
+        "backend.copilot.context._current_sandbox"
+    ) as mock_sandbox_var, patch(
+        "backend.copilot.context._current_project_dir"
+    ) as mock_proj:
+        mock_cwd.get.return_value = ""
+        mock_sandbox_var.get.return_value = mock_sandbox
+        mock_proj.get.return_value = ""
+
+        with pytest.raises(ValueError, match="not allowed"):
+            await read_file_bytes("/etc/passwd", None, session)
