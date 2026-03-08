@@ -84,7 +84,7 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/`` (SDK tool-results)
+    - Files under ``~/.claude/projects/<encoded-cwd>/tool-results/`` (SDK tool-results)
     """
     if not path:
         return False
@@ -103,8 +103,10 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     encoded = _current_project_dir.get("")
     if encoded:
-        session_project = os.path.join(_SDK_PROJECTS_DIR, encoded)
-        if resolved == session_project or resolved.startswith(session_project + os.sep):
+        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
+        if resolved == tool_results_dir or resolved.startswith(
+            tool_results_dir + os.sep
+        ):
             return True
 
     return False

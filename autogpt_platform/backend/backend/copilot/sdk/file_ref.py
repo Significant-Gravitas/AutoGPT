@@ -79,6 +79,12 @@ def parse_file_ref(text: str) -> FileRef | None:
         return None
     start = int(m.group(2)) if m.group(2) else None
     end = int(m.group(3)) if m.group(3) else None
+    if start is not None and start < 1:
+        return None
+    if end is not None and end < 1:
+        return None
+    if start is not None and end is not None and end < start:
+        return None
     return FileRef(uri=m.group(1), start_line=start, end_line=end)
 
 
@@ -110,11 +116,16 @@ async def read_file_bytes(
             raise ValueError("workspace:// file references require authentication")
         manager = await get_manager(user_id, session.session_id)
         ws = parse_workspace_uri(plain)
-        return await (
-            manager.read_file(ws.file_ref)
-            if ws.is_path
-            else manager.read_file_by_id(ws.file_ref)
-        )
+        try:
+            return await (
+                manager.read_file(ws.file_ref)
+                if ws.is_path
+                else manager.read_file_by_id(ws.file_ref)
+            )
+        except FileNotFoundError:
+            raise ValueError(f"File not found: {plain}")
+        except Exception as exc:
+            raise ValueError(f"Failed to read {plain}: {exc}") from exc
 
     if is_allowed_local_path(plain, get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(plain))

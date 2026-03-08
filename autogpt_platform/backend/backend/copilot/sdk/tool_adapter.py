@@ -251,8 +251,11 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     (sdk_cwd / tool-results), and paths inside an active E2B sandbox.
     """
     file_path = args.get("file_path", "")
-    offset = args.get("offset", 0)
-    limit = args.get("limit", 2000)
+    try:
+        offset = max(0, int(args.get("offset", 0)))
+        limit = max(1, int(args.get("limit", 2000)))
+    except (TypeError, ValueError):
+        return _read_err("offset and limit must be integers")
 
     if not file_path:
         return _read_err("file_path is required")
