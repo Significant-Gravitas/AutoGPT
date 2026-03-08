@@ -1,7 +1,6 @@
 """Database operations for chat sessions."""
 
 import asyncio
-import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -17,7 +16,7 @@ from prisma.types import (
 )
 
 from backend.data import db
-from backend.util.json import SafeJson, sanitize_string
+from backend.util.json import SafeJson, loads, sanitize_string
 
 from .model import ChatMessage, ChatSession, ChatSessionInfo, ChatSessionMetadata
 
@@ -363,19 +362,24 @@ async def update_tool_message_content(
 
 
 async def get_session_metadata(session_id: str) -> ChatSessionMetadata:
-    """Return the typed metadata for *session_id*, defaulting to an empty instance."""
-    session = await PrismaChatSession.prisma().find_unique(
-        where={"id": session_id},
+    """Return the typed metadata for *session_id*, defaulting to an empty instance.
+
+    Uses a targeted SELECT to fetch only the ``metadata`` column, avoiding a
+    full row load when only the metadata is needed.
+    """
+    results = await db.query_raw_with_schema(
+        'SELECT "metadata" FROM {schema_prefix}"ChatSession" WHERE "id" = $1 LIMIT 1',
+        session_id,
     )
-    if not session:
+    if not results:
         return ChatSessionMetadata()
-    return _parse_session_metadata(session.metadata)
+    return _parse_session_metadata(results[0]["metadata"])
 
 
 def _parse_session_metadata(raw: object) -> ChatSessionMetadata:
     """Parse raw JSON field value into a typed ``ChatSessionMetadata``."""
     if isinstance(raw, str):
-        raw = json.loads(raw)
+        raw = loads(raw, fallback={})
     return ChatSessionMetadata.model_validate(raw if isinstance(raw, dict) else {})
 
 

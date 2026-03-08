@@ -171,6 +171,7 @@ async def _act_on_sandbox(
     fn: Callable[[AsyncSandbox], Coroutine],
     *,
     clear_metadata: bool = False,
+    e2b_sandbox_id: str | None = None,
 ) -> bool:
     """Connect to the sandbox for *session_id* and run *fn* on it.
 
@@ -178,12 +179,19 @@ async def _act_on_sandbox(
     success, ``False`` when no sandbox is found or the action fails.
     If *clear_metadata* is ``True``, the sandbox_id is removed from metadata
     only after the action succeeds so a failed kill can be retried.
+
+    *e2b_sandbox_id* may be supplied by the caller when the metadata is
+    already available, avoiding a redundant DB round-trip.
     """
-    meta = await get_session_metadata(session_id)
-    if not meta.e2b_sandbox_id:
+    if e2b_sandbox_id is None:
+        meta = await get_session_metadata(session_id)
+        e2b_sandbox_id = meta.e2b_sandbox_id
+    else:
+        meta = None  # Will be loaded lazily only if clear_metadata is True
+    if not e2b_sandbox_id:
         return False
 
-    sandbox_id = meta.e2b_sandbox_id
+    sandbox_id = e2b_sandbox_id
 
     async def _connect_and_act():
         sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
@@ -192,6 +200,8 @@ async def _act_on_sandbox(
     try:
         await asyncio.wait_for(_connect_and_act(), timeout=10)
         if clear_metadata:
+            if meta is None:
+                meta = await get_session_metadata(session_id)
             await update_session_metadata(
                 session_id, meta.model_copy(update={"e2b_sandbox_id": None})
             )
@@ -225,12 +235,23 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
     return await _act_on_sandbox(session_id, api_key, "pause", lambda sb: sb.pause())
 
 
-async def kill_sandbox(session_id: str, api_key: str) -> bool:
+async def kill_sandbox(
+    session_id: str, api_key: str, e2b_sandbox_id: str | None = None
+) -> bool:
     """Kill the E2B sandbox for *session_id* and clear its metadata entry.
 
     Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
     Safe to call even when no sandbox exists for the session.
+
+    *e2b_sandbox_id* may be supplied by the caller when the metadata is
+    already available (e.g. fetched before the session record was deleted),
+    avoiding a redundant — and potentially failing — DB round-trip.
     """
     return await _act_on_sandbox(
-        session_id, api_key, "kill", lambda sb: sb.kill(), clear_metadata=True
+        session_id,
+        api_key,
+        "kill",
+        lambda sb: sb.kill(),
+        clear_metadata=True,
+        e2b_sandbox_id=e2b_sandbox_id,
     )
