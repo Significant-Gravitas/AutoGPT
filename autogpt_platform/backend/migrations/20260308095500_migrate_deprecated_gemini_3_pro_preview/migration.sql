@@ -19,13 +19,13 @@ WHERE "input_default"::text LIKE '%google/gemini-3-pro-preview%';
 
 -- Update AgentGraphExecution where any block uses the deprecated model
 UPDATE "AgentGraphExecution"
-SET "input_data" = replace("input_data"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
-WHERE "input_data"::text LIKE '%google/gemini-3-pro-preview%';
+SET "inputs" = replace("inputs"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
+WHERE "inputs"::text LIKE '%google/gemini-3-pro-preview%';
 
 -- Update AgentNodeExecution where the deprecated model is referenced
 UPDATE "AgentNodeExecution"
-SET "input_data" = replace("input_data"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
-WHERE "input_data"::text LIKE '%google/gemini-3-pro-preview%';
+SET "executionData" = replace("executionData"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
+WHERE "executionData"::text LIKE '%google/gemini-3-pro-preview%';
 
 -- Update any stored graphs that might have the deprecated model in their configuration
 UPDATE "AgentGraph"

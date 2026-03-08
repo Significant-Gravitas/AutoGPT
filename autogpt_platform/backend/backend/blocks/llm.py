@@ -361,7 +361,7 @@ MODEL_METADATA = {
     LlmModel.GEMINI_3_1_PRO_PREVIEW: ModelMetadata(
         "open_router",
         1050000,
-        8192,
+        65536,
         "Gemini 3.1 Pro Preview",
         "OpenRouter",
         "Google",
@@ -373,7 +373,7 @@ MODEL_METADATA = {
     LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
         "open_router",
         1050000,
-        8192,
+        65536,
         "Gemini 3 Flash Preview",
         "OpenRouter",
         "Google",
@@ -388,7 +388,7 @@ MODEL_METADATA = {
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: ModelMetadata(
         "open_router",
         1050000,
-        8192,
+        65536,
         "Gemini 3.1 Flash Lite Preview",
         "OpenRouter",
         "Google",
