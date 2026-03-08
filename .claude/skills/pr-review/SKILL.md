@@ -29,15 +29,16 @@ metadata:
 5. **Include autogpt-reviewer bot fixes** too
 6. **Format**: `poetry run format` (backend), `pnpm format` (frontend)
 7. **Commit & push**
-8. **Wait for CI**: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT` — poll until all green. If any fail, fix and go back to step 6.
-9. **Re-fetch all comments** — new ones may appear after each push. If any are unreacted, go back to step 4.
-10. **Done** only when: all comments reacted AND CI is green.
+8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI (don't sit idle)
+9. **Wait for CI**: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT` — poll until all green. If any fail, fix and go back to step 6.
+10. **Re-fetch comments again** — address anything that appeared while CI was running
+11. **Done** only when: all comments reacted AND CI is green.
 
 ## CRITICAL: Do Not Stop
 
-**Loop is: address comments → format → commit → push → wait CI → re-check comments → repeat.**
+**Loop is: address → format → commit → push → re-check comments → wait CI → re-check comments → repeat.**
 
-Never stop early. New comments can appear after every push. CI must be fully green before declaring done.
+Check comments both before and after CI — never sit idle while CI runs if there are open comments to address.
 
 ## Rules
 
