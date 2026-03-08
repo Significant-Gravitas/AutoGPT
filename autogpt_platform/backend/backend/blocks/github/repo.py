@@ -1447,8 +1447,8 @@ class GithubListCommitsBlock(Block):
             GithubListCommitsBlock.Output.CommitItem(
                 sha=c["sha"],
                 message=c["commit"]["message"],
-                author=c["commit"]["author"]["name"],
-                date=c["commit"]["author"]["date"],
+                author=(c["commit"].get("author") or {}).get("name", "Unknown"),
+                date=(c["commit"].get("author") or {}).get("date", ""),
                 url=f"https://github.com/{repo_path}/commit/{c['sha']}",
             )
             for c in data
@@ -1914,7 +1914,7 @@ class FileOperation(StrEnum):
 class FileOperationInput(TypedDict):
     path: str
     content: str
-    operation: str
+    operation: FileOperation
 
 
 class GithubMultiFileCommitBlock(Block):
@@ -2012,7 +2012,7 @@ class GithubMultiFileCommitBlock(Block):
         tree_entries = []
         for file_op in files:
             path = file_op["path"]
-            operation = file_op.get("operation", "create")
+            operation = FileOperation(file_op.get("operation", "create"))
 
             if operation == FileOperation.DELETE:
                 tree_entries.append(

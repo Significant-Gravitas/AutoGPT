@@ -3,8 +3,6 @@ from typing import Literal
 
 from typing_extensions import TypedDict
 
-MergeMethod = Literal["merge", "squash", "rebase"]
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -22,6 +20,8 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+MergeMethod = Literal["merge", "squash", "rebase"]
 
 
 class GithubListPullRequestsBlock(Block):
@@ -659,10 +659,10 @@ class GithubMergePullRequestBlock(Block):
 
 def prepare_pr_api_url(pr_url: str, path: str) -> str:
     # Pattern to capture the base repository URL and the pull request number
-    pattern = r"^(?:https?://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
+    pattern = r"^(?:(https?)://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
     match = re.match(pattern, pr_url)
     if not match:
         return pr_url
 
-    base_url, pr_number = match.groups()
-    return f"{base_url}/pulls/{pr_number}/{path}"
+    scheme, base_url, pr_number = match.groups()
+    return f"{scheme or 'https'}://{base_url}/pulls/{pr_number}/{path}"
