@@ -1465,10 +1465,8 @@ async def stream_chat_completion_sdk(
         # --- Pause E2B sandbox to stop billing between turns ---
         if config.use_e2b_sandbox and config.e2b_api_key:
             try:
-                await asyncio.shield(
-                    pause_sandbox(session_id=session_id, api_key=config.e2b_api_key)
-                )
-            except Exception as pause_err:
+                await pause_sandbox(session_id=session_id, api_key=config.e2b_api_key)
+            except BaseException as pause_err:
                 logger.warning(
                     "%s Failed to pause E2B sandbox: %s", log_prefix, pause_err
                 )

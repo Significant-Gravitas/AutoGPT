@@ -162,8 +162,12 @@ async def pause_sandbox(session_id: str, api_key: str) -> bool:
         return False
 
     try:
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-        await sandbox.pause()
+
+        async def _connect_and_pause():
+            sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+            await sandbox.pause()
+
+        await asyncio.wait_for(_connect_and_pause(), timeout=10)
         logger.info(
             "[E2B] Paused sandbox %.12s for session %.12s",
             sandbox_id,
