@@ -105,7 +105,7 @@ def _make_session(session_id: str = "sess-1") -> MagicMock:
     return session
 
 
-async def _resolve_always(ref: FileRef, **_) -> str:
+async def _resolve_always(ref: FileRef, _user_id: str | None, _session: object) -> str:
     """Stub resolver that returns the URI and range as a descriptive string."""
     if ref.start_line is not None:
         return f"content:{ref.uri}[{ref.start_line}-{ref.end_line}]"

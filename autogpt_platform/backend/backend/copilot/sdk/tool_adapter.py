@@ -387,7 +387,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # Locally allowed path (sdk_cwd / tool-results)
     # ------------------------------------------------------------------
-    if is_allowed_local_path(file_path):
+    if is_allowed_local_path(file_path, sdk_cwd=get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(file_path))
         try:
             with open(resolved) as f:
