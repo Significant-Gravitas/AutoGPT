@@ -1,7 +1,7 @@
 ---
 name: pr-create
 description: Create a pull request for the current branch.
-user-invokable: true
+user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"

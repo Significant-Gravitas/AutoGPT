@@ -1,7 +1,7 @@
 ---
 name: openapi-regen
 description: Regenerate the OpenAPI spec and frontend API client. Starts the backend REST server, fetches the spec, and regenerates the typed frontend hooks. TRIGGER when API routes change, new endpoints are added, or frontend API types are stale.
-user-invokable: true
+user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"

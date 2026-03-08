@@ -1,7 +1,7 @@
 ---
 name: code-style
 description: Python code style preferences for the AutoGPT backend. Apply when writing or reviewing Python code. TRIGGER when writing new Python code, reviewing PRs, or refactoring backend code.
-user-invokable: false
+user-invocable: false
 metadata:
   author: autogpt-team
   version: "1.0.0"
@@ -17,6 +17,7 @@ metadata:
 
 - **No duck typing** — avoid `hasattr`, `getattr`, `isinstance` for type dispatch. Use proper typed interfaces, unions, or protocols.
 - **Pydantic models** over dataclass, namedtuple, or raw dict for structured data.
+- **No linter suppressors** — avoid `# type: ignore`, `# noqa`, `# pyright: ignore` etc. 99% of the time the right fix is fixing the type/code, not silencing the tool.
 
 ## Code Structure
 

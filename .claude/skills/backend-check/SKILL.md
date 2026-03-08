@@ -1,7 +1,7 @@
 ---
 name: backend-check
 description: Run the full backend formatting, linting, and test suite. Ensures code quality before commits and PRs. TRIGGER when backend Python code has been modified and needs validation.
-user-invokable: true
+user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"

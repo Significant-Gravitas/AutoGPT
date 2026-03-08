@@ -1,7 +1,7 @@
 ---
 name: pr-review
 description: Address all open PR review comments systematically. Fetches comments, addresses each one, reacts +1/-1, and replies when clarification is needed. Keeps iterating until all comments are addressed and CI is green.
-user-invokable: true
+user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"

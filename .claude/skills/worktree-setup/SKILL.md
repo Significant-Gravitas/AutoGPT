@@ -1,7 +1,7 @@
 ---
 name: worktree-setup
 description: Set up a new git worktree for parallel development. Creates the worktree, copies .env files, installs dependencies, generates Prisma client, and optionally starts the app (with port conflict resolution) or runs tests.
-user-invokable: true
+user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"
