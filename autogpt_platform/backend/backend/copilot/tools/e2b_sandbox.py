@@ -20,10 +20,10 @@ Lifecycle
 
 Cost control
 ------------
-Sandboxes are created with ``lifecycle={"on_timeout": "pause"}`` so they are
-automatically paused (not killed) if they somehow remain running past the
-timeout.  The explicit per-turn ``pause_sandbox()`` call is the primary
-mechanism; the lifecycle setting is a safety net.  Paused sandboxes are free.
+Sandboxes are created with a configurable ``on_timeout`` lifecycle action
+(default: ``"pause"``).  The explicit per-turn ``pause_sandbox()`` call is the
+primary mechanism; the lifecycle setting is a safety net.  Paused sandboxes are
+free.
 
 The sandbox_id is stored in Redis.  The same key doubles as a creation lock:
 a ``"creating"`` sentinel value is written with a short TTL while a new sandbox
@@ -202,12 +202,11 @@ async def _act_on_sandbox(
     if not sandbox_id:
         return False
 
-    async def _connect_and_act():
-        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
-        await fn(sandbox)
+    async def _run() -> None:
+        await fn(await AsyncSandbox.connect(sandbox_id, api_key=api_key))
 
     try:
-        await asyncio.wait_for(_connect_and_act(), timeout=10)
+        await asyncio.wait_for(_run(), timeout=10)
         if clear_stored_id:
             await _clear_stored_sandbox_id(session_id)
         logger.info(
