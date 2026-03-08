@@ -564,6 +564,18 @@ webencodings = "*"
 css = ["tinycss2 (>=1.1.0,<1.5)"]
 
 [[package]]
+name = "bracex"
+version = "2.6"
+description = "Bash style brace expander."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "bracex-2.6-py3-none-any.whl", hash = "sha256:0b0049264e7340b3ec782b5cb99beb325f36c3782a32e36e876452fd49a09952"},
+    {file = "bracex-2.6.tar.gz", hash = "sha256:98f1347cd77e22ee8d967a30ad4e310b233f7754dbf31ff3fceb76145ba47dc7"},
+]
+
+[[package]]
 name = "browserbase"
 version = "1.4.0"
 description = "The official Python library for the Browserbase API"
@@ -1173,6 +1185,18 @@ trio = ["trio (>=0.30)"]
 wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
 
 [[package]]
+name = "dockerfile-parse"
+version = "2.0.1"
+description = "Python library for Dockerfile manipulation"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "dockerfile-parse-2.0.1.tar.gz", hash = "sha256:3184ccdc513221983e503ac00e1aa504a2aa8f84e5de673c46b0b6eee99ec7bc"},
+    {file = "dockerfile_parse-2.0.1-py2.py3-none-any.whl", hash = "sha256:bdffd126d2eb26acf1066acb54cb2e336682e1d72b974a40894fac76a4df17f6"},
+]
+
+[[package]]
 name = "docstring-parser"
 version = "0.17.0"
 description = "Parse Python docstrings in reST, Google and Numpydoc format"
@@ -1188,18 +1212,6 @@ files = [
 dev = ["pre-commit (>=2.16.0) ; python_version >= \"3.9\"", "pydoctor (>=25.4.0)", "pytest"]
 docs = ["pydoctor (>=25.4.0)"]
 test = ["pytest"]
-
-[[package]]
-name = "dockerfile-parse"
-version = "2.0.1"
-description = "Python library for Dockerfile manipulation"
-optional = false
-python-versions = ">=3.6"
-groups = ["main"]
-files = [
-    {file = "dockerfile-parse-2.0.1.tar.gz", hash = "sha256:3184ccdc513221983e503ac00e1aa504a2aa8f84e5de673c46b0b6eee99ec7bc"},
-    {file = "dockerfile_parse-2.0.1-py2.py3-none-any.whl", hash = "sha256:bdffd126d2eb26acf1066acb54cb2e336682e1d72b974a40894fac76a4df17f6"},
-]
 
 [[package]]
 name = "dulwich"
@@ -8870,4 +8882,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "7189c9725ca42dfe6672632fe801c61248d87d3dd1259747b0ed9579b19fe088"
+content-hash = "8e56ead9b273131d285eb0b1e66db03806406d340dd90a738e1cdf1c15d58a54"
