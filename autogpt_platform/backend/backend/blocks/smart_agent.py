@@ -15,7 +15,7 @@ from pydantic import BaseModel, SecretStr
 
 # Avoid circular imports by importing only essential types
 # ExecutionParams, ToolInfo, and other classes will be imported dynamically when needed
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
