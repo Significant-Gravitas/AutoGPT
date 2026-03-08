@@ -62,6 +62,18 @@ def test_parse_file_ref_strips_whitespace():
     assert ref.uri == "workspace://abc123"
 
 
+def test_parse_file_ref_invalid_range_zero_start():
+    assert parse_file_ref("@file:workspace://abc123[0-5]") is None
+
+
+def test_parse_file_ref_invalid_range_end_less_than_start():
+    assert parse_file_ref("@file:workspace://abc123[10-5]") is None
+
+
+def test_parse_file_ref_invalid_range_zero_end():
+    assert parse_file_ref("@file:workspace://abc123[1-0]") is None
+
+
 # ---------------------------------------------------------------------------
 # _apply_line_range
 # ---------------------------------------------------------------------------
@@ -174,6 +186,32 @@ async def test_expand_multiple_refs():
             session=_make_session(),
         )
     assert result == "content:workspace://file1 and content:workspace://file2[1-5]"
+
+
+@pytest.mark.asyncio
+async def test_expand_invalid_range_zero_start_surfaces_inline():
+    """expand_file_refs_in_string surfaces [file-ref error: ...] for zero-start ranges."""
+    result = await expand_file_refs_in_string(
+        "@file:workspace://abc123[0-5]",
+        user_id="u1",
+        session=_make_session(),
+    )
+    assert "[file-ref error:" in result
+    assert "line numbers must be >= 1" in result
+
+
+@pytest.mark.asyncio
+async def test_expand_invalid_range_end_less_than_start_surfaces_inline():
+    """expand_file_refs_in_string surfaces [file-ref error: ...] when end < start."""
+    result = await expand_file_refs_in_string(
+        "prefix @file:workspace://abc123[10-5] suffix",
+        user_id="u1",
+        session=_make_session(),
+    )
+    assert "[file-ref error:" in result
+    assert "end line must be >= start line" in result
+    assert "prefix" in result
+    assert "suffix" in result
 
 
 @pytest.mark.asyncio
