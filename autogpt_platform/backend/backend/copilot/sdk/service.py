@@ -798,7 +798,6 @@ async def stream_chat_completion_sdk(
                         api_key=e2b_api_key,
                         template=config.e2b_sandbox_template,
                         pause_timeout=config.e2b_sandbox_timeout,
-                        e2b_sandbox_id=session.metadata.e2b_sandbox_id,
                     )
                 except Exception as e2b_err:
                     logger.error(
@@ -1418,16 +1417,15 @@ async def stream_chat_completion_sdk(
                 )
 
         # --- Pause E2B sandbox to stop billing between turns ---
-        # Run BEFORE transcript upload: the transcript asyncio.shield has no
-        # timeout, so pausing first ensures the sandbox stops billing at turn
-        # end regardless of how long the upload takes.
+        # Fire-and-forget: pausing is best-effort and must not block the
+        # response or the transcript upload.  The task is anchored to
+        # _background_tasks to prevent garbage collection.
         if e2b_api_key := config.active_e2b_api_key:
-            try:
-                await pause_sandbox(session_id=session_id, api_key=e2b_api_key)
-            except BaseException as pause_err:
-                logger.warning(
-                    "%s Failed to pause E2B sandbox: %s", log_prefix, pause_err
-                )
+            task = asyncio.create_task(
+                pause_sandbox(session_id=session_id, api_key=e2b_api_key)
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when

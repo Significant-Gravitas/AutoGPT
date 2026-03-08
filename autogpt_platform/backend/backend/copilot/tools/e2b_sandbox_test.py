@@ -1,11 +1,10 @@
 """Tests for e2b_sandbox: get_or_create_sandbox, _try_reconnect, kill_sandbox.
 
-sandbox_id is now stored in ChatSession.metadata (DB) via ChatSessionMetadata.
-Redis is only used for the short-lived creation lock.
+sandbox_id is stored in Redis (under _SANDBOX_ID_PREFIX + session_id).
+Redis is used for both the short-lived creation lock and the sandbox_id store.
 
 Tests mock:
-- ``get_session_metadata`` / ``update_session_metadata`` (DB layer)
-- ``get_redis_async`` (creation lock only)
+- ``get_redis_async`` (both the creation lock and sandbox_id storage)
 - ``AsyncSandbox`` (E2B SDK)
 
 Tests are synchronous (using asyncio.run) to avoid conflicts with the
@@ -16,8 +15,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from backend.copilot.model import ChatSessionMetadata
 
 from .e2b_sandbox import (
     _try_reconnect,
@@ -41,8 +38,19 @@ def _mock_sandbox(sandbox_id: str = _SANDBOX_ID, running: bool = True) -> MagicM
     return sb
 
 
-def _mock_redis(set_nx_result: bool = True) -> AsyncMock:
+def _mock_redis(
+    set_nx_result: bool = True,
+    stored_sandbox_id: str | None = None,
+) -> AsyncMock:
+    """Create a mock redis client.
+
+    *stored_sandbox_id* is returned by ``get()`` calls (simulates the sandbox_id
+    stored under the ``_SANDBOX_ID_PREFIX`` key).  ``set_nx_result`` controls
+    whether the creation-lock ``SET NX`` succeeds.
+    """
     r = AsyncMock()
+    raw = stored_sandbox_id.encode() if stored_sandbox_id else None
+    r.get = AsyncMock(return_value=raw)
     r.set = AsyncMock(return_value=set_nx_result)
     r.delete = AsyncMock()
     return r
@@ -56,21 +64,6 @@ def _patch_redis(redis: AsyncMock):
     )
 
 
-def _patch_get_metadata(metadata: ChatSessionMetadata):
-    return patch(
-        "backend.copilot.tools.e2b_sandbox.get_session_metadata",
-        new_callable=AsyncMock,
-        return_value=metadata,
-    )
-
-
-def _patch_update_metadata():
-    return patch(
-        "backend.copilot.tools.e2b_sandbox.update_session_metadata",
-        new_callable=AsyncMock,
-    )
-
-
 # ---------------------------------------------------------------------------
 # _try_reconnect
 # ---------------------------------------------------------------------------
@@ -80,44 +73,43 @@ class TestTryReconnect:
     def test_reconnect_success(self):
         """Returns the sandbox when it connects and is running."""
         sb = _mock_sandbox()
+        redis = _mock_redis()
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(_try_reconnect(_SANDBOX_ID, _SESSION_ID, _API_KEY))
 
         assert result is sb
-        mock_update.assert_not_awaited()
+        redis.delete.assert_not_awaited()
 
-    def test_reconnect_not_running_clears_metadata(self):
-        """Clears sandbox_id in metadata when the sandbox is no longer running."""
+    def test_reconnect_not_running_clears_redis(self):
+        """Clears sandbox_id in Redis when the sandbox is no longer running."""
         sb = _mock_sandbox(running=False)
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(_try_reconnect(_SANDBOX_ID, _SESSION_ID, _API_KEY))
 
         assert result is None
-        mock_update.assert_awaited_once()
-        _, updated_meta = mock_update.call_args.args
-        assert updated_meta.e2b_sandbox_id is None
+        redis.delete.assert_awaited_once()
 
-    def test_reconnect_exception_clears_metadata(self):
-        """Clears sandbox_id in metadata when connect raises an exception."""
+    def test_reconnect_exception_clears_redis(self):
+        """Clears sandbox_id in Redis when connect raises an exception."""
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
             result = asyncio.run(_try_reconnect(_SANDBOX_ID, _SESSION_ID, _API_KEY))
 
         assert result is None
-        mock_update.assert_awaited_once()
+        redis.delete.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -127,14 +119,12 @@ class TestTryReconnect:
 
 class TestGetOrCreateSandbox:
     def test_reconnect_existing(self):
-        """When metadata has a valid sandbox_id, reconnect to it."""
+        """When Redis has a valid sandbox_id, reconnect to it."""
         sb = _mock_sandbox()
-        redis = _mock_redis()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata(),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(
@@ -143,17 +133,16 @@ class TestGetOrCreateSandbox:
 
         assert result is sb
         mock_cls.create.assert_not_called()
+        # No creation lock needed when sandbox already exists
         redis.set.assert_not_called()
 
-    def test_create_new_when_no_metadata(self):
-        """When metadata has no sandbox_id, claim lock and create a new sandbox."""
+    def test_create_new_when_no_stored_id(self):
+        """When Redis has no sandbox_id, claim lock and create a new sandbox."""
         new_sb = _mock_sandbox("sb-new")
-        redis = _mock_redis(set_nx_result=True)
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)),
-            _patch_update_metadata() as mock_update,
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
             result = asyncio.run(
@@ -165,21 +154,17 @@ class TestGetOrCreateSandbox:
         # Verify lifecycle param is set
         _, kwargs = mock_cls.create.call_args
         assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
-        # Metadata should be updated with the new sandbox_id
-        mock_update.assert_awaited_once()
-        _, saved_meta = mock_update.call_args.args
-        assert saved_meta.e2b_sandbox_id == "sb-new"
+        # sandbox_id should be saved to Redis
+        redis.set.assert_awaited()
         # Lock released
-        redis.delete.assert_awaited_once()
+        redis.delete.assert_awaited()
 
     def test_create_failure_clears_lock(self):
-        """If sandbox creation fails, the Redis lock is deleted."""
-        redis = _mock_redis(set_nx_result=True)
+        """If sandbox creation fails, the Redis creation lock is deleted."""
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)),
-            _patch_update_metadata(),
         ):
             mock_cls.create = AsyncMock(side_effect=RuntimeError("quota"))
             with pytest.raises(RuntimeError, match="quota"):
@@ -189,22 +174,29 @@ class TestGetOrCreateSandbox:
 
         redis.delete.assert_awaited_once()
 
-    def test_metadata_save_failure_kills_sandbox_and_clears_lock(self):
-        """If metadata save fails after creation, sandbox is killed and lock released."""
+    def test_redis_save_failure_kills_sandbox_and_clears_lock(self):
+        """If Redis save fails after creation, sandbox is killed and lock released."""
         new_sb = _mock_sandbox("sb-new")
-        redis = _mock_redis(set_nx_result=True)
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        # Make the sandbox_id set() call raise — but only the second call
+        # (first call is the creation lock SET NX, second is the sandbox_id SET)
+        call_count = 0
+
+        async def _set_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return True  # creation lock succeeds
+            raise RuntimeError("redis error")
+
+        redis.set = AsyncMock(side_effect=_set_side_effect)
+
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)),
-            patch(
-                "backend.copilot.tools.e2b_sandbox.update_session_metadata",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("db error"),
-            ),
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
-            with pytest.raises(RuntimeError, match="db error"):
+            with pytest.raises(RuntimeError, match="redis error"):
                 asyncio.run(
                     get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
                 )
@@ -215,23 +207,17 @@ class TestGetOrCreateSandbox:
         redis.delete.assert_awaited_once()
 
     def test_wait_for_lock_then_reconnect(self):
-        """When another process holds the lock, wait then reconnect to the created sandbox."""
+        """When another process holds the lock, wait then reconnect."""
         sb = _mock_sandbox("sb-other")
-        redis = _mock_redis(set_nx_result=False)
-        meta_with_sandbox = ChatSessionMetadata(e2b_sandbox_id="sb-other")
+        # First get() returns None (no sandbox yet), second returns the ID
+        redis = AsyncMock()
+        redis.get = AsyncMock(side_effect=[None, b"sb-other"])
+        redis.set = AsyncMock(return_value=False)  # lock not available
+        redis.delete = AsyncMock()
 
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            patch(
-                "backend.copilot.tools.e2b_sandbox.get_session_metadata",
-                new_callable=AsyncMock,
-                side_effect=[
-                    ChatSessionMetadata(e2b_sandbox_id=None),  # initial check
-                    meta_with_sandbox,  # poll in wait loop
-                ],
-            ),
-            _patch_update_metadata(),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
                 new_callable=AsyncMock,
@@ -248,12 +234,15 @@ class TestGetOrCreateSandbox:
         """When stored sandbox is stale (not running), clear it and create a new one."""
         stale_sb = _mock_sandbox("sb-stale", running=False)
         new_sb = _mock_sandbox("sb-fresh")
-        redis = _mock_redis(set_nx_result=True)
+        # First get() returns stale id (for reconnect check), then None (after clear)
+        redis = AsyncMock()
+        redis.get = AsyncMock(side_effect=[b"sb-stale", None])
+        redis.set = AsyncMock(return_value=True)
+        redis.delete = AsyncMock()
+
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id="sb-stale")),
-            _patch_update_metadata() as mock_update,
         ):
             mock_cls.connect = AsyncMock(return_value=stale_sb)
             mock_cls.create = AsyncMock(return_value=new_sb)
@@ -262,8 +251,8 @@ class TestGetOrCreateSandbox:
             )
 
         assert result is new_sb
-        # update_session_metadata called at least once (clear stale, then save new)
-        assert mock_update.await_count >= 1
+        # Redis delete called at least once to clear stale id
+        redis.delete.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -273,76 +262,50 @@ class TestGetOrCreateSandbox:
 
 class TestKillSandbox:
     def test_kill_existing_sandbox(self):
-        """Kill a running sandbox and clear its metadata entry."""
+        """Kill a running sandbox and clear its Redis entry."""
         sb = _mock_sandbox()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is True
         sb.kill.assert_awaited_once()
-        # Metadata cleared after successful kill
-        mock_update.assert_awaited_once()
-        _, cleared_meta = mock_update.call_args.args
-        assert cleared_meta.e2b_sandbox_id is None
+        # Redis key cleared after successful kill
+        redis.delete.assert_awaited_once()
 
     def test_kill_no_sandbox(self):
-        """No-op when metadata has no sandbox_id."""
-        with _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)):
+        """No-op when Redis has no sandbox_id."""
+        redis = _mock_redis(stored_sandbox_id=None)
+        with _patch_redis(redis):
             result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is False
 
-    def test_kill_clear_metadata_false_skips_metadata_update(self):
-        """When clear_metadata=False, metadata is NOT updated after kill.
+    def test_kill_connect_failure_keeps_redis(self):
+        """Returns False and leaves Redis entry intact when connect/kill fails.
 
-        Used by the delete-session route where the session row is already gone,
-        so attempting to write metadata would fail with a not-found error.
+        Keeping the sandbox_id in Redis allows the kill to be retried.
         """
-        sb = _mock_sandbox()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_update_metadata() as mock_update,
-        ):
-            mock_cls.connect = AsyncMock(return_value=sb)
-            result = asyncio.run(
-                kill_sandbox(
-                    _SESSION_ID,
-                    _API_KEY,
-                    e2b_sandbox_id=_SANDBOX_ID,
-                    clear_metadata=False,
-                )
-            )
-
-        assert result is True
-        sb.kill.assert_awaited_once()
-        mock_update.assert_not_awaited()
-
-    def test_kill_connect_failure_keeps_metadata(self):
-        """Returns False and leaves metadata intact when connect/kill fails.
-
-        Keeping the sandbox_id in metadata allows the kill to be retried.
-        """
-        with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
             result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is False
-        mock_update.assert_not_awaited()
+        redis.delete.assert_not_awaited()
 
-    def test_kill_timeout_keeps_metadata(self):
-        """Returns False and leaves metadata intact when the E2B call times out."""
+    def test_kill_timeout_keeps_redis(self):
+        """Returns False and leaves Redis entry intact when the E2B call times out."""
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
             patch(
                 "backend.copilot.tools.e2b_sandbox.asyncio.wait_for",
                 new_callable=AsyncMock,
@@ -352,7 +315,7 @@ class TestKillSandbox:
             result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is False
-        mock_update.assert_not_awaited()
+        redis.delete.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -362,34 +325,35 @@ class TestKillSandbox:
 
 class TestPauseSandbox:
     def test_pause_existing_sandbox(self):
-        """Pause a running sandbox; metadata sandbox_id is preserved."""
+        """Pause a running sandbox; Redis sandbox_id is preserved."""
         sb = _mock_sandbox()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata() as mock_update,
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is True
         sb.pause.assert_awaited_once()
-        # sandbox_id should remain in metadata (not cleared on pause)
-        mock_update.assert_not_awaited()
+        # sandbox_id should remain in Redis (not cleared on pause)
+        redis.delete.assert_not_awaited()
 
     def test_pause_no_sandbox(self):
-        """No-op when metadata has no sandbox_id."""
-        with _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)):
+        """No-op when Redis has no sandbox_id."""
+        redis = _mock_redis(stored_sandbox_id=None)
+        with _patch_redis(redis):
             result = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY))
 
         assert result is False
 
     def test_pause_connect_failure(self):
         """Returns False if connect fails."""
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata(),
+            _patch_redis(redis),
         ):
             mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
             result = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY))
@@ -404,12 +368,10 @@ class TestPauseSandbox:
         same sandbox_id is reused rather than a new one being created.
         """
         sb = _mock_sandbox(_SANDBOX_ID)
-        redis = _mock_redis()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
             _patch_redis(redis),
-            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=_SANDBOX_ID)),
-            _patch_update_metadata(),
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
 

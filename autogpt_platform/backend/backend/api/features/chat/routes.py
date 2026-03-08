@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field, field_validator
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
-from backend.copilot.db import get_session_metadata
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
@@ -258,15 +257,6 @@ async def delete_session(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
-    # Fetch metadata before deleting so sandbox_id is available after the
-    # session row is gone.
-    config = ChatConfig()
-    e2b_api_key = config.active_e2b_api_key
-    e2b_sandbox_id: str | None = None
-    if e2b_api_key:
-        meta = await get_session_metadata(session_id)
-        e2b_sandbox_id = meta.e2b_sandbox_id
-
     deleted = await delete_chat_session(session_id, user_id)
 
     if not deleted:
@@ -276,15 +266,10 @@ async def delete_session(
         )
 
     # Best-effort cleanup of the E2B sandbox (if any).
-    # clear_metadata=False because the session row is already deleted.
-    if e2b_api_key and e2b_sandbox_id:
+    # sandbox_id is in Redis; kill_sandbox() fetches it from there.
+    if e2b_api_key := ChatConfig().active_e2b_api_key:
         try:
-            await kill_sandbox(
-                session_id,
-                e2b_api_key,
-                e2b_sandbox_id=e2b_sandbox_id,
-                clear_metadata=False,
-            )
+            await kill_sandbox(session_id, e2b_api_key)
         except Exception:
             logger.warning(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]

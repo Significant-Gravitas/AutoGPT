@@ -57,7 +57,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import Config, Secrets
+from backend.util.settings import Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -238,53 +238,6 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
             logger.exception(
                 f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
             )
-
-
-def cleanup_abandoned_e2b_sandboxes():
-    """Kill paused E2B sandboxes belonging to sessions abandoned for >7 days.
-
-    Uses DB queries (ChatSession.metadata) to find sessions that still have an
-    active sandbox_id but have not been updated in _E2B_KILL_TIMEOUT seconds.
-    Kills each sandbox by ID (no connection to the running session needed) then
-    clears the sandbox_id from session metadata so the record stays clean.
-    """
-
-    async def _cleanup():
-        from datetime import datetime, timedelta, timezone
-
-        from e2b import AsyncSandbox
-
-        from backend.copilot.db import (
-            clear_e2b_sandbox_ids,
-            get_sessions_with_e2b_sandbox,
-        )
-        from backend.copilot.tools.e2b_sandbox import _E2B_KILL_TIMEOUT
-
-        api_key = Secrets().e2b_api_key
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=_E2B_KILL_TIMEOUT)
-        sessions = await get_sessions_with_e2b_sandbox(cutoff)
-        killed_session_ids: list[str] = []
-
-        for session_id, sandbox_id in sessions:
-            try:
-                await AsyncSandbox.kill(sandbox_id, api_key=api_key)
-                killed_session_ids.append(session_id)
-            except Exception as exc:
-                logger.warning(
-                    "[E2B] Failed to kill abandoned sandbox %s (session %s): %s",
-                    sandbox_id[:12],
-                    session_id[:12],
-                    exc,
-                )
-
-        if killed_session_ids:
-            await clear_e2b_sandbox_ids(killed_session_ids)
-            logger.info(
-                "[E2B] Cleaned up %d abandoned paused sandboxes",
-                len(killed_session_ids),
-            )
-
-    run_async(_cleanup())
 
 
 def cleanup_expired_files():
@@ -651,18 +604,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # E2B Sandbox Cleanup — only when E2B is configured
-            if Secrets().e2b_api_key:
-                self.scheduler.add_job(
-                    cleanup_abandoned_e2b_sandboxes,
-                    id="cleanup_abandoned_e2b_sandboxes",
-                    trigger="interval",
-                    hours=1,
-                    replace_existing=True,
-                    max_instances=1,
-                    jobstore=Jobstores.EXECUTION.value,
-                )
-
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -836,11 +777,6 @@ class Scheduler(AppService):
     def execute_ensure_embeddings_coverage(self):
         """Manually trigger embedding backfill for approved store agents."""
         return ensure_embeddings_coverage()
-
-    @expose
-    def execute_cleanup_abandoned_e2b_sandboxes(self):
-        """Manually trigger cleanup of abandoned paused E2B sandboxes."""
-        return cleanup_abandoned_e2b_sandboxes()
 
 
 class SchedulerClient(AppServiceClient):

@@ -75,19 +75,12 @@ class Usage(BaseModel):
     total_tokens: int
 
 
-class ChatSessionMetadata(BaseModel):
-    """Typed metadata stored in ChatSession.metadata (extensible)."""
-
-    e2b_sandbox_id: str | None = None
-
-
 class ChatSessionInfo(BaseModel):
     session_id: str
     user_id: str
     title: str | None = None
     usage: list[Usage]
     credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
-    metadata: ChatSessionMetadata = ChatSessionMetadata()
     started_at: datetime
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
@@ -104,8 +97,6 @@ class ChatSessionInfo(BaseModel):
         successful_agent_schedules = _parse_json_field(
             prisma_session.successfulAgentSchedules, default={}
         )
-        raw_metadata = _parse_json_field(prisma_session.metadata, default={})
-        metadata = ChatSessionMetadata.model_validate(raw_metadata)
 
         # Calculate usage from token counts
         usage = []
@@ -125,7 +116,6 @@ class ChatSessionInfo(BaseModel):
             title=prisma_session.title,
             usage=usage,
             credentials=credentials,
-            metadata=metadata,
             started_at=prisma_session.createdAt,
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,

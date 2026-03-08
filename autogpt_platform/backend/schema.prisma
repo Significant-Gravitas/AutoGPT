@@ -215,7 +215,6 @@ model ChatSession {
   // Session metadata
   title       String?
   credentials Json    @default("{}") // Map of provider -> credential metadata
-  metadata    Json    @default("{}") // Typed session metadata (see ChatSessionMetadata)
 
   // Rate limiting counters (stored as JSON maps)
   successfulAgentRuns      Json @default("{}") // Map of graph_id -> count

@@ -16,9 +16,9 @@ from prisma.types import (
 )
 
 from backend.data import db
-from backend.util.json import SafeJson, loads, sanitize_string
+from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSession, ChatSessionInfo, ChatSessionMetadata
+from .model import ChatMessage, ChatSession, ChatSessionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -359,65 +359,3 @@ async def update_tool_message_content(
             f"tool_call_id {tool_call_id}: {e}"
         )
         return False
-
-
-async def get_session_metadata(session_id: str) -> ChatSessionMetadata:
-    """Return the typed metadata for *session_id*, defaulting to an empty instance."""
-    session = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
-    if not session:
-        return ChatSessionMetadata()
-    return _parse_session_metadata(session.metadata)
-
-
-def _parse_session_metadata(raw: object) -> ChatSessionMetadata:
-    """Parse raw JSON field value into a typed ``ChatSessionMetadata``."""
-    if isinstance(raw, str):
-        raw = loads(raw, fallback={})
-    return ChatSessionMetadata.model_validate(raw if isinstance(raw, dict) else {})
-
-
-async def update_session_metadata(
-    session_id: str, metadata: ChatSessionMetadata
-) -> None:
-    """Persist *metadata* for *session_id*.
-
-    Serialises via Pydantic so only defined fields are stored, using
-    ``exclude_none=True`` to keep the JSON compact.
-    """
-    await PrismaChatSession.prisma().update(
-        where={"id": session_id},
-        data={"metadata": SafeJson(metadata.model_dump(exclude_none=True))},
-    )
-
-
-async def clear_e2b_sandbox_ids(session_ids: list[str]) -> None:
-    """Remove ``e2b_sandbox_id`` from metadata for the given sessions.
-
-    Used by the cleanup scheduler after successfully killing abandoned sandboxes
-    so they are not queried again on the next run.
-    """
-    for session_id in session_ids:
-        meta = await get_session_metadata(session_id)
-        await update_session_metadata(
-            session_id, meta.model_copy(update={"e2b_sandbox_id": None})
-        )
-
-
-async def get_sessions_with_e2b_sandbox(
-    updated_before: datetime,
-) -> list[tuple[str, str]]:
-    """Return (session_id, sandbox_id) pairs for sessions with an active E2B sandbox
-    that have not been updated since *updated_before*.
-
-    Used by the cleanup scheduler to kill abandoned paused sandboxes.
-    """
-    results = await db.query_raw_with_schema(
-        """
-        SELECT "id", "metadata"->>'e2b_sandbox_id' AS sandbox_id
-        FROM {schema_prefix}"ChatSession"
-        WHERE "metadata"->>'e2b_sandbox_id' IS NOT NULL
-          AND "updatedAt" < $1
-        """,
-        updated_before,
-    )
-    return [(row["id"], row["sandbox_id"]) for row in results if row["sandbox_id"]]
