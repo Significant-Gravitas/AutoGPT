@@ -746,6 +746,51 @@ Choose from different sonar model variants including deep-research for comprehen
 
 ---
 
+## Smart Agent
+
+### What it is
+An AI agent powered by Claude Agent SDK that executes connected AutoGPT tool nodes. Combines Claude's native agent capabilities with AutoGPT's tool ecosystem.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. Connect tool outputs to feed back results, creating autonomous reasoning loops.
+
+Configure agent_mode_max_iterations to control loop behavior: 0 for single decisions, -1 for infinite looping, or a positive number for max iterations. The block outputs tool calls or a finished message.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| task | The task for the agent to complete. Be specific about your requirements. | str | Yes |
+| model | The model to use for the agent. | "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-3-7-sonnet-20250219" \| "claude-3-haiku-20240307" | No |
+| max_iterations | Maximum number of agent iterations. Use -1 for unlimited (use carefully!). | int | No |
+| system_prompt | System prompt to guide the agent's behavior. | str | No |
+| working_directory | Working directory for the agent. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the task failed. | str |
+| result | The final result or answer from the agent. | str |
+| iterations_used | Number of iterations used to complete the task. | int |
+| tools_used | List of AutoGPT tools used during execution. | List[str] |
+| success | Whether the task was completed successfully. | bool |
+| tools | Tool calls output for connecting to other AutoGPT blocks. | Tools |
+| conversations | Conversation history with Claude Agent SDK. | List[Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Autonomous Agents**: Build agents that can independently decide which tools to use for tasks.
+
+**Dynamic Workflows**: Create workflows that adapt their execution path based on AI decisions.
+
+**Multi-Tool Orchestration**: Let AI coordinate multiple tools to accomplish complex goals.
+<!-- END MANUAL -->
+
+---
+
 ## Smart Decision Maker
 
 ### What it is
