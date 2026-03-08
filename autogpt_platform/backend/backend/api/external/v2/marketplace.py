@@ -16,6 +16,10 @@ from backend.api.external.middleware import require_auth, require_permission
 from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
 from backend.api.features.store import media as store_media
+from backend.api.features.store.db import (
+    StoreAgentsSortOptions,
+    StoreCreatorsSortOptions,
+)
 from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.virus_scanner import scan_content_safe
@@ -46,7 +50,7 @@ marketplace_router = APIRouter()
 
 
 # ============================================================================
-# Endpoints - Read (authenticated)
+# Agents
 # ============================================================================
 
 
@@ -55,35 +59,29 @@ marketplace_router = APIRouter()
     summary="List marketplace agents",
 )
 async def list_agents(
-    featured: bool = Query(default=False, description="Filter to featured agents only"),
+    featured: bool = Query(
+        default=False, description="Filter to only show featured agents"
+    ),
     creator: Optional[str] = Query(
         default=None, description="Filter by creator username"
     ),
-    sorted_by: Optional[Literal["rating", "runs", "name", "updated_at"]] = Query(
-        default=None, description="Sort field"
-    ),
-    search_query: Optional[str] = Query(default=None, description="Search query"),
     category: Optional[str] = Query(default=None, description="Filter by category"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
+    search_query: Optional[str] = Query(
+        default=None, description="Literal + semantic search on names and descriptions"
     ),
-    # This data is public. We still require auth for access tracking and rate limits.
+    sorted_by: Optional[Literal["rating", "runs", "name", "updated_at"]] = Query(
+        default=None,
+        description="Property to sort results by. Ignored if search_query is provided.",
+    ),
+    page: int = Query(ge=1, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentListResponse:
-    """
-    List agents available in the marketplace.
-
-    Supports filtering by featured status, creator, category, and search query.
-    Results can be sorted by rating, runs, name, or update time.
-    """
+    """List agents available in the marketplace, with optional filtering and sorting."""
     result = await store_cache._get_cached_store_agents(
         featured=featured,
         creator=creator,
-        sorted_by=sorted_by,
+        sorted_by=StoreAgentsSortOptions(sorted_by) if sorted_by else None,
         search_query=search_query,
         category=category,
         page=page,
@@ -101,17 +99,13 @@ async def list_agents(
 
 @marketplace_router.get(
     path="/agents/by-version/{version_id}",
-    summary="Get agent by store listing version ID",
+    summary="Get agent by listing version ID",
 )
 async def get_agent_by_version(
-    version_id: str = Path(description="Store listing version ID"),
-    # This data is public, but we still require auth for access tracking and rate limits
+    version_id: str,
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
-    """
-    Get detailed information about a marketplace agent by its store listing
-    version ID.
-    """
+    """Get details of a marketplace agent by its store listing version ID."""
     try:
         agent = await store_db.get_store_agent_by_version_id(version_id)
     except Exception:
@@ -126,14 +120,11 @@ async def get_agent_by_version(
     summary="Get agent details",
 )
 async def get_agent_details(
-    username: str = Path(description="Creator username"),
-    agent_name: str = Path(description="Agent slug/name"),
-    # This data is public. We still require auth for access tracking and rate limits.
+    username: str,
+    agent_name: str,
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
-    """
-    Get detailed information about a specific marketplace agent.
-    """
+    """Get details of a specific marketplace agent."""
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
 
@@ -142,70 +133,6 @@ async def get_agent_details(
     )
 
     return MarketplaceAgentDetails.from_internal(agent)
-
-
-@marketplace_router.get(
-    path="/creators",
-    summary="List marketplace creators",
-)
-async def list_creators(
-    featured: bool = Query(
-        default=False, description="Filter to featured creators only"
-    ),
-    search_query: Optional[str] = Query(default=None, description="Search query"),
-    sorted_by: Optional[Literal["agent_rating", "agent_runs", "num_agents"]] = Query(
-        default=None, description="Sort field"
-    ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-    # This data is public. We still require auth for access tracking and rate limits.
-    auth: APIAuthorizationInfo = Security(require_auth),
-) -> MarketplaceCreatorsResponse:
-    """
-    List creators on the marketplace.
-
-    Supports filtering by featured status and search query.
-    Results can be sorted by rating, runs, or number of agents.
-    """
-    result = await store_cache._get_cached_store_creators(
-        featured=featured,
-        search_query=search_query,
-        sorted_by=sorted_by,
-        page=page,
-        page_size=page_size,
-    )
-
-    return MarketplaceCreatorsResponse(
-        creators=[MarketplaceCreatorDetails.from_internal(c) for c in result.creators],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
-        total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
-    )
-
-
-@marketplace_router.get(
-    path="/creators/{username}",
-    summary="Get creator details",
-)
-async def get_creator_details(
-    username: str = Path(description="Creator username"),
-    # This data is public. We still require auth for access tracking and rate limits.
-    auth: APIAuthorizationInfo = Security(require_auth),
-) -> MarketplaceCreatorDetails:
-    """
-    Get detailed information about a specific marketplace creator.
-    """
-    username = urllib.parse.unquote(username).lower()
-
-    creator = await store_cache._get_cached_creator_details(username=username)
-
-    return MarketplaceCreatorDetails.from_internal(creator)
 
 
 @marketplace_router.post(
@@ -220,11 +147,7 @@ async def add_agent_to_library(
         require_permission(APIKeyPermission.READ_STORE, APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """
-    Add a marketplace agent to the authenticated user's library.
-
-    If the agent is already in the library, returns the existing entry.
-    """
+    """Add a marketplace agent to the authenticated user's library."""
     from backend.api.features.library import db as library_db
 
     username = urllib.parse.unquote(username).lower()
@@ -243,7 +166,7 @@ async def add_agent_to_library(
 
 
 # ============================================================================
-# Endpoints - Search
+# Search
 # ============================================================================
 
 
@@ -257,14 +180,8 @@ async def search_marketplace(
         default=None, description="Content types to filter by"
     ),
     category: Optional[str] = Query(default=None, description="Filter by category"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-    # This data is public, but we still require auth for access tracking and rate limits
+    page: int = Query(ge=1, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceSearchResponse:
     """
@@ -305,7 +222,62 @@ async def search_marketplace(
 
 
 # ============================================================================
-# Endpoints - Profile
+# Creators
+# ============================================================================
+
+
+@marketplace_router.get(
+    path="/creators",
+    summary="List marketplace creators",
+)
+async def list_creators(
+    featured: bool = Query(
+        default=False, description="Filter to featured creators only"
+    ),
+    search_query: Optional[str] = Query(
+        default=None, description="Literal + semantic search on names and descriptions"
+    ),
+    sorted_by: Optional[Literal["agent_rating", "agent_runs", "num_agents"]] = Query(
+        default=None, description="Sort field"
+    ),
+    page: int = Query(ge=1, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    auth: APIAuthorizationInfo = Security(require_auth),
+) -> MarketplaceCreatorsResponse:
+    """List or search marketplace creators."""
+    result = await store_cache._get_cached_store_creators(
+        featured=featured,
+        search_query=search_query,
+        sorted_by=StoreCreatorsSortOptions(sorted_by) if sorted_by else None,
+        page=page,
+        page_size=page_size,
+    )
+
+    return MarketplaceCreatorsResponse(
+        creators=[MarketplaceCreatorDetails.from_internal(c) for c in result.creators],
+        page=result.pagination.current_page,
+        page_size=result.pagination.page_size,
+        total_count=result.pagination.total_items,
+        total_pages=result.pagination.total_pages,
+    )
+
+
+@marketplace_router.get(
+    path="/creators/{username}",
+    summary="Get creator details",
+)
+async def get_creator_details(
+    username: str,
+    auth: APIAuthorizationInfo = Security(require_auth),
+) -> MarketplaceCreatorDetails:
+    """Get details on a marketplace creator."""
+    username = urllib.parse.unquote(username).lower()
+    creator = await store_cache._get_cached_creator_details(username=username)
+    return MarketplaceCreatorDetails.from_internal(creator)
+
+
+# ============================================================================
+# Profile
 # ============================================================================
 
 
@@ -318,9 +290,7 @@ async def get_profile(
         require_permission(APIKeyPermission.READ_STORE)
     ),
 ) -> MarketplaceCreatorDetails:
-    """
-    Get the authenticated user's marketplace profile.
-    """
+    """Get the authenticated user's marketplace profile."""
     profile = await store_db.get_user_profile(auth.user_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
@@ -329,7 +299,7 @@ async def get_profile(
     return MarketplaceCreatorDetails.from_internal(creator)
 
 
-@marketplace_router.post(
+@marketplace_router.patch(
     path="/profile",
     summary="Update my marketplace profile",
 )
@@ -339,14 +309,10 @@ async def update_profile(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceUserProfile:
-    """
-    Update the authenticated user's marketplace profile.
+    """Update the authenticated user's marketplace profile."""
+    from backend.api.features.store.model import ProfileUpdateRequest
 
-    Creates a profile if one doesn't exist.
-    """
-    from backend.api.features.store.model import Profile
-
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name=request.name,
         username=request.username,
         description=request.description,
@@ -354,12 +320,12 @@ async def update_profile(
         avatar_url=request.avatar_url,
     )
 
-    creator = await store_db.update_profile(auth.user_id, profile)
-    return MarketplaceUserProfile.from_internal(creator)
+    updated_profile = await store_db.update_profile(auth.user_id, profile)
+    return MarketplaceUserProfile.from_internal(updated_profile)
 
 
 # ============================================================================
-# Endpoints - Submissions (CRUD)
+# Submissions
 # ============================================================================
 
 
@@ -371,20 +337,10 @@ async def list_submissions(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE)
     ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: int = Query(ge=1, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
 ) -> MarketplaceAgentSubmissionsListResponse:
-    """
-    List your marketplace submissions.
-
-    Returns all submissions you've created, including drafts, pending,
-    approved, and rejected submissions.
-    """
+    """List the authenticated user's marketplace listing submissions."""
     result = await store_db.get_store_submissions(
         user_id=auth.user_id,
         page=page,
@@ -412,24 +368,56 @@ async def create_submission(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceAgentSubmission:
-    """
-    Create a new marketplace submission.
-
-    This submits an agent for review to be published in the marketplace.
-    The submission will be in PENDING status until reviewed by the team.
-    """
+    """Submit a new marketplace listing for review."""
     submission = await store_db.create_store_submission(
         user_id=auth.user_id,
-        agent_id=request.graph_id,
-        agent_version=request.graph_version,
+        graph_id=request.graph_id,
+        graph_version=request.graph_version,
         slug=request.slug,
         name=request.name,
         sub_heading=request.sub_heading,
         description=request.description,
+        instructions=request.instructions,
+        categories=request.categories,
         image_urls=request.image_urls,
         video_url=request.video_url,
-        categories=request.categories,
+        agent_output_demo_url=request.agent_output_demo_url,
+        changes_summary=request.changes_summary or "Initial Submission",
+        recommended_schedule_cron=request.recommended_schedule_cron,
     )
+
+    return MarketplaceAgentSubmission.from_internal(submission)
+
+
+@marketplace_router.put(
+    path="/submissions/{version_id}",
+    summary="Edit a submission",
+)
+async def edit_submission(
+    request: MarketplaceAgentSubmissionEditRequest,
+    version_id: str = Path(description="Store listing version ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_STORE)
+    ),
+) -> MarketplaceAgentSubmission:
+    """Update a pending marketplace listing submission."""
+    try:
+        submission = await store_db.edit_store_submission(
+            user_id=auth.user_id,
+            store_listing_version_id=version_id,
+            name=request.name,
+            sub_heading=request.sub_heading,
+            description=request.description,
+            image_urls=request.image_urls,
+            video_url=request.video_url,
+            agent_output_demo_url=request.agent_output_demo_url,
+            categories=request.categories,
+            changes_summary=request.changes_summary,
+            recommended_schedule_cron=request.recommended_schedule_cron,
+            instructions=request.instructions,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return MarketplaceAgentSubmission.from_internal(submission)
 
@@ -439,16 +427,12 @@ async def create_submission(
     summary="Delete a submission",
 )
 async def delete_submission(
-    submission_id: str = Path(description="Submission ID"),
+    submission_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> None:
-    """
-    Delete a marketplace submission.
-
-    Only submissions in DRAFT status can be deleted.
-    """
+    """Delete a marketplace listing submission."""
     success = await store_db.delete_store_submission(
         user_id=auth.user_id,
         submission_id=submission_id,
@@ -458,6 +442,11 @@ async def delete_submission(
         raise HTTPException(
             status_code=404, detail=f"Submission #{submission_id} not found"
         )
+
+
+# ============================================================================
+# Submission Media
+# ============================================================================
 
 
 @marketplace_router.post(
@@ -470,11 +459,7 @@ async def upload_submission_media(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceMediaUploadResponse:
-    """
-    Upload an image or video for a marketplace submission.
-
-    Accepted types: JPEG, PNG, GIF, WebP, MP4, WebM. Max size: 10MB.
-    """
+    """Upload an image or video for a marketplace submission. Max size: 10MB."""
     media_upload_limiter.check(auth.user_id)
 
     max_size = 10 * 1024 * 1024  # 10MB limit for external API
@@ -498,38 +483,3 @@ async def upload_submission_media(
     )
 
     return MarketplaceMediaUploadResponse(url=url)
-
-
-@marketplace_router.put(
-    path="/submissions/{version_id}",
-    summary="Edit a submission",
-)
-async def edit_submission(
-    request: MarketplaceAgentSubmissionEditRequest,
-    version_id: str = Path(description="Store listing version ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
-) -> MarketplaceAgentSubmission:
-    """
-    Edit an existing marketplace submission.
-    """
-    try:
-        submission = await store_db.edit_store_submission(
-            user_id=auth.user_id,
-            store_listing_version_id=version_id,
-            name=request.name,
-            sub_heading=request.sub_heading,
-            description=request.description,
-            image_urls=request.image_urls,
-            video_url=request.video_url,
-            agent_output_demo_url=request.agent_output_demo_url,
-            categories=request.categories,
-            changes_summary=request.changes_summary,
-            recommended_schedule_cron=request.recommended_schedule_cron,
-            instructions=request.instructions,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return MarketplaceAgentSubmission.from_internal(submission)

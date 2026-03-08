@@ -249,13 +249,13 @@ class BlockInfo(BaseModel):
     id: str
     name: str
     description: str
-    categories: list["BlockCategoryInfo"] = Field(default_factory=list)
-    contributors: list["BlockContributorInfo"] = Field(default_factory=list)
+    categories: list["BlockCategoryInfo"]
+    contributors: list["BlockContributorInfo"]
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     static_output: bool
-    ui_type: block_types.BlockType
-    costs: list["BlockCostInfo"] = Field(default_factory=list)
+    block_type: block_types.BlockType
+    costs: list["BlockCostInfo"]
 
     @classmethod
     def from_internal(cls, b: block_types.AnyBlockSchema) -> "BlockInfo":
@@ -273,7 +273,7 @@ class BlockInfo(BaseModel):
             input_schema=b.input_schema.jsonschema(),
             output_schema=b.output_schema.jsonschema(),
             static_output=b.static_output,
-            ui_type=b.block_type,
+            block_type=b.block_type,
             costs=[
                 BlockCostInfo(
                     cost_type=c.cost_type,
@@ -299,9 +299,10 @@ class BlockCostInfo(BaseModel):
         description="Type of cost (e.g., 'run', 'byte', 'second')"
     )
     cost_filter: dict[str, Any] = Field(
-        default_factory=dict, description="Conditions for this cost"
+        description="Partial node input that, if it matches the input "
+        "for an execution of this block, applies this cost to it"
     )
-    cost_amount: int = Field(description="Cost amount in credits")
+    cost_amount: int = Field(description="Cost (× $0.01) per {cost_type}")
 
 
 class BlockContributorInfo(BaseModel):
@@ -322,12 +323,10 @@ class AgentRunSchedule(BaseModel):
     graph_version: int
     cron: str = Field(description="Cron expression for the schedule")
     input_data: dict[str, Any] = Field(
-        default_factory=dict, description="Input data for scheduled executions"
+        description="Input data for scheduled executions"
     )
-    next_run_time: Optional[datetime] = Field(
-        default=None, description="Next scheduled run time"
-    )
-    is_enabled: bool = Field(default=True, description="Whether schedule is enabled")
+    next_run_time: Optional[datetime]
+    is_enabled: bool
 
     @classmethod
     def from_internal(cls, job: GraphExecutionJobInfo) -> Self:
@@ -388,10 +387,10 @@ class LibraryAgent(BaseModel):
     graph_version: int
     name: str
     description: str
-    is_favorite: bool = False
-    can_access_graph: bool = False
-    is_latest_version: bool = False
-    image_url: Optional[str] = None
+    is_favorite: bool
+    can_access_graph: bool
+    is_latest_version: bool
+    image_url: Optional[str]
     creator_name: str
     input_schema: dict[str, Any] = Field(description="Input schema for the agent")
     output_schema: dict[str, Any] = Field(description="Output schema for the agent")
@@ -455,11 +454,11 @@ class LibraryFolder(BaseModel):
 
     id: str
     name: str
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    parent_id: Optional[str] = None
-    agent_count: int = 0
-    subfolder_count: int = 0
+    icon: Optional[str]
+    color: Optional[str]
+    parent_id: Optional[str]
+    agent_count: int
+    subfolder_count: int
     created_at: datetime
     updated_at: datetime
 
@@ -483,11 +482,11 @@ class LibraryFolderTree(BaseModel):
 
     id: str
     name: str
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    agent_count: int = 0
-    subfolder_count: int = 0
-    children: list["LibraryFolderTree"] = Field(default_factory=list)
+    icon: Optional[str]
+    color: Optional[str]
+    agent_count: int
+    subfolder_count: int
+    children: list["LibraryFolderTree"]
 
     @classmethod
     def from_internal(cls, f: _LibraryFolderTree) -> Self:
@@ -555,7 +554,7 @@ class AgentPreset(BaseModel):
     name: str
     description: str
     is_active: bool
-    inputs: dict[str, Any] = Field(default_factory=dict)
+    inputs: dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -642,11 +641,11 @@ class AgentGraphRun(BaseModel):
     graph_version: int
     status: RunStatus
     started_at: datetime | None
-    ended_at: datetime | None = None
-    inputs: Optional[dict[str, Any]] = None
-    cost: int = Field(default=0, description="Cost in cents ($)")
-    duration: float = Field(default=0, description="Duration in seconds")
-    node_exec_count: int = Field(default=0, description="Number of nodes executed")
+    ended_at: datetime | None
+    inputs: Optional[dict[str, Any]]
+    cost: int = Field(description="Cost in cents ($)")
+    duration: float = Field(description="Duration in seconds")
+    node_exec_count: int = Field(description="Number of nodes executed")
 
     @classmethod
     def from_internal(cls, exec: GraphExecutionMeta) -> Self:
@@ -667,7 +666,7 @@ class AgentGraphRun(BaseModel):
 class AgentGraphRunDetails(AgentGraphRun):
     """Detailed information about a run including outputs and node executions."""
 
-    outputs: Optional[dict[str, list[Any]]] = None
+    outputs: Optional[dict[str, list[Any]]]
     node_executions: Optional[list[AgentNodeExecution]] = Field(
         description="Individual node execution results; "
         "may be omitted in case of permission restrictions"
@@ -708,15 +707,12 @@ class AgentNodeExecution(BaseModel):
 
     node_id: str
     status: RunStatus
-    input_data: dict[str, Any] = Field(
-        default_factory=dict, description="Input values keyed by pin name"
-    )
+    input_data: dict[str, Any] = Field(description="Input values keyed by pin name")
     output_data: dict[str, list[Any]] = Field(
-        default_factory=dict,
         description="Output values keyed by pin name, each with a list of results",
     )
-    started_at: datetime | None = None
-    ended_at: datetime | None = None
+    started_at: datetime | None
+    ended_at: datetime | None
 
 
 class AgentRunListResponse(PaginatedResponse):
@@ -748,12 +744,8 @@ class AgentRunReview(BaseModel):
     graph_id: str
     graph_version: int
     payload: JsonValue = Field(description="Data to be reviewed")
-    instructions: Optional[str] = Field(
-        default=None, description="Instructions for the reviewer"
-    )
-    editable: bool = Field(
-        default=True, description="Whether the reviewer can edit the data"
-    )
+    instructions: Optional[str] = Field(description="Instructions for the reviewer")
+    editable: bool = Field(description="Whether the reviewer can edit the data")
     status: AgentRunReviewStatus
     created_at: datetime
 
@@ -828,10 +820,8 @@ class CreditTransaction(BaseModel):
     amount: int = Field(description="Transaction amount (positive or negative)")
     type: TransactionType
     transaction_time: datetime
-    running_balance: Optional[int] = Field(
-        default=None, description="Balance after this transaction"
-    )
-    description: Optional[str] = None
+    running_balance: Optional[int] = Field(description="Balance after this transaction")
+    description: Optional[str]
 
     @classmethod
     def from_internal(cls, t: UserTransaction) -> Self:
@@ -861,10 +851,8 @@ class CredentialInfo(BaseModel):
 
     id: str
     provider: str = Field(description="Integration provider name")
-    title: Optional[str] = Field(
-        default=None, description="User-assigned title for this credential"
-    )
-    scopes: list[str] = Field(default_factory=list, description="Granted scopes")
+    title: Optional[str] = Field(description="User-assigned title for this credential")
+    scopes: list[str] = Field(description="Granted scopes")
 
     @classmethod
     def from_internal(cls, cred: Credentials) -> Self:
@@ -897,21 +885,12 @@ class CredentialCreateRequest(BaseModel):
     api_key: str = Field(description="API key value")
 
 
-class CredentialDeleteResponse(BaseModel):
-    """Response after deleting a credential."""
-
-    deleted: bool = True
-
-
 class CredentialRequirement(BaseModel):
     """A credential requirement for an agent (graph)."""
 
     provider: str = Field(description="Required provider name")
-    required_scopes: list[str] = Field(
-        default_factory=list, description="Required scopes"
-    )
+    required_scopes: list[str] = Field(description="Required scopes")
     matching_credentials: list[CredentialInfo] = Field(
-        default_factory=list,
         description="User's credentials that match this requirement",
     )
 
@@ -951,9 +930,9 @@ class MarketplaceAgent(BaseModel):
     sub_heading: str
     creator: str
     creator_avatar: str
-    runs: int = Field(default=0, description="Number of times this agent has been run")
-    rating: float = Field(default=0.0, description="Average rating")
-    image_url: str = ""
+    runs: int = Field(description="Number of times this agent has been run")
+    rating: float = Field(description="Average rating")
+    image_url: str
 
     @classmethod
     def from_internal(cls, agent: StoreAgent) -> Self:
@@ -974,15 +953,17 @@ class MarketplaceAgentDetails(MarketplaceAgent):
     """Detailed information about a marketplace agent."""
 
     store_listing_version_id: str
+    versions: list[int] = Field(
+        description="Available store listing versions (sequential; != graph version)",
+    )
     instructions: Optional[str]
     categories: list[str]
     image_urls: list[str]
-    video_url: str = ""
-    versions: list[str] = Field(
-        description="Available store listing versions (sequential; != graph version)",
-    )
-    agent_graph_id: str
-    agent_graph_versions: list[str]
+    video_url: Optional[str]
+    agent_output_demo_url: str
+    recommended_schedule_cron: Optional[str]
+    graph_id: str
+    graph_versions: list[int]
     last_updated: datetime
 
     @classmethod
@@ -992,6 +973,7 @@ class MarketplaceAgentDetails(MarketplaceAgent):
         return cls(
             store_listing_version_id=agent.store_listing_version_id,
             slug=agent.slug,
+            versions=[int(v) for v in agent.versions],
             name=agent.agent_name,
             description=agent.description,
             sub_heading=agent.sub_heading,
@@ -1003,10 +985,11 @@ class MarketplaceAgentDetails(MarketplaceAgent):
             rating=agent.rating,
             image_url=agent.agent_image[0] if agent.agent_image else "",
             image_urls=agent.agent_image,
-            video_url=agent.agent_video,
-            versions=agent.versions,
-            agent_graph_id=agent.graph_id,
-            agent_graph_versions=agent.graph_versions,
+            video_url=agent.agent_video or None,
+            agent_output_demo_url=agent.agent_output_demo,
+            recommended_schedule_cron=agent.recommended_schedule_cron or None,
+            graph_id=agent.graph_id,
+            graph_versions=[int(v) for v in agent.graph_versions],
             last_updated=agent.last_updated,
         )
 
@@ -1040,13 +1023,13 @@ class MarketplaceUserProfile(BaseModel):
 
 
 class MarketplaceUserProfileUpdateRequest(BaseModel):
-    """Request to update marketplace profile."""
+    """Request to partially update marketplace profile."""
 
-    name: str = Field(description="Display name")
-    username: str = Field(description="Unique username")
-    description: str = Field(default="", description="Bio/description")
-    links: list[str] = Field(default_factory=list, description="Profile links")
-    avatar_url: str = Field(default="", description="Avatar image URL")
+    name: Optional[str] = Field(default=None, description="Display name")
+    username: Optional[str] = Field(default=None, description="Unique username")
+    description: Optional[str] = Field(default=None, description="Bio/description")
+    links: Optional[list[str]] = Field(default=None, description="Profile links")
+    avatar_url: Optional[str] = Field(default=None, description="Avatar image URL")
 
 
 class MarketplaceCreatorDetails(MarketplaceUserProfile):
@@ -1087,46 +1070,48 @@ SubmissionStatus: TypeAlias = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"
 class MarketplaceAgentSubmission(BaseModel):
     """A marketplace submission."""
 
+    listing_version_id: str
+    listing_version: int
     graph_id: str
     graph_version: int
+    slug: str
     name: str
     sub_heading: str
-    slug: str
     description: str
-    instructions: Optional[str] = None
-    image_urls: list[str] = Field(default_factory=list)
-    date_submitted: datetime
+    instructions: Optional[str]
+    categories: list[str]
+    image_urls: list[str]
+    video_url: Optional[str]
+    agent_output_demo_url: Optional[str]
+    submitted_at: Optional[datetime]
     status: SubmissionStatus
-    runs: int = Field(default=0)
-    rating: float = Field(default=0.0)
-    store_listing_version_id: Optional[str] = None
-    version: Optional[int] = None
-    review_comments: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    video_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
+    run_count: int
+    rating: float
+    review_comments: Optional[str]
+    reviewed_at: Optional[datetime]
 
     @classmethod
     def from_internal(cls, sub: StoreSubmission) -> Self:
         return cls(
-            graph_id=sub.agent_id,
-            graph_version=sub.agent_version,
+            listing_version_id=sub.listing_version_id,
+            listing_version=sub.listing_version,
+            graph_id=sub.graph_id,
+            graph_version=sub.graph_version,
+            slug=sub.slug,
             name=sub.name,
             sub_heading=sub.sub_heading,
-            slug=sub.slug,
             description=sub.description,
             instructions=sub.instructions,
+            categories=sub.categories,
             image_urls=sub.image_urls,
-            date_submitted=sub.date_submitted,
+            video_url=sub.video_url,
+            agent_output_demo_url=sub.agent_output_demo_url,
+            submitted_at=sub.submitted_at,
             status=sub.status.value,
-            runs=sub.runs,
-            rating=sub.rating,
-            store_listing_version_id=sub.store_listing_version_id,
-            version=sub.version,
+            run_count=sub.run_count,
+            rating=sub.review_avg_rating,
             review_comments=sub.review_comments,
             reviewed_at=sub.reviewed_at,
-            video_url=sub.video_url,
-            categories=sub.categories,
         )
 
 
@@ -1141,7 +1126,15 @@ class MarketplaceAgentSubmissionCreateRequest(BaseModel):
     sub_heading: str = Field(description="Short tagline")
     image_urls: list[str] = Field(default_factory=list)
     video_url: Optional[str] = None
+    agent_output_demo_url: Optional[str] = None
     categories: list[str] = Field(default_factory=list)
+    instructions: Optional[str] = Field(default=None, description="Usage instructions")
+    changes_summary: Optional[str] = Field(
+        default="Initial Submission", description="Summary of changes"
+    )
+    recommended_schedule_cron: Optional[str] = Field(
+        default=None, description="Recommended cron schedule"
+    )
 
 
 class MarketplaceAgentSubmissionsListResponse(PaginatedResponse):
@@ -1188,9 +1181,9 @@ class MarketplaceSearchResult(BaseModel):
     content_type: SearchContentType
     content_id: str
     searchable_text: str
-    metadata: Optional[dict] = None
-    updated_at: Optional[datetime] = None
-    combined_score: Optional[float] = None
+    metadata: Optional[dict]
+    updated_at: Optional[datetime]
+    combined_score: Optional[float]
 
 
 class MarketplaceSearchResponse(PaginatedResponse):

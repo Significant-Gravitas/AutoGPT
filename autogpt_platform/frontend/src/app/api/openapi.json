@@ -6277,7 +6277,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Profile" }
+              "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" }
             }
           },
           "required": true
@@ -11334,26 +11334,6 @@
         ],
         "title": "PostmarkSubscriptionChangeWebhook"
       },
-      "Profile": {
-        "properties": {
-          "username": { "type": "string", "title": "Username" },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatar Url"
-          },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          }
-        },
-        "type": "object",
-        "required": ["username", "name", "description", "avatar_url", "links"],
-        "title": "Profile",
-        "description": "Marketplace user profile (only attributes that the user can update)"
-      },
       "ProfileDetails": {
         "properties": {
           "username": { "type": "string", "title": "Username" },
@@ -11381,6 +11361,36 @@
         ],
         "title": "ProfileDetails",
         "description": "Marketplace user profile (including read-only fields)"
+      },
+      "ProfileUpdateRequest": {
+        "properties": {
+          "username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Username"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "title": "ProfileUpdateRequest",
+        "description": "Marketplace user profile (only attributes that the user can update)"
       },
       "Provider": {
         "properties": {

@@ -220,6 +220,7 @@ async def delete_graph(
     ):
         await on_graph_deactivate(active_version, user_id=auth.user_id)
 
+    # FIXME: maybe only expose delete for library agents?
     version_count = await graph_db.delete_graph(graph_id, user_id=auth.user_id)
     return GraphDeleteResponse(version_count=version_count)
 

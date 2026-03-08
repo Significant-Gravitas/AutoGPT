@@ -7,7 +7,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import Profile
+from .model import ProfileUpdateRequest
 
 
 @pytest.fixture(autouse=True)
@@ -297,7 +297,7 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update = mocker.AsyncMock(return_value=mock_profile)
 
     # Test data
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name="Test Creator",
         username="creator",
         description="Test description",

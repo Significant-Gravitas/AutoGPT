@@ -11,18 +11,13 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
-from starlette.status import HTTP_201_CREATED
+from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import APIKeyCredentials
 
-from ..models import (
-    CredentialCreateRequest,
-    CredentialDeleteResponse,
-    CredentialInfo,
-    CredentialListResponse,
-)
+from ..models import CredentialCreateRequest, CredentialInfo, CredentialListResponse
 from .helpers import creds_manager
 
 logger = logging.getLogger(__name__)
@@ -89,13 +84,14 @@ async def create_credential(
 @credentials_router.delete(
     path="/credentials/{credential_id}",
     summary="Delete a credential",
+    status_code=HTTP_204_NO_CONTENT,
 )
 async def delete_credential(
     credential_id: str = Path(description="Credential ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
-) -> CredentialDeleteResponse:
+) -> None:
     """
     Delete an integration credential.
 
@@ -111,4 +107,3 @@ async def delete_credential(
         )
 
     await creds_manager.delete(auth.user_id, credential_id)
-    return CredentialDeleteResponse()
