@@ -45,10 +45,6 @@ _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait
 # pause is the primary mechanism).  4 hours matches typical long-running sessions.
 _E2B_SANDBOX_TIMEOUT = 14400  # 4 hours in seconds
 
-# Redis TTL for the sandbox_id key.  Kept much longer than the e2b timeout so
-# we can reconnect to a paused sandbox even after the auto-pause timer fires.
-_REDIS_SANDBOX_TTL = 172800  # 48 hours in seconds
-
 
 async def _try_reconnect(
     sandbox_id: str, api_key: str, redis_key: str, timeout: int
@@ -74,7 +70,7 @@ async def get_or_create_sandbox(
     api_key: str,
     template: str = "base",
     sandbox_timeout: int = _E2B_SANDBOX_TIMEOUT,
-    redis_ttl: int = _REDIS_SANDBOX_TTL,
+    redis_ttl: int = 43200,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -84,9 +80,8 @@ async def get_or_create_sandbox(
 
     *sandbox_timeout* controls how long the e2b sandbox may run continuously
     before the ``on_timeout: pause`` lifecycle rule fires (default 4 h).
-    *redis_ttl* controls how long the sandbox_id is kept in Redis so we can
-    reconnect to a paused sandbox (default 48 h — much longer than the e2b
-    timeout so paused sandboxes are always reconnectable within a session).
+    *redis_ttl* controls how long the sandbox_id is kept in Redis; should
+    match ``session_ttl`` so the entry expires with the session (default 12 h).
     """
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
