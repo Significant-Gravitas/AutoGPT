@@ -74,7 +74,7 @@ def _patch_redis(redis: AsyncMock):
 
 class TestTryReconnect:
     def test_reconnect_success(self):
-        """Returns the sandbox when it connects and is running."""
+        """Returns the sandbox when it connects and is running; refreshes Redis TTL."""
         sb = _mock_sandbox()
         redis = _mock_redis()
         with (
@@ -86,6 +86,8 @@ class TestTryReconnect:
 
         assert result is sb
         redis.delete.assert_not_awaited()
+        # TTL must be refreshed so an active session cannot lose its key at expiry.
+        redis.set.assert_awaited_once()
 
     def test_reconnect_not_running_clears_redis(self):
         """Clears sandbox_id in Redis when the sandbox is no longer running."""
@@ -136,8 +138,8 @@ class TestGetOrCreateSandbox:
 
         assert result is sb
         mock_cls.create.assert_not_called()
-        # No creation slot needed when sandbox already exists
-        redis.set.assert_not_called()
+        # redis.set called once to refresh TTL, not to claim a creation slot
+        redis.set.assert_awaited_once()
 
     def test_create_new_when_no_stored_id(self):
         """When Redis has no sandbox_id, claim slot and create a new sandbox."""

@@ -37,7 +37,7 @@ the Redis key expires.
 import asyncio
 import contextlib
 import logging
-from typing import Callable, Coroutine, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from e2b import AsyncSandbox
 
@@ -93,6 +93,8 @@ async def _try_reconnect(
     try:
         sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
         if await sandbox.is_running():
+            # Refresh TTL so an active session cannot lose its sandbox_id at expiry.
+            await _set_stored_sandbox_id(session_id, sandbox_id)
             return sandbox
     except Exception as exc:
         logger.warning("[E2B] Reconnect to %.12s failed: %s", sandbox_id, exc)
@@ -116,7 +118,7 @@ async def get_or_create_sandbox(
     removes the need for a separate lock key.
 
     *timeout* controls how long the e2b sandbox may run continuously before
-    the ``on_timeout`` lifecycle rule fires (default: 1 h).
+    the ``on_timeout`` lifecycle rule fires (default: 3 h).
     *on_timeout* controls what happens on timeout: ``"pause"`` (default, free)
     or ``"kill"``.
     """
@@ -188,7 +190,7 @@ async def _act_on_sandbox(
     session_id: str,
     api_key: str,
     action: str,
-    fn: Callable[[AsyncSandbox], Coroutine],
+    fn: Callable[[AsyncSandbox], Awaitable[Any]],
     *,
     clear_stored_id: bool = False,
 ) -> bool:
