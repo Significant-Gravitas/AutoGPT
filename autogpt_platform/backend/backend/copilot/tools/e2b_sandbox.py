@@ -9,10 +9,20 @@ share a single coherent filesystem with no local sync required.
 Lifecycle
 ---------
 1. **Turn start** – connect to the existing sandbox (sandbox_id in Redis) or
-   create a new one via ``get_or_create_sandbox()``.
+   create a new one via ``get_or_create_sandbox()``.  ``connect()`` in e2b v2
+   auto-resumes paused sandboxes.
 2. **Execution** – ``bash_exec`` and MCP file tools operate directly on the
    sandbox's ``/home/user`` filesystem.
-3. **Session expiry** – E2B sandbox is killed by its own timeout (session_ttl).
+3. **Turn end** – the sandbox is paused via ``pause_sandbox()`` so idle time
+   between turns costs nothing.
+4. **Session delete** – ``kill_sandbox()`` fully terminates the sandbox.
+
+Cost control
+------------
+Sandboxes are created with ``lifecycle={"on_timeout": "pause"}`` so they
+auto-pause (rather than terminate) if they somehow remain running past the
+timeout.  The explicit per-turn ``pause_sandbox()`` call is the primary
+mechanism; the lifecycle setting is a safety net.
 """
 
 import asyncio
@@ -114,7 +124,10 @@ async def get_or_create_sandbox(
     # 3. Create a new sandbox.
     try:
         sandbox = await AsyncSandbox.create(
-            template=template, api_key=api_key, timeout=timeout
+            template=template,
+            api_key=api_key,
+            timeout=timeout,
+            lifecycle={"on_timeout": "pause"},
         )
     except Exception:
         await redis.delete(redis_key)
@@ -127,6 +140,44 @@ async def get_or_create_sandbox(
         session_id,
     )
     return sandbox
+
+
+async def pause_sandbox(session_id: str, api_key: str) -> bool:
+    """Pause the E2B sandbox for *session_id* to stop billing between turns.
+
+    Paused sandboxes cost nothing and are resumed automatically by
+    ``get_or_create_sandbox()`` on the next turn (via ``AsyncSandbox.connect()``).
+
+    Returns ``True`` if the sandbox was found and paused, ``False`` otherwise.
+    Safe to call even when no sandbox exists for the session.
+    """
+    redis = await get_redis_async()
+    redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
+    raw = await redis.get(redis_key)
+    if not raw:
+        return False
+
+    sandbox_id = raw if isinstance(raw, str) else raw.decode()
+    if sandbox_id == _CREATING:
+        return False
+
+    try:
+        sandbox = await AsyncSandbox.connect(sandbox_id, api_key=api_key)
+        await sandbox.pause()
+        logger.info(
+            "[E2B] Paused sandbox %.12s for session %.12s",
+            sandbox_id,
+            session_id,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Failed to pause sandbox %.12s for session %.12s: %s",
+            sandbox_id,
+            session_id,
+            exc,
+        )
+        return False
 
 
 async def kill_sandbox(session_id: str, api_key: str) -> bool:

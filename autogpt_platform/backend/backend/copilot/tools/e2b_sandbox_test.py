@@ -16,6 +16,7 @@ from .e2b_sandbox import (
     _try_reconnect,
     get_or_create_sandbox,
     kill_sandbox,
+    pause_sandbox,
 )
 
 _KEY = f"{_SANDBOX_REDIS_PREFIX}sess-123"
@@ -131,6 +132,9 @@ class TestGetOrCreateSandbox:
 
         assert result is sb
         redis.setex.assert_awaited_once_with(_KEY, _TIMEOUT, "sb-new")
+        mock_cls.create.assert_awaited_once()
+        _, kwargs = mock_cls.create.call_args
+        assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
 
     def test_create_failure_clears_lock(self):
         """If sandbox creation fails, the Redis lock is deleted."""
@@ -270,3 +274,53 @@ class TestKillSandbox:
 
         assert result is False
         redis.delete.assert_awaited_once_with(_KEY)
+
+
+# ---------------------------------------------------------------------------
+# pause_sandbox
+# ---------------------------------------------------------------------------
+
+
+class TestPauseSandbox:
+    def test_pause_existing_sandbox(self):
+        """Pause a running sandbox."""
+        sb = _mock_sandbox()
+        sb.pause = AsyncMock()
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            result = asyncio.run(pause_sandbox("sess-123", _API_KEY))
+
+        assert result is True
+        sb.pause.assert_awaited_once()
+
+    def test_pause_no_sandbox(self):
+        """No-op when no sandbox exists in Redis."""
+        redis = _mock_redis(get_val=None)
+        with _patch_redis(redis):
+            result = asyncio.run(pause_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+
+    def test_pause_creating_state(self):
+        """Returns False when sandbox is still being created."""
+        redis = _mock_redis(get_val=_CREATING)
+        with _patch_redis(redis):
+            result = asyncio.run(pause_sandbox("sess-123", _API_KEY))
+
+        assert result is False
+
+    def test_pause_connect_failure(self):
+        """Returns False if connect fails."""
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(side_effect=ConnectionError("gone"))
+            result = asyncio.run(pause_sandbox("sess-123", _API_KEY))
+
+        assert result is False

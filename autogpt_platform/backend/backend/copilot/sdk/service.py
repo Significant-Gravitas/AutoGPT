@@ -60,7 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox
+from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
@@ -1460,6 +1460,17 @@ async def stream_chat_completion_sdk(
                     log_prefix,
                     upload_err,
                     exc_info=True,
+                )
+
+        # --- Pause E2B sandbox to stop billing between turns ---
+        if config.use_e2b_sandbox and config.e2b_api_key:
+            try:
+                await asyncio.shield(
+                    pause_sandbox(session_id=session_id, api_key=config.e2b_api_key)
+                )
+            except Exception as pause_err:
+                logger.warning(
+                    "%s Failed to pause E2B sandbox: %s", log_prefix, pause_err
                 )
 
         if sdk_cwd:
