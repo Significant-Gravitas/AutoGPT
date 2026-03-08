@@ -1911,6 +1911,12 @@ class FileOperation(StrEnum):
     DELETE = "delete"
 
 
+class FileOperationInput(TypedDict):
+    path: str
+    content: str
+    operation: str
+
+
 class GithubMultiFileCommitBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -1926,9 +1932,9 @@ class GithubMultiFileCommitBlock(Block):
             description="Commit message",
             placeholder="Add new feature",
         )
-        files: list[dict] = SchemaField(
+        files: list[FileOperationInput] = SchemaField(
             description=(
-                "List of file operations. Each item is a dict with: "
+                "List of file operations. Each item has: "
                 "'path' (file path), 'content' (file content, omit for delete), "
                 "'operation' (create/update/delete)"
             ),
@@ -1986,7 +1992,7 @@ class GithubMultiFileCommitBlock(Block):
         repo_url: str,
         branch: str,
         commit_message: str,
-        files: list[dict],
+        files: list[FileOperationInput],
     ) -> tuple[str, str]:
         api = get_api(credentials)
 

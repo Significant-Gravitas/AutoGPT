@@ -1,6 +1,9 @@
 import re
+from typing import Literal
 
 from typing_extensions import TypedDict
+
+MergeMethod = Literal["merge", "squash", "rebase"]
 
 from backend.blocks._base import (
     Block,
@@ -565,7 +568,7 @@ class GithubMergePullRequestBlock(Block):
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
         )
-        merge_method: str = SchemaField(
+        merge_method: MergeMethod = SchemaField(
             description="Merge method to use: merge, squash, or rebase",
             default="merge",
         )
@@ -617,7 +620,7 @@ class GithubMergePullRequestBlock(Block):
     async def merge_pr(
         credentials: GithubCredentials,
         pr_url: str,
-        merge_method: str,
+        merge_method: MergeMethod,
         commit_title: str,
         commit_message: str,
     ) -> tuple[str, bool, str]:
