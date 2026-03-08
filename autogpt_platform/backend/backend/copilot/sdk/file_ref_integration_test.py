@@ -259,4 +259,4 @@ async def test_read_file_handler_access_denied():
         result = await _read_file_handler({"file_path": "/etc/passwd"})
 
     assert result["isError"]
-    assert "denied" in result["content"][0]["text"].lower()
+    assert "not allowed" in result["content"][0]["text"].lower()
