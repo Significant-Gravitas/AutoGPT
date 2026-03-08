@@ -1,10 +1,10 @@
 """Tests for e2b_sandbox: get_or_create_sandbox, _try_reconnect, kill_sandbox.
 
-sandbox_id is stored in Redis (under _SANDBOX_ID_PREFIX + session_id).
-Redis is used for both the short-lived creation lock and the sandbox_id store.
+sandbox_id is stored in Redis under _SANDBOX_KEY_PREFIX + session_id.
+The same key doubles as a creation lock via a "creating" sentinel value.
 
 Tests mock:
-- ``get_redis_async`` (both the creation lock and sandbox_id storage)
+- ``get_redis_async`` (sandbox key storage + creation lock sentinel)
 - ``AsyncSandbox`` (E2B SDK)
 
 Tests are synchronous (using asyncio.run) to avoid conflicts with the
@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from .e2b_sandbox import (
+    _CREATING_SENTINEL,
     _try_reconnect,
     get_or_create_sandbox,
     kill_sandbox,
@@ -45,8 +46,10 @@ def _mock_redis(
     """Create a mock redis client.
 
     *stored_sandbox_id* is returned by ``get()`` calls (simulates the sandbox_id
-    stored under the ``_SANDBOX_ID_PREFIX`` key).  ``set_nx_result`` controls
-    whether the creation-lock ``SET NX`` succeeds.
+    stored under the ``_SANDBOX_KEY_PREFIX`` key).  ``set_nx_result`` controls
+    whether the creation-slot ``SET NX`` succeeds.
+
+    If *stored_sandbox_id* is None the key is absent (no sandbox, no lock).
     """
     r = AsyncMock()
     raw = stored_sandbox_id.encode() if stored_sandbox_id else None
@@ -128,16 +131,16 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(
-                get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
             )
 
         assert result is sb
         mock_cls.create.assert_not_called()
-        # No creation lock needed when sandbox already exists
+        # No creation slot needed when sandbox already exists
         redis.set.assert_not_called()
 
     def test_create_new_when_no_stored_id(self):
-        """When Redis has no sandbox_id, claim lock and create a new sandbox."""
+        """When Redis has no sandbox_id, claim slot and create a new sandbox."""
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
@@ -146,7 +149,7 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
             result = asyncio.run(
-                get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
             )
 
         assert result is new_sb
@@ -156,11 +159,27 @@ class TestGetOrCreateSandbox:
         assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
         # sandbox_id should be saved to Redis
         redis.set.assert_awaited()
-        # Lock released
-        redis.delete.assert_awaited()
 
-    def test_create_failure_clears_lock(self):
-        """If sandbox creation fails, the Redis creation lock is deleted."""
+    def test_create_with_on_timeout_kill(self):
+        """on_timeout='kill' is passed through to AsyncSandbox.create."""
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, on_timeout="kill"
+                )
+            )
+
+        _, kwargs = mock_cls.create.call_args
+        assert kwargs.get("lifecycle") == {"on_timeout": "kill"}
+
+    def test_create_failure_releases_slot(self):
+        """If sandbox creation fails, the Redis creation slot is deleted."""
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
@@ -169,24 +188,24 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(side_effect=RuntimeError("quota"))
             with pytest.raises(RuntimeError, match="quota"):
                 asyncio.run(
-                    get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
                 )
 
         redis.delete.assert_awaited_once()
 
-    def test_redis_save_failure_kills_sandbox_and_clears_lock(self):
-        """If Redis save fails after creation, sandbox is killed and lock released."""
+    def test_redis_save_failure_kills_sandbox_and_releases_slot(self):
+        """If Redis save fails after creation, sandbox is killed and slot released."""
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
-        # Make the sandbox_id set() call raise — but only the second call
-        # (first call is the creation lock SET NX, second is the sandbox_id SET)
+        # First set() call = creation slot SET NX (returns True).
+        # Second set() call = sandbox_id save (raises).
         call_count = 0
 
         async def _set_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return True  # creation lock succeeds
+                return True  # creation slot claimed
             raise RuntimeError("redis error")
 
         redis.set = AsyncMock(side_effect=_set_side_effect)
@@ -198,21 +217,22 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(return_value=new_sb)
             with pytest.raises(RuntimeError, match="redis error"):
                 asyncio.run(
-                    get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
                 )
 
         # Sandbox must be killed to avoid leaking it
         new_sb.kill.assert_awaited_once()
-        # Lock must always be released
+        # Creation slot must always be released
         redis.delete.assert_awaited_once()
 
-    def test_wait_for_lock_then_reconnect(self):
-        """When another process holds the lock, wait then reconnect."""
+    def test_wait_for_creating_sentinel_then_reconnect(self):
+        """When the key holds the 'creating' sentinel, wait then reconnect."""
         sb = _mock_sandbox("sb-other")
-        # First get() returns None (no sandbox yet), second returns the ID
+        # First get() returns the sentinel; second returns the real ID.
         redis = AsyncMock()
-        redis.get = AsyncMock(side_effect=[None, b"sb-other"])
-        redis.set = AsyncMock(return_value=False)  # lock not available
+        creating_raw = _CREATING_SENTINEL.encode()
+        redis.get = AsyncMock(side_effect=[creating_raw, b"sb-other"])
+        redis.set = AsyncMock(return_value=False)
         redis.delete = AsyncMock()
 
         with (
@@ -225,7 +245,7 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(
-                get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
             )
 
         assert result is sb
@@ -234,7 +254,7 @@ class TestGetOrCreateSandbox:
         """When stored sandbox is stale (not running), clear it and create a new one."""
         stale_sb = _mock_sandbox("sb-stale", running=False)
         new_sb = _mock_sandbox("sb-fresh")
-        # First get() returns stale id (for reconnect check), then None (after clear)
+        # First get() returns stale id (for reconnect check), then None (after clear).
         redis = AsyncMock()
         redis.get = AsyncMock(side_effect=[b"sb-stale", None])
         redis.set = AsyncMock(return_value=True)
@@ -247,7 +267,7 @@ class TestGetOrCreateSandbox:
             mock_cls.connect = AsyncMock(return_value=stale_sb)
             mock_cls.create = AsyncMock(return_value=new_sb)
             result = asyncio.run(
-                get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
             )
 
         assert result is new_sb
@@ -317,6 +337,14 @@ class TestKillSandbox:
         assert result is False
         redis.delete.assert_not_awaited()
 
+    def test_kill_creating_sentinel_returns_false(self):
+        """No-op when the key holds the 'creating' sentinel (no real sandbox yet)."""
+        redis = _mock_redis(stored_sandbox_id=_CREATING_SENTINEL)
+        with _patch_redis(redis):
+            result = asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY))
+
+        assert result is False
+
 
 # ---------------------------------------------------------------------------
 # pause_sandbox
@@ -360,10 +388,18 @@ class TestPauseSandbox:
 
         assert result is False
 
+    def test_pause_creating_sentinel_returns_false(self):
+        """No-op when the key holds the 'creating' sentinel (no real sandbox yet)."""
+        redis = _mock_redis(stored_sandbox_id=_CREATING_SENTINEL)
+        with _patch_redis(redis):
+            result = asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY))
+
+        assert result is False
+
     def test_pause_then_reconnect_reuses_sandbox(self):
         """After pause, get_or_create_sandbox reconnects the same sandbox.
 
-        Covers the pause→reconnect cycle: connect() auto-resumes a paused
+        Covers the pause->reconnect cycle: connect() auto-resumes a paused
         sandbox, and is_running() returns True once resume completes, so the
         same sandbox_id is reused rather than a new one being created.
         """
@@ -380,9 +416,9 @@ class TestPauseSandbox:
             assert paused is True
             sb.pause.assert_awaited_once()
 
-            # Step 2: reconnect on next turn — same sandbox should be returned
+            # Step 2: reconnect on next turn -- same sandbox should be returned
             result = asyncio.run(
-                get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
             )
 
         assert result is sb

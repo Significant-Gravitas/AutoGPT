@@ -1,6 +1,7 @@
 """Configuration management for chat system."""
 
 import os
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -112,9 +113,13 @@ class ChatConfig(BaseSettings):
         description="E2B sandbox template to use for copilot sessions.",
     )
     e2b_sandbox_timeout: int = Field(
-        default=14400,  # 4 hours — sandbox auto-pauses after this
-        description="E2B sandbox running-time before auto-pause (seconds). "
+        default=3600,  # 1 hour safety net; per-turn explicit pause is the primary mechanism
+        description="E2B sandbox running-time timeout (seconds). "
         "The per-turn explicit pause is the primary mechanism; this is the safety net.",
+    )
+    e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
+        default="pause",
+        description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
 
     @property
