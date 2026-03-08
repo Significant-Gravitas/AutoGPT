@@ -1,4 +1,5 @@
 import base64
+from enum import StrEnum
 
 from typing_extensions import TypedDict
 
@@ -1172,3 +1173,913 @@ class GithubListStargazersBlock(Block):
         yield "stargazers", stargazers
         for stargazer in stargazers:
             yield "stargazer", stargazer
+
+
+class GithubGetRepositoryInfoBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+
+    class Output(BlockSchemaOutput):
+        name: str = SchemaField(description="Repository name")
+        full_name: str = SchemaField(description="Full repository name (owner/repo)")
+        description: str = SchemaField(description="Repository description")
+        default_branch: str = SchemaField(description="Default branch name (e.g. main)")
+        private: bool = SchemaField(description="Whether the repository is private")
+        html_url: str = SchemaField(description="Web URL of the repository")
+        clone_url: str = SchemaField(description="Git clone URL")
+        stars: int = SchemaField(description="Number of stars")
+        forks: int = SchemaField(description="Number of forks")
+        open_issues: int = SchemaField(description="Number of open issues")
+        error: str = SchemaField(
+            description="Error message if fetching repo info failed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="59d4f241-968a-4040-95da-348ac5c5ce27",
+            description="This block retrieves metadata about a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubGetRepositoryInfoBlock.Input,
+            output_schema=GithubGetRepositoryInfoBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("name", "repo"),
+                ("full_name", "owner/repo"),
+                ("description", "A test repo"),
+                ("default_branch", "main"),
+                ("private", False),
+                ("html_url", "https://github.com/owner/repo"),
+                ("clone_url", "https://github.com/owner/repo.git"),
+                ("stars", 42),
+                ("forks", 5),
+                ("open_issues", 3),
+            ],
+            test_mock={
+                "get_repo_info": lambda *args, **kwargs: {
+                    "name": "repo",
+                    "full_name": "owner/repo",
+                    "description": "A test repo",
+                    "default_branch": "main",
+                    "private": False,
+                    "html_url": "https://github.com/owner/repo",
+                    "clone_url": "https://github.com/owner/repo.git",
+                    "stargazers_count": 42,
+                    "forks_count": 5,
+                    "open_issues_count": 3,
+                }
+            },
+        )
+
+    @staticmethod
+    async def get_repo_info(credentials: GithubCredentials, repo_url: str) -> dict:
+        api = get_api(credentials)
+        response = await api.get(repo_url)
+        return response.json()
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            data = await self.get_repo_info(credentials, input_data.repo_url)
+            yield "name", data["name"]
+            yield "full_name", data["full_name"]
+            yield "description", data.get("description", "") or ""
+            yield "default_branch", data["default_branch"]
+            yield "private", data["private"]
+            yield "html_url", data["html_url"]
+            yield "clone_url", data["clone_url"]
+            yield "stars", data["stargazers_count"]
+            yield "forks", data["forks_count"]
+            yield "open_issues", data["open_issues_count"]
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubForkRepositoryBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository to fork",
+            placeholder="https://github.com/owner/repo",
+        )
+        organization: str = SchemaField(
+            description="Organization to fork into (leave empty to fork to your account)",
+            default="",
+        )
+
+    class Output(BlockSchemaOutput):
+        url: str = SchemaField(description="URL of the forked repository")
+        clone_url: str = SchemaField(description="Git clone URL of the fork")
+        full_name: str = SchemaField(description="Full name of the fork (owner/repo)")
+        error: str = SchemaField(description="Error message if the fork failed")
+
+    def __init__(self):
+        super().__init__(
+            id="a439f2f4-835f-4dae-ba7b-0205ffa70be6",
+            description="This block forks a GitHub repository to your account or an organization.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubForkRepositoryBlock.Input,
+            output_schema=GithubForkRepositoryBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "organization": "",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("url", "https://github.com/myuser/repo"),
+                ("clone_url", "https://github.com/myuser/repo.git"),
+                ("full_name", "myuser/repo"),
+            ],
+            test_mock={
+                "fork_repo": lambda *args, **kwargs: (
+                    "https://github.com/myuser/repo",
+                    "https://github.com/myuser/repo.git",
+                    "myuser/repo",
+                )
+            },
+        )
+
+    @staticmethod
+    async def fork_repo(
+        credentials: GithubCredentials,
+        repo_url: str,
+        organization: str,
+    ) -> tuple[str, str, str]:
+        api = get_api(credentials)
+        forks_url = repo_url + "/forks"
+        data: dict[str, str] = {}
+        if organization:
+            data["organization"] = organization
+        response = await api.post(forks_url, json=data)
+        result = response.json()
+        return result["html_url"], result["clone_url"], result["full_name"]
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            url, clone_url, full_name = await self.fork_repo(
+                credentials,
+                input_data.repo_url,
+                input_data.organization,
+            )
+            yield "url", url
+            yield "clone_url", clone_url
+            yield "full_name", full_name
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubListCommitsBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        branch: str = SchemaField(
+            description="Branch name to list commits from",
+            default="main",
+        )
+        per_page: int = SchemaField(
+            description="Number of commits to return (max 100)",
+            default=30,
+        )
+
+    class Output(BlockSchemaOutput):
+        class CommitItem(TypedDict):
+            sha: str
+            message: str
+            author: str
+            date: str
+            url: str
+
+        commit: CommitItem = SchemaField(
+            title="Commit", description="A commit with its details"
+        )
+        commits: list[CommitItem] = SchemaField(
+            description="List of commits with their details"
+        )
+        error: str = SchemaField(description="Error message if listing commits failed")
+
+    def __init__(self):
+        super().__init__(
+            id="8b13f579-d8b6-4dc2-a140-f770428805de",
+            description="This block lists commits on a branch in a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubListCommitsBlock.Input,
+            output_schema=GithubListCommitsBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "branch": "main",
+                "per_page": 30,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "commits",
+                    [
+                        {
+                            "sha": "abc123",
+                            "message": "Initial commit",
+                            "author": "octocat",
+                            "date": "2024-01-01T00:00:00Z",
+                            "url": "https://github.com/owner/repo/commit/abc123",
+                        }
+                    ],
+                ),
+                (
+                    "commit",
+                    {
+                        "sha": "abc123",
+                        "message": "Initial commit",
+                        "author": "octocat",
+                        "date": "2024-01-01T00:00:00Z",
+                        "url": "https://github.com/owner/repo/commit/abc123",
+                    },
+                ),
+            ],
+            test_mock={
+                "list_commits": lambda *args, **kwargs: [
+                    {
+                        "sha": "abc123",
+                        "message": "Initial commit",
+                        "author": "octocat",
+                        "date": "2024-01-01T00:00:00Z",
+                        "url": "https://github.com/owner/repo/commit/abc123",
+                    }
+                ]
+            },
+        )
+
+    @staticmethod
+    async def list_commits(
+        credentials: GithubCredentials,
+        repo_url: str,
+        branch: str,
+        per_page: int,
+    ) -> list[Output.CommitItem]:
+        api = get_api(credentials)
+        commits_url = repo_url + "/commits"
+        params = {"sha": branch, "per_page": str(per_page)}
+        response = await api.get(commits_url, params=params)
+        data = response.json()
+        repo_path = repo_url.replace("https://github.com/", "")
+        return [
+            GithubListCommitsBlock.Output.CommitItem(
+                sha=c["sha"],
+                message=c["commit"]["message"],
+                author=c["commit"]["author"]["name"],
+                date=c["commit"]["author"]["date"],
+                url=f"https://github.com/{repo_path}/commit/{c['sha']}",
+            )
+            for c in data
+        ]
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        commits = await self.list_commits(
+            credentials,
+            input_data.repo_url,
+            input_data.branch,
+            input_data.per_page,
+        )
+        yield "commits", commits
+        for commit in commits:
+            yield "commit", commit
+
+
+class GithubSearchCodeBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        query: str = SchemaField(
+            description="Search query (GitHub code search syntax)",
+            placeholder="className language:python",
+        )
+        repo: str = SchemaField(
+            description="Restrict search to a repository (owner/repo format, optional)",
+            default="",
+            placeholder="owner/repo",
+        )
+        per_page: int = SchemaField(
+            description="Number of results to return (max 100)",
+            default=30,
+        )
+
+    class Output(BlockSchemaOutput):
+        class SearchResult(TypedDict):
+            name: str
+            path: str
+            repository: str
+            url: str
+            score: float
+
+        result: SearchResult = SchemaField(
+            title="Result", description="A code search result"
+        )
+        results: list[SearchResult] = SchemaField(
+            description="List of code search results"
+        )
+        total_count: int = SchemaField(description="Total number of matching results")
+        error: str = SchemaField(description="Error message if search failed")
+
+    def __init__(self):
+        super().__init__(
+            id="47f94891-a2b1-4f1c-b5f2-573c043f721e",
+            description="This block searches for code in GitHub repositories.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubSearchCodeBlock.Input,
+            output_schema=GithubSearchCodeBlock.Output,
+            test_input={
+                "query": "addClass",
+                "repo": "owner/repo",
+                "per_page": 30,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("total_count", 1),
+                (
+                    "results",
+                    [
+                        {
+                            "name": "file.py",
+                            "path": "src/file.py",
+                            "repository": "owner/repo",
+                            "url": "https://github.com/owner/repo/blob/main/src/file.py",
+                            "score": 1.0,
+                        }
+                    ],
+                ),
+                (
+                    "result",
+                    {
+                        "name": "file.py",
+                        "path": "src/file.py",
+                        "repository": "owner/repo",
+                        "url": "https://github.com/owner/repo/blob/main/src/file.py",
+                        "score": 1.0,
+                    },
+                ),
+            ],
+            test_mock={
+                "search_code": lambda *args, **kwargs: (
+                    1,
+                    [
+                        {
+                            "name": "file.py",
+                            "path": "src/file.py",
+                            "repository": "owner/repo",
+                            "url": "https://github.com/owner/repo/blob/main/src/file.py",
+                            "score": 1.0,
+                        }
+                    ],
+                )
+            },
+        )
+
+    @staticmethod
+    async def search_code(
+        credentials: GithubCredentials,
+        query: str,
+        repo: str,
+        per_page: int,
+    ) -> tuple[int, list[Output.SearchResult]]:
+        api = get_api(credentials, convert_urls=False)
+        full_query = f"{query} repo:{repo}" if repo else query
+        params = {"q": full_query, "per_page": str(per_page)}
+        response = await api.get("https://api.github.com/search/code", params=params)
+        data = response.json()
+        results: list[GithubSearchCodeBlock.Output.SearchResult] = [
+            GithubSearchCodeBlock.Output.SearchResult(
+                name=item["name"],
+                path=item["path"],
+                repository=item["repository"]["full_name"],
+                url=item["html_url"],
+                score=item["score"],
+            )
+            for item in data["items"]
+        ]
+        return data["total_count"], results
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            total_count, results = await self.search_code(
+                credentials,
+                input_data.query,
+                input_data.repo,
+                input_data.per_page,
+            )
+            yield "total_count", total_count
+            yield "results", results
+            for result in results:
+                yield "result", result
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubCompareBranchesBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        base: str = SchemaField(
+            description="Base branch or commit SHA",
+            placeholder="main",
+        )
+        head: str = SchemaField(
+            description="Head branch or commit SHA to compare against base",
+            placeholder="feature-branch",
+        )
+
+    class Output(BlockSchemaOutput):
+        class FileChange(TypedDict):
+            filename: str
+            status: str
+            additions: int
+            deletions: int
+            patch: str
+
+        status: str = SchemaField(
+            description="Comparison status: ahead, behind, diverged, or identical"
+        )
+        ahead_by: int = SchemaField(
+            description="Number of commits head is ahead of base"
+        )
+        behind_by: int = SchemaField(
+            description="Number of commits head is behind base"
+        )
+        total_commits: int = SchemaField(
+            description="Total number of commits in the comparison"
+        )
+        diff: str = SchemaField(description="Unified diff of all file changes")
+        file: FileChange = SchemaField(
+            title="Changed File", description="A changed file with its diff"
+        )
+        files: list[FileChange] = SchemaField(
+            description="List of changed files with their diffs"
+        )
+        error: str = SchemaField(description="Error message if comparison failed")
+
+    def __init__(self):
+        super().__init__(
+            id="2e4faa8c-6086-4546-ba77-172d1d560186",
+            description="This block compares two branches or commits in a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubCompareBranchesBlock.Input,
+            output_schema=GithubCompareBranchesBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "base": "main",
+                "head": "feature",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("status", "ahead"),
+                ("ahead_by", 2),
+                ("behind_by", 0),
+                ("total_commits", 2),
+                ("diff", "+++ b/file.py\n+new line"),
+                (
+                    "files",
+                    [
+                        {
+                            "filename": "file.py",
+                            "status": "modified",
+                            "additions": 1,
+                            "deletions": 0,
+                            "patch": "+new line",
+                        }
+                    ],
+                ),
+                (
+                    "file",
+                    {
+                        "filename": "file.py",
+                        "status": "modified",
+                        "additions": 1,
+                        "deletions": 0,
+                        "patch": "+new line",
+                    },
+                ),
+            ],
+            test_mock={
+                "compare_branches": lambda *args, **kwargs: {
+                    "status": "ahead",
+                    "ahead_by": 2,
+                    "behind_by": 0,
+                    "total_commits": 2,
+                    "files": [
+                        {
+                            "filename": "file.py",
+                            "status": "modified",
+                            "additions": 1,
+                            "deletions": 0,
+                            "patch": "+new line",
+                        }
+                    ],
+                }
+            },
+        )
+
+    @staticmethod
+    async def compare_branches(
+        credentials: GithubCredentials,
+        repo_url: str,
+        base: str,
+        head: str,
+    ) -> dict:
+        api = get_api(credentials)
+        compare_url = repo_url + f"/compare/{base}...{head}"
+        response = await api.get(compare_url)
+        return response.json()
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            data = await self.compare_branches(
+                credentials,
+                input_data.repo_url,
+                input_data.base,
+                input_data.head,
+            )
+            yield "status", data["status"]
+            yield "ahead_by", data["ahead_by"]
+            yield "behind_by", data["behind_by"]
+            yield "total_commits", data["total_commits"]
+
+            files: list[GithubCompareBranchesBlock.Output.FileChange] = [
+                GithubCompareBranchesBlock.Output.FileChange(
+                    filename=f["filename"],
+                    status=f["status"],
+                    additions=f["additions"],
+                    deletions=f["deletions"],
+                    patch=f.get("patch", ""),
+                )
+                for f in data.get("files", [])
+            ]
+
+            # Build unified diff
+            diff_parts = []
+            for f in data.get("files", []):
+                patch = f.get("patch", "")
+                if patch:
+                    diff_parts.append(f"+++ b/{f['filename']}\n{patch}")
+            yield "diff", "\n".join(diff_parts)
+
+            yield "files", files
+            for file in files:
+                yield "file", file
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubGetRepositoryTreeBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        branch: str = SchemaField(
+            description="Branch name to get the tree from",
+            default="main",
+        )
+        recursive: bool = SchemaField(
+            description="Whether to recursively list the entire tree",
+            default=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        class TreeEntry(TypedDict):
+            path: str
+            type: str
+            size: int
+            sha: str
+
+        entry: TreeEntry = SchemaField(
+            title="Tree Entry", description="A file or directory in the tree"
+        )
+        entries: list[TreeEntry] = SchemaField(
+            description="List of all files and directories in the tree"
+        )
+        truncated: bool = SchemaField(
+            description="Whether the tree was truncated due to size"
+        )
+        error: str = SchemaField(description="Error message if getting tree failed")
+
+    def __init__(self):
+        super().__init__(
+            id="89c5c0ec-172e-4001-a32c-bdfe4d0c9e81",
+            description="This block lists the entire file tree of a GitHub repository recursively.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubGetRepositoryTreeBlock.Input,
+            output_schema=GithubGetRepositoryTreeBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "branch": "main",
+                "recursive": True,
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("truncated", False),
+                (
+                    "entries",
+                    [
+                        {
+                            "path": "src/main.py",
+                            "type": "blob",
+                            "size": 1234,
+                            "sha": "abc123",
+                        }
+                    ],
+                ),
+                (
+                    "entry",
+                    {
+                        "path": "src/main.py",
+                        "type": "blob",
+                        "size": 1234,
+                        "sha": "abc123",
+                    },
+                ),
+            ],
+            test_mock={
+                "get_tree": lambda *args, **kwargs: (
+                    False,
+                    [
+                        {
+                            "path": "src/main.py",
+                            "type": "blob",
+                            "size": 1234,
+                            "sha": "abc123",
+                        }
+                    ],
+                )
+            },
+        )
+
+    @staticmethod
+    async def get_tree(
+        credentials: GithubCredentials,
+        repo_url: str,
+        branch: str,
+        recursive: bool,
+    ) -> tuple[bool, list[Output.TreeEntry]]:
+        api = get_api(credentials)
+        tree_url = repo_url + f"/git/trees/{branch}"
+        params = {"recursive": "1"} if recursive else {}
+        response = await api.get(tree_url, params=params)
+        data = response.json()
+        entries: list[GithubGetRepositoryTreeBlock.Output.TreeEntry] = [
+            GithubGetRepositoryTreeBlock.Output.TreeEntry(
+                path=item["path"],
+                type=item["type"],
+                size=item.get("size", 0),
+                sha=item["sha"],
+            )
+            for item in data["tree"]
+        ]
+        return data.get("truncated", False), entries
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            truncated, entries = await self.get_tree(
+                credentials,
+                input_data.repo_url,
+                input_data.branch,
+                input_data.recursive,
+            )
+            yield "truncated", truncated
+            yield "entries", entries
+            for entry in entries:
+                yield "entry", entry
+        except Exception as e:
+            yield "error", str(e)
+
+
+class FileOperation(StrEnum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
+class GithubMultiFileCommitBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository",
+            placeholder="https://github.com/owner/repo",
+        )
+        branch: str = SchemaField(
+            description="Branch to commit to",
+            placeholder="feature-branch",
+        )
+        commit_message: str = SchemaField(
+            description="Commit message",
+            placeholder="Add new feature",
+        )
+        files: list[dict] = SchemaField(
+            description=(
+                "List of file operations. Each item is a dict with: "
+                "'path' (file path), 'content' (file content, omit for delete), "
+                "'operation' (create/update/delete)"
+            ),
+        )
+
+    class Output(BlockSchemaOutput):
+        sha: str = SchemaField(description="SHA of the new commit")
+        url: str = SchemaField(description="URL of the new commit")
+        error: str = SchemaField(description="Error message if the commit failed")
+
+    def __init__(self):
+        super().__init__(
+            id="76c7c716-94f0-4bc1-8551-0cccbea8e443",
+            description=(
+                "This block creates a single commit with multiple file "
+                "create/update/delete operations using the Git Trees API."
+            ),
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubMultiFileCommitBlock.Input,
+            output_schema=GithubMultiFileCommitBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "branch": "feature",
+                "commit_message": "Add files",
+                "files": [
+                    {
+                        "path": "src/new.py",
+                        "content": "print('hello')",
+                        "operation": "create",
+                    },
+                    {
+                        "path": "src/old.py",
+                        "content": "",
+                        "operation": "delete",
+                    },
+                ],
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("sha", "newcommitsha"),
+                ("url", "https://github.com/owner/repo/commit/newcommitsha"),
+            ],
+            test_mock={
+                "multi_file_commit": lambda *args, **kwargs: (
+                    "newcommitsha",
+                    "https://github.com/owner/repo/commit/newcommitsha",
+                )
+            },
+        )
+
+    @staticmethod
+    async def multi_file_commit(
+        credentials: GithubCredentials,
+        repo_url: str,
+        branch: str,
+        commit_message: str,
+        files: list[dict],
+    ) -> tuple[str, str]:
+        api = get_api(credentials)
+
+        # 1. Get the latest commit SHA for the branch
+        ref_url = repo_url + f"/git/refs/heads/{branch}"
+        response = await api.get(ref_url)
+        ref_data = response.json()
+        latest_commit_sha = ref_data["object"]["sha"]
+
+        # 2. Get the tree SHA of the latest commit
+        commit_url = repo_url + f"/git/commits/{latest_commit_sha}"
+        response = await api.get(commit_url)
+        commit_data = response.json()
+        base_tree_sha = commit_data["tree"]["sha"]
+
+        # 3. Build tree entries for each file operation
+        tree_entries = []
+        for file_op in files:
+            path = file_op["path"]
+            operation = file_op.get("operation", "create")
+
+            if operation == FileOperation.DELETE:
+                tree_entries.append(
+                    {
+                        "path": path,
+                        "mode": "100644",
+                        "type": "blob",
+                        "sha": None,  # null SHA = delete
+                    }
+                )
+            else:
+                # Create a blob for the file content
+                blob_url = repo_url + "/git/blobs"
+                blob_response = await api.post(
+                    blob_url,
+                    json={
+                        "content": file_op.get("content", ""),
+                        "encoding": "utf-8",
+                    },
+                )
+                blob_sha = blob_response.json()["sha"]
+                tree_entries.append(
+                    {
+                        "path": path,
+                        "mode": "100644",
+                        "type": "blob",
+                        "sha": blob_sha,
+                    }
+                )
+
+        # 4. Create a new tree
+        tree_url = repo_url + "/git/trees"
+        tree_response = await api.post(
+            tree_url,
+            json={"base_tree": base_tree_sha, "tree": tree_entries},
+        )
+        new_tree_sha = tree_response.json()["sha"]
+
+        # 5. Create a new commit
+        new_commit_url = repo_url + "/git/commits"
+        commit_response = await api.post(
+            new_commit_url,
+            json={
+                "message": commit_message,
+                "tree": new_tree_sha,
+                "parents": [latest_commit_sha],
+            },
+        )
+        new_commit_sha = commit_response.json()["sha"]
+
+        # 6. Update the branch reference
+        await api.patch(
+            ref_url,
+            json={"sha": new_commit_sha},
+        )
+
+        repo_path = repo_url.replace("https://github.com/", "")
+        commit_web_url = f"https://github.com/{repo_path}/commit/{new_commit_sha}"
+        return new_commit_sha, commit_web_url
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            sha, url = await self.multi_file_commit(
+                credentials,
+                input_data.repo_url,
+                input_data.branch,
+                input_data.commit_message,
+                input_data.files,
+            )
+            yield "sha", sha
+            yield "url", url
+        except Exception as e:
+            yield "error", str(e)
