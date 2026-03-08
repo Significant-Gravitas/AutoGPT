@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from concurrent.futures import Future
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
@@ -13,8 +14,6 @@ from claude_agent_sdk.types import (
 )
 from pydantic import BaseModel, SecretStr
 
-# Avoid circular imports by importing only essential types
-# ExecutionParams, ToolInfo, and other classes will be imported dynamically when needed
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -23,8 +22,10 @@ from backend.blocks._base import (
     BlockSchemaOutput,
     BlockType,
 )
+from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.data.dynamic_fields import is_tool_pin
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -62,6 +63,16 @@ class ExecutionParams(BaseModel):
     graph_exec_id: str
     node_exec_id: str
     execution_context: "ExecutionContext"
+
+
+class MockToolCall:
+    """Shim that gives ToolInfo a .id and .function attribute from raw call data."""
+
+    def __init__(self, tool_id: str, name: str, args: dict[str, Any]):
+        self.id = tool_id
+        self.function = type(
+            "Function", (), {"name": name, "arguments": json.dumps(args)}
+        )()
 
 
 def _create_tool_response(call_id: str, content: str) -> dict[str, Any]:
@@ -259,8 +270,6 @@ class SmartAgentBlock(Block):
         Returns:
             List of function signatures for tools
         """
-        from backend.blocks.agent import AgentExecutorBlock
-
         db_client = get_database_manager_async_client()
         tools = [
             (link, node)
@@ -280,25 +289,18 @@ class SmartAgentBlock(Block):
             if not sink_node:
                 raise ValueError(f"Sink node not found: {links[0].sink_id}")
             if sink_node.block_id == AgentExecutorBlock().id:
-                # Dynamic import to avoid circular dependency
-                from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
-
                 tool_func = (
                     await SmartDecisionMakerBlock._create_agent_function_signature(
                         sink_node, links
                     )
                 )
-                return_tool_functions.append(tool_func)
             else:
-                # Dynamic import to avoid circular dependency
-                from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
-
                 tool_func = (
                     await SmartDecisionMakerBlock._create_block_function_signature(
                         sink_node, links
                     )
                 )
-                return_tool_functions.append(tool_func)
+            return_tool_functions.append(tool_func)
         return return_tool_functions
 
     async def _execute_single_tool_with_manager(
@@ -308,11 +310,6 @@ class SmartAgentBlock(Block):
         execution_processor: "ExecutionProcessor",
     ) -> dict:
         """Execute a single tool using the execution manager for proper integration."""
-        # Lazy imports to avoid circular dependencies
-        from concurrent.futures import Future
-
-        from backend.data.execution import NodeExecutionEntry
-
         tool_call = tool_info.tool_call
         tool_def = tool_info.tool_def
         raw_input_data = tool_info.input_data
@@ -510,14 +507,6 @@ class SmartAgentBlock(Block):
 
         if not tool_def:
             raise ValueError(f"AutoGPT tool '{tool_name}' not found")
-
-        # Create mock tool call object for AutoGPT compatibility
-        class MockToolCall:
-            def __init__(self, tool_id: str, name: str, args: dict):
-                self.id = tool_id
-                self.function = type(
-                    "Function", (), {"name": name, "arguments": json.dumps(args)}
-                )()
 
         # Build input data from arguments
         field_mapping = tool_def["function"].get("_field_mapping", {})
