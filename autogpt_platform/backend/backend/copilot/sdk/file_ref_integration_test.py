@@ -190,7 +190,10 @@ async def test_read_file_handler_local_file():
 
         with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var, patch(
             "backend.copilot.context._current_project_dir"
-        ) as mock_proj_var:
+        ) as mock_proj_var, patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=("user-1", _make_session()),
+        ):
             mock_cwd_var.get.return_value = sdk_cwd
             mock_proj_var.get.return_value = ""
 
@@ -246,7 +249,10 @@ async def test_read_file_handler_access_denied():
     """_read_file_handler rejects paths outside allowed locations."""
     with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
         "backend.copilot.context._current_sandbox"
-    ) as mock_sandbox:
+    ) as mock_sandbox, patch(
+        "backend.copilot.sdk.tool_adapter.get_execution_context",
+        return_value=("user-1", _make_session()),
+    ):
         mock_cwd.get.return_value = "/tmp/safe-dir"
         mock_sandbox.get.return_value = None
 
