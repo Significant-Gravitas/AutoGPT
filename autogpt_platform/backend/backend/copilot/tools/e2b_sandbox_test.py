@@ -111,7 +111,7 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(
-                get_or_create_sandbox("sess-123", _API_KEY, timeout=_TIMEOUT)
+                get_or_create_sandbox("sess-123", _API_KEY, sandbox_timeout=_TIMEOUT)
             )
 
         assert result is sb
@@ -127,7 +127,9 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.create = AsyncMock(return_value=sb)
             result = asyncio.run(
-                get_or_create_sandbox("sess-123", _API_KEY, timeout=_TIMEOUT)
+                get_or_create_sandbox(
+                    "sess-123", _API_KEY, sandbox_timeout=_TIMEOUT, redis_ttl=_TIMEOUT
+                )
             )
 
         assert result is sb
@@ -146,7 +148,9 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(side_effect=RuntimeError("quota"))
             with pytest.raises(RuntimeError, match="quota"):
                 asyncio.run(
-                    get_or_create_sandbox("sess-123", _API_KEY, timeout=_TIMEOUT)
+                    get_or_create_sandbox(
+                        "sess-123", _API_KEY, sandbox_timeout=_TIMEOUT
+                    )
                 )
 
         redis.delete.assert_awaited_once_with(_KEY)
@@ -167,7 +171,7 @@ class TestGetOrCreateSandbox:
         ):
             mock_cls.connect = AsyncMock(return_value=sb)
             result = asyncio.run(
-                get_or_create_sandbox("sess-123", _API_KEY, timeout=_TIMEOUT)
+                get_or_create_sandbox("sess-123", _API_KEY, sandbox_timeout=_TIMEOUT)
             )
 
         assert result is sb
@@ -184,7 +188,7 @@ class TestGetOrCreateSandbox:
             mock_cls.connect = AsyncMock(return_value=stale_sb)
             mock_cls.create = AsyncMock(return_value=new_sb)
             result = asyncio.run(
-                get_or_create_sandbox("sess-123", _API_KEY, timeout=_TIMEOUT)
+                get_or_create_sandbox("sess-123", _API_KEY, sandbox_timeout=_TIMEOUT)
             )
 
         assert result is new_sb
@@ -324,3 +328,31 @@ class TestPauseSandbox:
             result = asyncio.run(pause_sandbox("sess-123", _API_KEY))
 
         assert result is False
+
+    def test_pause_then_reconnect_reuses_sandbox(self):
+        """After pause, get_or_create_sandbox reconnects the same sandbox.
+
+        Covers the pause→reconnect cycle: connect() auto-resumes a paused
+        sandbox, and is_running() returns True once resume completes, so the
+        same sandbox_id is reused rather than a new one being created.
+        """
+        sb = _mock_sandbox("sb-abc")
+        sb.pause = AsyncMock()
+        redis = _mock_redis(get_val="sb-abc")
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            # Step 1: pause the sandbox
+            paused = asyncio.run(pause_sandbox("sess-123", _API_KEY))
+            assert paused is True
+            sb.pause.assert_awaited_once()
+
+            # Step 2: reconnect on next turn — same sandbox should be returned
+            result = asyncio.run(
+                get_or_create_sandbox("sess-123", _API_KEY, sandbox_timeout=_TIMEOUT)
+            )
+
+        assert result is sb
+        mock_cls.create.assert_not_called()

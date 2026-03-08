@@ -40,6 +40,14 @@ _CREATING = "__creating__"
 _CREATION_LOCK_TTL = 60
 _MAX_WAIT_ATTEMPTS = 20  # 20 * 0.5s = 10s max wait
 
+# Sandbox running-time before e2b auto-pauses it (safety net; per-turn explicit
+# pause is the primary mechanism).  4 hours matches typical long-running sessions.
+_E2B_SANDBOX_TIMEOUT = 14400  # 4 hours in seconds
+
+# Redis TTL for the sandbox_id key.  Kept much longer than the e2b timeout so
+# we can reconnect to a paused sandbox even after the auto-pause timer fires.
+_REDIS_SANDBOX_TTL = 172800  # 48 hours in seconds
+
 
 async def _try_reconnect(
     sandbox_id: str, api_key: str, redis_key: str, timeout: int
@@ -64,13 +72,20 @@ async def get_or_create_sandbox(
     session_id: str,
     api_key: str,
     template: str = "base",
-    timeout: int = 43200,
+    sandbox_timeout: int = _E2B_SANDBOX_TIMEOUT,
+    redis_ttl: int = _REDIS_SANDBOX_TTL,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
     The sandbox_id is persisted in Redis so the same sandbox is reused
     across turns. Concurrent calls for the same session are serialised
     via a Redis ``SET NX`` creation lock.
+
+    *sandbox_timeout* controls how long the e2b sandbox may run continuously
+    before the ``on_timeout: pause`` lifecycle rule fires (default 4 h).
+    *redis_ttl* controls how long the sandbox_id is kept in Redis so we can
+    reconnect to a paused sandbox (default 48 h — much longer than the e2b
+    timeout so paused sandboxes are always reconnectable within a session).
     """
     redis = await get_redis_async()
     redis_key = f"{_SANDBOX_REDIS_PREFIX}{session_id}"
@@ -80,7 +95,7 @@ async def get_or_create_sandbox(
     if raw:
         sandbox_id = raw if isinstance(raw, str) else raw.decode()
         if sandbox_id != _CREATING:
-            sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, timeout)
+            sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, redis_ttl)
             if sandbox:
                 logger.info(
                     "[E2B] Reconnected to %.12s for session %.12s",
@@ -99,7 +114,9 @@ async def get_or_create_sandbox(
                 break  # Lock expired — fall through to retry creation
             sandbox_id = raw if isinstance(raw, str) else raw.decode()
             if sandbox_id != _CREATING:
-                sandbox = await _try_reconnect(sandbox_id, api_key, redis_key, timeout)
+                sandbox = await _try_reconnect(
+                    sandbox_id, api_key, redis_key, redis_ttl
+                )
                 if sandbox:
                     return sandbox
                 break  # Stale sandbox cleared — fall through to create
@@ -113,7 +130,7 @@ async def get_or_create_sandbox(
                 sandbox_id = raw if isinstance(raw, str) else raw.decode()
                 if sandbox_id != _CREATING:
                     sandbox = await _try_reconnect(
-                        sandbox_id, api_key, redis_key, timeout
+                        sandbox_id, api_key, redis_key, redis_ttl
                     )
                     if sandbox:
                         return sandbox
@@ -126,14 +143,14 @@ async def get_or_create_sandbox(
         sandbox = await AsyncSandbox.create(
             template=template,
             api_key=api_key,
-            timeout=timeout,
+            timeout=sandbox_timeout,
             lifecycle={"on_timeout": "pause"},
         )
     except Exception:
         await redis.delete(redis_key)
         raise
 
-    await redis.setex(redis_key, timeout, sandbox.sandbox_id)
+    await redis.setex(redis_key, redis_ttl, sandbox.sandbox_id)
     logger.info(
         "[E2B] Created sandbox %.12s for session %.12s",
         sandbox.sandbox_id,
