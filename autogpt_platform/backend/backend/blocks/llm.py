@@ -136,10 +136,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
+    GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_2_5_PRO = "google/gemini-2.5-pro"
+    GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
+    # GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"  # DEPRECATED: Shutdown March 9, 2026
+    GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
+    GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
@@ -336,7 +340,7 @@ MODEL_METADATA = {
         "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
     ),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+    LlmModel.GEMINI_2_5_PRO_PREVIEW: ModelMetadata(
         "open_router",
         1050000,
         8192,
@@ -345,14 +349,50 @@ MODEL_METADATA = {
         "Google",
         2,
     ),
-    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
-        "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
+    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+        "open_router",
+        1050000,
+        8192,
+        "Gemini 2.5 Pro",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: ModelMetadata(
+        "open_router",
+        1050000,
+        8192,
+        "Gemini 3.1 Pro Preview",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    # LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
+    #     "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
+    # ),  # DEPRECATED: Shutdown March 9, 2026
+    LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
+        "open_router",
+        1050000,
+        8192,
+        "Gemini 3 Flash Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata(
         "open_router", 1048576, 65535, "Gemini 2.5 Flash", "OpenRouter", "Google", 1
     ),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata(
         "open_router", 1048576, 8192, "Gemini 2.0 Flash 001", "OpenRouter", "Google", 1
+    ),
+    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: ModelMetadata(
+        "open_router",
+        1050000,
+        8192,
+        "Gemini 3.1 Flash Lite Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
         "open_router",
