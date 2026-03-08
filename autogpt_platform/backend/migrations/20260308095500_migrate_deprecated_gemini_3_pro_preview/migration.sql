@@ -32,6 +32,11 @@ UPDATE "AgentGraph"
 SET "graph_metadata" = replace("graph_metadata"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
 WHERE "graph_metadata"::text LIKE '%google/gemini-3-pro-preview%';
 
+-- Update AgentNode constantInput field (CRITICAL: Prevents Pydantic validation errors when loading graphs)
+UPDATE "AgentNode"
+SET "constantInput" = replace("constantInput"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
+WHERE "constantInput"::text LIKE '%google/gemini-3-pro-preview%';
+
 -- Log the migration completion
 DO $$
 BEGIN
