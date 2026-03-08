@@ -189,6 +189,31 @@ class TestGetOrCreateSandbox:
 
         redis.delete.assert_awaited_once()
 
+    def test_metadata_save_failure_kills_sandbox_and_clears_lock(self):
+        """If metadata save fails after creation, sandbox is killed and lock released."""
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True)
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+            _patch_get_metadata(ChatSessionMetadata(e2b_sandbox_id=None)),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.update_session_metadata",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db error"),
+            ),
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            with pytest.raises(RuntimeError, match="db error"):
+                asyncio.run(
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, pause_timeout=_TIMEOUT)
+                )
+
+        # Sandbox must be killed to avoid leaking it
+        new_sb.kill.assert_awaited_once()
+        # Lock must always be released
+        redis.delete.assert_awaited_once()
+
     def test_wait_for_lock_then_reconnect(self):
         """When another process holds the lock, wait then reconnect to the created sandbox."""
         sb = _mock_sandbox("sb-other")

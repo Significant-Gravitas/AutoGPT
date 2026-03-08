@@ -31,6 +31,7 @@ two sandboxes for the same session.
 """
 
 import asyncio
+import contextlib
 import logging
 from typing import Callable, Coroutine
 
@@ -147,12 +148,17 @@ async def get_or_create_sandbox(
             timeout=pause_timeout,
             lifecycle={"on_timeout": "pause"},
         )
-        meta = await get_session_metadata(session_id)
-        await update_session_metadata(
-            session_id, meta.model_copy(update={"e2b_sandbox_id": sandbox.sandbox_id})
-        )
-    except Exception:
-        raise
+        try:
+            meta = await get_session_metadata(session_id)
+            await update_session_metadata(
+                session_id,
+                meta.model_copy(update={"e2b_sandbox_id": sandbox.sandbox_id}),
+            )
+        except Exception:
+            # Metadata save failed — kill the sandbox to avoid leaking it.
+            with contextlib.suppress(Exception):
+                await sandbox.kill()
+            raise
     finally:
         # Always release the creation lock so other callers can proceed.
         await redis.delete(lock_key)
