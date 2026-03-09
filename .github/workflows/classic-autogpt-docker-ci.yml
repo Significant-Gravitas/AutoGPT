@@ -107,7 +107,7 @@ jobs:
 
       - if: github.event_name == 'push'
         name: Log in to Docker hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
