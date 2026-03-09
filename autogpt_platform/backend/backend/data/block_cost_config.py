@@ -127,6 +127,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_3: 3,
     LlmModel.GROK_4: 9,
     LlmModel.GROK_4_FAST: 1,
     LlmModel.GROK_4_1_FAST: 1,
