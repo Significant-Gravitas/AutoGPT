@@ -2,7 +2,7 @@
 
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentGrid,
@@ -86,7 +86,7 @@ export function RunAgentTool({ part }: Props) {
 
       {isStreaming && !output && (
         <ToolAccordion
-          icon={<OrbitLoader size={32} />}
+          icon={<ScaleLoader size={14} />}
           title="Running agent, this may take a few minutes. Play while you wait."
           expanded={true}
         >
