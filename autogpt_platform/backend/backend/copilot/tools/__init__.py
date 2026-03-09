@@ -22,6 +22,7 @@ from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
+from .get_mcp_guide import GetMCPGuideTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -68,6 +69,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "run_mcp_tool": RunMCPToolTool(),
+    "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),

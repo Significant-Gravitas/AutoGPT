@@ -59,6 +59,7 @@ class ResponseType(str, Enum):
     VALIDATION_RESULT = "validation_result"
     FIX_RESULT = "fix_result"
     AGENT_BUILDING_GUIDE = "agent_building_guide"
+    MCP_GUIDE = "mcp_guide"
     # Folder management types
     FOLDER_CREATED = "folder_created"
     FOLDER_LIST = "folder_list"
