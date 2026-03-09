@@ -2066,7 +2066,7 @@ export default function StyleguidePage() {
                                 "An agent that checks website uptime",
                             },
                             output: {
-                              type: ResponseType.agent_saved,
+                              type: ResponseType.agent_builder_saved,
                               message: "Agent saved to your library!",
                               agent_id: "graph-123",
                               agent_name: "Website Uptime Checker",
