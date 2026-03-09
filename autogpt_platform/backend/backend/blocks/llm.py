@@ -389,13 +389,31 @@ MODEL_METADATA = {
         "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
     ),
     LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: ModelMetadata(
-        "open_router", 8000, 8192, "Command A Translate 08.2025", "OpenRouter", "Cohere", 2
+        "open_router",
+        8000,
+        8192,
+        "Command A Translate 08.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
     ),
     LlmModel.COHERE_COMMAND_A_REASONING_08_2025: ModelMetadata(
-        "open_router", 256000, 32768, "Command A Reasoning 08.2025", "OpenRouter", "Cohere", 3
+        "open_router",
+        256000,
+        32768,
+        "Command A Reasoning 08.2025",
+        "OpenRouter",
+        "Cohere",
+        3,
     ),
     LlmModel.COHERE_COMMAND_A_VISION_07_2025: ModelMetadata(
-        "open_router", 128000, 8192, "Command A Vision 07.2025", "OpenRouter", "Cohere", 2
+        "open_router",
+        128000,
+        8192,
+        "Command A Vision 07.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
     ),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata(
         "open_router", 64000, 2048, "DeepSeek Chat", "OpenRouter", "DeepSeek", 1
