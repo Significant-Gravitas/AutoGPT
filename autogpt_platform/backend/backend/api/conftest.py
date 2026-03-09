@@ -10,6 +10,21 @@ from pytest_snapshot.plugin import Snapshot
 
 
 @pytest.fixture
+def test_user_id() -> str:
+    return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+
+
+@pytest.fixture
+def admin_user_id() -> str:
+    return "4e53486c-cf57-477e-ba2a-cb02dc828e1b"
+
+
+@pytest.fixture
+def setup_test_user(test_user_id: str) -> str:
+    return test_user_id
+
+
+@pytest.fixture
 def configured_snapshot(snapshot: Snapshot) -> Snapshot:
     """Pre-configured snapshot fixture with standard settings."""
     snapshot.snapshot_dir = "snapshots"

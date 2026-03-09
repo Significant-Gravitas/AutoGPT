@@ -10,10 +10,13 @@ from openai import AsyncOpenAI
 
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
+    BusinessUnderstanding,
     BusinessUnderstandingInput,
     get_business_understanding,
+    update_business_understanding_prompts,
     upsert_business_understanding,
 )
+from backend.data.understanding_prompts import generate_understanding_prompts
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -418,9 +421,31 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
 
         understanding_input = await extract_business_understanding(formatted)
 
-        # Upsert into database
-        await upsert_business_understanding(user_id, understanding_input)
+        understanding = await upsert_business_understanding(
+            user_id, understanding_input
+        )
+        await _generate_and_store_prompts(user_id, understanding)
         logger.info(f"Tally: successfully populated understanding for user {user_id}")
 
     except Exception:
         logger.exception(f"Tally: error populating understanding for user {user_id}")
+
+
+async def _generate_and_store_prompts(
+    user_id: str, understanding: BusinessUnderstanding
+) -> None:
+    try:
+        prompts = await generate_understanding_prompts(understanding)
+    except ValueError as e:
+        logger.warning(f"Tally: skipping quick prompt generation for {user_id}: {e}")
+        return
+    except Exception:
+        logger.exception(
+            f"Tally: failed to generate quick prompts for understanding {user_id}"
+        )
+        return
+
+    try:
+        await update_business_understanding_prompts(user_id, prompts)
+    except Exception:
+        logger.exception(f"Tally: failed to store quick prompts for user {user_id}")

@@ -284,6 +284,7 @@ async def test_populate_understanding_full_flow():
         ],
     }
     mock_input = MagicMock()
+    mock_understanding = MagicMock()
 
     with (
         patch(
@@ -305,12 +306,35 @@ async def test_populate_understanding_full_flow():
         patch(
             "backend.data.tally.upsert_business_understanding",
             new_callable=AsyncMock,
+            return_value=mock_understanding,
         ) as mock_upsert,
+        patch(
+            "backend.data.tally.generate_understanding_prompts",
+            new_callable=AsyncMock,
+            return_value=[
+                "Help me automate customer support",
+                "Find repetitive support work",
+                "Show me faster support workflows",
+            ],
+        ) as mock_generate_prompts,
+        patch(
+            "backend.data.tally.update_business_understanding_prompts",
+            new_callable=AsyncMock,
+        ) as mock_update_prompts,
     ):
         await populate_understanding_from_tally("user-1", "alice@example.com")
 
     mock_extract.assert_awaited_once()
     mock_upsert.assert_awaited_once_with("user-1", mock_input)
+    mock_generate_prompts.assert_awaited_once_with(mock_understanding)
+    mock_update_prompts.assert_awaited_once_with(
+        "user-1",
+        [
+            "Help me automate customer support",
+            "Find repetitive support work",
+            "Show me faster support workflows",
+        ],
+    )
 
 
 @pytest.mark.asyncio
@@ -350,6 +374,55 @@ async def test_populate_understanding_handles_llm_timeout():
         await populate_understanding_from_tally("user-1", "alice@example.com")
 
     mock_upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_populate_understanding_keeps_understanding_when_prompt_generation_fails():
+    mock_settings = MagicMock()
+    mock_settings.secrets.tally_api_key = "test-key"
+
+    submission = {
+        "responses": [{"questionId": "q1", "value": "Alice"}],
+    }
+    mock_input = MagicMock()
+    mock_understanding = MagicMock()
+
+    with (
+        patch(
+            "backend.data.tally.get_business_understanding",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+            return_value=(submission, SAMPLE_QUESTIONS),
+        ),
+        patch(
+            "backend.data.tally.extract_business_understanding",
+            new_callable=AsyncMock,
+            return_value=mock_input,
+        ),
+        patch(
+            "backend.data.tally.upsert_business_understanding",
+            new_callable=AsyncMock,
+            return_value=mock_understanding,
+        ) as mock_upsert,
+        patch(
+            "backend.data.tally.generate_understanding_prompts",
+            new_callable=AsyncMock,
+            side_effect=ValueError("bad prompts"),
+        ),
+        patch(
+            "backend.data.tally.update_business_understanding_prompts",
+            new_callable=AsyncMock,
+        ) as mock_update_prompts,
+    ):
+        await populate_understanding_from_tally("user-1", "alice@example.com")
+
+    mock_upsert.assert_awaited_once_with("user-1", mock_input)
+    mock_update_prompts.assert_not_awaited()
 
 
 # ── _mask_email ───────────────────────────────────────────────────────────────

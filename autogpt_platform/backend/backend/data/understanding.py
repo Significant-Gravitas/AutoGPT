@@ -118,6 +118,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
     # Current tools
     current_software: list[str] = pydantic.Field(default_factory=list)
     existing_automation: list[str] = pydantic.Field(default_factory=list)
+    prompts: list[str] = pydantic.Field(default_factory=list)
 
     # Additional context
     additional_notes: Optional[str] = None
@@ -148,6 +149,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
             automation_goals=_json_to_list(business.get("automation_goals")),
             current_software=_json_to_list(business.get("current_software")),
             existing_automation=_json_to_list(business.get("existing_automation")),
+            prompts=_json_to_list(business.get("prompts")),
             additional_notes=business.get("additional_notes"),
         )
 
@@ -310,6 +312,40 @@ async def upsert_business_understanding(
     # Update cache with new understanding
     await _set_cache(user_id, understanding)
 
+    return understanding
+
+
+async def update_business_understanding_prompts(
+    user_id: str, prompts: list[str]
+) -> Optional[BusinessUnderstanding]:
+    """Update derived quick prompts for an existing business understanding."""
+    existing = await CoPilotUnderstanding.prisma().find_unique(
+        where={"userId": user_id}
+    )
+    if existing is None:
+        return None
+
+    existing_data: dict[str, Any] = {}
+    if isinstance(existing.data, dict):
+        existing_data = dict(existing.data)
+
+    existing_business: dict[str, Any] = {}
+    if isinstance(existing_data.get("business"), dict):
+        existing_business = dict(existing_data["business"])
+
+    existing_business["prompts"] = prompts
+    existing_business["version"] = 1
+    existing_data["business"] = existing_business
+
+    record = await CoPilotUnderstanding.prisma().update(
+        where={"userId": user_id},
+        data={"data": SafeJson(existing_data)},
+    )
+    if record is None:
+        return None
+
+    understanding = BusinessUnderstanding.from_db(record)
+    await _set_cache(user_id, understanding)
     return understanding
 
 

@@ -29,6 +29,7 @@ from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
 from backend.api.model import (
+    BusinessUnderstandingPromptsResponse,
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
@@ -54,6 +55,7 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.db_accessors import understanding_db
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
@@ -156,6 +158,22 @@ async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
             logger.debug("Failed to start Tally population task", exc_info=True)
 
     return user.model_dump()
+
+
+@v1_router.get(
+    "/auth/user/understanding/prompts",
+    summary="Get business understanding prompts",
+    tags=["auth"],
+    dependencies=[Security(requires_user)],
+    response_model=BusinessUnderstandingPromptsResponse,
+)
+async def get_business_understanding_prompts_route(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> BusinessUnderstandingPromptsResponse:
+    understanding = await understanding_db().get_business_understanding(user_id)
+    return BusinessUnderstandingPromptsResponse(
+        prompts=understanding.prompts if understanding else []
+    )
 
 
 @v1_router.post(

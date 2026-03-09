@@ -89,6 +89,48 @@ def test_update_user_email_route(
     )
 
 
+def test_get_business_understanding_prompts_route(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_understanding_db = Mock()
+    mock_understanding_db.get_business_understanding = AsyncMock(
+        return_value=Mock(prompts=["Prompt one", "Prompt two", "Prompt three"])
+    )
+    mocker.patch(
+        "backend.api.features.v1.understanding_db",
+        return_value=mock_understanding_db,
+    )
+
+    response = client.get("/auth/user/understanding/prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"prompts": ["Prompt one", "Prompt two", "Prompt three"]}
+    mock_understanding_db.get_business_understanding.assert_awaited_once_with(
+        test_user_id
+    )
+
+
+def test_get_business_understanding_prompts_route_returns_empty_list(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_understanding_db = Mock()
+    mock_understanding_db.get_business_understanding = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.v1.understanding_db",
+        return_value=mock_understanding_db,
+    )
+
+    response = client.get("/auth/user/understanding/prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"prompts": []}
+    mock_understanding_db.get_business_understanding.assert_awaited_once_with(
+        test_user_id
+    )
+
+
 # Blocks endpoints tests
 def test_get_graph_blocks(
     mocker: pytest_mock.MockFixture,

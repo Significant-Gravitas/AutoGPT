@@ -1,5 +1,11 @@
 import { User } from "@supabase/supabase-js";
 
+export const DEFAULT_QUICK_ACTIONS = [
+  "I don't know where to start, just ask me stuff",
+  "I do the same thing every week and it's killing me",
+  "Help me find where I'm wasting my time",
+];
+
 export function getInputPlaceholder(width?: number) {
   if (!width) return "What's your role and what eats up most of your day?";
 
@@ -12,12 +18,15 @@ export function getInputPlaceholder(width?: number) {
   return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
 
-export function getQuickActions() {
-  return [
-    "I don't know where to start, just ask me stuff",
-    "I do the same thing every week and it's killing me",
-    "Help me find where I'm wasting my time",
-  ];
+export function getQuickActions(prompts?: string[] | null) {
+  const normalizedPrompts =
+    prompts
+      ?.map((prompt) => prompt.trim())
+      .filter((prompt) => prompt.length > 0) ?? [];
+
+  return normalizedPrompts.length > 0
+    ? normalizedPrompts
+    : DEFAULT_QUICK_ACTIONS;
 }
 
 export function getGreetingName(user?: User | null) {

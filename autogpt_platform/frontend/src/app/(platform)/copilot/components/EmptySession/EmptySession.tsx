@@ -7,11 +7,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { SpinnerGapIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import {
-  getGreetingName,
-  getInputPlaceholder,
-  getQuickActions,
-} from "./helpers";
+import { getGreetingName, getInputPlaceholder } from "./helpers";
+import { useQuickActions } from "./useQuickActions";
 
 interface Props {
   inputLayoutId: string;
@@ -33,7 +30,7 @@ export function EmptySession({
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
-  const quickActions = getQuickActions();
+  const quickActions = useQuickActions(user);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),

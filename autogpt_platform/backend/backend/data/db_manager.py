@@ -82,6 +82,7 @@ from backend.data.notifications import (
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.understanding import (
     get_business_understanding,
+    update_business_understanding_prompts,
     upsert_business_understanding,
 )
 from backend.data.user import (
@@ -292,6 +293,7 @@ class DatabaseManager(AppService):
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
+    update_business_understanding_prompts = _(update_business_understanding_prompts)
     upsert_business_understanding = _(upsert_business_understanding)
 
     # ============ CoPilot Chat Sessions ============ #
@@ -358,6 +360,11 @@ class DatabaseManagerClient(AppServiceClient):
     get_embedding_stats = _(d.get_embedding_stats)
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
+
+    # Understanding
+    get_business_understanding = _(d.get_business_understanding)
+    update_business_understanding_prompts = _(d.update_business_understanding_prompts)
+    upsert_business_understanding = _(d.upsert_business_understanding)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):
@@ -462,6 +469,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
+    update_business_understanding_prompts = d.update_business_understanding_prompts
     upsert_business_understanding = d.upsert_business_understanding
 
     # ============ CoPilot Chat Sessions ============ #

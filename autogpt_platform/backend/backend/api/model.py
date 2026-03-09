@@ -85,6 +85,10 @@ class UpdateTimezoneRequest(pydantic.BaseModel):
     timezone: TimeZoneName
 
 
+class BusinessUnderstandingPromptsResponse(pydantic.BaseModel):
+    prompts: list[str] = pydantic.Field(default_factory=list)
+
+
 class NotificationPayload(pydantic.BaseModel):
     type: str
     event: str
