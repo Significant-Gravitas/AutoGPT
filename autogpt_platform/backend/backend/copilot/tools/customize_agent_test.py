@@ -1,21 +1,21 @@
-"""Tests for CreateAgentTool."""
+"""Tests for CustomizeAgentTool local mode."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.copilot.tools.create_agent import CreateAgentTool
+from backend.copilot.tools.customize_agent import CustomizeAgentTool
 from backend.copilot.tools.models import AgentPreviewResponse, ErrorResponse
 
 from ._test_data import make_session
 
-_TEST_USER_ID = "test-user-create-agent"
+_TEST_USER_ID = "test-user-customize-agent"
 _PIPELINE = "backend.copilot.tools.agent_generator.pipeline"
 
 
 @pytest.fixture
 def tool():
-    return CreateAgentTool()
+    return CustomizeAgentTool()
 
 
 @pytest.fixture
@@ -23,18 +23,21 @@ def session():
     return make_session(_TEST_USER_ID)
 
 
-# ── Input validation tests ──────────────────────────────────────────────
+# ── Input validation tests ───────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_missing_agent_json_returns_error(tool, session):
     """Missing agent_json returns ErrorResponse."""
-    result = await tool._execute(user_id=_TEST_USER_ID, session=session)
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+    )
     assert isinstance(result, ErrorResponse)
     assert result.error == "missing_agent_json"
 
 
-# ── Local mode tests ────────────────────────────────────────────────────
+# ── Local mode tests (agent_json provided) ───────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -53,8 +56,8 @@ async def test_local_mode_empty_nodes_returns_error(tool, session):
 async def test_local_mode_preview(tool, session):
     """Local mode with save=false returns AgentPreviewResponse."""
     agent_json = {
-        "name": "Test Agent",
-        "description": "A test agent",
+        "name": "Customized Agent",
+        "description": "A customized agent",
         "nodes": [
             {
                 "id": "node-1",
@@ -87,13 +90,13 @@ async def test_local_mode_preview(tool, session):
         )
 
     assert isinstance(result, AgentPreviewResponse)
-    assert result.agent_name == "Test Agent"
+    assert result.agent_name == "Customized Agent"
     assert result.node_count == 1
 
 
 @pytest.mark.asyncio
 async def test_local_mode_validation_failure(tool, session):
-    """Local mode returns ErrorResponse when validation fails after fixing."""
+    """Local mode returns ErrorResponse when validation fails."""
     agent_json = {
         "nodes": [
             {

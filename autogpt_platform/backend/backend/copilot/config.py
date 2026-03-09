@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
+from backend.util.clients import OPENROUTER_BASE_URL
+
 
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
@@ -20,7 +22,7 @@ class ChatConfig(BaseSettings):
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
-        default="https://openrouter.ai/api/v1",
+        default=OPENROUTER_BASE_URL,
         description="Base URL for API (e.g., for OpenRouter)",
     )
 
@@ -193,7 +195,7 @@ class ChatConfig(BaseSettings):
             if not v:
                 v = os.getenv("OPENAI_BASE_URL")
             if not v:
-                v = "https://openrouter.ai/api/v1"
+                v = OPENROUTER_BASE_URL
         return v
 
     @field_validator("use_claude_agent_sdk", mode="before")
