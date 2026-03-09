@@ -380,16 +380,40 @@ MODEL_METADATA = {
         "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
     ),
     LlmModel.MISTRAL_LARGE_3: ModelMetadata(
-        "open_router", 262144, None, "Mistral Large 3 2512", "OpenRouter", "Mistral AI", 2
+        "open_router",
+        262144,
+        None,
+        "Mistral Large 3 2512",
+        "OpenRouter",
+        "Mistral AI",
+        2,
     ),
     LlmModel.MISTRAL_MEDIUM_3_1: ModelMetadata(
-        "open_router", 131072, None, "Mistral Medium 3.1", "OpenRouter", "Mistral AI", 2
+        "open_router",
+        131072,
+        None,
+        "Mistral Medium 3.1",
+        "OpenRouter",
+        "Mistral AI",
+        2,
     ),
     LlmModel.MISTRAL_SMALL_3_2: ModelMetadata(
-        "open_router", 131072, 131072, "Mistral Small 3.2 24B", "OpenRouter", "Mistral AI", 1
+        "open_router",
+        131072,
+        131072,
+        "Mistral Small 3.2 24B",
+        "OpenRouter",
+        "Mistral AI",
+        1,
     ),
     LlmModel.CODESTRAL: ModelMetadata(
-        "open_router", 256000, None, "Codestral 2508", "OpenRouter", "Mistral AI", 1
+        "open_router",
+        256000,
+        None,
+        "Codestral 2508",
+        "OpenRouter",
+        "Mistral AI",
+        1,
     ),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
