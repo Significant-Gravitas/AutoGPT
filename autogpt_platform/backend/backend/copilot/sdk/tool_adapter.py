@@ -9,13 +9,22 @@ import itertools
 import json
 import logging
 import os
-import re
 import uuid
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
+from backend.copilot.context import (
+    _current_project_dir,
+    _current_sandbox,
+    _current_sdk_cwd,
+    _current_session,
+    _current_user_id,
+    _encode_cwd_for_cli,
+    get_execution_context,
+    is_allowed_local_path,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tools import TOOL_REGISTRY
@@ -29,83 +38,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Allowed base directory for the Read tool (SDK saves oversized tool results here).
-# Restricted to ~/.claude/projects/ and further validated to require "tool-results"
-# in the path — prevents reading settings, credentials, or other sensitive files.
-_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-
 # Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
 _MCP_MAX_CHARS = 500_000
-
-# Context variable holding the encoded project directory name for the current
-# session (e.g. "-private-tmp-copilot-<uuid>").  Set by set_execution_context()
-# so that path validation can scope tool-results reads to the current session.
-_current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
-
-
-def _encode_cwd_for_cli(cwd: str) -> str:
-    """Encode a working directory path the same way the Claude CLI does.
-
-    The CLI replaces all non-alphanumeric characters with ``-``.
-    """
-    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
-
-
-def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
-    """Check whether *path* is an allowed host-filesystem path.
-
-    Allowed:
-    - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/`` — the SDK's
-      project directory for this session (tool-results, transcripts, etc.)
-
-    Both checks are scoped to the **current session** so sessions cannot
-    read each other's data.
-    """
-    if not path:
-        return False
-
-    if path.startswith("~"):
-        resolved = os.path.realpath(os.path.expanduser(path))
-    elif not os.path.isabs(path) and sdk_cwd:
-        resolved = os.path.realpath(os.path.join(sdk_cwd, path))
-    else:
-        resolved = os.path.realpath(path)
-
-    # Allow access within the SDK working directory
-    if sdk_cwd:
-        norm_cwd = os.path.realpath(sdk_cwd)
-        if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
-            return True
-
-    # Allow access within the current session's CLI project directory
-    # (~/.claude/projects/<encoded-cwd>/).
-    encoded = _current_project_dir.get("")
-    if encoded:
-        session_project = os.path.join(_SDK_PROJECTS_DIR, encoded)
-        if resolved == session_project or resolved.startswith(session_project + os.sep):
-            return True
-
-    return False
-
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
-
-# Context variables to pass user/session info to tool execution
-_current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
-_current_session: ContextVar[ChatSession | None] = ContextVar(
-    "current_session", default=None
-)
-# E2B cloud sandbox for the current turn (None when E2B is not configured).
-# Passed to bash_exec so commands run on E2B instead of the local bwrap sandbox.
-_current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
-    "_current_sandbox", default=None
-)
-# Raw SDK working directory path (e.g. /tmp/copilot-<session_id>).
-# Used by workspace tools to save binary files for the CLI's built-in Read.
-_current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -148,24 +86,6 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
-
-
-def get_current_sandbox() -> "AsyncSandbox | None":
-    """Return the E2B sandbox for the current turn, or None."""
-    return _current_sandbox.get()
-
-
-def get_sdk_cwd() -> str:
-    """Return the SDK ephemeral working directory for the current turn."""
-    return _current_sdk_cwd.get()
-
-
-def get_execution_context() -> tuple[str | None, ChatSession | None]:
-    """Get the current execution context."""
-    return (
-        _current_user_id.get(),
-        _current_session.get(),
-    )
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
