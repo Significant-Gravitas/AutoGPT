@@ -108,7 +108,7 @@ If multiple entries exist at the path (e.g., a file and a symlink), the block se
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the operation failed | str |
+| error | Error message if reading the file failed | str |
 | text_content | Content of the file (decoded as UTF-8 text) | str |
 | raw_content | Raw base64-encoded content of the file | str |
 | size | The size of the file (in bytes) | int |
@@ -210,9 +210,9 @@ This block updates an existing file in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates a new file in a GitHub repository using the Contents API. It encodes the provided content as base64 and commits it to the specified branch with the given commit message.
+This block updates an existing file using the GitHub Contents API. It first fetches the current file to obtain its SHA (required by the API to prevent conflicts), then sends a PUT request with the new base64-encoded content, commit message, and branch.
 
-If a file already exists at the specified path, the API will return an error. Use the Update File block to modify existing files.
+The block returns the URL of the updated file and the SHA of the new commit.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -235,11 +235,11 @@ If a file already exists at the specified path, the API will return an error. Us
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Configuration Deployment**: Create configuration files in repositories programmatically.
+**Configuration Updates**: Modify configuration files like version numbers or feature flags in repositories.
 
-**Template Generation**: Generate boilerplate files like READMEs, CI configs, or license files in new repositories.
+**Automated Maintenance**: Update dependency files or lock files as part of automated workflows.
 
-**Automated Documentation**: Create documentation files based on code analysis or external data sources.
+**Content Management**: Edit documentation or content files stored in GitHub repositories.
 <!-- END MANUAL -->
 
 ---

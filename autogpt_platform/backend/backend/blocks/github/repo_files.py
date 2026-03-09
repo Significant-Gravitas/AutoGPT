@@ -47,6 +47,7 @@ class GithubReadFileBlock(Block):
             description="Raw base64-encoded content of the file"
         )
         size: int = SchemaField(description="The size of the file (in bytes)")
+        error: str = SchemaField(description="Error message if reading the file failed")
 
     def __init__(self):
         super().__init__(
@@ -100,15 +101,18 @@ class GithubReadFileBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        content, size = await self.read_file(
-            credentials,
-            input_data.repo_url,
-            input_data.file_path,
-            input_data.branch,
-        )
-        yield "raw_content", content
-        yield "text_content", base64.b64decode(content).decode("utf-8")
-        yield "size", size
+        try:
+            content, size = await self.read_file(
+                credentials,
+                input_data.repo_url,
+                input_data.file_path,
+                input_data.branch,
+            )
+            yield "raw_content", content
+            yield "text_content", base64.b64decode(content).decode("utf-8")
+            yield "size", size
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubReadFolderBlock(Block):
