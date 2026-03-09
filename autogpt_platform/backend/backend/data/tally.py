@@ -14,6 +14,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -347,7 +348,7 @@ async def extract_business_understanding(
     """
     settings = Settings()
     api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
     try:
         response = await asyncio.wait_for(
