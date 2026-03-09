@@ -1,16 +1,13 @@
 import pytest
 
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.github.commits import (
-    FileOperation,
-    GithubMultiFileCommitBlock,
-)
+from backend.blocks.github.commits import FileOperation, GithubMultiFileCommitBlock
 from backend.blocks.github.pull_requests import (
     GithubMergePullRequestBlock,
     prepare_pr_api_url,
 )
+from backend.util.exceptions import BlockExecutionError
 from backend.util.test import execute_block_test
-
 
 # ── prepare_pr_api_url tests ──
 
@@ -43,6 +40,8 @@ class TestPreparePrApiUrl:
 
 
 # ── Error-path block tests ──
+# When a block's run() yields ("error", msg), _execute() converts it to a
+# BlockExecutionError, so we assert the exception rather than an output tuple.
 
 
 def _raise(exc: Exception):
@@ -65,9 +64,10 @@ async def test_merge_pr_error_path():
         "credentials": TEST_CREDENTIALS_INPUT,
     }
     block.test_credentials = TEST_CREDENTIALS
-    block.test_output = [("error", "PR not mergeable")]
+    block.test_output = []
     block.test_mock = {"merge_pr": _raise(RuntimeError("PR not mergeable"))}
-    await execute_block_test(block)
+    with pytest.raises(BlockExecutionError, match="PR not mergeable"):
+        await execute_block_test(block)
 
 
 @pytest.mark.asyncio
@@ -81,11 +81,10 @@ async def test_multi_file_commit_error_path():
         "credentials": TEST_CREDENTIALS_INPUT,
     }
     block.test_credentials = TEST_CREDENTIALS
-    block.test_output = [("error", "ref update failed")]
-    block.test_mock = {
-        "multi_file_commit": _raise(RuntimeError("ref update failed"))
-    }
-    await execute_block_test(block)
+    block.test_output = []
+    block.test_mock = {"multi_file_commit": _raise(RuntimeError("ref update failed"))}
+    with pytest.raises(BlockExecutionError, match="ref update failed"):
+        await execute_block_test(block)
 
 
 # ── FileOperation enum tests ──
