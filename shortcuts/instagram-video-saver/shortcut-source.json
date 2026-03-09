@@ -1,0 +1,471 @@
+{
+  "WFWorkflowClientVersion": "2605.0.5",
+  "WFWorkflowMinimumClientVersion": 900,
+  "WFWorkflowMinimumClientVersionString": "900",
+  "WFWorkflowName": "Claude-InstaSaver",
+  "WFWorkflowHasShortcutInputVariables": true,
+  "WFWorkflowIcon": {
+    "WFWorkflowIconStartColor": -1618153729,
+    "WFWorkflowIconGlyphNumber": 59511
+  },
+  "WFWorkflowInputContentItemClasses": [
+    "WFURLContentItem",
+    "WFStringContentItem"
+  ],
+  "WFWorkflowTypes": [
+    "ActionExtension"
+  ],
+  "WFWorkflowActions": [
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.comment",
+      "WFWorkflowActionParameters": {
+        "WFCommentActionText": "Claude-InstaSaver v1.0\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDownloads Instagram videos and saves them to your Photos library.\n\nUsage:\n  • Share an Instagram post/reel URL via the Share Sheet, OR\n  • Open the shortcut directly and paste a URL when prompted.\n\nWorks with: /p/ posts, /reel/ reels, /tv/ IGTV videos.\nNote: subject to Instagram ToS — for personal use only.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.shortcut.input",
+      "WFWorkflowActionParameters": {
+        "UUID": "C5A77B56-E3F0-4A18-B4DB-DA1D42447F37",
+        "CustomOutputName": "Shortcut Input"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "DE02CDBF-D9AE-4EDB-A360-7B3B30DD9739",
+        "GroupingIdentifier": "DE02CDBF-D9AE-4EDB-A360-7B3B30DD9739",
+        "WFControlFlowMode": 0,
+        "WFCondition": 101,
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Shortcut Input"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.ask",
+      "WFWorkflowActionParameters": {
+        "UUID": "6B8FCF68-4B7C-406B-95F2-8D73EB889442",
+        "CustomOutputName": "Asked URL",
+        "WFAskActionPrompt": "Paste an Instagram video URL:",
+        "WFInputType": "URL",
+        "WFAskActionDefaultAnswer": "https://www.instagram.com/reel/"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+      "WFWorkflowActionParameters": {
+        "WFVariableName": "Shortcut Input",
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "6B8FCF68-4B7C-406B-95F2-8D73EB889442",
+            "Type": "ActionOutput",
+            "OutputName": "Asked URL"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "5E0D4B6C-6931-46BC-8C54-783CAF0D120E",
+        "GroupingIdentifier": "DE02CDBF-D9AE-4EDB-A360-7B3B30DD9739",
+        "WFControlFlowMode": 2
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "1D7ABB9C-1D04-4559-9723-011A1E46A127",
+        "GroupingIdentifier": "1D7ABB9C-1D04-4559-9723-011A1E46A127",
+        "WFControlFlowMode": 0,
+        "WFCondition": 999,
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Shortcut Input"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFConditionalActionString": "instagram.com"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.showresult",
+      "WFWorkflowActionParameters": {
+        "Text": {
+          "Value": {
+            "attachmentsByRange": {},
+            "string": "❌ Invalid URL\n\nPlease share a valid Instagram post, reel, or IGTV URL.\nExample: https://www.instagram.com/reel/ABC123/"
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "ECF06CE4-EFD2-4FA6-8713-00121B6535E7",
+        "GroupingIdentifier": "1D7ABB9C-1D04-4559-9723-011A1E46A127",
+        "WFControlFlowMode": 2
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.text.match",
+      "WFWorkflowActionParameters": {
+        "UUID": "C3121246-8EB1-4094-88B3-D548B956C638",
+        "CustomOutputName": "Shortcode Match",
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Shortcut Input"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFMatchTextPattern": "instagram\\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)",
+        "WFMatchTextCaseSensitive": false
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.getitemfromlist",
+      "WFWorkflowActionParameters": {
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "C3121246-8EB1-4094-88B3-D548B956C638",
+            "Type": "ActionOutput",
+            "OutputName": "Shortcode Match"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFItemSpecifier": "Item At Index",
+        "WFItemIndex": 1,
+        "UUID": "E01D93AC-2AAC-4172-8077-D005503E149E",
+        "CustomOutputName": "Shortcode"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+      "WFWorkflowActionParameters": {
+        "WFVariableName": "shortcode",
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Shortcode"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.url",
+      "WFWorkflowActionParameters": {
+        "UUID": "4CCC9A89-8C99-4549-8842-2730B9A5E050",
+        "CustomOutputName": "API URL",
+        "WFURLActionURL": {
+          "Value": {
+            "attachmentsByRange": {
+              "{35, 1}": {
+                "Type": "Variable",
+                "VariableName": "shortcode"
+              }
+            },
+            "string": "https://www.instagram.com/p/%@/?__a=1&__d=dis"
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+      "WFWorkflowActionParameters": {
+        "UUID": "B2AC41CE-A1D3-46BF-BAF5-3F19703A944B",
+        "CustomOutputName": "API Response",
+        "WFURL": {
+          "Value": {
+            "OutputUUID": "4CCC9A89-8C99-4549-8842-2730B9A5E050",
+            "Type": "ActionOutput",
+            "OutputName": "API URL"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFHTTPMethod": "GET",
+        "WFHTTPHeaders": {
+          "Value": {
+            "WFDictionaryFieldValueItems": [
+              {
+                "WFItemType": 0,
+                "WFValue": {
+                  "Value": {
+                    "attachmentsByRange": {},
+                    "string": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                  },
+                  "WFSerializationType": "WFTextTokenString"
+                },
+                "WFKey": {
+                  "Value": {
+                    "attachmentsByRange": {},
+                    "string": "User-Agent"
+                  },
+                  "WFSerializationType": "WFTextTokenString"
+                }
+              },
+              {
+                "WFItemType": 0,
+                "WFValue": {
+                  "Value": {
+                    "attachmentsByRange": {},
+                    "string": "https://www.instagram.com/"
+                  },
+                  "WFSerializationType": "WFTextTokenString"
+                },
+                "WFKey": {
+                  "Value": {
+                    "attachmentsByRange": {},
+                    "string": "Referer"
+                  },
+                  "WFSerializationType": "WFTextTokenString"
+                }
+              }
+            ]
+          },
+          "WFSerializationType": "WFDictionaryFieldValue"
+        },
+        "WFShowWebView": false
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.getdictionaryvalue",
+      "WFWorkflowActionParameters": {
+        "UUID": "EEFA926E-738B-45D0-9C44-9418A4EFF869",
+        "CustomOutputName": "Video URL (Method A)",
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "B2AC41CE-A1D3-46BF-BAF5-3F19703A944B",
+            "Type": "ActionOutput",
+            "OutputName": "API Response"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFKey": {
+          "Value": {
+            "attachmentsByRange": {},
+            "string": "items.0.video_url"
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "DE640000-8425-4C0A-A5EF-0771E6B7A2AE",
+        "GroupingIdentifier": "DE640000-8425-4C0A-A5EF-0771E6B7A2AE",
+        "WFControlFlowMode": 0,
+        "WFCondition": 101,
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "EEFA926E-738B-45D0-9C44-9418A4EFF869",
+            "Type": "ActionOutput",
+            "OutputName": "Video URL (Method A)"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.urlencode",
+      "WFWorkflowActionParameters": {
+        "UUID": "D34EE6DA-6EAA-4C47-B9B0-3B6FF00CBAE3",
+        "CustomOutputName": "Encoded URL",
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Shortcut Input"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.url",
+      "WFWorkflowActionParameters": {
+        "UUID": "688937BC-C11E-4416-B7C7-EF83C2D1246B",
+        "CustomOutputName": "Fallback API URL",
+        "WFURLActionURL": {
+          "Value": {
+            "attachmentsByRange": {
+              "{38, 1}": {
+                "OutputUUID": "D34EE6DA-6EAA-4C47-B9B0-3B6FF00CBAE3",
+                "Type": "ActionOutput",
+                "OutputName": "Encoded URL"
+              }
+            },
+            "string": "https://sssinstagram.com/api/convert?url=%@"
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+      "WFWorkflowActionParameters": {
+        "UUID": "63D926EF-63A4-4E5D-8D38-9D8C5D13824A",
+        "CustomOutputName": "Fallback Response",
+        "WFURL": {
+          "Value": {
+            "OutputUUID": "688937BC-C11E-4416-B7C7-EF83C2D1246B",
+            "Type": "ActionOutput",
+            "OutputName": "Fallback API URL"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFHTTPMethod": "GET",
+        "WFShowWebView": false
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.getdictionaryvalue",
+      "WFWorkflowActionParameters": {
+        "UUID": "9A452984-649D-4125-B528-84D8CC34216F",
+        "CustomOutputName": "Video URL (Method B)",
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "63D926EF-63A4-4E5D-8D38-9D8C5D13824A",
+            "Type": "ActionOutput",
+            "OutputName": "Fallback Response"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFKey": {
+          "Value": {
+            "attachmentsByRange": {},
+            "string": "download_url"
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+      "WFWorkflowActionParameters": {
+        "WFVariableName": "Final Video URL",
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "9A452984-649D-4125-B528-84D8CC34216F",
+            "Type": "ActionOutput",
+            "OutputName": "Video URL (Method B)"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "B7B062DF-9786-4911-88D6-B06CDF0A8897",
+        "GroupingIdentifier": "DE640000-8425-4C0A-A5EF-0771E6B7A2AE",
+        "WFControlFlowMode": 1
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+      "WFWorkflowActionParameters": {
+        "WFVariableName": "Final Video URL",
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "EEFA926E-738B-45D0-9C44-9418A4EFF869",
+            "Type": "ActionOutput",
+            "OutputName": "Video URL (Method A)"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "EC7F6A1B-83E4-4B64-A4E5-6609120404FF",
+        "GroupingIdentifier": "DE640000-8425-4C0A-A5EF-0771E6B7A2AE",
+        "WFControlFlowMode": 2
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "25A53061-2DAC-4856-A883-5158A3150674",
+        "GroupingIdentifier": "25A53061-2DAC-4856-A883-5158A3150674",
+        "WFControlFlowMode": 0,
+        "WFCondition": 101,
+        "WFInput": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Final Video URL"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.showresult",
+      "WFWorkflowActionParameters": {
+        "Text": {
+          "Value": {
+            "attachmentsByRange": {},
+            "string": "❌ Could Not Download Video\n\nBoth download methods failed. This may be because:\n• The post is from a private account you don't follow\n• Instagram has changed its internal API\n• The fallback service is temporarily unavailable\n• The post does not contain a video\n\nSee ISSUES.md in the Claude-InstaSaver repo for workarounds."
+          },
+          "WFSerializationType": "WFTextTokenString"
+        }
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+      "WFWorkflowActionParameters": {
+        "UUID": "227F1EFC-4BCB-40C9-BBFB-87881B579C38",
+        "GroupingIdentifier": "25A53061-2DAC-4856-A883-5158A3150674",
+        "WFControlFlowMode": 2
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+      "WFWorkflowActionParameters": {
+        "UUID": "79B5AAEB-8EFC-48F0-A227-ED6B32C088FC",
+        "CustomOutputName": "Video File",
+        "WFURL": {
+          "Value": {
+            "Type": "Variable",
+            "VariableName": "Final Video URL"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFHTTPMethod": "GET",
+        "WFShowWebView": false
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.savephotosalbum",
+      "WFWorkflowActionParameters": {
+        "WFInput": {
+          "Value": {
+            "OutputUUID": "79B5AAEB-8EFC-48F0-A227-ED6B32C088FC",
+            "Type": "ActionOutput",
+            "OutputName": "Video File"
+          },
+          "WFSerializationType": "WFTextTokenAttachment"
+        },
+        "WFAlbumName": "Recents"
+      }
+    },
+    {
+      "WFWorkflowActionIdentifier": "is.workflow.actions.notification",
+      "WFWorkflowActionParameters": {
+        "WFNotificationActionTitle": "Claude-InstaSaver",
+        "WFNotificationActionBody": "✅ Instagram video saved to Photos!",
+        "WFNotificationActionSound": true
+      }
+    }
+  ]
+}
