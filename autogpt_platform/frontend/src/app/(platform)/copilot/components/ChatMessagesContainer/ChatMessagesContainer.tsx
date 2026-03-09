@@ -320,6 +320,8 @@ export function ChatMessagesContainer({
             : { reasoning: [] as MessagePart[], response: message.parts };
           const hasReasoning = reasoning.length > 0;
 
+          // Note: when interactive tools are pinned from reasoning into response,
+          // this index approximates their position (used only for React keys).
           const responseStartIndex = message.parts.length - response.length;
           const responseSegments =
             message.role === "assistant"
