@@ -64,7 +64,7 @@ export function isInteractiveToolPart(part: MessagePart): boolean {
     }
   }
 
-  if (typeof output !== "object") return false;
+  if (typeof output !== "object" || output === null) return false;
 
   const responseType = (output as Record<string, unknown>).type;
   return (
