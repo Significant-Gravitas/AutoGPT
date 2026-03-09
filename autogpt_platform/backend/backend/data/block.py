@@ -44,28 +44,23 @@ async def initialize_blocks() -> None:
 
         input_schema = json.dumps(block.input_schema.jsonschema())
         output_schema = json.dumps(block.output_schema.jsonschema())
-        description_changed = block.description != existing_block.description
         if (
             block.id != existing_block.id
             or block.name != existing_block.name
             or input_schema != existing_block.inputSchema
             or output_schema != existing_block.outputSchema
-            or description_changed
+            or block.description != existing_block.description
         ):
-            update_data: dict[str, Any] = {
-                "id": block.id,
-                "name": block.name,
-                "inputSchema": input_schema,
-                "outputSchema": output_schema,
-                "description": block.description,
-            }
-            # Clear optimized description when source description changes
-            # so the scheduler job regenerates it
-            if description_changed:
-                update_data["optimizedDescription"] = None
             await AgentBlock.prisma().update(
                 where={"id": existing_block.id},
-                data=update_data,
+                data={
+                    "id": block.id,
+                    "name": block.name,
+                    "inputSchema": input_schema,
+                    "outputSchema": output_schema,
+                    "description": block.description,
+                    "optimizedDescription": None,
+                },
             )
 
     failed_blocks: list[str] = []
@@ -104,7 +99,7 @@ async def initialize_blocks() -> None:
         if applied:
             logger.info("Loaded %d optimized block descriptions", applied)
     except Exception:
-        logger.debug("Could not load optimized descriptions", exc_info=True)
+        logger.error("Could not load optimized descriptions", exc_info=True)
 
 
 async def get_blocks_needing_optimization() -> list[dict[str, str]]:
