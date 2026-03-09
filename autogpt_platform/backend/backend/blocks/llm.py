@@ -149,6 +149,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -392,6 +393,15 @@ MODEL_METADATA = {
     ),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata(
         "open_router", 200000, 8000, "Sonar Pro", "OpenRouter", "Perplexity", 2
+    ),
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: ModelMetadata(
+        "open_router",
+        128000,
+        8000,
+        "Sonar Reasoning Pro",
+        "OpenRouter",
+        "Perplexity",
+        2,
     ),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
@@ -1375,15 +1385,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             else "Please provide a"
         ) + f" valid JSON {outer_output_type} that matches the expected format."
 
-        return trim_prompt(
-            f"""
+        return trim_prompt(f"""
             |{complaint}
             |
             |{indented_parse_error}
             |
             |{instruction}
-        """
-        )
+        """)
 
     def get_json_from_response(
         self, response_text: str, *, pure_json_mode: bool, output_tag_start: str
@@ -2020,8 +2028,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for item in parsed_list:
             yield "list_item", item
 
-    SYSTEM_PROMPT = trim_prompt(
-        """
+    SYSTEM_PROMPT = trim_prompt("""
         |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
         |
         |The 'list' field should contain a JSON array with the generated string values.
@@ -2031,5 +2038,4 @@ class AIListGeneratorBlock(AIBlockBase):
         |• ["string1", "string2", "string3"]
         |
         |Ensure you provide a proper JSON array with only string values in the 'list' field.
-        """
-    )
+        """)
