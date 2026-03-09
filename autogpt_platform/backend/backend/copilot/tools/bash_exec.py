@@ -21,10 +21,10 @@ from typing import Any
 from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
+from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .e2b_sandbox import E2B_WORKDIR
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
@@ -93,9 +93,6 @@ class BashExecTool(BaseTool):
                 error="empty_command",
                 session_id=session_id,
             )
-
-        # E2B path: run on remote cloud sandbox when available.
-        from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
         sandbox = get_current_sandbox()
         if sandbox is not None:

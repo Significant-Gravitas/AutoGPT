@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 
 _SANDBOX_KEY_PREFIX = "copilot:e2b:sandbox:"
 _CREATING_SENTINEL = "creating"
-E2B_WORKDIR = "/home/user"
 
 # Short TTL for the "creating" sentinel — if the process dies mid-creation the
 # lock auto-expires so other callers are not blocked forever.
