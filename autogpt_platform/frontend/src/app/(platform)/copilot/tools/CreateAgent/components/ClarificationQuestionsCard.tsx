@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ChatTeardropDotsIcon, CheckCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { ClarifyingQuestion } from "../helpers";
+import type { ClarifyingQuestion } from "../../clarifying-questions";
 
 interface Props {
   questions: ClarifyingQuestion[];
@@ -149,20 +149,20 @@ export function ClarificationQuestionsCard({
 
             <div className="space-y-6">
               {questions.map((q, index) => {
-                const isAnswered = !!answers[q.keyword]?.trim();
+                const hasAnswer = !!answers[q.keyword]?.trim();
 
                 return (
                   <div
                     key={`${q.keyword}-${index}`}
                     className={cn(
                       "relative rounded-lg border border-dotted p-3",
-                      isAnswered
+                      hasAnswer
                         ? "border-green-500 bg-green-50/50"
                         : "border-slate-100 bg-slate-50/50",
                     )}
                   >
                     <div className="mb-2 flex items-start gap-2">
-                      {isAnswered ? (
+                      {hasAnswer ? (
                         <CheckCircleIcon
                           size={20}
                           className="mt-0.5 text-green-500"
