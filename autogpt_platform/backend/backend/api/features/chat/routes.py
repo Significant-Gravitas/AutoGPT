@@ -267,11 +267,11 @@ async def delete_session(
 
     # Best-effort cleanup of the E2B sandbox (if any).
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
-    _e2b_cfg = ChatConfig()
-    if _e2b_cfg.e2b_active:
-        assert _e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
+    e2b_cfg = ChatConfig()
+    if e2b_cfg.e2b_active:
+        assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
         try:
-            await kill_sandbox(session_id, _e2b_cfg.e2b_api_key)
+            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
         except Exception:
             logger.warning(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]

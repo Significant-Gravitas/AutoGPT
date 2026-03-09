@@ -143,7 +143,7 @@ class ChatConfig(BaseSettings):
             if api_key := config.active_e2b_api_key:
                 # E2B is active; api_key is narrowed to str
         """
-        return self.e2b_api_key if self.use_e2b_sandbox else None
+        return self.e2b_api_key if self.e2b_active else None
 
     @field_validator("use_e2b_sandbox", mode="before")
     @classmethod

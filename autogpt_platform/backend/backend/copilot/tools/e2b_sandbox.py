@@ -59,11 +59,6 @@ _MAX_WAIT_ATTEMPTS = 20  # 20 × 0.5 s = 10 s max wait
 # operations; if the sandbox is unreachable, fail fast and retry on the next turn.
 _E2B_API_TIMEOUT_SECONDS = 10
 
-# How long the sandbox may run continuously before e2b auto-pauses it (safety
-# net; per-turn explicit pause is the primary mechanism).
-# E2B timeout is wall-clock (not idle), so keep it generous enough for long turns.
-_E2B_TIMEOUT = 10800  # 3 hours
-
 # Redis TTL for the sandbox key.  Must be ≥ the E2B project "paused sandbox
 # lifetime" setting (recommended: set both to 48 h).
 _SANDBOX_ID_TTL = 48 * 3600  # 48 hours
@@ -111,8 +106,8 @@ async def _try_reconnect(
 async def get_or_create_sandbox(
     session_id: str,
     api_key: str,
+    timeout: int,
     template: str = "base",
-    timeout: int = _E2B_TIMEOUT,
     on_timeout: Literal["kill", "pause"] = "pause",
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
