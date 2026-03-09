@@ -380,6 +380,35 @@ async def extract_business_understanding(
     return BusinessUnderstandingInput(**cleaned)
 
 
+async def get_business_understanding_input_from_tally(
+    email: str,
+    *,
+    require_api_key: bool = False,
+) -> Optional[BusinessUnderstandingInput]:
+    settings = Settings()
+    if not settings.secrets.tally_api_key:
+        if require_api_key:
+            raise RuntimeError("Tally API key is not configured")
+        logger.debug("Tally: no API key configured, skipping")
+        return None
+
+    masked = _mask_email(email)
+    result = await find_submission_by_email(TALLY_FORM_ID, email)
+    if result is None:
+        logger.debug(f"Tally: no submission found for {masked}")
+        return None
+
+    submission, questions = result
+    logger.info(f"Tally: found submission for {masked}, extracting understanding")
+
+    formatted = format_submission_for_llm(submission, questions)
+    if not formatted.strip():
+        logger.warning("Tally: formatted submission was empty, skipping")
+        return None
+
+    return await extract_business_understanding(formatted)
+
+
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
     """Main orchestrator: check Tally for a matching submission and populate understanding.
 
@@ -394,29 +423,9 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             )
             return
 
-        # Check API key is configured
-        settings = Settings()
-        if not settings.secrets.tally_api_key:
-            logger.debug("Tally: no API key configured, skipping")
+        understanding_input = await get_business_understanding_input_from_tally(email)
+        if understanding_input is None:
             return
-
-        # Look up submission by email
-        masked = _mask_email(email)
-        result = await find_submission_by_email(TALLY_FORM_ID, email)
-        if result is None:
-            logger.debug(f"Tally: no submission found for {masked}")
-            return
-
-        submission, questions = result
-        logger.info(f"Tally: found submission for {masked}, extracting understanding")
-
-        # Format and extract
-        formatted = format_submission_for_llm(submission, questions)
-        if not formatted.strip():
-            logger.warning("Tally: formatted submission was empty, skipping")
-            return
-
-        understanding_input = await extract_business_understanding(formatted)
 
         # Upsert into database
         await upsert_business_understanding(user_id, understanding_input)

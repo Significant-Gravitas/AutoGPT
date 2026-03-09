@@ -1,5 +1,11 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import {
+  Users,
+  DollarSign,
+  UserSearch,
+  FileText,
+  UserPlus,
+} from "lucide-react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -15,6 +21,11 @@ const sidebarLinkGroups = [
         text: "User Spending",
         href: "/admin/spending",
         icon: <DollarSign className="h-6 w-6" />,
+      },
+      {
+        text: "Beta Invites",
+        href: "/admin/users",
+        icon: <UserPlus className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
