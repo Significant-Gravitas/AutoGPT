@@ -77,6 +77,8 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_32k = GPT4_ROLLING_32k
     GPT4_O = GPT4_O_ROLLING
 
+    PHI_4 = "phi-4"
+
 
 OPEN_AI_EMBEDDING_MODELS = {
     info.name: info
@@ -171,6 +173,14 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=5 / 1_000_000,
             completion_token_cost=15 / 1_000_000,
             max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.PHI_4,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.13 / 1_000_000,
+            completion_token_cost=0.50 / 1_000_000,
+            max_tokens=16_000,
             has_function_call_api=True,
         ),
     ]
