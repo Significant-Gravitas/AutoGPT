@@ -1,3 +1,5 @@
+import inspect
+
 import pytest
 
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
@@ -7,7 +9,6 @@ from backend.blocks.github.pull_requests import (
     prepare_pr_api_url,
 )
 from backend.util.exceptions import BlockExecutionError
-from backend.util.test import execute_block_test
 
 # ── prepare_pr_api_url tests ──
 
@@ -41,7 +42,22 @@ class TestPreparePrApiUrl:
 
 # ── Error-path block tests ──
 # When a block's run() yields ("error", msg), _execute() converts it to a
-# BlockExecutionError, so we assert the exception rather than an output tuple.
+# BlockExecutionError. We call block.execute() directly (not execute_block_test,
+# which returns early on empty test_output).
+
+
+def _mock_block(block, mocks: dict):
+    """Apply mocks to a block's static methods, wrapping sync mocks as async."""
+    for name, mock_fn in mocks.items():
+        original = getattr(block, name)
+        if inspect.iscoroutinefunction(original):
+
+            async def async_mock(*args, _fn=mock_fn, **kwargs):
+                return _fn(*args, **kwargs)
+
+            setattr(block, name, async_mock)
+        else:
+            setattr(block, name, mock_fn)
 
 
 def _raise(exc: Exception):
@@ -56,35 +72,33 @@ def _raise(exc: Exception):
 @pytest.mark.asyncio
 async def test_merge_pr_error_path():
     block = GithubMergePullRequestBlock()
-    block.test_input = {
+    _mock_block(block, {"merge_pr": _raise(RuntimeError("PR not mergeable"))})
+    input_data = {
         "pr_url": "https://github.com/owner/repo/pull/1",
         "merge_method": "squash",
         "commit_title": "",
         "commit_message": "",
         "credentials": TEST_CREDENTIALS_INPUT,
     }
-    block.test_credentials = TEST_CREDENTIALS
-    block.test_output = []
-    block.test_mock = {"merge_pr": _raise(RuntimeError("PR not mergeable"))}
     with pytest.raises(BlockExecutionError, match="PR not mergeable"):
-        await execute_block_test(block)
+        async for _ in block.execute(input_data, credentials=TEST_CREDENTIALS):
+            pass
 
 
 @pytest.mark.asyncio
 async def test_multi_file_commit_error_path():
     block = GithubMultiFileCommitBlock()
-    block.test_input = {
+    _mock_block(block, {"multi_file_commit": _raise(RuntimeError("ref update failed"))})
+    input_data = {
         "repo_url": "https://github.com/owner/repo",
         "branch": "feature",
         "commit_message": "test",
         "files": [{"path": "a.py", "content": "x", "operation": "upsert"}],
         "credentials": TEST_CREDENTIALS_INPUT,
     }
-    block.test_credentials = TEST_CREDENTIALS
-    block.test_output = []
-    block.test_mock = {"multi_file_commit": _raise(RuntimeError("ref update failed"))}
     with pytest.raises(BlockExecutionError, match="ref update failed"):
-        await execute_block_test(block)
+        async for _ in block.execute(input_data, credentials=TEST_CREDENTIALS):
+            pass
 
 
 # ── FileOperation enum tests ──
