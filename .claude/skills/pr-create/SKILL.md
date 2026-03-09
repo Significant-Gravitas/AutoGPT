@@ -1,6 +1,6 @@
 ---
 name: pr-create
-description: Create a pull request for the current branch.
+description: Create a pull request for the current branch. TRIGGER when user asks to create a PR, open a pull request, push changes for review, or submit work for merging.
 user-invocable: true
 metadata:
   author: autogpt-team
