@@ -1,13 +1,13 @@
 """File reference protocol for tool call inputs.
 
 Allows the LLM to pass a file reference instead of embedding large content
-inline.  The processor expands ``@file:<uri>[<start>-<end>]`` tokens in tool
+inline.  The processor expands ``@@agptfile:<uri>[<start>-<end>]`` tokens in tool
 arguments before the tool is executed.
 
 Protocol
 --------
 
-    @file:<uri>[<start>-<end>]
+    @@agptfile:<uri>[<start>-<end>]
 
 ``<uri>`` (required)
     - ``workspace://<file_id>`` — workspace file by ID
@@ -24,11 +24,11 @@ Protocol
 
 Examples
 --------
-    @file:workspace://abc123
-    @file:workspace://abc123[10-50]
-    @file:workspace:///reports/q1.md
-    @file:/tmp/copilot-<session>/output.py[1-80]
-    @file:/home/user/script.sh
+    @@agptfile:workspace://abc123
+    @@agptfile:workspace://abc123[10-50]
+    @@agptfile:workspace:///reports/q1.md
+    @@agptfile:/tmp/copilot-<session>/output.py[1-80]
+    @@agptfile:/home/user/script.sh
 """
 
 import itertools
@@ -48,17 +48,31 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
 
+
+class FileRefExpansionError(Exception):
+    """Raised when a ``@@agptfile:`` reference in tool call args fails to resolve.
+
+    Separating this from inline substitution lets callers (e.g. the MCP tool
+    wrapper) block tool execution and surface a helpful error to the model
+    rather than passing an ``[file-ref error: …]`` string as actual input.
+    """
+
+
 logger = logging.getLogger(__name__)
 
-# Matches:  @file:<uri>[start-end]?
-#   Group 1 – URI (any non-whitespace, non-'[' chars)
+FILE_REF_PREFIX = "@@agptfile:"
+
+# Matches:  @@agptfile:<uri>[start-end]?
+#   Group 1 – URI; must start with '/' (absolute path) or 'workspace://'
 #   Group 2 – start line (optional)
 #   Group 3 – end line (optional)
-_FILE_REF_RE = re.compile(r"@file:([^\[\s]+)(?:\[(\d+)-(\d+)\])?")
+_FILE_REF_RE = re.compile(
+    re.escape(FILE_REF_PREFIX) + r"((?:workspace://|/)[^\[\s]*)(?:\[(\d+)-(\d+)\])?"
+)
 
 # Maximum characters returned for a single file reference expansion.
 _MAX_EXPAND_CHARS = 200_000
-# Maximum total characters across all @file: expansions in one string.
+# Maximum total characters across all @@agptfile: expansions in one string.
 _MAX_TOTAL_EXPAND_CHARS = 1_000_000
 
 
@@ -72,7 +86,7 @@ class FileRef:
 def parse_file_ref(text: str) -> FileRef | None:
     """Return a :class:`FileRef` if *text* is a bare file reference token.
 
-    A "bare token" means the entire string matches the ``@file:...`` pattern
+    A "bare token" means the entire string matches the ``@@agptfile:...`` pattern
     (after stripping whitespace).  Use :func:`expand_file_refs_in_string` to
     expand references embedded in larger strings.
     """
@@ -173,14 +187,22 @@ async def expand_file_refs_in_string(
     text: str,
     user_id: str | None,
     session: "ChatSession",
+    *,
+    raise_on_error: bool = False,
 ) -> str:
-    """Expand all ``@file:...`` tokens in *text*, returning the substituted string.
+    """Expand all ``@@agptfile:...`` tokens in *text*, returning the substituted string.
 
-    Non-reference text is passed through unchanged.  Expansion errors are
-    surfaced inline as ``[file-ref error: <message>]`` so a bad reference
-    doesn't silently swallow the rest of the argument.
+    Non-reference text is passed through unchanged.
+
+    If *raise_on_error* is ``False`` (default), expansion errors are surfaced
+    inline as ``[file-ref error: <message>]`` — useful for display/log contexts
+    where partial expansion is acceptable.
+
+    If *raise_on_error* is ``True``, any resolution failure raises
+    :class:`FileRefExpansionError` immediately so the caller can block the
+    operation and surface a clean error to the model.
     """
-    if "@file:" not in text:
+    if FILE_REF_PREFIX not in text:
         return text
 
     result: list[str] = []
@@ -191,13 +213,17 @@ async def expand_file_refs_in_string(
         start = int(m.group(2)) if m.group(2) else None
         end = int(m.group(3)) if m.group(3) else None
         if (start is not None and start < 1) or (end is not None and end < 1):
-            result.append(f"[file-ref error: line numbers must be >= 1: {m.group(0)}]")
+            msg = f"line numbers must be >= 1: {m.group(0)}"
+            if raise_on_error:
+                raise FileRefExpansionError(msg)
+            result.append(f"[file-ref error: {msg}]")
             last_end = m.end()
             continue
         if start is not None and end is not None and end < start:
-            result.append(
-                f"[file-ref error: end line must be >= start line: {m.group(0)}]"
-            )
+            msg = f"end line must be >= start line: {m.group(0)}"
+            if raise_on_error:
+                raise FileRefExpansionError(msg)
+            result.append(f"[file-ref error: {msg}]")
             last_end = m.end()
             continue
         ref = FileRef(uri=m.group(1), start_line=start, end_line=end)
@@ -214,6 +240,8 @@ async def expand_file_refs_in_string(
             result.append(content)
         except ValueError as exc:
             logger.warning("file-ref expansion failed for %r: %s", m.group(0), exc)
+            if raise_on_error:
+                raise FileRefExpansionError(str(exc)) from exc
             result.append(f"[file-ref error: {exc}]")
         last_end = m.end()
 
@@ -226,17 +254,24 @@ async def expand_file_refs_in_args(
     user_id: str | None,
     session: "ChatSession",
 ) -> dict[str, Any]:
-    """Recursively expand ``@file:...`` references in tool call arguments.
+    """Recursively expand ``@@agptfile:...`` references in tool call arguments.
 
     String values are expanded in-place.  Nested dicts and lists are
     traversed.  Non-string scalars are returned unchanged.
+
+    Raises :class:`FileRefExpansionError` if any reference fails to resolve,
+    so the tool is *not* executed with an error string as its input.  The
+    caller (the MCP tool wrapper) should convert this into an MCP error
+    response that lets the model correct the reference before retrying.
     """
     if not args:
         return args
 
     async def _expand(value: Any) -> Any:
         if isinstance(value, str):
-            return await expand_file_refs_in_string(value, user_id, session)
+            return await expand_file_refs_in_string(
+                value, user_id, session, raise_on_error=True
+            )
         if isinstance(value, dict):
             return {k: await _expand(v) for k, v in value.items()}
         if isinstance(value, list):

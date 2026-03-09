@@ -1,7 +1,7 @@
-"""Integration tests for @file: reference expansion in tool calls.
+"""Integration tests for @@agptfile: reference expansion in tool calls.
 
 These tests verify the end-to-end behaviour of the file reference protocol:
-- Parsing @file: tokens from tool arguments
+- Parsing @@agptfile: tokens from tool arguments
 - Resolving local-filesystem paths (sdk_cwd / ephemeral)
 - Expanding references inside the tool-call pipeline (_execute_tool_sync)
 - The extended Read tool handler (workspace:// pass-through via session context)
@@ -102,7 +102,7 @@ async def test_resolve_file_ref_rejects_path_outside_sdk_cwd():
 
 @pytest.mark.asyncio
 async def test_expand_string_with_real_file():
-    """expand_file_refs_in_string replaces @file: token with actual content."""
+    """expand_file_refs_in_string replaces @@agptfile: token with actual content."""
     with tempfile.TemporaryDirectory() as sdk_cwd:
         test_file = os.path.join(sdk_cwd, "data.txt")
         with open(test_file, "w") as f:
@@ -112,7 +112,7 @@ async def test_expand_string_with_real_file():
             mock_cwd_var.get.return_value = sdk_cwd
 
             result = await expand_file_refs_in_string(
-                f"Content: @file:{test_file}",
+                f"Content: @@agptfile:{test_file}",
                 user_id="u1",
                 session=_make_session(),
             )
@@ -130,7 +130,7 @@ async def test_expand_string_missing_file_is_surfaced_inline():
             mock_cwd_var.get.return_value = sdk_cwd
 
             result = await expand_file_refs_in_string(
-                f"@file:{missing}",
+                f"@@agptfile:{missing}",
                 user_id="u1",
                 session=_make_session(),
             )
@@ -146,7 +146,7 @@ async def test_expand_string_missing_file_is_surfaced_inline():
 
 @pytest.mark.asyncio
 async def test_expand_args_replaces_file_ref_in_nested_dict():
-    """Nested @file: references in args are fully expanded."""
+    """Nested @@agptfile: references in args are fully expanded."""
     with tempfile.TemporaryDirectory() as sdk_cwd:
         file_a = os.path.join(sdk_cwd, "a.txt")
         file_b = os.path.join(sdk_cwd, "b.txt")
@@ -161,8 +161,8 @@ async def test_expand_args_replaces_file_ref_in_nested_dict():
             result = await expand_file_refs_in_args(
                 {
                     "outer": {
-                        "content_a": f"@file:{file_a}",
-                        "content_b": f"start @file:{file_b} end",
+                        "content_a": f"@@agptfile:{file_a}",
+                        "content_b": f"start @@agptfile:{file_b} end",
                     },
                     "count": 42,
                 },

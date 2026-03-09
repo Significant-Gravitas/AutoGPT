@@ -83,7 +83,7 @@ class RunBlockTool(BaseTool):
                     ),
                 },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "block_name", "input_data"],
         }
 
     @property
