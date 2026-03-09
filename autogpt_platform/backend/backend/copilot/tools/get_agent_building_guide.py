@@ -25,7 +25,7 @@ def _load_guide() -> str:
 class AgentBuildingGuideResponse(ToolResponseBase):
     """Response containing the agent building guide."""
 
-    type: ResponseType = ResponseType.AGENT_BUILDING_GUIDE
+    type: ResponseType = ResponseType.AGENT_BUILDER_GUIDE
     content: str
 
 

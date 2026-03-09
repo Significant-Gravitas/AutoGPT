@@ -16,7 +16,6 @@ class ResponseType(str, Enum):
     ERROR = "error"
     NO_RESULTS = "no_results"
     NEED_LOGIN = "need_login"
-    OPERATION_IN_PROGRESS = "operation_in_progress"
 
     # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
@@ -29,12 +28,12 @@ class ResponseType(str, Enum):
     SUGGESTED_GOAL = "suggested_goal"
 
     # Agent builder (create / edit / validate / fix)
-    AGENT_PREVIEW = "agent_preview"
-    AGENT_SAVED = "agent_saved"
-    CLARIFICATION_NEEDED = "clarification_needed"
-    AGENT_GRAPH_VALIDATION_RESULT = "agent_graph_validation_result"
-    AGENT_GRAPH_FIX_RESULT = "agent_graph_fix_result"
-    AGENT_BUILDING_GUIDE = "agent_building_guide"
+    AGENT_BUILDER_GUIDE = "agent_builder_guide"
+    AGENT_BUILDER_PREVIEW = "agent_builder_preview"
+    AGENT_BUILDER_SAVED = "agent_builder_saved"
+    AGENT_BUILDER_CLARIFICATION_NEEDED = "agent_builder_clarification_needed"
+    AGENT_BUILDER_VALIDATION_RESULT = "agent_builder_validation_result"
+    AGENT_BUILDER_FIX_RESULT = "agent_builder_fix_result"
 
     # Block
     BLOCK_LIST = "block_list"
@@ -42,9 +41,9 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
 
     # MCP
+    MCP_GUIDE = "mcp_guide"
     MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
     MCP_TOOL_OUTPUT = "mcp_tool_output"
-    MCP_GUIDE = "mcp_guide"
 
     # Docs
     DOC_SEARCH_RESULTS = "doc_search_results"
@@ -308,7 +307,7 @@ class ClarifyingQuestion(BaseModel):
 class AgentPreviewResponse(ToolResponseBase):
     """Response for previewing a generated agent before saving."""
 
-    type: ResponseType = ResponseType.AGENT_PREVIEW
+    type: ResponseType = ResponseType.AGENT_BUILDER_PREVIEW
     agent_json: dict[str, Any]
     agent_name: str
     description: str
@@ -319,7 +318,7 @@ class AgentPreviewResponse(ToolResponseBase):
 class AgentSavedResponse(ToolResponseBase):
     """Response when an agent is saved to the library."""
 
-    type: ResponseType = ResponseType.AGENT_SAVED
+    type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
     library_agent_id: str
@@ -330,7 +329,7 @@ class AgentSavedResponse(ToolResponseBase):
 class ClarificationNeededResponse(ToolResponseBase):
     """Response when the LLM needs more information from the user."""
 
-    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
 
 
@@ -459,18 +458,6 @@ class BlockOutputResponse(ToolResponseBase):
     success: bool = True
 
 
-# Long-running operation models
-class OperationInProgressResponse(ToolResponseBase):
-    """Response when an operation is already in progress.
-
-    Returned for idempotency when the same tool_call_id is requested again
-    while the background task is still running.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
-    tool_call_id: str
-
-
 class WebFetchResponse(ToolResponseBase):
     """Response for web_fetch tool."""
 
@@ -584,7 +571,7 @@ class BrowserScreenshotResponse(ToolResponseBase):
 class ValidationResultResponse(ToolResponseBase):
     """Response for validate_agent_graph tool."""
 
-    type: ResponseType = ResponseType.AGENT_GRAPH_VALIDATION_RESULT
+    type: ResponseType = ResponseType.AGENT_BUILDER_VALIDATION_RESULT
     valid: bool
     errors: list[str] = Field(default_factory=list)
     error_count: int = 0
@@ -593,7 +580,7 @@ class ValidationResultResponse(ToolResponseBase):
 class FixResultResponse(ToolResponseBase):
     """Response for fix_agent_graph tool."""
 
-    type: ResponseType = ResponseType.AGENT_GRAPH_FIX_RESULT
+    type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
     fixed_agent_json: dict[str, Any]
     fixes_applied: list[str] = Field(default_factory=list)
     fix_count: int = 0
