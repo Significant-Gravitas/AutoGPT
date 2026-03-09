@@ -6,6 +6,7 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { parseSpecialMarkers } from "./helpers";
@@ -56,6 +57,52 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-search_feature_requests",
   "tool-create_feature_request",
 ]);
+
+/**
+ * Response types that require user interaction and should NOT be hidden
+ * inside the "Show reasoning" collapse when the stream finishes.
+ */
+const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
+  ResponseType.setup_requirements,
+  ResponseType.agent_details,
+  ResponseType.block_details,
+  ResponseType.need_login,
+  ResponseType.input_validation_error,
+  ResponseType.clarification_needed,
+  ResponseType.suggested_goal,
+  ResponseType.agent_preview,
+  ResponseType.agent_saved,
+]);
+
+/**
+ * Returns true if a completed tool part's output indicates it needs user
+ * interaction (e.g. missing credentials, required inputs, clarification).
+ * These parts should stay visible outside the reasoning collapse.
+ */
+function isInteractiveToolPart(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  if (!("state" in part) || part.state !== "output-available") return false;
+
+  let output = (part as ToolUIPart).output;
+  if (!output) return false;
+
+  // The output may be a JSON string (some tools serialize output)
+  if (typeof output === "string") {
+    try {
+      output = JSON.parse(output);
+    } catch {
+      return false;
+    }
+  }
+
+  if (typeof output !== "object") return false;
+
+  const responseType = (output as Record<string, unknown>).type;
+  return (
+    typeof responseType === "string" &&
+    INTERACTIVE_RESPONSE_TYPES.has(responseType)
+  );
+}
 
 /**
  * Groups consecutive completed generic tool parts into collapsed segments.
@@ -113,7 +160,7 @@ function splitReasoningAndResponse(parts: MessagePart[]): {
 } {
   const lastToolIndex = parts.findLastIndex((p) => p.type.startsWith("tool-"));
 
-  // No tools → everything is response
+  // No tools -> everything is response
   if (lastToolIndex === -1) {
     return { reasoning: [], response: parts };
   }
@@ -124,13 +171,28 @@ function splitReasoningAndResponse(parts: MessagePart[]): {
     .some((p) => p.type === "text");
 
   if (!hasResponseAfterTools) {
-    // No final text response → don't collapse anything
+    // No final text response -> don't collapse anything
     return { reasoning: [], response: parts };
   }
 
+  const rawReasoning = parts.slice(0, lastToolIndex + 1);
+  const rawResponse = parts.slice(lastToolIndex + 1);
+
+  // Extract interactive tool parts from reasoning — they stay visible
+  const reasoning: MessagePart[] = [];
+  const pinnedParts: MessagePart[] = [];
+
+  for (const part of rawReasoning) {
+    if (isInteractiveToolPart(part)) {
+      pinnedParts.push(part);
+    } else {
+      reasoning.push(part);
+    }
+  }
+
   return {
-    reasoning: parts.slice(0, lastToolIndex + 1),
-    response: parts.slice(lastToolIndex + 1),
+    reasoning,
+    response: [...pinnedParts, ...rawResponse],
   };
 }
 
