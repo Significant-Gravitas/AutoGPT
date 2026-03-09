@@ -12,61 +12,73 @@ from backend.data.model import CredentialsMetaInput
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
+    # General
+    ERROR = "error"
+    NO_RESULTS = "no_results"
+    NEED_LOGIN = "need_login"
+    OPERATION_IN_PROGRESS = "operation_in_progress"
+
+    # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
+    INPUT_VALIDATION_ERROR = "input_validation_error"
     EXECUTION_STARTED = "execution_started"
-    NEED_LOGIN = "need_login"
-    ERROR = "error"
-    NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
+    SUGGESTED_GOAL = "suggested_goal"
+
+    # Agent builder (create / edit / validate / fix)
     AGENT_PREVIEW = "agent_preview"
     AGENT_SAVED = "agent_saved"
     CLARIFICATION_NEEDED = "clarification_needed"
+    AGENT_GRAPH_VALIDATION_RESULT = "agent_graph_validation_result"
+    AGENT_GRAPH_FIX_RESULT = "agent_graph_fix_result"
+    AGENT_BUILDING_GUIDE = "agent_building_guide"
+
+    # Block
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
+
+    # MCP
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
+    MCP_GUIDE = "mcp_guide"
+
+    # Docs
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
-    # Workspace response types
+
+    # Workspace files
     WORKSPACE_FILE_LIST = "workspace_file_list"
     WORKSPACE_FILE_CONTENT = "workspace_file_content"
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    # Long-running operation types
-    OPERATION_IN_PROGRESS = "operation_in_progress"
-    # Input validation
-    INPUT_VALIDATION_ERROR = "input_validation_error"
-    # Web fetch
-    WEB_FETCH = "web_fetch"
-    # Agent-browser multi-step automation (navigate, act, screenshot)
-    BROWSER_NAVIGATE = "browser_navigate"
-    BROWSER_ACT = "browser_act"
-    BROWSER_SCREENSHOT = "browser_screenshot"
-    # Code execution
-    BASH_EXEC = "bash_exec"
-    # Feature request types
-    FEATURE_REQUEST_SEARCH = "feature_request_search"
-    FEATURE_REQUEST_CREATED = "feature_request_created"
-    # Goal refinement
-    SUGGESTED_GOAL = "suggested_goal"
-    # MCP tool types
-    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
-    MCP_TOOL_OUTPUT = "mcp_tool_output"
-    # Agent generation tools
-    VALIDATION_RESULT = "validation_result"
-    FIX_RESULT = "fix_result"
-    AGENT_BUILDING_GUIDE = "agent_building_guide"
-    MCP_GUIDE = "mcp_guide"
-    # Folder management types
+
+    # Folder management
     FOLDER_CREATED = "folder_created"
     FOLDER_LIST = "folder_list"
     FOLDER_UPDATED = "folder_updated"
     FOLDER_MOVED = "folder_moved"
     FOLDER_DELETED = "folder_deleted"
     AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
+
+    # Browser automation
+    BROWSER_NAVIGATE = "browser_navigate"
+    BROWSER_ACT = "browser_act"
+    BROWSER_SCREENSHOT = "browser_screenshot"
+
+    # Code execution
+    BASH_EXEC = "bash_exec"
+
+    # Web
+    WEB_FETCH = "web_fetch"
+
+    # Feature requests
+    FEATURE_REQUEST_SEARCH = "feature_request_search"
+    FEATURE_REQUEST_CREATED = "feature_request_created"
 
 
 # Base response model
@@ -572,7 +584,7 @@ class BrowserScreenshotResponse(ToolResponseBase):
 class ValidationResultResponse(ToolResponseBase):
     """Response for validate_agent_graph tool."""
 
-    type: ResponseType = ResponseType.VALIDATION_RESULT
+    type: ResponseType = ResponseType.AGENT_GRAPH_VALIDATION_RESULT
     valid: bool
     errors: list[str] = Field(default_factory=list)
     error_count: int = 0
@@ -581,7 +593,7 @@ class ValidationResultResponse(ToolResponseBase):
 class FixResultResponse(ToolResponseBase):
     """Response for fix_agent_graph tool."""
 
-    type: ResponseType = ResponseType.FIX_RESULT
+    type: ResponseType = ResponseType.AGENT_GRAPH_FIX_RESULT
     fixed_agent_json: dict[str, Any]
     fixes_applied: list[str] = Field(default_factory=list)
     fix_count: int = 0
