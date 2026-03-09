@@ -23,6 +23,7 @@ from backend.copilot.context import (
     _current_user_id,
     _encode_cwd_for_cli,
     get_execution_context,
+    get_sdk_cwd,
     is_allowed_local_path,
 )
 from backend.copilot.model import ChatSession
@@ -254,7 +255,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     offset = args.get("offset", 0)
     limit = args.get("limit", 2000)
 
-    if not is_allowed_local_path(file_path):
+    if not is_allowed_local_path(file_path, get_sdk_cwd()):
         return {
             "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
             "isError": True,
