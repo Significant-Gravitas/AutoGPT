@@ -449,7 +449,13 @@ MODEL_METADATA = {
         "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
     ),
     LlmModel.GROK_3: ModelMetadata(
-        "open_router", 131072, 32768, "Grok 3", "OpenRouter", "xAI", 2
+        "open_router",
+        131072,
+        131072,  # OpenRouter does not specify max output; using context window
+        "Grok 3",
+        "OpenRouter",
+        "xAI",
+        2,
     ),
     LlmModel.GROK_4: ModelMetadata(
         "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
