@@ -55,7 +55,7 @@ class SardisPolicyCheckBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f0b3c4d5-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+            id="37bfb8c8-4674-4362-bc27-ef6860b71f5b",
             description="Check if a payment would pass spending policy "
             "without executing it. Useful for pre-validation.",
             categories={BlockCategory.OUTPUT},

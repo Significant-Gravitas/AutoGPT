@@ -62,7 +62,7 @@ class SardisPayBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d8f1a2b3-4c5d-6e7f-8a9b-0c1d2e3f4a5b",
+            id="353e4e7f-f4c7-4091-badc-59170ef15500",
             description="Execute a policy-controlled payment from a Sardis wallet. "
             "Each payment is verified against spending policies before execution.",
             categories={BlockCategory.OUTPUT},
@@ -83,6 +83,7 @@ class SardisPayBlock(Block):
                 ("status", "APPROVED"),
                 ("tx_id", "tx_mock123"),
                 ("amount", 10.0),
+                ("message", "Payment approved"),
             ],
             test_mock={
                 "send_payment": lambda *args, **kwargs: {

@@ -40,7 +40,7 @@ class SardisBalanceBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e9a2b3c4-5d6e-7f8a-9b0c-1d2e3f4a5b6c",
+            id="ea396bee-d16f-42f6-9cb0-8ec7196351aa",
             description="Check the balance and remaining spending limits "
             "of a Sardis wallet.",
             categories={BlockCategory.OUTPUT},
