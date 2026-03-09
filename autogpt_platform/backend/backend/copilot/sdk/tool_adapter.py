@@ -27,7 +27,11 @@ from backend.copilot.context import (
     is_allowed_local_path,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
+from backend.copilot.sdk.file_ref import (
+    FileRefExpansionError,
+    expand_file_refs_in_args,
+    read_file_bytes,
+)
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
@@ -246,42 +250,50 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
 
 
 async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
-    """Read a local file with optional offset/limit.
+    """Read a file with optional offset/limit.
 
-    Only allows paths that pass :func:`is_allowed_local_path` — the current
-    session's tool-results directory and ephemeral working directory.
+    Supports ``workspace://`` URIs (delegated to the workspace manager) and
+    local paths within the session's allowed directories (sdk_cwd + tool-results).
     """
     file_path = args.get("file_path", "")
-    offset = args.get("offset", 0)
-    limit = args.get("limit", 2000)
+    offset = max(0, int(args.get("offset", 0)))
+    limit = max(1, int(args.get("limit", 2000)))
+
+    def _mcp_err(text: str) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": text}], "isError": True}
+
+    def _mcp_ok(text: str) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": text}], "isError": False}
+
+    if file_path.startswith("workspace://"):
+        user_id, session = get_execution_context()
+        if session is None:
+            return _mcp_err("workspace:// file references require an active session")
+        try:
+            raw = await read_file_bytes(file_path, user_id, session)
+        except ValueError as exc:
+            return _mcp_err(str(exc))
+        lines = raw.decode("utf-8", errors="replace").splitlines(keepends=True)
+        selected = list(itertools.islice(lines, offset, offset + limit))
+        numbered = "".join(
+            f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
+        )
+        return _mcp_ok(numbered)
 
     if not is_allowed_local_path(file_path, get_sdk_cwd()):
-        return {
-            "content": [{"type": "text", "text": f"Access denied: {file_path}"}],
-            "isError": True,
-        }
+        return _mcp_err(f"Path not allowed: {file_path}")
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
         with open(resolved) as f:
             selected = list(itertools.islice(f, offset, offset + limit))
-        content = "".join(selected)
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return {
-            "content": [{"type": "text", "text": content}],
-            "isError": False,
-        }
+        return _mcp_ok("".join(selected))
     except FileNotFoundError:
-        return {
-            "content": [{"type": "text", "text": f"File not found: {file_path}"}],
-            "isError": True,
-        }
+        return _mcp_err(f"File not found: {file_path}")
     except Exception as e:
-        return {
-            "content": [{"type": "text", "text": f"Error reading file: {e}"}],
-            "isError": True,
-        }
+        return _mcp_err(f"Error reading file: {e}")
 
 
 _READ_TOOL_NAME = "Read"
