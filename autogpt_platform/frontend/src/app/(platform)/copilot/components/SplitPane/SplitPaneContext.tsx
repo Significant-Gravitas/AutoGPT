@@ -1,16 +1,21 @@
 "use client";
 
 import { createContext, ReactNode, useContext } from "react";
-import type { SplitDirection } from "./types";
+import type { PaneNode, SplitDirection } from "./types";
 import { usePaneTree } from "./usePaneTree";
 
 interface SplitPaneContextValue {
-  splitPane: (paneId: string, direction: SplitDirection) => void;
+  splitPane: (
+    paneId: string,
+    direction: SplitDirection,
+    sessionIdForNewPane?: string | null,
+  ) => void;
   closePane: (paneId: string) => void;
   setPaneSession: (paneId: string, sessionId: string | null) => void;
   focusedPaneId: string;
   setFocusedPaneId: (id: string) => void;
   leafCount: number;
+  tree: PaneNode;
 }
 
 const SplitPaneContext = createContext<SplitPaneContextValue | null>(null);
@@ -25,8 +30,13 @@ export function useSplitPaneContext() {
   return ctx;
 }
 
+/** Safe version that returns null when outside the provider (e.g. mobile). */
+export function useSplitPaneContextOptional() {
+  return useContext(SplitPaneContext);
+}
+
 interface Props {
-  children: (tree: ReturnType<typeof usePaneTree>["tree"]) => ReactNode;
+  children: ReactNode;
 }
 
 export function SplitPaneProvider({ children }: Props) {
@@ -49,9 +59,10 @@ export function SplitPaneProvider({ children }: Props) {
         focusedPaneId,
         setFocusedPaneId,
         leafCount,
+        tree,
       }}
     >
-      {children(tree)}
+      {children}
     </SplitPaneContext.Provider>
   );
 }

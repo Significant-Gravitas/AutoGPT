@@ -23,12 +23,19 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  DotsThree,
+  PlusCircleIcon,
+  PlusIcon,
+  SplitHorizontalIcon,
+  SplitVerticalIcon,
+} from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
+import { useSplitPaneContextOptional } from "../SplitPane/SplitPaneContext";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -39,6 +46,7 @@ export function ChatSidebar() {
     title: string | null | undefined;
   } | null>(null);
 
+  const splitPaneCtx = useSplitPaneContextOptional();
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
@@ -74,11 +82,22 @@ export function ChatSidebar() {
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
   function handleNewChat() {
+    if (splitPaneCtx) {
+      splitPaneCtx.setPaneSession(splitPaneCtx.focusedPaneId, null);
+    }
     setSessionId(null);
   }
 
   function handleSelectSession(id: string) {
+    if (splitPaneCtx) {
+      splitPaneCtx.setPaneSession(splitPaneCtx.focusedPaneId, id);
+    }
     setSessionId(id);
+  }
+
+  function handleForkSession(id: string, direction: "horizontal" | "vertical") {
+    if (!splitPaneCtx) return;
+    splitPaneCtx.splitPane(splitPaneCtx.focusedPaneId, direction, id);
   }
 
   function handleDeleteClick(
@@ -242,6 +261,26 @@ export function ChatSidebar() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {splitPaneCtx && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleForkSession(session.id, "horizontal")
+                              }
+                            >
+                              <SplitHorizontalIcon className="mr-2 h-4 w-4" />
+                              Open in horizontal split
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleForkSession(session.id, "vertical")
+                              }
+                            >
+                              <SplitVerticalIcon className="mr-2 h-4 w-4" />
+                              Open in vertical split
+                            </DropdownMenuItem>
+                          </>
+                        )}
                         <DropdownMenuItem
                           onClick={(e) =>
                             handleDeleteClick(e, session.id, session.title)

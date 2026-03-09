@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  GitForkIcon,
   SplitHorizontalIcon,
   SplitVerticalIcon,
   XIcon,
@@ -10,9 +11,10 @@ import { useSplitPaneContext } from "./SplitPaneContext";
 interface Props {
   paneId: string;
   title: string | null;
+  sessionId: string | null;
 }
 
-export function PaneToolbar({ paneId, title }: Props) {
+export function PaneToolbar({ paneId, title, sessionId }: Props) {
   const { splitPane, closePane, leafCount, focusedPaneId } =
     useSplitPaneContext();
 
@@ -32,6 +34,16 @@ export function PaneToolbar({ paneId, title }: Props) {
         {title || "New chat"}
       </span>
       <div className="flex items-center gap-0.5">
+        {sessionId && (
+          <button
+            onClick={() => splitPane(paneId, "horizontal", sessionId)}
+            className="rounded p-1 hover:bg-black/5"
+            aria-label="Fork chat into split"
+            title="Fork this chat into a new split pane"
+          >
+            <GitForkIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={() => splitPane(paneId, "horizontal")}
           className="rounded p-1 hover:bg-black/5"

@@ -15,8 +15,17 @@ import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { PaneTree } from "./components/SplitPane/PaneTree";
-import { SplitPaneProvider } from "./components/SplitPane/SplitPaneContext";
+import {
+  SplitPaneProvider,
+  useSplitPaneContext,
+} from "./components/SplitPane/SplitPaneContext";
 import { useCopilotPage } from "./useCopilotPage";
+
+/** Reads the pane tree from context and renders it. */
+function DesktopPaneContent() {
+  const { tree } = useSplitPaneContext();
+  return <PaneTree node={tree} />;
+}
 
 export function CopilotPage() {
   const {
@@ -59,16 +68,15 @@ export function CopilotPage() {
     );
   }
 
-  return (
-    <SidebarProvider
-      defaultOpen={true}
-      className="h-[calc(100vh-72px)] min-h-0"
-    >
-      {!isMobile && <ChatSidebar />}
-      <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-        <div className="flex-1 overflow-hidden">
-          {isMobile ? (
+  if (isMobile) {
+    return (
+      <SidebarProvider
+        defaultOpen={true}
+        className="h-[calc(100vh-72px)] min-h-0"
+      >
+        <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
+          <MobileHeader onOpenDrawer={handleOpenDrawer} />
+          <div className="flex-1 overflow-hidden">
             <ChatContainer
               messages={messages}
               status={status}
@@ -114,14 +122,8 @@ export function CopilotPage() {
                 ) : undefined
               }
             />
-          ) : (
-            <SplitPaneProvider>
-              {(tree) => <PaneTree node={tree} />}
-            </SplitPaneProvider>
-          )}
+          </div>
         </div>
-      </div>
-      {isMobile && (
         <MobileDrawer
           isOpen={isDrawerOpen}
           sessions={sessions}
@@ -132,15 +134,29 @@ export function CopilotPage() {
           onClose={handleCloseDrawer}
           onOpenChange={handleDrawerOpenChange}
         />
-      )}
-      {isMobile && (
         <DeleteChatDialog
           session={sessionToDelete}
           isDeleting={isDeleting}
           onConfirm={handleConfirmDelete}
           onCancel={handleCancelDelete}
         />
-      )}
-    </SidebarProvider>
+      </SidebarProvider>
+    );
+  }
+
+  return (
+    <SplitPaneProvider>
+      <SidebarProvider
+        defaultOpen={true}
+        className="h-[calc(100vh-72px)] min-h-0"
+      >
+        <ChatSidebar />
+        <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0">
+          <div className="flex-1 overflow-hidden">
+            <DesktopPaneContent />
+          </div>
+        </div>
+      </SidebarProvider>
+    </SplitPaneProvider>
   );
 }

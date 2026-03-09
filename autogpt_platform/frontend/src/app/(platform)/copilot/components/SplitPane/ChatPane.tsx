@@ -47,7 +47,7 @@ export function ChatPane({ paneId, sessionId: externalSessionId }: Props) {
       onFocus={() => setFocusedPaneId(paneId)}
       onMouseDown={() => setFocusedPaneId(paneId)}
     >
-      <PaneToolbar paneId={paneId} title={title} />
+      <PaneToolbar paneId={paneId} title={title} sessionId={sessionId} />
       <div className="flex-1 overflow-hidden">
         <ChatContainer
           messages={messages}

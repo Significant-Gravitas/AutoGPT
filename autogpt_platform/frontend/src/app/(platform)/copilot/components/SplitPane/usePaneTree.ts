@@ -77,29 +77,36 @@ export function usePaneTree() {
     () => (tree as LeafPane).id,
   );
 
-  const splitPane = useCallback((paneId: string, direction: SplitDirection) => {
-    setTree((prev) => {
-      // Find the target leaf to preserve its session
-      const targetLeaf = findLeaf(prev, paneId);
-      const existingLeaf: LeafPane = targetLeaf
-        ? { ...targetLeaf }
-        : createLeaf();
-      // Give the existing leaf a new id so React re-keys properly
-      existingLeaf.id = `pane-${nextPaneId++}`;
+  const splitPane = useCallback(
+    (
+      paneId: string,
+      direction: SplitDirection,
+      sessionIdForNewPane: string | null = null,
+    ) => {
+      setTree((prev) => {
+        // Find the target leaf to preserve its session
+        const targetLeaf = findLeaf(prev, paneId);
+        const existingLeaf: LeafPane = targetLeaf
+          ? { ...targetLeaf }
+          : createLeaf();
+        // Give the existing leaf a new id so React re-keys properly
+        existingLeaf.id = `pane-${nextPaneId++}`;
 
-      const newLeaf = createLeaf();
+        const newLeaf = createLeaf(sessionIdForNewPane);
 
-      const splitNode: PaneNode = {
-        type: "split",
-        id: `split-${nextPaneId++}`,
-        direction,
-        children: [existingLeaf, newLeaf],
-      };
+        const splitNode: PaneNode = {
+          type: "split",
+          id: `split-${nextPaneId++}`,
+          direction,
+          children: [existingLeaf, newLeaf],
+        };
 
-      setFocusedPaneId(newLeaf.id);
-      return replaceNode(prev, paneId, splitNode);
-    });
-  }, []);
+        setFocusedPaneId(newLeaf.id);
+        return replaceNode(prev, paneId, splitNode);
+      });
+    },
+    [],
+  );
 
   const closePane = useCallback(
     (paneId: string) => {
