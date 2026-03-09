@@ -20,6 +20,7 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
+from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .manage_folders import (
     CreateFolderTool,
@@ -70,6 +71,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
     # Agent-browser multi-step automation (navigate, act, screenshot)

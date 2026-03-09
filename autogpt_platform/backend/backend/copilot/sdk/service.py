@@ -12,7 +12,6 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from pathlib import Path
 from typing import Any, cast
 
 import openai
@@ -146,67 +145,6 @@ _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
-
-
-_AGENT_GEN_GUIDE: str | None = None
-
-
-def build_agent_generation_guide() -> str:
-    """Build the Agent Generation Guide supplement.
-
-    This is appended to the system prompt only when the user's message
-    suggests agent creation / editing intent, to avoid wasting tokens on
-    unrelated queries.
-
-    The guide content is loaded from ``agent_generation_guide.md`` next to
-    this module and cached for the lifetime of the process.
-    """
-    global _AGENT_GEN_GUIDE
-    if _AGENT_GEN_GUIDE is None:
-        guide_path = Path(__file__).with_name("agent_generation_guide.md")
-        _AGENT_GEN_GUIDE = "\n" + guide_path.read_text() + "\n"
-    return _AGENT_GEN_GUIDE
-
-
-# Keywords that suggest the user wants to create/edit/work with agents
-_AGENT_GEN_KEYWORDS = frozenset(
-    {
-        "create agent",
-        "build agent",
-        "make agent",
-        "generate agent",
-        "new agent",
-        "edit agent",
-        "modify agent",
-        "update agent",
-        "agent graph",
-        "agent json",
-        "create_agent",
-        "edit_agent",
-        "find_block",
-        "validate_agent",
-        "fix_agent",
-        "agentinputblock",
-        "agentoutputblock",
-        "agent executor",
-        "mcp tool",
-        "mcp block",
-        "mcp server",
-        "mcptoolblock",
-        "sub-agent",
-        "subagent",
-        "sub agent",
-        "library agent",
-    }
-)
-
-
-def _needs_agent_generation_guide(message: str | None) -> bool:
-    """Check if the user's message suggests agent creation/editing intent."""
-    if not message:
-        return False
-    lower = message.lower()
-    return any(kw in lower for kw in _AGENT_GEN_KEYWORDS)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -874,9 +812,6 @@ async def stream_chat_completion_sdk(
         system_prompt = base_system_prompt + get_sdk_supplement(
             use_e2b=use_e2b, cwd=sdk_cwd
         )
-        if _needs_agent_generation_guide(message):
-            system_prompt += build_agent_generation_guide()
-
         # Process transcript download result
         transcript_msg_count = 0
         if dl:
