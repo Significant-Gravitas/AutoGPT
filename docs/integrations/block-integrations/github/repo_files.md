@@ -122,7 +122,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | folder_path | Path to the folder in the repository | str | Yes |
-| branch | Branch name to read from (defaults to master) | str | No |
+| branch | Branch name to read from (defaults to main) | str | No |
 
 ### Outputs
 

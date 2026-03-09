@@ -87,12 +87,13 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| per_page | Number of branches to return per page (max 100) | int | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if the operation failed | str |
+| error | Error message if listing branches failed | str |
 | branch | Branches with their name and file tree browser URL | Branch |
 | branches | List of branches with their name and file tree browser URL | List[BranchItem] |
 
