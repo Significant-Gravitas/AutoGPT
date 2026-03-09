@@ -60,7 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox
+from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
@@ -784,28 +784,29 @@ async def stream_chat_completion_sdk(
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
-            if config.use_e2b_sandbox and not config.e2b_api_key:
-                logger.warning(
-                    "[E2B] [%s] E2B sandbox enabled but no API key configured "
-                    "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
-                    session_id[:12],
-                )
-                return None
-            if config.use_e2b_sandbox and config.e2b_api_key:
-                try:
-                    return await get_or_create_sandbox(
-                        session_id,
-                        api_key=config.e2b_api_key,
-                        template=config.e2b_sandbox_template,
-                        timeout=config.e2b_sandbox_timeout,
-                    )
-                except Exception as e2b_err:
-                    logger.error(
-                        "[E2B] [%s] Setup failed: %s",
+            if not (e2b_api_key := config.active_e2b_api_key):
+                if config.use_e2b_sandbox:
+                    logger.warning(
+                        "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                        "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
                         session_id[:12],
-                        e2b_err,
-                        exc_info=True,
                     )
+                return None
+            try:
+                return await get_or_create_sandbox(
+                    session_id,
+                    api_key=e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                    on_timeout=config.e2b_sandbox_on_timeout,
+                )
+            except Exception as e2b_err:
+                logger.error(
+                    "[E2B] [%s] Setup failed: %s",
+                    session_id[:12],
+                    e2b_err,
+                    exc_info=True,
+                )
             return None
 
         async def _fetch_transcript():
@@ -1415,6 +1416,17 @@ async def stream_chat_completion_sdk(
                     persist_err,
                     exc_info=True,
                 )
+
+        # --- Pause E2B sandbox to stop billing between turns ---
+        # Fire-and-forget: pausing is best-effort and must not block the
+        # response or the transcript upload.  The task is anchored to
+        # _background_tasks to prevent garbage collection.
+        # Use pause_sandbox_direct to skip the Redis lookup and reconnect
+        # round-trip — e2b_sandbox is the live object from this turn.
+        if e2b_sandbox is not None:
+            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
