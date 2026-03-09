@@ -516,7 +516,7 @@ MODEL_METADATA = {
         "avian", 205000, 131000, "GLM-5", "Avian", "Zhipu AI", 1
     ),
     LlmModel.AVIAN_MINIMAX_M2_5: ModelMetadata(
-        "avian", 196608, 196608, "MiniMax M2.5", "Avian", "MiniMax", 1
+        "avian", 196608, 131000, "MiniMax M2.5", "Avian", "MiniMax", 1
     ),
     # v0 by Vercel models
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
