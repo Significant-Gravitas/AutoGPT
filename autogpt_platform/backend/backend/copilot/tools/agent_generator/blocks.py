@@ -11,7 +11,7 @@ from backend.blocks._base import Block
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["get_blocks_as_dicts", "_reset_caches"]
+__all__ = ["get_blocks_as_dicts", "reset_block_caches"]
 
 # ---------------------------------------------------------------------------
 # Module-level caches
@@ -19,8 +19,8 @@ __all__ = ["get_blocks_as_dicts", "_reset_caches"]
 _blocks_cache: list[dict[str, Any]] | None = None
 
 
-def _reset_caches() -> None:
-    """Reset all module-level caches (useful for testing)."""
+def reset_block_caches() -> None:
+    """Reset all module-level caches (useful after updating block descriptions)."""
     global _blocks_cache
     _blocks_cache = None
 

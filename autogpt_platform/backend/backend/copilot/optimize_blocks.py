@@ -9,7 +9,6 @@ import asyncio
 import logging
 
 from backend.blocks import get_blocks
-from backend.copilot.tools.agent_generator.blocks import _reset_caches
 from backend.util.clients import get_database_manager_client, get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -130,6 +129,10 @@ def optimize_block_descriptions() -> dict[str, int]:
                 "Could not update in-memory block descriptions", exc_info=True
             )
 
-        _reset_caches()
+        from backend.copilot.tools.agent_generator.blocks import (
+            reset_block_caches,  # local to avoid circular import
+        )
+
+        reset_block_caches()
 
     return stats
