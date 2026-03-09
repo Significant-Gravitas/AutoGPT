@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import prisma.enums
+import prisma.models
 import pytest
 import pytest_mock
 
 from backend.util.exceptions import NotAuthorizedError, PreconditionFailed
 
 from .invited_user import (
+    InvitedUserRecord,
     bulk_create_invited_users_from_file,
     create_invited_user,
     get_or_activate_user,
@@ -35,6 +38,22 @@ def _invited_user_db_record(
         tallyError=None,
         createdAt=now,
         updatedAt=now,
+    )
+
+
+def _invited_user_record(
+    *,
+    status: prisma.enums.InvitedUserStatus = prisma.enums.InvitedUserStatus.INVITED,
+    tally_understanding: dict | None = None,
+):
+    return InvitedUserRecord.from_db(
+        cast(
+            prisma.models.InvitedUser,
+            _invited_user_db_record(
+                status=status,
+                tally_understanding=tally_understanding,
+            ),
+        )
     )
 
 
@@ -242,8 +261,8 @@ async def test_bulk_create_invited_users_from_text_file(
         "backend.data.invited_user.create_invited_user",
         AsyncMock(
             side_effect=[
-                _invited_user_db_record(),
-                _invited_user_db_record(),
+                _invited_user_record(),
+                _invited_user_record(),
             ]
         ),
     )
@@ -268,7 +287,7 @@ async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows
         "backend.data.invited_user.create_invited_user",
         AsyncMock(
             side_effect=[
-                _invited_user_db_record(),
+                _invited_user_record(),
                 PreconditionFailed("An invited user with this email already exists"),
             ]
         ),

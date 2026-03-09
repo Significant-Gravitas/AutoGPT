@@ -72,6 +72,10 @@ def test_update_user_email_route(
 ) -> None:
     """Test update user email endpoint"""
     mocker.patch(
+        "backend.api.features.v1.get_or_activate_user",
+        return_value=None,
+    )
+    mocker.patch(
         "backend.api.features.v1.update_user_email",
         return_value=None,
     )
