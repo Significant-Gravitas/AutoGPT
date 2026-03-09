@@ -484,6 +484,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
 | [Github Search Code](block-integrations/github/repo_files.md#github-search-code) | This block searches for code in GitHub repositories |
+| [Github Star Repository](block-integrations/github/repo.md#github-star-repository) | This block stars a GitHub repository |
 | [Github Star Trigger](block-integrations/github/triggers.md#github-star-trigger) | This block triggers on GitHub star events |
 | [Github Submit Pending Review](block-integrations/github/reviews.md#github-submit-pending-review) | This block submits a pending (draft) review on a GitHub pull request |
 | [Github Unassign Issue](block-integrations/github/issues.md#github-unassign-issue) | A block that removes a user's assignment from a GitHub issue |

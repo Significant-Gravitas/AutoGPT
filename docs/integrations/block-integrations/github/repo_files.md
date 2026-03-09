@@ -1,6 +1,6 @@
 # GitHub Repo Files
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for reading, creating, updating, and searching files and directories in GitHub repositories.
 <!-- END MANUAL -->
 
 ## Github Create File
@@ -10,7 +10,9 @@ This block creates a new file in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new file in a GitHub repository using the Contents API. It base64-encodes the provided content and sends a PUT request with the file path, content, branch, and commit message.
+
+The block returns the URL of the created file and the SHA of the resulting commit.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +35,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Bootstrapping**: Create configuration files like `.env` or `config.yaml` in new repositories automatically.
+
+**Documentation Generation**: Write generated documentation files directly to a repository.
+
+**Template Deployment**: Add boilerplate files such as CI configs or linting rules to repositories.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ This block lists the entire file tree of a GitHub repository recursively.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the file tree of a GitHub repository using the Git Trees API. When the recursive option is enabled, it returns every file and directory in the entire repository; otherwise it returns only the top-level entries.
+
+Each entry includes its path, type (blob for files, tree for directories), size, and SHA. The block also indicates whether the tree was truncated due to exceeding GitHub's size limits.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Repository Structure Analysis**: Map out the full directory structure of a repository for documentation or visualization.
+
+**File Discovery**: Find specific files by browsing the tree before reading their contents.
+
+**Size Auditing**: Identify large files in a repository by inspecting file sizes in the tree.
 <!-- END MANUAL -->
 
 ---
@@ -79,7 +91,9 @@ This block reads the content of a specified file from a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block reads a file from a GitHub repository using the Contents API. It fetches the file at the specified path and branch, returning both the raw base64-encoded content and the UTF-8 decoded text content along with the file size.
+
+If multiple entries exist at the path (e.g., a file and a symlink), the block selects the file entry. It raises an error if the path points to a directory instead of a file.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -101,7 +115,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Reading**: Read configuration files like `package.json` or `pyproject.toml` from repositories for analysis.
+
+**Code Review Automation**: Fetch specific source files to run automated checks or AI-powered code review.
+
+**Content Extraction**: Read README or documentation files from repositories to aggregate information.
 <!-- END MANUAL -->
 
 ---
@@ -113,7 +131,9 @@ This block reads the content of a specified folder from a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block lists the contents of a folder in a GitHub repository using the Contents API. It fetches all entries at the specified path and separates them into files (with name, path, and size) and directories (with name and path).
+
+The block raises an error if the path does not point to a directory. Only the immediate children of the folder are returned, not nested contents.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -134,7 +154,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Directory Exploration**: Browse folder contents to understand a repository's structure without cloning it.
+
+**File Listing**: List files in a specific directory to find relevant source files or configurations.
+
+**Project Inventory**: Enumerate files and subdirectories in a project folder for automated processing.
 <!-- END MANUAL -->
 
 ---
@@ -146,7 +170,9 @@ This block searches for code in GitHub repositories.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches for code across GitHub using the Code Search API. It supports GitHub's code search syntax and can optionally be scoped to a specific repository using the `repo` parameter (in `owner/repo` format).
+
+Each result includes the file name, path, repository, URL, and relevance score. The block also returns the total count of matching results.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -168,7 +194,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Code Pattern Detection**: Search for specific function calls, imports, or patterns across repositories.
+
+**Vulnerability Scanning**: Find usage of deprecated APIs or known vulnerable code patterns.
+
+**Cross-Repository Analysis**: Locate how a library or API is used across multiple projects.
 <!-- END MANUAL -->
 
 ---
@@ -180,7 +210,9 @@ This block updates an existing file in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new file in a GitHub repository using the Contents API. It encodes the provided content as base64 and commits it to the specified branch with the given commit message.
+
+If a file already exists at the specified path, the API will return an error. Use the Update File block to modify existing files.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -203,7 +235,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Deployment**: Create configuration files in repositories programmatically.
+
+**Template Generation**: Generate boilerplate files like READMEs, CI configs, or license files in new repositories.
+
+**Automated Documentation**: Create documentation files based on code analysis or external data sources.
 <!-- END MANUAL -->
 
 ---

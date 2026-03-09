@@ -1,6 +1,6 @@
 # GitHub Repo Branches
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Blocks for creating, listing, deleting, and comparing branches in GitHub repositories.
 <!-- END MANUAL -->
 
 ## Github Compare Branches
@@ -10,7 +10,9 @@ This block compares two branches or commits in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block compares two branches or commits using the GitHub Compare API (`/compare/base...head`). It returns the comparison status (ahead, behind, diverged, or identical), commit counts, and a list of changed files with their diffs.
+
+The block also builds a unified diff string from the patches of all changed files, making it easy to review the full set of changes at once.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -36,7 +38,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Pre-Merge Review**: Compare a feature branch against main to see all changes before creating a pull request.
+
+**Drift Detection**: Check whether a long-lived branch has diverged from the base branch and needs rebasing.
+
+**Release Diffing**: Compare two release tags or branches to generate a summary of changes between versions.
 <!-- END MANUAL -->
 
 ---
@@ -48,7 +54,9 @@ This block deletes a specified branch.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block deletes a branch by sending a DELETE request to the GitHub Git Refs API at `/git/refs/heads/{branch}`. The branch name is URL-encoded to handle special characters.
+
+The operation is permanent and cannot be undone. The block returns a success status message or an error if the deletion fails.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Post-Merge Cleanup**: Automatically delete feature branches after their pull requests have been merged.
+
+**Stale Branch Removal**: Delete branches that are no longer active to keep the repository organized.
+
+**CI/CD Pipeline Cleanup**: Remove temporary branches created by automated build or test processes.
 <!-- END MANUAL -->
 
 ---
@@ -79,7 +91,9 @@ This block lists all branches for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves branches from a GitHub repository using the Branches API. It supports pagination with the `per_page` parameter to control how many branches are returned per request.
+
+Each branch entry includes its name and a URL to browse the repository file tree at that branch.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -88,6 +102,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | per_page | Number of branches to return per page (max 100) | int | No |
+| page | Page number for pagination | int | No |
 
 ### Outputs
 
@@ -99,7 +114,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Branch Inventory**: List all branches to get an overview of active development streams in a repository.
+
+**Stale Branch Detection**: Enumerate branches to identify those that may need cleanup or deletion.
+
+**Branch Validation**: Verify that expected branches exist before running automated workflows.
 <!-- END MANUAL -->
 
 ---
@@ -111,7 +130,9 @@ This block creates a new branch from a specified source branch.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new branch by first fetching the latest commit SHA from the source branch via the Git Refs API, then creating a new git reference pointing to that same commit. This effectively branches off from the current tip of the source branch.
+
+The block returns a success status message or an error if the branch creation fails.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -131,7 +152,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Feature Branch Creation**: Automatically create feature branches from the main branch when starting new tasks.
+
+**Release Branching**: Create release branches from development branches as part of a release workflow.
+
+**Hotfix Isolation**: Spin up hotfix branches from production branches to isolate urgent fixes.
 <!-- END MANUAL -->
 
 ---

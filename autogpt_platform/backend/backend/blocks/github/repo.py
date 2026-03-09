@@ -17,6 +17,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import github_repo_path
 
 
 class GithubListTagsBlock(Block):
@@ -87,7 +88,7 @@ class GithubListTagsBlock(Block):
         tags_url = repo_url + "/tags"
         response = await api.get(tags_url)
         data = response.json()
-        repo_path = repo_url.replace("https://github.com/", "")
+        repo_path = github_repo_path(repo_url)
         tags: list[GithubListTagsBlock.Output.TagItem] = [
             {
                 "name": tag["name"],
@@ -186,7 +187,7 @@ class GithubListDiscussionsBlock(Block):
     ) -> list[Output.DiscussionItem]:
         api = get_api(credentials)
         # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
-        repo_path = repo_url.replace("https://github.com/", "")
+        repo_path = github_repo_path(repo_url)
         owner, repo = repo_path.split("/")
         query = """
         query($owner: String!, $repo: String!, $num: Int!) {
@@ -448,7 +449,7 @@ class GithubListStargazersBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a4b9c2d1-e5f6-4g7h-8i9j-0k1l2m3n4o5p",  # Generated unique UUID
+            id="e96d01ec-b55e-4a99-8ce8-c8776dce850b",  # Generated unique UUID
             description="This block lists all users who have starred a specified GitHub repository.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListStargazersBlock.Input,
@@ -687,5 +688,60 @@ class GithubForkRepositoryBlock(Block):
             yield "url", url
             yield "clone_url", clone_url
             yield "full_name", full_name
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GithubStarRepositoryBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        repo_url: str = SchemaField(
+            description="URL of the GitHub repository to star",
+            placeholder="https://github.com/owner/repo",
+        )
+
+    class Output(BlockSchemaOutput):
+        status: str = SchemaField(description="Status of the star operation")
+        error: str = SchemaField(description="Error message if starring failed")
+
+    def __init__(self):
+        super().__init__(
+            id="bd700764-53e3-44dd-a969-d1854088458f",
+            description="This block stars a GitHub repository.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubStarRepositoryBlock.Input,
+            output_schema=GithubStarRepositoryBlock.Output,
+            test_input={
+                "repo_url": "https://github.com/owner/repo",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[("status", "Repository starred successfully")],
+            test_mock={
+                "star_repo": lambda *args, **kwargs: "Repository starred successfully"
+            },
+        )
+
+    @staticmethod
+    async def star_repo(credentials: GithubCredentials, repo_url: str) -> str:
+        api = get_api(credentials, convert_urls=False)
+        repo_path = github_repo_path(repo_url)
+        owner, repo = repo_path.split("/")
+        await api.put(
+            f"https://api.github.com/user/starred/{owner}/{repo}",
+            headers={"Content-Length": "0"},
+        )
+        return "Repository starred successfully"
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            status = await self.star_repo(credentials, input_data.repo_url)
+            yield "status", status
         except Exception as e:
             yield "error", str(e)

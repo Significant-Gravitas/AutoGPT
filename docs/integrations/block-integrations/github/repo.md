@@ -51,7 +51,9 @@ This block forks a GitHub repository to your account or an organization.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block forks a GitHub repository by sending a POST request to the GitHub Forks API. You can optionally specify an organization to fork into; if left empty, the fork is created under your personal account.
+
+The block returns the web URL, clone URL, and full name (owner/repo) of the newly created fork.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -72,7 +74,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Open Source Contributions**: Fork repositories to create your own copy before submitting pull requests with changes.
+
+**Organization Mirroring**: Automatically fork upstream repositories into your organization for internal development.
+
+**Project Scaffolding**: Fork template repositories as starting points for new projects.
 <!-- END MANUAL -->
 
 ---
@@ -84,7 +90,9 @@ This block retrieves metadata about a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block fetches repository metadata from the GitHub API using the provided repository URL. It returns key information including the repository name, description, default branch, visibility, star/fork/issue counts, and URLs.
+
+The block extracts fields like `stargazers_count`, `forks_count`, and `open_issues_count` from the API response and maps them to the output fields.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -111,7 +119,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Repository Health Monitoring**: Check star counts, fork counts, and open issues to track project health over time.
+
+**Dependency Assessment**: Retrieve metadata about third-party repositories before adding them as dependencies.
+
+**Automated Reporting**: Collect repository statistics across multiple projects for team dashboards.
 <!-- END MANUAL -->
 
 ---
@@ -261,6 +273,42 @@ Each tag includes its name and a URL to browse the repository files at that tag.
 **Release Verification**: Confirm that tags exist for expected release versions.
 
 **Historical Code Access**: Find tags to access the codebase at specific historical points.
+<!-- END MANUAL -->
+
+---
+
+## Github Star Repository
+
+### What it is
+This block stars a GitHub repository.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block forks a GitHub repository to your personal account or a specified organization using the Forks API. The fork is an independent copy of the repository that maintains a connection to the upstream source.
+
+The block returns the fork URL, clone URL, and full name immediately after the API call. Note that fork creation is asynchronous on GitHub's side, so the repository may take a few seconds to become fully available.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| repo_url | URL of the GitHub repository to star | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if starring failed | str |
+| status | Status of the star operation | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Open Source Contribution**: Fork upstream repositories to create branches and submit pull requests from your own copy.
+
+**Repository Templates**: Fork base repositories as starting points for new projects within an organization.
+
+**Backup and Archival**: Create forks of important repositories to maintain independent copies.
 <!-- END MANUAL -->
 
 ---

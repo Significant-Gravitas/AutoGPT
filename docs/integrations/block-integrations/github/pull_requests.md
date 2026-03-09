@@ -162,7 +162,9 @@ This block merges a pull request using merge, squash, or rebase.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block merges a pull request using the GitHub Merge API. It supports three merge methods: regular merge commit, squash merge (combines all commits into one), and rebase merge (replays commits on top of the base branch).
+
+You can optionally provide a custom commit title and message for merge and squash methods. The block returns the merge commit SHA and confirmation of success.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -185,7 +187,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**CI/CD Pipeline**: Automatically merge PRs after all checks pass and required approvals are received.
+
+**Release Automation**: Merge release branches into main using squash for clean commit history.
+
+**Dependency Updates**: Auto-merge bot-created PRs for minor dependency updates after tests pass.
 <!-- END MANUAL -->
 
 ---

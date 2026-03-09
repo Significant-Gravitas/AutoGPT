@@ -19,6 +19,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import github_repo_path
 
 
 class GithubListBranchesBlock(Block):
@@ -33,6 +34,11 @@ class GithubListBranchesBlock(Block):
             default=30,
             ge=1,
             le=100,
+        )
+        page: int = SchemaField(
+            description="Page number for pagination",
+            default=1,
+            ge=1,
         )
 
     class Output(BlockSchemaOutput):
@@ -59,6 +65,7 @@ class GithubListBranchesBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "per_page": 30,
+                "page": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -92,13 +99,15 @@ class GithubListBranchesBlock(Block):
 
     @staticmethod
     async def list_branches(
-        credentials: GithubCredentials, repo_url: str, per_page: int
+        credentials: GithubCredentials, repo_url: str, per_page: int, page: int
     ) -> list[Output.BranchItem]:
         api = get_api(credentials)
         branches_url = repo_url + "/branches"
-        response = await api.get(branches_url, params={"per_page": str(per_page)})
+        response = await api.get(
+            branches_url, params={"per_page": str(per_page), "page": str(page)}
+        )
         data = response.json()
-        repo_path = repo_url.replace("https://github.com/", "")
+        repo_path = github_repo_path(repo_url)
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
             {
                 "name": branch["name"],
@@ -120,6 +129,7 @@ class GithubListBranchesBlock(Block):
                 credentials,
                 input_data.repo_url,
                 input_data.per_page,
+                input_data.page,
             )
             yield "branches", branches
             for branch in branches:

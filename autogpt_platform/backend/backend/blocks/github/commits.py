@@ -21,6 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import github_repo_path
 
 
 class GithubListCommitsBlock(Block):
@@ -39,6 +40,11 @@ class GithubListCommitsBlock(Block):
             default=30,
             ge=1,
             le=100,
+        )
+        page: int = SchemaField(
+            description="Page number for pagination",
+            default=1,
+            ge=1,
         )
 
     class Output(BlockSchemaOutput):
@@ -68,6 +74,7 @@ class GithubListCommitsBlock(Block):
                 "repo_url": "https://github.com/owner/repo",
                 "branch": "main",
                 "per_page": 30,
+                "page": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -114,13 +121,14 @@ class GithubListCommitsBlock(Block):
         repo_url: str,
         branch: str,
         per_page: int,
+        page: int,
     ) -> list[Output.CommitItem]:
         api = get_api(credentials)
         commits_url = repo_url + "/commits"
-        params = {"sha": branch, "per_page": str(per_page)}
+        params = {"sha": branch, "per_page": str(per_page), "page": str(page)}
         response = await api.get(commits_url, params=params)
         data = response.json()
-        repo_path = repo_url.replace("https://github.com/", "")
+        repo_path = github_repo_path(repo_url)
         return [
             GithubListCommitsBlock.Output.CommitItem(
                 sha=c["sha"],
@@ -145,6 +153,7 @@ class GithubListCommitsBlock(Block):
                 input_data.repo_url,
                 input_data.branch,
                 input_data.per_page,
+                input_data.page,
             )
             yield "commits", commits
             for commit in commits:
@@ -203,7 +212,7 @@ class GithubMultiFileCommitBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="76c7c716-94f0-4bc1-8551-0cccbea8e443",
+            id="389eee51-a95e-4230-9bed-92167a327802",
             description=(
                 "This block creates a single commit with multiple file "
                 "upsert/delete operations using the Git Trees API."
@@ -340,7 +349,7 @@ class GithubMultiFileCommitBlock(Block):
                 f"You can recover by manually updating the branch to {new_commit_sha}."
             ) from e
 
-        repo_path = repo_url.replace("https://github.com/", "")
+        repo_path = github_repo_path(repo_url)
         commit_web_url = f"https://github.com/{repo_path}/commit/{new_commit_sha}"
         return new_commit_sha, commit_web_url
 
