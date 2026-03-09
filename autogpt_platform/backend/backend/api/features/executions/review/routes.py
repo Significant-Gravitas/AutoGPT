@@ -22,6 +22,7 @@ from backend.data.human_review import (
 )
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.data.user import get_user_by_id
+from backend.data.workspace import get_or_create_workspace
 from backend.executor.utils import add_graph_execution
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
@@ -321,10 +322,13 @@ async def process_review_action(
                     user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
                 )
 
+                workspace = await get_or_create_workspace(user_id)
+
                 execution_context = ExecutionContext(
                     human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
                     sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
                     user_timezone=user_timezone,
+                    workspace_id=workspace.id,
                 )
 
                 await add_graph_execution(

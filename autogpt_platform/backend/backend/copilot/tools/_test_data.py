@@ -151,8 +151,8 @@ async def setup_test_data(server):
     unique_slug = f"test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Test Agent",
         description="A simple test agent",
@@ -161,10 +161,10 @@ async def setup_test_data(server):
         image_urls=["https://example.com/image.jpg"],
     )
 
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     # 4. Approve the store listing version
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval",
@@ -321,8 +321,8 @@ async def setup_llm_test_data(server):
     unique_slug = f"llm-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="LLM Test Agent",
         description="An agent with LLM capabilities",
@@ -330,9 +330,9 @@ async def setup_llm_test_data(server):
         categories=["testing", "ai"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for LLM agent",
@@ -476,8 +476,8 @@ async def setup_firecrawl_test_data(server):
     unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
     store_submission = await store_db.create_store_submission(
         user_id=user.id,
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=unique_slug,
         name="Firecrawl Test Agent",
         description="An agent with Firecrawl integration (no credentials)",
@@ -485,9 +485,9 @@ async def setup_firecrawl_test_data(server):
         categories=["testing", "scraping"],
         image_urls=["https://example.com/image.jpg"],
     )
-    assert store_submission.store_listing_version_id is not None
+    assert store_submission.listing_version_id is not None
     await store_db.review_store_submission(
-        store_listing_version_id=store_submission.store_listing_version_id,
+        store_listing_version_id=store_submission.listing_version_id,
         is_approved=True,
         external_comments="Approved for testing",
         internal_comments="Test approval for Firecrawl agent",

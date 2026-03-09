@@ -11,7 +11,7 @@ from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -25,6 +25,7 @@ from backend.copilot.model import (
     delete_chat_session,
     get_chat_session,
     get_user_sessions,
+    update_session_title,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.models import (
@@ -42,6 +43,8 @@ from backend.copilot.tools.models import (
     ErrorResponse,
     ExecutionStartedResponse,
     InputValidationErrorResponse,
+    MCPToolOutputResponse,
+    MCPToolsDiscoveredResponse,
     NeedLoginResponse,
     NoResultsResponse,
     SetupRequirementsResponse,
@@ -137,6 +140,20 @@ class CancelSessionResponse(BaseModel):
 
     cancelled: bool
     reason: str | None = None
+
+
+class UpdateSessionTitleRequest(BaseModel):
+    """Request model for updating a session's title."""
+
+    title: str
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Title must not be blank")
+        return stripped
 
 
 # ========== Routes ==========
@@ -247,7 +264,56 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
+    # Best-effort cleanup of the E2B sandbox (if any).
+    config = ChatConfig()
+    if config.use_e2b_sandbox and config.e2b_api_key:
+        from backend.copilot.tools.e2b_sandbox import kill_sandbox
+
+        try:
+            await kill_sandbox(session_id, config.e2b_api_key)
+        except Exception:
+            logger.warning(
+                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
+            )
+
     return Response(status_code=204)
+
+
+@router.patch(
+    "/sessions/{session_id}/title",
+    summary="Update session title",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_title_route(
+    session_id: str,
+    request: UpdateSessionTitleRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Update the title of a chat session.
+
+    Allows the user to rename their chat session.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new title.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    success = await update_session_title(session_id, user_id, request.title)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
 
 
 @router.get(
@@ -739,7 +805,6 @@ async def resume_session_stream(
 @router.patch(
     "/sessions/{session_id}/assign-user",
     dependencies=[Security(auth.requires_user)],
-    status_code=200,
 )
 async def session_assign_user(
     session_id: str,
@@ -842,6 +907,8 @@ ToolResponseUnion = (
     | BlockOutputResponse
     | DocSearchResultsResponse
     | DocPageResponse
+    | MCPToolsDiscoveredResponse
+    | MCPToolOutputResponse
 )
 
 

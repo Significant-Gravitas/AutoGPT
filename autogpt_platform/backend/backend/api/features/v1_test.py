@@ -557,7 +557,6 @@ async def test_upload_file_success(test_user_id: str):
         result = await upload_file(
             file=upload_file_mock,
             user_id=test_user_id,
-            provider="gcs",
             expiration_hours=24,
         )
 
@@ -575,7 +574,6 @@ async def test_upload_file_success(test_user_id: str):
         mock_handler.store_file.assert_called_once_with(
             content=file_content,
             filename="test.txt",
-            provider="gcs",
             expiration_hours=24,
             user_id=test_user_id,
         )

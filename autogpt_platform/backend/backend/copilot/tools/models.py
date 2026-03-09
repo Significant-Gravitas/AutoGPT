@@ -41,6 +41,10 @@ class ResponseType(str, Enum):
     INPUT_VALIDATION_ERROR = "input_validation_error"
     # Web fetch
     WEB_FETCH = "web_fetch"
+    # Agent-browser multi-step automation (navigate, act, screenshot)
+    BROWSER_NAVIGATE = "browser_navigate"
+    BROWSER_ACT = "browser_act"
+    BROWSER_SCREENSHOT = "browser_screenshot"
     # Code execution
     BASH_EXEC = "bash_exec"
     # Feature request types
@@ -48,6 +52,16 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_CREATED = "feature_request_created"
     # Goal refinement
     SUGGESTED_GOAL = "suggested_goal"
+    # MCP tool types
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
+    # Folder management types
+    FOLDER_CREATED = "folder_created"
+    FOLDER_LIST = "folder_list"
+    FOLDER_UPDATED = "folder_updated"
+    FOLDER_MOVED = "folder_moved"
+    FOLDER_DELETED = "folder_deleted"
+    AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
 
 
 # Base response model
@@ -476,3 +490,138 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
     issue_url: str
     is_new_issue: bool  # False if added to existing
     customer_name: str
+
+
+# MCP tool models
+class MCPToolInfo(BaseModel):
+    """Information about a single MCP tool discovered from a server."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+class MCPToolsDiscoveredResponse(ToolResponseBase):
+    """Response when MCP tools are discovered from a server (agent-internal)."""
+
+    type: ResponseType = ResponseType.MCP_TOOLS_DISCOVERED
+    server_url: str
+    tools: list[MCPToolInfo]
+
+
+class MCPToolOutputResponse(ToolResponseBase):
+    """Response after executing an MCP tool."""
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    server_url: str
+    tool_name: str
+    result: Any = None
+    success: bool = True
+
+
+# Agent-browser multi-step automation models
+
+
+class BrowserNavigateResponse(ToolResponseBase):
+    """Response for browser_navigate tool."""
+
+    type: ResponseType = ResponseType.BROWSER_NAVIGATE
+    url: str
+    title: str
+    snapshot: str  # Interactive accessibility tree with @ref IDs
+
+
+class BrowserActResponse(ToolResponseBase):
+    """Response for browser_act tool."""
+
+    type: ResponseType = ResponseType.BROWSER_ACT
+    action: str
+    current_url: str = ""
+    snapshot: str  # Updated accessibility tree after the action
+
+
+class BrowserScreenshotResponse(ToolResponseBase):
+    """Response for browser_screenshot tool."""
+
+    type: ResponseType = ResponseType.BROWSER_SCREENSHOT
+    file_id: str  # Workspace file ID — use read_workspace_file to retrieve
+    filename: str
+
+
+# Folder management models
+
+
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class FolderInfo(BaseModel):
+    """Information about a folder."""
+
+    id: str
+    name: str
+    parent_id: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
+
+
+class FolderTreeInfo(FolderInfo):
+    """Folder with nested children for tree display."""
+
+    children: list["FolderTreeInfo"] = []
+
+
+class FolderCreatedResponse(ToolResponseBase):
+    """Response when a folder is created."""
+
+    type: ResponseType = ResponseType.FOLDER_CREATED
+    folder: FolderInfo
+
+
+class FolderListResponse(ToolResponseBase):
+    """Response for listing folders."""
+
+    type: ResponseType = ResponseType.FOLDER_LIST
+    folders: list[FolderInfo] = Field(default_factory=list)
+    tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
+    count: int = 0
+
+
+class FolderUpdatedResponse(ToolResponseBase):
+    """Response when a folder is updated."""
+
+    type: ResponseType = ResponseType.FOLDER_UPDATED
+    folder: FolderInfo
+
+
+class FolderMovedResponse(ToolResponseBase):
+    """Response when a folder is moved."""
+
+    type: ResponseType = ResponseType.FOLDER_MOVED
+    folder: FolderInfo
+    target_parent_id: str | None = None
+
+
+class FolderDeletedResponse(ToolResponseBase):
+    """Response when a folder is deleted."""
+
+    type: ResponseType = ResponseType.FOLDER_DELETED
+    folder_id: str
+
+
+class AgentsMovedToFolderResponse(ToolResponseBase):
+    """Response when agents are moved to a folder."""
+
+    type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
+    agent_ids: list[str]
+    agent_names: list[str] = []
+    folder_id: str | None = None
+    count: int = 0

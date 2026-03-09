@@ -2,7 +2,8 @@ import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { postV2CreateStoreSubmission } from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
 import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
@@ -32,7 +33,6 @@ export function useAgentInfoStep({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { toast } = useToast();
-  const api = useBackendAPI();
 
   const form = useForm<PublishAgentFormData>({
     resolver: zodResolver(publishAgentSchemaFactory(isMarketplaceUpdate)),
@@ -115,21 +115,23 @@ export function useAgentInfoStep({
     setIsSubmitting(true);
 
     try {
-      const response = await api.createStoreSubmission({
-        name: data.title,
-        sub_heading: data.subheader,
-        description: data.description,
-        instructions: data.instructions || null,
-        image_urls: images,
-        video_url: data.youtubeLink || "",
-        agent_output_demo_url: data.agentOutputDemo || "",
-        agent_id: selectedAgentId,
-        agent_version: selectedAgentVersion,
-        slug: (data.slug || "").replace(/\s+/g, "-"),
-        categories: filteredCategories,
-        recommended_schedule_cron: data.recommendedScheduleCron || null,
-        changes_summary: data.changesSummary || null,
-      } as any);
+      const response = okData(
+        await postV2CreateStoreSubmission({
+          slug: (data.slug || "").replace(/\s+/g, "-"),
+          graph_id: selectedAgentId,
+          graph_version: selectedAgentVersion,
+          name: data.title || "",
+          sub_heading: data.subheader || "",
+          description: data.description,
+          instructions: data.instructions || undefined,
+          categories: filteredCategories,
+          image_urls: images,
+          video_url: data.youtubeLink || undefined,
+          agent_output_demo_url: data.agentOutputDemo || undefined,
+          recommended_schedule_cron: data.recommendedScheduleCron || undefined,
+          changes_summary: data.changesSummary || undefined,
+        }),
+      );
 
       onSuccess(response);
     } catch (error) {

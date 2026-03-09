@@ -79,6 +79,10 @@ def truncate(value: Any, size_limit: int) -> Any:
     largest str_limit and list_limit that fit.
     """
 
+    # Fast path: plain strings don't need the binary search machinery.
+    if isinstance(value, str):
+        return _truncate_string_middle(value, size_limit)
+
     def measure(val):
         try:
             return len(str(val))
@@ -86,7 +90,7 @@ def truncate(value: Any, size_limit: int) -> Any:
             return sys.getsizeof(val)
 
     # Reasonable bounds for string and list limits
-    STR_MIN, STR_MAX = 8, 2**16
+    STR_MIN, STR_MAX = min(8, size_limit), size_limit
     LIST_MIN, LIST_MAX = 1, 2**12
 
     # Binary search for the largest str_limit and list_limit that fit

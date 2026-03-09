@@ -4,11 +4,20 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.library.db import (
     add_store_agent_to_library,
+    bulk_move_agents_to_folder,
+    create_folder,
     create_graph_in_library,
     create_library_agent,
+    delete_folder,
+    get_folder_agents_map,
+    get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_root_agent_summaries,
+    list_folders,
     list_library_agents,
+    move_folder,
+    update_folder,
     update_graph_in_library,
 )
 from backend.api.features.store.db import (
@@ -261,6 +270,16 @@ class DatabaseManager(AppService):
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
+    create_folder = _(create_folder)
+    list_folders = _(list_folders)
+    get_folder_tree = _(get_folder_tree)
+    update_folder = _(update_folder)
+    move_folder = _(move_folder)
+    delete_folder = _(delete_folder)
+    bulk_move_agents_to_folder = _(bulk_move_agents_to_folder)
+    get_folder_agents_map = _(get_folder_agents_map)
+    get_root_agent_summaries = _(get_root_agent_summaries)
+
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
 
@@ -307,6 +326,7 @@ class DatabaseManager(AppService):
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
+    update_chat_session_title = _(chat_db.update_chat_session_title)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -440,6 +460,17 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
+    # ============ Library Folders ============ #
+    create_folder = d.create_folder
+    list_folders = d.list_folders
+    get_folder_tree = d.get_folder_tree
+    update_folder = d.update_folder
+    move_folder = d.move_folder
+    delete_folder = d.delete_folder
+    bulk_move_agents_to_folder = d.bulk_move_agents_to_folder
+    get_folder_agents_map = d.get_folder_agents_map
+    get_root_agent_summaries = d.get_root_agent_summaries
+
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
 
@@ -483,3 +514,4 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
+    update_chat_session_title = d.update_chat_session_title
