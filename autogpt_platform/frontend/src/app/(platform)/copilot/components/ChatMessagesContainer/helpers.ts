@@ -2,8 +2,11 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 
-export type MessagePart =
-  UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
+export type MessagePart = UIMessage<
+  unknown,
+  UIDataTypes,
+  UITools
+>["parts"][number];
 
 export type RenderSegment =
   | { kind: "part"; part: MessagePart; index: number }
