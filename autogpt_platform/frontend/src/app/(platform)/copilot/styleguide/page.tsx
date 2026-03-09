@@ -1130,7 +1130,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_preview,
+                      type: ResponseType.agent_builder_preview,
                       agent_name: "Email Summarizer",
                       description:
                         "An agent that summarizes your unread emails into a daily digest.",
@@ -1158,7 +1158,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_saved,
+                      type: ResponseType.agent_builder_saved,
                       agent_id: "agent-789",
                       agent_name: "Email Summarizer",
                       library_agent_id: "lib-agent-789",
@@ -1178,7 +1178,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.clarification_needed,
+                      type: ResponseType.agent_builder_clarification_needed,
                       message:
                         "I need a bit more information before creating this agent.",
                       questions: [
@@ -1252,7 +1252,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_preview,
+                      type: ResponseType.agent_builder_preview,
                       agent_name: "Email Summarizer v2",
                       description:
                         "Updated agent with improved summarization and Slack integration.",
@@ -1282,7 +1282,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_saved,
+                      type: ResponseType.agent_builder_saved,
                       agent_id: "agent-789",
                       agent_name: "Email Summarizer v2",
                       library_agent_id: "lib-agent-789",
@@ -1302,7 +1302,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.clarification_needed,
+                      type: ResponseType.agent_builder_clarification_needed,
                       message:
                         "I need to clarify a few things about the edits you want.",
                       questions: [
