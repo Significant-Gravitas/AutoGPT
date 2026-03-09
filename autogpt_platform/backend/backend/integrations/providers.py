@@ -43,6 +43,7 @@ class ProviderName(str, Enum):
     REDDIT = "reddit"
     REPLICATE = "replicate"
     REVID = "revid"
+    SARDIS = "sardis"
     SCREENSHOTONE = "screenshotone"
     SLANT3D = "slant3d"
     SMARTLEAD = "smartlead"
