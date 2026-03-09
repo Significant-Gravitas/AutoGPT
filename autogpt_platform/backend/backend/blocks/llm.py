@@ -156,6 +156,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
+    MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
@@ -437,6 +438,9 @@ MODEL_METADATA = {
     ),
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
         "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
+    ),
+    LlmModel.MICROSOFT_PHI_4: ModelMetadata(
+        "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
     ),
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata(
         "open_router", 4096, 4096, "MythoMax L2 13B", "OpenRouter", "Gryphe", 1
