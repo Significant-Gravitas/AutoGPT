@@ -8,8 +8,6 @@ SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
-from __future__ import annotations
-
 import itertools
 import json
 import logging
@@ -17,36 +15,23 @@ import os
 import shlex
 from typing import Any, Callable
 
-from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
+from backend.copilot.context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    get_sdk_cwd,
+    is_allowed_local_path,
+    resolve_sandbox_path,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# Lazy imports to break circular dependency with tool_adapter.
-
-
-def _get_sandbox():  # type: ignore[return]
-    from .tool_adapter import get_current_sandbox  # noqa: E402
-
+def _get_sandbox():
     return get_current_sandbox()
 
 
 def _is_allowed_local(path: str) -> bool:
-    from .tool_adapter import is_allowed_local_path  # noqa: E402
-
-    return is_allowed_local_path(path)
-
-
-def _resolve_remote(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``.
-
-    Raises :class:`ValueError` if the resolved path escapes the sandbox.
-    """
-    candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
-    normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
-    return normalized
+    return is_allowed_local_path(path, get_sdk_cwd())
 
 
 def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:
@@ -63,7 +48,7 @@ def _get_sandbox_and_path(
     if sandbox is None:
         return _mcp("No E2B sandbox available", error=True)
     try:
-        remote = _resolve_remote(file_path)
+        remote = resolve_sandbox_path(file_path)
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return sandbox, remote
@@ -73,6 +58,7 @@ def _get_sandbox_and_path(
 
 
 async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Read lines from a sandbox file, falling back to the local host for SDK-internal paths."""
     file_path: str = args.get("file_path", "")
     offset: int = max(0, int(args.get("offset", 0)))
     limit: int = max(1, int(args.get("limit", 2000)))
@@ -104,6 +90,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Write content to a sandbox file, creating parent directories as needed."""
     file_path: str = args.get("file_path", "")
     content: str = args.get("content", "")
 
@@ -127,6 +114,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace a substring in a sandbox file, with optional replace-all support."""
     file_path: str = args.get("file_path", "")
     old_string: str = args.get("old_string", "")
     new_string: str = args.get("new_string", "")
@@ -172,6 +160,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
+    """Find files matching a name pattern inside the sandbox using ``find``."""
     pattern: str = args.get("pattern", "")
     path: str = args.get("path", "")
 
@@ -183,7 +172,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
+        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -198,6 +187,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
+    """Search file contents by regex inside the sandbox using ``grep -rn``."""
     pattern: str = args.get("pattern", "")
     path: str = args.get("path", "")
     include: str = args.get("include", "")
@@ -210,7 +200,7 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp("No E2B sandbox available", error=True)
 
     try:
-        search_dir = _resolve_remote(path) if path else E2B_WORKDIR
+        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -238,7 +228,7 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
         return _mcp(f"Path not allowed: {file_path}", error=True)
     expanded = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(expanded) as fh:
+        with open(expanded, encoding="utf-8", errors="replace") as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
