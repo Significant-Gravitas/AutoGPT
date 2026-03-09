@@ -60,7 +60,7 @@ class RunMCPToolTool(BaseTool):
             "Intercom (https://mcp.intercom.com/mcp), Cloudflare (https://mcp.cloudflare.com/mcp), "
             "Atlassian/Jira (https://mcp.atlassian.com/mcp). "
             "For other services, search the MCP registry at https://registry.modelcontextprotocol.io/. "
-            "Authentication: If the server requires credentials, user will be prompted to complete the MCP credential setup flow."
+            "Authentication: If the server requires credentials, user will be prompted to complete the MCP credential setup flow. "
             "Once connected and user confirms, retry the same call immediately."
         )
 

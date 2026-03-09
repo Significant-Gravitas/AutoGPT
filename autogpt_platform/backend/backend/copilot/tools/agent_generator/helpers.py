@@ -25,9 +25,11 @@ __all__ = [
 # the validation and fixing pipeline.
 AgentDict = dict[str, Any]
 
-UUID_REGEX = re.compile(
-    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$"
-)
+# Shared base pattern (unanchored, lowercase hex); used for both full-string
+# validation (UUID_REGEX) and text extraction (core._UUID_PATTERN).
+UUID_RE_STR = r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}"
+
+UUID_REGEX = re.compile(r"^" + UUID_RE_STR + r"$")
 
 AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
 MCP_TOOL_BLOCK_ID = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4"
