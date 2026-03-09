@@ -2,12 +2,12 @@
 
 import pytest
 
+from backend.copilot.context import get_sdk_cwd
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _text_from_mcp_result,
-    get_sdk_cwd,
     pop_pending_tool_output,
     set_execution_context,
     stash_pending_tool_output,
