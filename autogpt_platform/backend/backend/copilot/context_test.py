@@ -32,9 +32,7 @@ def _make_session() -> MagicMock:
 
 
 def test_get_execution_context_defaults():
-    """Fresh context returns (None, None)."""
-    user_id, session = get_execution_context()
-    # May not be None if a prior test set it, but after set to None it is.
+    """get_execution_context returns (None, session) when user_id is not set."""
     set_execution_context(None, _make_session())
     user_id, session = get_execution_context()
     assert user_id is None

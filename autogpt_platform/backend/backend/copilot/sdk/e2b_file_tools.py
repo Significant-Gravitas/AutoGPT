@@ -58,6 +58,7 @@ def _get_sandbox_and_path(
 
 
 async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Read lines from a sandbox file, falling back to the local host for SDK-internal paths."""
     file_path: str = args.get("file_path", "")
     offset: int = max(0, int(args.get("offset", 0)))
     limit: int = max(1, int(args.get("limit", 2000)))
@@ -89,6 +90,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Write content to a sandbox file, creating parent directories as needed."""
     file_path: str = args.get("file_path", "")
     content: str = args.get("content", "")
 
@@ -112,6 +114,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace a substring in a sandbox file, with optional replace-all support."""
     file_path: str = args.get("file_path", "")
     old_string: str = args.get("old_string", "")
     new_string: str = args.get("new_string", "")
@@ -157,6 +160,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
+    """Find files matching a name pattern inside the sandbox using ``find``."""
     pattern: str = args.get("pattern", "")
     path: str = args.get("path", "")
 
@@ -183,6 +187,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
+    """Search file contents by regex inside the sandbox using ``grep -rn``."""
     pattern: str = args.get("pattern", "")
     path: str = args.get("path", "")
     include: str = args.get("include", "")
