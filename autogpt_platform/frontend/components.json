@@ -10,6 +10,7 @@
     "cssVariables": false,
     "prefix": ""
   },
+  "iconLibrary": "radix",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils"
