@@ -36,7 +36,7 @@ class GithubReadFileBlock(Block):
         branch: str = SchemaField(
             description="Branch to read from",
             placeholder="branch_name",
-            default="master",
+            default="main",
         )
 
     class Output(BlockSchemaOutput):
@@ -58,7 +58,7 @@ class GithubReadFileBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "file_path": "path/to/file",
-                "branch": "master",
+                "branch": "main",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -75,7 +75,10 @@ class GithubReadFileBlock(Block):
         credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
     ) -> tuple[str, int]:
         api = get_api(credentials)
-        content_url = repo_url + f"/contents/{file_path}?ref={branch}"
+        content_url = (
+            repo_url
+            + f"/contents/{quote(file_path, safe='')}?ref={quote(branch, safe='')}"
+        )
         response = await api.get(content_url)
         data = response.json()
 
@@ -120,9 +123,9 @@ class GithubReadFolderBlock(Block):
             placeholder="path/to/folder",
         )
         branch: str = SchemaField(
-            description="Branch name to read from (defaults to master)",
+            description="Branch name to read from (defaults to main)",
             placeholder="branch_name",
-            default="master",
+            default="main",
         )
 
     class Output(BlockSchemaOutput):
@@ -151,7 +154,7 @@ class GithubReadFolderBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "folder_path": "path/to/folder",
-                "branch": "master",
+                "branch": "main",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -185,7 +188,10 @@ class GithubReadFolderBlock(Block):
         credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         api = get_api(credentials)
-        contents_url = repo_url + f"/contents/{folder_path}?ref={branch}"
+        contents_url = (
+            repo_url
+            + f"/contents/{quote(folder_path, safe='/')}?ref={quote(branch, safe='')}"
+        )
         response = await api.get(contents_url)
         data = response.json()
 
@@ -220,16 +226,19 @@ class GithubReadFolderBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        files, dirs = await self.read_folder(
-            credentials,
-            input_data.repo_url,
-            input_data.folder_path.lstrip("/"),
-            input_data.branch,
-        )
-        for file in files:
-            yield "file", file
-        for dir in dirs:
-            yield "dir", dir
+        try:
+            files, dirs = await self.read_folder(
+                credentials,
+                input_data.repo_url,
+                input_data.folder_path.lstrip("/"),
+                input_data.branch,
+            )
+            for file in files:
+                yield "file", file
+            for dir in dirs:
+                yield "dir", dir
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubCreateFileBlock(Block):
@@ -301,7 +310,7 @@ class GithubCreateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
-        contents_url = repo_url + f"/contents/{file_path}"
+        contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         content_base64 = base64.b64encode(content.encode()).decode()
         data = {
             "message": commit_message,
@@ -400,7 +409,7 @@ class GithubUpdateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
-        contents_url = repo_url + f"/contents/{file_path}"
+        contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         params = {"ref": branch}
         response = await api.get(contents_url, params=params)
         data = response.json()

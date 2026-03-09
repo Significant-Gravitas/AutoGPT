@@ -28,6 +28,12 @@ class GithubListBranchesBlock(Block):
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
+        per_page: int = SchemaField(
+            description="Number of branches to return per page (max 100)",
+            default=30,
+            ge=1,
+            le=100,
+        )
 
     class Output(BlockSchemaOutput):
         class BranchItem(TypedDict):
@@ -41,6 +47,7 @@ class GithubListBranchesBlock(Block):
         branches: list[BranchItem] = SchemaField(
             description="List of branches with their name and file tree browser URL"
         )
+        error: str = SchemaField(description="Error message if listing branches failed")
 
     def __init__(self):
         super().__init__(
@@ -51,6 +58,7 @@ class GithubListBranchesBlock(Block):
             output_schema=GithubListBranchesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
+                "per_page": 30,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -84,11 +92,11 @@ class GithubListBranchesBlock(Block):
 
     @staticmethod
     async def list_branches(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, repo_url: str, per_page: int
     ) -> list[Output.BranchItem]:
         api = get_api(credentials)
         branches_url = repo_url + "/branches"
-        response = await api.get(branches_url)
+        response = await api.get(branches_url, params={"per_page": str(per_page)})
         data = response.json()
         repo_path = repo_url.replace("https://github.com/", "")
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
@@ -107,13 +115,17 @@ class GithubListBranchesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        branches = await self.list_branches(
-            credentials,
-            input_data.repo_url,
-        )
-        yield "branches", branches
-        for branch in branches:
-            yield "branch", branch
+        try:
+            branches = await self.list_branches(
+                credentials,
+                input_data.repo_url,
+                input_data.per_page,
+            )
+            yield "branches", branches
+            for branch in branches:
+                yield "branch", branch
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubMakeBranchBlock(Block):
@@ -187,13 +199,16 @@ class GithubMakeBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = await self.create_branch(
-            credentials,
-            input_data.repo_url,
-            input_data.new_branch,
-            input_data.source_branch,
-        )
-        yield "status", status
+        try:
+            status = await self.create_branch(
+                credentials,
+                input_data.repo_url,
+                input_data.new_branch,
+                input_data.source_branch,
+            )
+            yield "status", status
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubDeleteBranchBlock(Block):
@@ -249,12 +264,15 @@ class GithubDeleteBranchBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = await self.delete_branch(
-            credentials,
-            input_data.repo_url,
-            input_data.branch,
-        )
-        yield "status", status
+        try:
+            status = await self.delete_branch(
+                credentials,
+                input_data.repo_url,
+                input_data.branch,
+            )
+            yield "status", status
+        except Exception as e:
+            yield "error", str(e)
 
 
 class GithubCompareBranchesBlock(Block):
