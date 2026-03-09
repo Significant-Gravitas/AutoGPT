@@ -47,7 +47,7 @@ async function handleWorkspaceDownload(
   const response = await fetch(backendUrl, {
     method: "GET",
     headers,
-    redirect: "follow",
+    redirect: "follow", // Follow redirects to signed URLs
   });
 
   if (!response.ok) {
