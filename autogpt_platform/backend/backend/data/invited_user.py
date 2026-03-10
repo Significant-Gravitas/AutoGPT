@@ -311,7 +311,9 @@ def _parse_bulk_invite_csv(text: str) -> list[_ParsedInviteRow]:
     has_header = "email" in header
     email_index = header.index("email") if has_header else 0
     name_index: int | None = (
-        header.index("name") if has_header and "name" in header else (1 if not has_header else None)
+        header.index("name")
+        if has_header and "name" in header
+        else (1 if not has_header else None)
     )
     data_rows = indexed_rows[1:] if has_header else indexed_rows
 
