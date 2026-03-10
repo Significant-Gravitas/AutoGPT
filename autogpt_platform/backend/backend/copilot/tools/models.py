@@ -39,7 +39,6 @@ class ResponseType(str, Enum):
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
-    REVIEW_REQUIRED = "review_required"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -457,18 +456,6 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
-
-
-class ReviewRequiredResponse(ToolResponseBase):
-    """Response when a block requires human review before execution."""
-
-    type: ResponseType = ResponseType.REVIEW_REQUIRED
-    block_id: str
-    block_name: str
-    review_id: str = Field(description="The review ID for tracking approval status")
-    input_data: dict[str, Any] = Field(
-        description="The input data that requires review"
-    )
 
 
 class WebFetchResponse(ToolResponseBase):

@@ -12,7 +12,6 @@ from .models import (
     BlockOutputResponse,
     ErrorResponse,
     InputValidationErrorResponse,
-    ReviewRequiredResponse,
 )
 from .run_block import RunBlockTool
 
@@ -47,7 +46,6 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
-    mock.is_sensitive_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -366,160 +364,3 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, BlockDetailsResponse)
-
-
-class TestRunBlockSensitiveAction:
-    """Tests for sensitive action human-in-the-loop review in RunBlockTool.
-
-    Sensitive blocks use the existing is_block_exec_need_review() mechanism
-    in Block._execute(). When review is needed, the block yields nothing
-    (pauses execution), and run_block detects this to return ReviewRequiredResponse.
-    """
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_sensitive_block_paused_returns_review_required(self):
-        """When a sensitive block pauses for review, ReviewRequiredResponse is returned."""
-        session = make_session(user_id=_TEST_USER_ID)
-
-        mock_block = make_mock_block_with_schema(
-            block_id="delete-branch-id",
-            name="Delete Branch",
-            input_properties={
-                "repo_url": {"type": "string"},
-                "branch": {"type": "string"},
-            },
-            required_fields=["repo_url", "branch"],
-        )
-        mock_block.is_sensitive_action = True
-
-        # Simulate block pausing for review (yields nothing)
-        async def mock_execute_paused(input_data, **kwargs):
-            return
-            yield  # noqa: unreachable - makes this an async generator
-
-        mock_block.execute = mock_execute_paused
-
-        mock_workspace = MagicMock(id="test-workspace-id")
-
-        with (
-            patch(
-                "backend.copilot.tools.run_block.get_block",
-                return_value=mock_block,
-            ),
-            patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
-            ),
-        ):
-            tool = RunBlockTool()
-            response = await tool._execute(
-                user_id=_TEST_USER_ID,
-                session=session,
-                block_id="delete-branch-id",
-                input_data={
-                    "repo_url": "https://github.com/test/repo",
-                    "branch": "feature-branch",
-                },
-            )
-
-        assert isinstance(response, ReviewRequiredResponse)
-        assert "sensitive action" in response.message
-        assert "review" in response.message.lower()
-        assert response.block_name == "Delete Branch"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_sensitive_block_executes_after_approval(self):
-        """After approval, sensitive blocks execute normally and return outputs."""
-        session = make_session(user_id=_TEST_USER_ID)
-
-        mock_block = make_mock_block_with_schema(
-            block_id="delete-branch-id",
-            name="Delete Branch",
-            input_properties={
-                "repo_url": {"type": "string"},
-                "branch": {"type": "string"},
-            },
-            required_fields=["repo_url", "branch"],
-        )
-        mock_block.is_sensitive_action = True
-
-        # Simulate block executing after review approval (yields outputs)
-        async def mock_execute_approved(input_data, **kwargs):
-            yield "result", "Branch deleted successfully"
-
-        mock_block.execute = mock_execute_approved
-
-        mock_workspace = MagicMock(id="test-workspace-id")
-
-        with (
-            patch(
-                "backend.copilot.tools.run_block.get_block",
-                return_value=mock_block,
-            ),
-            patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
-            ),
-        ):
-            tool = RunBlockTool()
-            response = await tool._execute(
-                user_id=_TEST_USER_ID,
-                session=session,
-                block_id="delete-branch-id",
-                input_data={
-                    "repo_url": "https://github.com/test/repo",
-                    "branch": "feature-branch",
-                },
-            )
-
-        assert isinstance(response, BlockOutputResponse)
-        assert response.success is True
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_non_sensitive_block_executes_normally(self):
-        """Non-sensitive blocks execute without review."""
-        session = make_session(user_id=_TEST_USER_ID)
-
-        mock_block = make_mock_block_with_schema(
-            block_id="http-request-id",
-            name="HTTP Request",
-            input_properties={
-                "url": {"type": "string"},
-            },
-            required_fields=["url"],
-        )
-        mock_block.is_sensitive_action = False
-
-        async def mock_execute(input_data, **kwargs):
-            yield "response", {"status": 200}
-
-        mock_block.execute = mock_execute
-
-        mock_workspace = MagicMock(id="test-workspace-id")
-
-        with (
-            patch(
-                "backend.copilot.tools.run_block.get_block",
-                return_value=mock_block,
-            ),
-            patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
-            ),
-        ):
-            tool = RunBlockTool()
-            response = await tool._execute(
-                user_id=_TEST_USER_ID,
-                session=session,
-                block_id="http-request-id",
-                input_data={"url": "https://example.com"},
-            )
-
-        assert isinstance(response, BlockOutputResponse)
-        assert response.success is True
