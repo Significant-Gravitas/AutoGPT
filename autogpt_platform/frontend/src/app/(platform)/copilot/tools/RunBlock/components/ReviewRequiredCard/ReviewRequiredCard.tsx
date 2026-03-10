@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
 import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   ContentCodeBlock,
@@ -23,6 +25,7 @@ export function ReviewRequiredCard({ output }: Props) {
   const [pendingAction, setPendingAction] = useState<
     "approve" | "reject" | null
   >(null);
+  const [autoApproveFuture, setAutoApproveFuture] = useState(true);
   const { toast } = useToast();
 
   const reviewAction = usePostV2ProcessReviewAction({
@@ -64,7 +67,7 @@ export function ReviewRequiredCard({ output }: Props) {
             node_exec_id: output.review_id,
             approved,
             reviewed_data: output.input_data,
-            auto_approve_future: approved,
+            auto_approve_future: approved && autoApproveFuture,
           },
         ],
       },
@@ -86,27 +89,38 @@ export function ReviewRequiredCard({ output }: Props) {
             : "Rejected — the block will not execute."}
         </ContentMessage>
       ) : (
-        <div className="flex gap-2 pt-1">
-          <Button
-            onClick={() => handleAction(true)}
-            disabled={reviewAction.isPending}
-            loading={pendingAction === "approve"}
-            variant="primary"
-            size="small"
-            className="rounded-full px-4"
-          >
-            Approve
-          </Button>
-          <Button
-            onClick={() => handleAction(false)}
-            disabled={reviewAction.isPending}
-            loading={pendingAction === "reject"}
-            variant="destructive"
-            size="small"
-            className="rounded-full bg-red-600 px-4"
-          >
-            Reject
-          </Button>
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={autoApproveFuture}
+              onCheckedChange={setAutoApproveFuture}
+            />
+            <Text variant="small" className="text-zinc-600">
+              Auto-approve this block for the rest of the session
+            </Text>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleAction(true)}
+              disabled={reviewAction.isPending}
+              loading={pendingAction === "approve"}
+              variant="primary"
+              size="small"
+              className="rounded-full px-4"
+            >
+              Approve
+            </Button>
+            <Button
+              onClick={() => handleAction(false)}
+              disabled={reviewAction.isPending}
+              loading={pendingAction === "reject"}
+              variant="destructive"
+              size="small"
+              className="rounded-full bg-red-600 px-4"
+            >
+              Reject
+            </Button>
+          </div>
         </div>
       )}
     </ContentGrid>
