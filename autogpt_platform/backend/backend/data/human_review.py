@@ -376,7 +376,7 @@ async def get_pending_reviews_for_user(
 
 async def get_pending_reviews_for_execution(
     graph_exec_id: str, user_id: str
-) -> list["PendingHumanReviewModel"]:
+) -> list[PendingHumanReviewModel]:
     """
     Get all pending reviews for a specific graph execution.
 

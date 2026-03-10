@@ -12,6 +12,7 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
 )
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import review_db
 from backend.data.execution import ExecutionContext
 
 from .base import BaseTool
@@ -280,6 +281,36 @@ class RunBlockTool(BaseTool):
         # (e.g. for auto-approve, where we need node_id but have no NodeExecution row).
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
+
+        # Check for an existing WAITING review for this block in this session.
+        # If the LLM retries run_block, we reuse the existing review instead of
+        # creating duplicates (which would show multiple approval cards).
+        existing_reviews = await review_db().get_pending_reviews_for_execution(
+            synthetic_graph_id, user_id
+        )
+        existing_review = next(
+            (
+                r
+                for r in existing_reviews
+                if r.node_id == synthetic_node_id and r.status.value == "WAITING"
+            ),
+            None,
+        )
+        if existing_review:
+            return ReviewRequiredResponse(
+                message=(
+                    f"Block '{block.name}' requires human review. "
+                    f"After the user approves, call continue_run_block with "
+                    f"review_id='{existing_review.node_exec_id}' to execute."
+                ),
+                session_id=session_id,
+                block_id=block_id,
+                block_name=block.name,
+                review_id=existing_review.node_exec_id,
+                graph_exec_id=synthetic_graph_id,
+                input_data=input_data,
+            )
+
         synthetic_node_exec_id = (
             f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}"
             f"{uuid.uuid4().hex[:8]}"
