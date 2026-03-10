@@ -40,6 +40,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
+import backend.server.v2.llm.routes
 import backend.util.service
 import backend.util.settings
 from backend.api.features.library.exceptions import (
