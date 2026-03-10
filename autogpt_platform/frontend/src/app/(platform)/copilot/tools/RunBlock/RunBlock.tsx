@@ -78,7 +78,7 @@ export function RunBlockTool({ part }: Props) {
         graph_version: 0,
         payload: output.input_data,
         instructions: output.block_name,
-        editable: false,
+        editable: true,
         status: ReviewStatus.WAITING,
         created_at: new Date(),
       },
