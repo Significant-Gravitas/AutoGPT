@@ -438,6 +438,8 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
+    _optimized_description: ClassVar[str | None] = None
+
     def __init__(
         self,
         id: str = "",
@@ -490,6 +492,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_sensitive_action = is_sensitive_action
+        # Read from ClassVar set by initialize_blocks()
+        self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: "NodeExecutionStats" = NodeExecutionStats()
 
         if self.webhook_config:

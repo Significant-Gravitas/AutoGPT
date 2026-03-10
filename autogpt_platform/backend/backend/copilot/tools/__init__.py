@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
+from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
@@ -17,10 +19,23 @@ from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsToo
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
+from .fix_agent import FixAgentGraphTool
+from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
+from .get_mcp_guide import GetMCPGuideTool
+from .manage_folders import (
+    CreateFolderTool,
+    DeleteFolderTool,
+    ListFoldersTool,
+    MoveAgentsToFolderTool,
+    MoveFolderTool,
+    UpdateFolderTool,
+)
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
+from .run_mcp_tool import RunMCPToolTool
 from .search_docs import SearchDocsTool
+from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
@@ -30,6 +45,7 @@ from .workspace_files import (
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
     from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)
@@ -43,19 +59,36 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Folder management tools
+    "create_folder": CreateFolderTool(),
+    "list_folders": ListFoldersTool(),
+    "update_folder": UpdateFolderTool(),
+    "move_folder": MoveFolderTool(),
+    "delete_folder": DeleteFolderTool(),
+    "move_agents_to_folder": MoveAgentsToFolderTool(),
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
+    "run_mcp_tool": RunMCPToolTool(),
+    "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
+    "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
+    # Agent-browser multi-step automation (navigate, act, screenshot)
+    "browser_navigate": BrowserNavigateTool(),
+    "browser_act": BrowserActTool(),
+    "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
+    # Agent generation tools (local validation/fixing)
+    "validate_agent_graph": ValidateAgentGraphTool(),
+    "fix_agent_graph": FixAgentGraphTool(),
     # Workspace tools for CoPilot file operations
     "list_workspace_files": ListWorkspaceFilesTool(),
     "read_workspace_file": ReadWorkspaceFileTool(),
@@ -67,10 +100,17 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
-# Generated from registry for OpenAI API
-tools: list[ChatCompletionToolParam] = [
-    tool.as_openai_tool() for tool in TOOL_REGISTRY.values()
-]
+
+def get_available_tools() -> list[ChatCompletionToolParam]:
+    """Return OpenAI tool schemas for tools available in the current environment.
+
+    Called per-request so that env-var or binary availability is evaluated
+    fresh each time (e.g. browser_* tools are excluded when agent-browser
+    CLI is not installed).
+    """
+    return [
+        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
+    ]
 
 
 def get_tool(tool_name: str) -> BaseTool | None:

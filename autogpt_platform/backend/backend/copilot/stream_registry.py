@@ -733,7 +733,10 @@ async def mark_session_completed(
     # This is the SINGLE place that publishes StreamFinish — services and
     # the processor must NOT publish it themselves.
     try:
-        await publish_chunk(turn_id, StreamFinish())
+        await publish_chunk(
+            turn_id,
+            StreamFinish(),
+        )
     except Exception as e:
         logger.error(
             f"Failed to publish StreamFinish for session {session_id}: {e}. "

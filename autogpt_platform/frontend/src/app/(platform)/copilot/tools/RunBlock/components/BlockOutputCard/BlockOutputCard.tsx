@@ -9,6 +9,7 @@ import {
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
 import {
   ContentBadge,
   ContentCard,
@@ -23,30 +24,23 @@ interface Props {
 
 const COLLAPSED_LIMIT = 3;
 
-function isWorkspaceRef(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("workspace://");
-}
-
 function resolveForRenderer(value: unknown): {
   value: unknown;
   metadata?: OutputMetadata;
 } {
-  if (!isWorkspaceRef(value)) return { value };
+  if (!isWorkspaceURI(value)) return { value };
 
-  const withoutPrefix = value.replace("workspace://", "");
-  const fileId = withoutPrefix.split("#")[0];
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+  const parsed = parseWorkspaceURI(value);
+  if (!parsed) return { value };
+
+  const apiPath = getGetWorkspaceDownloadFileByIdUrl(parsed.fileID);
   const url = `/api/proxy${apiPath}`;
 
-  const hashIndex = value.indexOf("#");
-  const mimeHint =
-    hashIndex !== -1 ? value.slice(hashIndex + 1) || undefined : undefined;
-
   const metadata: OutputMetadata = {};
-  if (mimeHint) {
-    metadata.mimeType = mimeHint;
-    if (mimeHint.startsWith("image/")) metadata.type = "image";
-    else if (mimeHint.startsWith("video/")) metadata.type = "video";
+  if (parsed.mimeType) {
+    metadata.mimeType = parsed.mimeType;
+    if (parsed.mimeType.startsWith("image/")) metadata.type = "image";
+    else if (parsed.mimeType.startsWith("video/")) metadata.type = "video";
   }
 
   return { value: url, metadata };
@@ -71,7 +65,7 @@ function RenderOutputValue({ value }: { value: unknown }) {
 
   // Fallback for audio workspace refs
   if (
-    isWorkspaceRef(value) &&
+    isWorkspaceURI(value) &&
     resolved.metadata?.mimeType?.startsWith("audio/")
   ) {
     return (

@@ -10,7 +10,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 export type CreateAgentToolOutput =
   | AgentPreviewResponse
@@ -33,9 +33,9 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
   if (typeof output === "object") {
     const type = (output as { type?: unknown }).type;
     if (
-      type === ResponseType.agent_preview ||
-      type === ResponseType.agent_saved ||
-      type === ResponseType.clarification_needed ||
+      type === ResponseType.agent_builder_preview ||
+      type === ResponseType.agent_builder_saved ||
+      type === ResponseType.agent_builder_clarification_needed ||
       type === ResponseType.suggested_goal ||
       type === ResponseType.error
     ) {
@@ -63,14 +63,17 @@ export function getCreateAgentToolOutput(
 export function isAgentPreviewOutput(
   output: CreateAgentToolOutput,
 ): output is AgentPreviewResponse {
-  return output.type === ResponseType.agent_preview || "agent_json" in output;
+  return (
+    output.type === ResponseType.agent_builder_preview || "agent_json" in output
+  );
 }
 
 export function isAgentSavedOutput(
   output: CreateAgentToolOutput,
 ): output is AgentSavedResponse {
   return (
-    output.type === ResponseType.agent_saved || "agent_page_link" in output
+    output.type === ResponseType.agent_builder_saved ||
+    "agent_page_link" in output
   );
 }
 
@@ -78,7 +81,8 @@ export function isClarificationNeededOutput(
   output: CreateAgentToolOutput,
 ): output is ClarificationNeededResponse {
   return (
-    output.type === ResponseType.clarification_needed || "questions" in output
+    output.type === ResponseType.agent_builder_clarification_needed ||
+    "questions" in output
   );
 }
 
@@ -134,7 +138,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlusIcon size={14} weight="regular" className="text-neutral-400" />;
 }

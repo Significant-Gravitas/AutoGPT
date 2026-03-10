@@ -1,11 +1,11 @@
 """Unit tests for JSONL transcript management utilities."""
 
-import json
 import os
+
+from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
-    read_transcript_file,
     strip_progress_entries,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -36,49 +36,6 @@ PROGRESS_ENTRY = {
 }
 
 VALID_TRANSCRIPT = _make_jsonl(METADATA_LINE, FILE_HISTORY, USER_MSG, ASST_MSG)
-
-
-# --- read_transcript_file ---
-
-
-class TestReadTranscriptFile:
-    def test_returns_content_for_valid_file(self, tmp_path):
-        path = tmp_path / "session.jsonl"
-        path.write_text(VALID_TRANSCRIPT)
-        result = read_transcript_file(str(path))
-        assert result is not None
-        assert "user" in result
-
-    def test_returns_none_for_missing_file(self):
-        assert read_transcript_file("/nonexistent/path.jsonl") is None
-
-    def test_returns_none_for_empty_path(self):
-        assert read_transcript_file("") is None
-
-    def test_returns_none_for_empty_file(self, tmp_path):
-        path = tmp_path / "empty.jsonl"
-        path.write_text("")
-        assert read_transcript_file(str(path)) is None
-
-    def test_returns_none_for_metadata_only(self, tmp_path):
-        content = _make_jsonl(METADATA_LINE, FILE_HISTORY)
-        path = tmp_path / "meta.jsonl"
-        path.write_text(content)
-        assert read_transcript_file(str(path)) is None
-
-    def test_returns_none_for_invalid_json(self, tmp_path):
-        path = tmp_path / "bad.jsonl"
-        path.write_text("not json\n{}\n{}\n")
-        assert read_transcript_file(str(path)) is None
-
-    def test_no_size_limit(self, tmp_path):
-        """Large files are accepted — bucket storage has no size limit."""
-        big_content = {"type": "user", "uuid": "u9", "data": "x" * 1_000_000}
-        content = _make_jsonl(METADATA_LINE, FILE_HISTORY, big_content, ASST_MSG)
-        path = tmp_path / "big.jsonl"
-        path.write_text(content)
-        result = read_transcript_file(str(path))
-        assert result is not None
 
 
 # --- write_transcript_to_tempfile ---
@@ -155,11 +112,55 @@ class TestValidateTranscript:
         assert validate_transcript(content) is False
 
     def test_assistant_only_no_user(self):
+        """With --resume the user message is a CLI query param, not a transcript entry.
+        A transcript with only assistant entries is valid."""
         content = _make_jsonl(METADATA_LINE, FILE_HISTORY, ASST_MSG)
-        assert validate_transcript(content) is False
+        assert validate_transcript(content) is True
+
+    def test_resume_transcript_without_user_entry(self):
+        """Simulates a real --resume stop hook transcript: the CLI session file
+        has summary + assistant entries but no user entry."""
+        summary = {"type": "summary", "uuid": "s1", "text": "context..."}
+        asst1 = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {"role": "assistant", "content": "Hello!"},
+        }
+        asst2 = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "a1",
+            "message": {"role": "assistant", "content": "Sure, let me help."},
+        }
+        content = _make_jsonl(summary, asst1, asst2)
+        assert validate_transcript(content) is True
+
+    def test_single_assistant_entry(self):
+        """A transcript with just one assistant line is valid — the CLI may
+        produce short transcripts for simple responses with no tool use."""
+        content = json.dumps(ASST_MSG) + "\n"
+        assert validate_transcript(content) is True
 
     def test_invalid_json_returns_false(self):
         assert validate_transcript("not json\n{}\n{}\n") is False
+
+    def test_malformed_json_after_valid_assistant_returns_false(self):
+        """Validation must scan all lines - malformed JSON anywhere should fail."""
+        valid_asst = json.dumps(ASST_MSG)
+        malformed = "not valid json"
+        content = valid_asst + "\n" + malformed + "\n"
+        assert validate_transcript(content) is False
+
+    def test_blank_lines_are_skipped(self):
+        """Transcripts with blank lines should be valid if they contain assistant entries."""
+        content = (
+            json.dumps(USER_MSG)
+            + "\n\n"  # blank line
+            + json.dumps(ASST_MSG)
+            + "\n"
+            + "\n"  # another blank line
+        )
+        assert validate_transcript(content) is True
 
 
 # --- strip_progress_entries ---
@@ -253,3 +254,31 @@ class TestStripProgressEntries:
         assert "queue-operation" not in result_types
         assert "user" in result_types
         assert "assistant" in result_types
+
+    def test_preserves_original_line_formatting(self):
+        """Non-reparented entries keep their original JSON formatting."""
+        # orjson produces compact JSON - test that we preserve the exact input
+        # when no reparenting is needed (no re-serialization)
+        original_line = json.dumps(USER_MSG)
+
+        content = original_line + "\n" + json.dumps(ASST_MSG) + "\n"
+        result = strip_progress_entries(content)
+        result_lines = result.strip().split("\n")
+
+        # Original line should be byte-identical (not re-serialized)
+        assert result_lines[0] == original_line
+
+    def test_reparented_entries_are_reserialized(self):
+        """Entries whose parentUuid changes must be re-serialized."""
+        progress = {"type": "progress", "uuid": "p1", "parentUuid": "u1"}
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "p1",
+            "message": {"role": "assistant", "content": "done"},
+        }
+        content = _make_jsonl(USER_MSG, progress, asst)
+        result = strip_progress_entries(content)
+        lines = result.strip().split("\n")
+        asst_entry = json.loads(lines[-1])
+        assert asst_entry["parentUuid"] == "u1"  # reparented
