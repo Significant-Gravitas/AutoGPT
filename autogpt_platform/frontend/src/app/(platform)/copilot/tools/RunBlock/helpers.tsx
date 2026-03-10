@@ -79,7 +79,10 @@ export function isRunBlockDetailsOutput(
 export function isRunBlockBlockOutput(
   output: RunBlockToolOutput,
 ): output is BlockOutputResponse {
-  return output.type === ResponseType.block_output || "block_id" in output;
+  return (
+    output.type === ResponseType.block_output ||
+    ("block_id" in output && !("review_id" in output))
+  );
 }
 
 export function isRunBlockReviewRequiredOutput(
