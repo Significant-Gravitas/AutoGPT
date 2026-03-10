@@ -436,10 +436,12 @@ async def bulk_create_invited_users_from_file(
                 )
             )
         except Exception:
+            local, domain = normalized_email.split("@", 1)
+            masked = f"{local[0]}***@{domain}" if local else f"***@{domain}"
             logger.exception(
-                "Failed to create bulk invite for %s from row %s",
-                normalized_email,
+                "Failed to create bulk invite for row %s (%s)",
                 row.row_number,
+                masked,
             )
             error_count += 1
             results.append(
