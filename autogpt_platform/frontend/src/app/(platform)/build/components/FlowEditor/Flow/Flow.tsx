@@ -1,7 +1,7 @@
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
-import { Background, ReactFlow } from "@xyflow/react";
+import { Background, ReactFlow, SelectionMode } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -112,6 +112,10 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
+          selectionOnDrag={!isLocked}
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={isLocked ? true : [1, 2]}
+          panOnScroll
           deleteKeyCode={["Backspace", "Delete"]}
         >
           <Background />
