@@ -53,11 +53,16 @@ function renderSegments(
   });
 }
 
-/** Extract graph_exec_id from review_required tool outputs in messages. */
+/**
+ * Extract graph_exec_id from tool outputs that need review.
+ * Handles both:
+ * - run_block ReviewRequiredResponse (has graph_exec_id directly)
+ * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
+ */
 function extractGraphExecId(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): string | null {
-  // Scan backwards — the most recent review_required output has the ID
+  // Scan backwards — the most recent review output has the ID
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     for (const part of msg.parts) {
@@ -72,8 +77,19 @@ function extractGraphExecId(
                 }
               })()
             : part.output;
-        if (out && typeof out === "object" && "graph_exec_id" in out) {
-          return (out as { graph_exec_id: string }).graph_exec_id;
+        if (out && typeof out === "object") {
+          // run_block: ReviewRequiredResponse has graph_exec_id
+          if ("graph_exec_id" in out) {
+            return (out as { graph_exec_id: string }).graph_exec_id;
+          }
+          // run_agent: ExecutionStartedResponse with status "REVIEW"
+          if (
+            "execution_id" in out &&
+            "status" in out &&
+            (out as { status: string }).status === "REVIEW"
+          ) {
+            return (out as { execution_id: string }).execution_id;
+          }
         }
       }
     }
