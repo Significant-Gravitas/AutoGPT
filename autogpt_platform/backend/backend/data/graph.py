@@ -38,7 +38,7 @@ from backend.util.request import parse_url
 from .block import BlockInput
 from .db import BaseDbModel
 from .db import prisma as db
-from .db import query_raw_with_schema, transaction
+from .db import execute_raw_with_schema, query_raw_with_schema, transaction
 from .dynamic_fields import is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
@@ -1670,15 +1670,15 @@ async def migrate_llm_models(migrate_to: LlmModel):
     # Update each block
     for id, path in llm_model_fields.items():
         query = f"""
-            UPDATE "AgentNode"
+            UPDATE {{schema_prefix}}"AgentNode"
             SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
             WHERE "agentBlockId" = $3
             AND "constantInput" ? ($4)::text
             AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
             """
 
-        await db.execute_raw(
-            query,  # type: ignore - is supposed to be LiteralString
+        await execute_raw_with_schema(
+            query,
             [path],
             migrate_to.value,
             id,
