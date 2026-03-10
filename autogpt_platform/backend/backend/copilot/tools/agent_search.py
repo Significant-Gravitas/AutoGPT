@@ -208,6 +208,9 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
         has_external_trigger=agent.has_external_trigger,
         new_output=agent.new_output,
         graph_id=agent.graph_id,
+        graph_version=agent.graph_version,
+        input_schema=agent.input_schema,
+        output_schema=agent.output_schema,
     )
 
 

@@ -19,7 +19,10 @@ from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsToo
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
+from .fix_agent import FixAgentGraphTool
+from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
+from .get_mcp_guide import GetMCPGuideTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -32,6 +35,7 @@ from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .search_docs import SearchDocsTool
+from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
@@ -67,9 +71,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
         RunAgentTool(),
         RunBlockTool(),
         RunMCPToolTool(),
+        GetMCPGuideTool(),
         AgentOutputTool(),
         SearchDocsTool(),
         GetDocPageTool(),
+        GetAgentBuildingGuideTool(),
         # Web fetch for safe URL retrieval
         WebFetchTool(),
         # Agent-browser multi-step automation (navigate, act, screenshot)
@@ -82,6 +88,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
         # Feature request tools
         SearchFeatureRequestsTool(),
         CreateFeatureRequestTool(),
+        # Agent generation tools (local validation/fixing)
+        ValidateAgentGraphTool(),
+        FixAgentGraphTool(),
         # Workspace tools for CoPilot file operations
         ListWorkspaceFilesTool(),
         ReadWorkspaceFileTool(),

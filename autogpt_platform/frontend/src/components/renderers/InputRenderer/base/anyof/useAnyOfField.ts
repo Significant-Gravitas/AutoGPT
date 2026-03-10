@@ -63,7 +63,6 @@ export const useAnyOfField = (props: FieldProps) => {
     );
 
     const handlePrefix = cleanUpHandleId(field_id);
-    console.log("handlePrefix", handlePrefix);
     useEdgeStore
       .getState()
       .removeEdgesByHandlePrefix(registry.formContext.nodeId, handlePrefix);
