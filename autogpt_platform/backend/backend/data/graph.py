@@ -36,9 +36,9 @@ from backend.util.models import Pagination
 from backend.util.request import parse_url
 
 from .block import BlockInput
-from .db import BaseDbModel
+from .db import BaseDbModel, execute_raw_with_schema
 from .db import prisma as db
-from .db import execute_raw_with_schema, query_raw_with_schema, transaction
+from .db import query_raw_with_schema, transaction
 from .dynamic_fields import is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
