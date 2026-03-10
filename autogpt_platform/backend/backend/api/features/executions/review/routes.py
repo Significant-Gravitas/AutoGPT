@@ -37,6 +37,45 @@ router = APIRouter(
 )
 
 
+async def _resolve_node_ids(
+    node_exec_ids: list[str],
+    graph_exec_id: str,
+    is_copilot: bool,
+) -> dict[str, str]:
+    """Resolve node_exec_id -> node_id for auto-approval records.
+
+    CoPilot synthetic IDs encode node_id in the format "{node_id}:{random}".
+    Graph executions look up node_id from NodeExecution records.
+    """
+    if not node_exec_ids:
+        return {}
+
+    if is_copilot:
+        from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+
+        return {
+            neid: neid.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
+            for neid in node_exec_ids
+        }
+
+    from backend.data.execution import get_node_executions
+
+    node_execs = await get_node_executions(
+        graph_exec_id=graph_exec_id, include_exec_data=False
+    )
+    node_exec_map = {ne.node_exec_id: ne.node_id for ne in node_execs}
+
+    result = {}
+    for neid in node_exec_ids:
+        if neid in node_exec_map:
+            result[neid] = node_exec_map[neid]
+        else:
+            logger.error(
+                f"Failed to resolve node_id for {neid}: Node execution not found."
+            )
+    return result
+
+
 @router.get(
     "/pending",
     summary="Get Pending Reviews",
@@ -161,9 +200,10 @@ async def process_review_action(
         )
 
     graph_exec_id = next(iter(graph_exec_ids))
+    is_copilot = graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
 
     # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
-    if not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+    if not is_copilot:
         graph_exec_meta = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -180,8 +220,6 @@ async def process_review_action(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}",
             )
-
-    is_copilot = graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
 
     # Build review decisions map and track which reviews requested auto-approval
     # Auto-approved reviews use original data (no modifications allowed)
@@ -234,7 +272,7 @@ async def process_review_action(
             )
             return (node_id, False)
 
-    # Collect node_exec_ids that need auto-approval
+    # Collect node_exec_ids that need auto-approval and resolve their node_ids
     node_exec_ids_needing_auto_approval = [
         node_exec_id
         for node_exec_id, review_result in updated_reviews.items()
@@ -242,40 +280,16 @@ async def process_review_action(
         and auto_approve_requests.get(node_exec_id, False)
     ]
 
-    # Resolve node_id for each node_exec_id needing auto-approval
+    node_id_map = await _resolve_node_ids(
+        node_exec_ids_needing_auto_approval, graph_exec_id, is_copilot
+    )
+
+    # Deduplicate by node_id — one auto-approval per node
     nodes_needing_auto_approval: dict[str, Any] = {}
-    if node_exec_ids_needing_auto_approval:
-        if is_copilot:
-            # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
-            from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-
-            for node_exec_id in node_exec_ids_needing_auto_approval:
-                node_id = node_exec_id.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
-                review_result = updated_reviews[node_exec_id]
-                if node_id not in nodes_needing_auto_approval:
-                    nodes_needing_auto_approval[node_id] = review_result
-        else:
-            # Graph executions: look up node_id from NodeExecution records
-            from backend.data.execution import get_node_executions
-
-            node_execs = await get_node_executions(
-                graph_exec_id=graph_exec_id, include_exec_data=False
-            )
-            node_exec_map = {
-                node_exec.node_exec_id: node_exec for node_exec in node_execs
-            }
-
-            for node_exec_id in node_exec_ids_needing_auto_approval:
-                node_exec = node_exec_map.get(node_exec_id)
-                if node_exec:
-                    review_result = updated_reviews[node_exec_id]
-                    if node_exec.node_id not in nodes_needing_auto_approval:
-                        nodes_needing_auto_approval[node_exec.node_id] = review_result
-                else:
-                    logger.error(
-                        f"Failed to create auto-approval record for {node_exec_id}: "
-                        f"Node execution not found."
-                    )
+    for node_exec_id in node_exec_ids_needing_auto_approval:
+        node_id = node_id_map.get(node_exec_id)
+        if node_id and node_id not in nodes_needing_auto_approval:
+            nodes_needing_auto_approval[node_id] = updated_reviews[node_exec_id]
 
     # Execute all auto-approval creations in parallel (deduplicated by node_id)
     auto_approval_results = await asyncio.gather(
