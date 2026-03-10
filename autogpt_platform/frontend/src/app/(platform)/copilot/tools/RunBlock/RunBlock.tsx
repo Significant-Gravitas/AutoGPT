@@ -8,6 +8,7 @@ import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
@@ -50,10 +51,19 @@ export function RunBlockTool({ part }: Props) {
   const isError =
     part.state === "output-error" ||
     (!!output && isRunBlockErrorOutput(output));
-  const isReviewRequired = !!output && isRunBlockReviewRequiredOutput(output);
-  const reviewOutput = isReviewRequired
-    ? (output as ReviewRequiredResponse)
-    : null;
+  const reviewOutput =
+    output && isRunBlockReviewRequiredOutput(output)
+      ? (output as ReviewRequiredResponse)
+      : null;
+
+  // Check if the review is still pending (survives page refresh)
+  const { pendingReviews } = usePendingReviewsForExecution(
+    reviewOutput?.session_id ?? "",
+    { enabled: !!reviewOutput?.session_id },
+  );
+  const isReviewStillPending =
+    !!reviewOutput &&
+    pendingReviews.some((r) => r.node_exec_id === reviewOutput.review_id);
   const setupRequirementsOutput =
     part.state === "output-available" &&
     output &&
@@ -115,7 +125,7 @@ export function RunBlockTool({ part }: Props) {
         </div>
       )}
 
-      {isReviewRequired && reviewAsPendingReview.length > 0 && (
+      {isReviewStillPending && reviewAsPendingReview.length > 0 && (
         <div className="mt-2">
           <PendingReviewsList
             reviews={reviewAsPendingReview}

@@ -150,14 +150,16 @@ async def list_pending_reviews_for_execution(
     """
 
     # Verify user owns the graph execution before returning reviews
-    graph_exec = await get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not graph_exec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph execution #{graph_exec_id} not found",
+    # (CoPilot synthetic IDs don't have graph execution records)
+    if not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+        graph_exec = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not graph_exec:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 

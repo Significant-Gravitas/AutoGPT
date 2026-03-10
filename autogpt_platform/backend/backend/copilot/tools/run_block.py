@@ -9,7 +9,10 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
-from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
+from backend.copilot.constants import (
+    COPILOT_NODE_EXEC_ID_SEPARATOR,
+    COPILOT_SYNTHETIC_ID_PREFIX,
+)
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
@@ -135,6 +138,20 @@ class RunBlockTool(BaseTool):
                 message="Please provide a block_id",
                 session_id=session_id,
             )
+
+        # When resuming via review_id, validate block_id matches the review
+        # to prevent the LLM from executing a different block with approved data
+        if review_id:
+            expected_node_id = review_id.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
+            expected_block_id = expected_node_id.removeprefix(COPILOT_NODE_PREFIX)
+            if expected_block_id != block_id:
+                return ErrorResponse(
+                    message=(
+                        f"block_id '{block_id}' does not match review_id. "
+                        f"Expected '{expected_block_id}'."
+                    ),
+                    session_id=session_id,
+                )
 
         if not isinstance(input_data, dict):
             return ErrorResponse(
