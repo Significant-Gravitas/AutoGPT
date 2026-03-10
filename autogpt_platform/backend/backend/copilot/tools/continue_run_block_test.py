@@ -12,16 +12,14 @@ from .models import BlockOutputResponse, ErrorResponse
 _TEST_USER_ID = "test-user-continue"
 
 
-def _make_review(
+def _make_review_model(
     node_exec_id: str,
-    user_id: str,
     status: ReviewStatus = ReviewStatus.APPROVED,
     payload: dict | None = None,
 ):
-    """Create a mock PendingHumanReview record."""
+    """Create a mock PendingHumanReviewModel."""
     mock = MagicMock()
-    mock.nodeExecId = node_exec_id
-    mock.userId = user_id
+    mock.node_exec_id = node_exec_id
     mock.status = status
     mock.payload = payload or {"text": "hello"}
     return mock
@@ -47,11 +45,13 @@ class TestContinueRunBlock:
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
 
-        with patch(
-            "backend.copilot.tools.continue_run_block.PendingHumanReview"
-        ) as mock_model:
-            mock_model.prisma.return_value.find_first = AsyncMock(return_value=None)
+        mock_db = MagicMock()
+        mock_db.get_reviews_by_node_exec_ids = AsyncMock(return_value={})
 
+        with patch(
+            "backend.copilot.tools.continue_run_block.review_db",
+            return_value=mock_db,
+        ):
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
@@ -65,21 +65,22 @@ class TestContinueRunBlock:
     async def test_waiting_review_returns_error(self):
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
-        review = _make_review(
-            "copilot-node-some-block:abc12345",
-            _TEST_USER_ID,
-            status=ReviewStatus.WAITING,
+        review_id = "copilot-node-some-block:abc12345"
+        review = _make_review_model(review_id, status=ReviewStatus.WAITING)
+
+        mock_db = MagicMock()
+        mock_db.get_reviews_by_node_exec_ids = AsyncMock(
+            return_value={review_id: review}
         )
 
         with patch(
-            "backend.copilot.tools.continue_run_block.PendingHumanReview"
-        ) as mock_model:
-            mock_model.prisma.return_value.find_first = AsyncMock(return_value=review)
-
+            "backend.copilot.tools.continue_run_block.review_db",
+            return_value=mock_db,
+        ):
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
-                review_id="copilot-node-some-block:abc12345",
+                review_id=review_id,
             )
 
         assert isinstance(response, ErrorResponse)
@@ -89,21 +90,22 @@ class TestContinueRunBlock:
     async def test_rejected_review_returns_error(self):
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
-        review = _make_review(
-            "copilot-node-some-block:abc12345",
-            _TEST_USER_ID,
-            status=ReviewStatus.REJECTED,
+        review_id = "copilot-node-some-block:abc12345"
+        review = _make_review_model(review_id, status=ReviewStatus.REJECTED)
+
+        mock_db = MagicMock()
+        mock_db.get_reviews_by_node_exec_ids = AsyncMock(
+            return_value={review_id: review}
         )
 
         with patch(
-            "backend.copilot.tools.continue_run_block.PendingHumanReview"
-        ) as mock_model:
-            mock_model.prisma.return_value.find_first = AsyncMock(return_value=review)
-
+            "backend.copilot.tools.continue_run_block.review_db",
+            return_value=mock_db,
+        ):
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
-                review_id="copilot-node-some-block:abc12345",
+                review_id=review_id,
             )
 
         assert isinstance(response, ErrorResponse)
@@ -115,9 +117,8 @@ class TestContinueRunBlock:
         session = make_session(user_id=_TEST_USER_ID)
         review_id = "copilot-node-delete-branch-id:abc12345"
         input_data = {"repo_url": "https://github.com/test/repo", "branch": "main"}
-        review = _make_review(
+        review = _make_review_model(
             review_id,
-            _TEST_USER_ID,
             status=ReviewStatus.APPROVED,
             payload=input_data,
         )
@@ -136,10 +137,17 @@ class TestContinueRunBlock:
             return_value=MagicMock(id="test-workspace-id")
         )
 
+        mock_db = MagicMock()
+        mock_db.get_reviews_by_node_exec_ids = AsyncMock(
+            return_value={review_id: review}
+        )
+        mock_db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+
         with (
             patch(
-                "backend.copilot.tools.continue_run_block.PendingHumanReview"
-            ) as mock_model,
+                "backend.copilot.tools.continue_run_block.review_db",
+                return_value=mock_db,
+            ),
             patch(
                 "backend.copilot.tools.continue_run_block.get_block",
                 return_value=mock_block,
@@ -153,9 +161,6 @@ class TestContinueRunBlock:
                 return_value=({}, []),
             ),
         ):
-            mock_model.prisma.return_value.find_first = AsyncMock(return_value=review)
-            mock_model.prisma.return_value.delete_many = AsyncMock()
-
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
@@ -166,4 +171,6 @@ class TestContinueRunBlock:
         assert response.success is True
         assert response.block_name == "Delete Branch"
         # Verify review was deleted (one-time use)
-        mock_model.prisma.return_value.delete_many.assert_called_once()
+        mock_db.delete_review_by_node_exec_id.assert_called_once_with(
+            review_id, _TEST_USER_ID
+        )

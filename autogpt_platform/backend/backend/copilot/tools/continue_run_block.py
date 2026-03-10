@@ -4,11 +4,11 @@ import logging
 from typing import Any
 
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
 
 from backend.blocks import get_block
 from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import review_db
 
 from .base import BaseTool
 from .helpers import execute_block, resolve_block_credentials
@@ -74,10 +74,9 @@ class ContinueRunBlockTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        # Look up and validate the review record
-        review = await PendingHumanReview.prisma().find_first(
-            where={"nodeExecId": review_id, "userId": user_id}
-        )
+        # Look up and validate the review record via adapter
+        reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+        review = reviews.get(review_id)
 
         if not review:
             return ErrorResponse(
@@ -141,8 +140,6 @@ class ContinueRunBlockTool(BaseTool):
 
         # Delete review record after successful execution (one-time use)
         if result.type != "error":
-            await PendingHumanReview.prisma().delete_many(
-                where={"nodeExecId": review_id, "userId": user_id}
-            )
+            await review_db().delete_review_by_node_exec_id(review_id, user_id)
 
         return result

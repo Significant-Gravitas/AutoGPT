@@ -574,3 +574,21 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
         },
     )
     return result
+
+
+async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
+    """Delete a review record by node execution ID after it has been consumed.
+
+    Used by CoPilot's continue_run_block to clean up one-time-use review records
+    after successful execution.
+
+    Args:
+        node_exec_id: The node execution ID of the review to delete
+        user_id: User ID for authorization
+
+    Returns:
+        Number of records deleted
+    """
+    return await PendingHumanReview.prisma().delete_many(
+        where={"nodeExecId": node_exec_id, "userId": user_id}
+    )
