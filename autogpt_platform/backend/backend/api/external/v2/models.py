@@ -142,7 +142,12 @@ class GraphMeta(BaseModel):
     is_active: bool
     name: str
     description: str
+    instructions: str | None
+    recommended_schedule_cron: str | None
     created_at: datetime
+
+    forked_from_id: str | None
+    forked_from_version: int | None
 
     @classmethod
     def from_internal(cls, graph: _GraphMeta) -> Self:
@@ -152,7 +157,11 @@ class GraphMeta(BaseModel):
             is_active=graph.is_active,
             name=graph.name,
             description=graph.description,
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommended_schedule_cron,
             created_at=graph.created_at,
+            forked_from_id=graph.forked_from_id,
+            forked_from_version=graph.forked_from_version,
         )
 
 
@@ -177,9 +186,14 @@ class Graph(GraphMeta):
             is_active=graph.is_active,
             name=graph.name,
             description=graph.description,
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommended_schedule_cron,
             created_at=graph.created_at,
+            forked_from_id=graph.forked_from_id,
+            forked_from_version=graph.forked_from_version,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
+            credentials_input_schema=graph.credentials_input_schema,
             nodes=[
                 GraphNode(
                     id=node.id,
@@ -200,7 +214,6 @@ class Graph(GraphMeta):
                 )
                 for link in graph.links
             ],
-            credentials_input_schema=graph.credentials_input_schema,
         )
 
 
@@ -230,12 +243,6 @@ class GraphListResponse(PaginatedResponse):
     """Response for listing graphs."""
 
     graphs: list[GraphMeta]
-
-
-class GraphDeleteResponse(BaseModel):
-    """Response for deleting a graph."""
-
-    version_count: int = Field(description="Number of versions deleted")
 
 
 # ============================================================================

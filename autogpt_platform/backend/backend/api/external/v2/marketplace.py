@@ -11,6 +11,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, File, HTTPException, Path, Query, Security, UploadFile
 from prisma.enums import APIKeyPermission
 from prisma.enums import ContentType as SearchContentType
+from starlette import status
 
 from backend.api.external.middleware import require_auth, require_permission
 from backend.api.features.store import cache as store_cache
@@ -99,19 +100,14 @@ async def list_agents(
 
 @marketplace_router.get(
     path="/agents/by-version/{version_id}",
-    summary="Get agent by listing version ID",
+    summary="Get agent by version ID",
 )
 async def get_agent_by_version(
     version_id: str,
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """Get details of a marketplace agent by its store listing version ID."""
-    try:
-        agent = await store_db.get_store_agent_by_version_id(version_id)
-    except Exception:
-        raise HTTPException(
-            status_code=404, detail=f"Agent version #{version_id} not found"
-        )
+    agent = await store_db.get_store_agent_by_version_id(version_id)
     return MarketplaceAgentDetails.from_internal(agent)
 
 
@@ -137,12 +133,12 @@ async def get_agent_details(
 
 @marketplace_router.post(
     path="/agents/{username}/{agent_name}/add-to-library",
-    summary="Add a marketplace agent to your library",
-    status_code=201,
+    summary="Add agent to library",
+    status_code=status.HTTP_201_CREATED,
 )
 async def add_agent_to_library(
-    username: str = Path(description="Creator username"),
-    agent_name: str = Path(description="Agent slug/name"),
+    username: str,
+    agent_name: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE, APIKeyPermission.WRITE_LIBRARY)
     ),
@@ -172,7 +168,7 @@ async def add_agent_to_library(
 
 @marketplace_router.get(
     path="/search",
-    summary="Search the marketplace",
+    summary="Search marketplace",
 )
 async def search_marketplace(
     query: str = Query(description="Search query"),
@@ -185,9 +181,10 @@ async def search_marketplace(
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceSearchResponse:
     """
-    Search the marketplace for agents, blocks, and documentation.
+    Search the marketplace using hybrid search (literal + semantic).
 
-    Uses hybrid search combining semantic and lexical matching.
+    Searches across agents, blocks, and documentation. Results are ranked
+    by a combination of keyword matching and semantic similarity.
     """
     search_limiter.check(auth.user_id)
 
@@ -283,7 +280,7 @@ async def get_creator_details(
 
 @marketplace_router.get(
     path="/profile",
-    summary="Get my marketplace profile",
+    summary="Get my profile",
 )
 async def get_profile(
     auth: APIAuthorizationInfo = Security(
@@ -293,7 +290,10 @@ async def get_profile(
     """Get the authenticated user's marketplace profile."""
     profile = await store_db.get_user_profile(auth.user_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found",
+        )
 
     creator = await store_cache._get_cached_creator_details(username=profile.username)
     return MarketplaceCreatorDetails.from_internal(creator)
@@ -301,7 +301,7 @@ async def get_profile(
 
 @marketplace_router.patch(
     path="/profile",
-    summary="Update my marketplace profile",
+    summary="Update my profile",
 )
 async def update_profile(
     request: MarketplaceUserProfileUpdateRequest,
@@ -334,11 +334,11 @@ async def update_profile(
     summary="List my submissions",
 )
 async def list_submissions(
+    page: int = Query(ge=1, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE)
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
 ) -> MarketplaceAgentSubmissionsListResponse:
     """List the authenticated user's marketplace listing submissions."""
     result = await store_db.get_store_submissions(
@@ -360,7 +360,7 @@ async def list_submissions(
 
 @marketplace_router.post(
     path="/submissions",
-    summary="Create a submission",
+    summary="Create submission",
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
@@ -391,7 +391,7 @@ async def create_submission(
 
 @marketplace_router.put(
     path="/submissions/{version_id}",
-    summary="Edit a submission",
+    summary="Edit submission",
 )
 async def edit_submission(
     request: MarketplaceAgentSubmissionEditRequest,
@@ -417,14 +417,14 @@ async def edit_submission(
             instructions=request.instructions,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     return MarketplaceAgentSubmission.from_internal(submission)
 
 
 @marketplace_router.delete(
     path="/submissions/{submission_id}",
-    summary="Delete a submission",
+    summary="Delete submission",
 )
 async def delete_submission(
     submission_id: str,
@@ -440,7 +440,8 @@ async def delete_submission(
 
     if not success:
         raise HTTPException(
-            status_code=404, detail=f"Submission #{submission_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Submission #{submission_id} not found",
         )
 
 
@@ -467,7 +468,7 @@ async def upload_submission_media(
     content = await file.read()
     if len(content) > max_size:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File size ({len(content)} bytes) exceeds the 10MB limit",
         )
 

@@ -9,9 +9,10 @@ import logging
 import re
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, HTTPException, Path, Query, Security, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Security, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from prisma.enums import APIKeyPermission
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
@@ -38,34 +39,32 @@ files_router = APIRouter()
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     """Create standardized file size error response."""
     return HTTPException(
-        status_code=400,
-        detail=f"File size ({size_bytes} bytes) exceeds the maximum allowed size of {max_size_mb}MB",
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"File size ({size_bytes} bytes) exceeds "
+            f"the maximum allowed size of {max_size_mb}MB"
+        ),
     )
 
 
 @files_router.post(
     path="/upload",
-    summary="Upload a file",
+    summary="Upload file",
 )
 async def upload_file(
     file: UploadFile = File(...),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.UPLOAD_FILES)
-    ),
-    provider: str = Query(
-        default="gcs", description="Storage provider (gcs, s3, azure)"
-    ),
     expiration_hours: int = Query(
         default=24, ge=1, le=48, description="Hours until file expires (1-48)"
+    ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.UPLOAD_FILES)
     ),
 ) -> UploadFileResponse:
     """
     Upload a file to cloud storage for use with agents.
 
-    The returned `file_uri` can be used as input to agents that accept file inputs
-    (e.g., FileStoreBlock, AgentFileInputBlock).
-
-    Files are automatically scanned for viruses before storage.
+    Returns a `file_uri` that can be passed to agent graph/node file inputs.
+    Uploaded files are virus-scanned before storage.
     """
     file_upload_limiter.check(auth.user_id)
 
@@ -111,7 +110,6 @@ async def upload_file(
     storage_path = await cloud_storage.store_file(
         content=content,
         filename=file_name,
-        provider=provider,
         expiration_hours=expiration_hours,
         user_id=auth.user_id,
     )
@@ -144,26 +142,28 @@ def _sanitize_filename_for_header(filename: str) -> str:
 
 @files_router.get(
     path="/{file_id}/download",
-    summary="Download a file",
+    summary="Download file",
 )
 async def download_file(
-    file_id: str = Path(description="File ID"),
+    file_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.DOWNLOAD_FILES)
     ),
 ) -> Response:
-    """
-    Download a file from the user's workspace.
-
-    Returns the file content directly or redirects to a signed URL.
-    """
+    """Download a file from the user's workspace."""
     workspace = await get_workspace(auth.user_id)
     if workspace is None:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
 
     file = await get_workspace_file(file_id, workspace.id)
     if file is None:
-        raise HTTPException(status_code=404, detail=f"File #{file_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File #{file_id} not found",
+        )
 
     storage = await get_workspace_storage()
 

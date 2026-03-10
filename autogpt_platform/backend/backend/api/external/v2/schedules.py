@@ -7,8 +7,9 @@ Provides endpoints for managing execution schedules.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data import graph as graph_db
@@ -36,13 +37,10 @@ schedules_router = APIRouter()
 
 @schedules_router.get(
     path="",
-    summary="List agent run schedules",
+    summary="List schedules",
 )
 async def list_all_schedules(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_SCHEDULE)
-    ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         default=DEFAULT_PAGE_SIZE,
@@ -50,12 +48,11 @@ async def list_all_schedules(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_SCHEDULE)
+    ),
 ) -> AgentRunScheduleListResponse:
-    """
-    List schedules for the authenticated user.
-
-    Optionally filter by graph ID.
-    """
+    """List schedules for the authenticated user."""
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
@@ -80,17 +77,15 @@ async def list_all_schedules(
 
 @schedules_router.delete(
     path="/{schedule_id}",
-    summary="Delete a schedule",
+    summary="Delete schedule",
 )
 async def delete_schedule(
-    schedule_id: str = Path(description="Schedule ID to delete"),
+    schedule_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_SCHEDULE)
     ),
 ) -> None:
-    """
-    Delete an execution schedule.
-    """
+    """Delete an execution schedule."""
     try:
         await get_scheduler_client().delete_schedule(
             schedule_id=schedule_id,
@@ -99,7 +94,8 @@ async def delete_schedule(
     except Exception as e:
         if "not found" in str(e).lower():
             raise HTTPException(
-                status_code=404, detail=f"Schedule #{schedule_id} not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Schedule #{schedule_id} not found",
             )
         raise
 
@@ -114,21 +110,16 @@ graph_schedules_router = APIRouter()
 
 @graph_schedules_router.post(
     path="/{graph_id}/schedules",
-    summary="Create a schedule for a graph",
+    summary="Create graph schedule",
 )
 async def create_graph_schedule(
     request: AgentRunScheduleCreateRequest,
-    graph_id: str = Path(description="Graph ID"),
+    graph_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_SCHEDULE)
     ),
 ) -> AgentRunSchedule:
-    """
-    Create a new execution schedule for a graph.
-
-    The schedule will execute the graph at times matching the cron expression,
-    using the provided input data.
-    """
+    """Create a new execution schedule for a graph."""
     graph = await graph_db.get_graph(
         graph_id=graph_id,
         version=request.graph_version,
@@ -136,7 +127,7 @@ async def create_graph_schedule(
     )
     if not graph:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} v{request.graph_version} not found.",
         )
 

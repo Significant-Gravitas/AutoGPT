@@ -9,10 +9,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
 from pydantic import JsonValue
-from starlette.status import HTTP_204_NO_CONTENT
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data import execution as execution_db
@@ -46,13 +46,10 @@ runs_router = APIRouter()
 
 @runs_router.get(
     path="",
-    summary="List agent runs",
+    summary="List runs",
 )
 async def list_runs(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN)
-    ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         default=DEFAULT_PAGE_SIZE,
@@ -60,12 +57,11 @@ async def list_runs(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_RUN)
+    ),
 ) -> AgentRunListResponse:
-    """
-    List agent runs for the authenticated user.
-
-    Optionally filter by graph ID.
-    """
+    """List agent runs, optionally filtered by graph ID."""
     result = await execution_db.get_graph_executions_paginated(
         user_id=auth.user_id,
         graph_id=graph_id,
@@ -87,16 +83,12 @@ async def list_runs(
     summary="Get run details",
 )
 async def get_run(
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN)
     ),
 ) -> AgentGraphRunDetails:
-    """
-    Get detailed information about a specific run.
-
-    Includes outputs and individual node execution results.
-    """
+    """Get detailed information about a specific run."""
     result = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
@@ -104,17 +96,20 @@ async def get_run(
     )
 
     if not result:
-        raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run #{run_id} not found",
+        )
 
     return AgentGraphRunDetails.from_internal(result)
 
 
 @runs_router.post(
     path="/{run_id}/stop",
-    summary="Stop a run",
+    summary="Stop run",
 )
 async def stop_run(
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN)
     ),
@@ -122,7 +117,7 @@ async def stop_run(
     """
     Stop a running execution.
 
-    Only runs in QUEUED or RUNNING status can be stopped.
+    Only runs with status QUEUED or RUNNING can be stopped.
     """
     # Verify the run exists and belongs to the user
     exec = await execution_db.get_graph_execution(
@@ -130,7 +125,10 @@ async def stop_run(
         execution_id=run_id,
     )
     if not exec:
-        raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run #{run_id} not found",
+        )
 
     # Stop the execution
     await execution_utils.stop_graph_execution(
@@ -145,27 +143,25 @@ async def stop_run(
     )
 
     if not updated_exec:
-        raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run #{run_id} not found",
+        )
 
     return AgentGraphRun.from_internal(updated_exec)
 
 
 @runs_router.delete(
     path="/{run_id}",
-    summary="Delete a run",
+    summary="Delete run",
 )
 async def delete_run(
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN)
     ),
 ) -> None:
-    """
-    Delete an execution run.
-
-    This marks the run as deleted. The data may still be retained for
-    some time for recovery purposes.
-    """
+    """Delete an execution run."""
     await execution_db.delete_graph_execution(
         graph_exec_id=run_id,
         user_id=auth.user_id,
@@ -179,26 +175,24 @@ async def delete_run(
 
 @runs_router.post(
     path="/{run_id}/share",
-    summary="Enable sharing for a run",
+    summary="Enable run sharing",
 )
 async def enable_sharing(
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
     ),
 ) -> AgentRunShareResponse:
-    """
-    Enable public sharing for a run.
-
-    Returns a public URL and share token that can be used to view the run
-    without authentication.
-    """
+    """Enable public sharing for a run."""
     execution = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
     )
     if not execution:
-        raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run #{run_id} not found",
+        )
 
     share_token = str(uuid.uuid4())
 
@@ -218,26 +212,25 @@ async def enable_sharing(
 
 @runs_router.delete(
     path="/{run_id}/share",
-    summary="Disable sharing for a run",
-    status_code=HTTP_204_NO_CONTENT,
+    summary="Disable run sharing",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def disable_sharing(
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.SHARE_RUN)
     ),
 ) -> None:
-    """
-    Disable public sharing for a run.
-
-    The share URL will no longer work after this call.
-    """
+    """Disable public sharing for a run."""
     execution = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
     )
     if not execution:
-        raise HTTPException(status_code=404, detail=f"Run #{run_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run #{run_id} not found",
+        )
 
     await execution_db.update_graph_execution_share_status(
         execution_id=run_id,
@@ -255,15 +248,12 @@ async def disable_sharing(
 
 @runs_router.get(
     path="/reviews",
-    summary="List human-in-the-loop reviews for agent runs",
+    summary="List run reviews",
 )
 async def list_reviews(
     run_id: Optional[str] = Query(default=None, description="Filter by run ID"),
     status: Optional[ReviewStatus] = Query(
         description="Filter by review status",
-    ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN_REVIEW)
     ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
@@ -272,12 +262,14 @@ async def list_reviews(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_RUN_REVIEW)
+    ),
 ) -> AgentRunReviewsResponse:
     """
-    List human-in-the-loop reviews.
+    List human-in-the-loop reviews for agent runs.
 
-    Defaults to pending (WAITING) reviews. Use `status` to filter by
-    review status and `run_id` to scope to a specific run.
+    Defaults to reviews with status WAITING if no status filter is given.
     """
     reviews, pagination = await review_db.get_reviews(
         user_id=auth.user_id,
@@ -298,21 +290,20 @@ async def list_reviews(
 
 @runs_router.post(
     path="/{run_id}/reviews",
-    summary="Submit a human-in-the-loop review for an agent run",
+    summary="Submit run reviews",
 )
 async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
-    run_id: str = Path(description="Graph Execution ID"),
+    run_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),
 ) -> AgentRunReviewsSubmitResponse:
     """
-    Submit responses to all pending human-in-the-loop reviews for an agent run.
+    Submit responses to all pending human-in-the-loop reviews for a run.
 
-    All pending reviews for the run must be included. Approving
-    a review will allow the agent to continue; rejecting will terminate
-    execution at that point.
+    All pending reviews for the run must be included in the request.
+    Approving a review continues execution; rejecting terminates that branch.
     """
     # Build review decisions dict for process_all_reviews_for_execution
     review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}

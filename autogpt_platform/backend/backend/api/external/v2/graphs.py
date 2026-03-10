@@ -8,8 +8,9 @@ import logging
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
@@ -27,7 +28,6 @@ from .models import (
     CredentialRequirementsResponse,
     Graph,
     GraphCreateRequest,
-    GraphDeleteResponse,
     GraphListResponse,
     GraphMeta,
     GraphSetActiveVersionRequest,
@@ -42,12 +42,9 @@ graphs_router = APIRouter()
 
 @graphs_router.get(
     path="",
-    summary="List user's graphs",
+    summary="List graphs",
 )
 async def list_graphs(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         default=DEFAULT_PAGE_SIZE,
@@ -55,12 +52,11 @@ async def list_graphs(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> GraphListResponse:
-    """
-    List all graphs owned by the authenticated user.
-
-    Returns a paginated list of graph metadata (not full graph details).
-    """
+    """List all graphs owned by the authenticated user."""
     graphs, pagination_info = await graph_db.list_graphs_paginated(
         user_id=auth.user_id,
         page=page,
@@ -82,19 +78,19 @@ async def list_graphs(
 )
 async def get_graph(
     graph_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
     version: Optional[int] = Query(
         default=None,
         description="Specific version to retrieve (default: active version)",
+    ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> Graph:
     """
     Get detailed information about a specific graph.
 
-    By default returns the active version. Use the `version` query parameter
-    to retrieve a specific version.
+    Returns the active version by default. Pass `version` to retrieve
+    a specific version instead.
     """
     graph = await graph_db.get_graph(
         graph_id,
@@ -103,13 +99,16 @@ async def get_graph(
         include_subgraphs=True,
     )
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph #{graph_id} not found.",
+        )
     return Graph.from_internal(graph)
 
 
 @graphs_router.post(
     path="",
-    summary="Create a new graph",
+    summary="Create graph",
 )
 async def create_graph(
     create_graph: GraphCreateRequest,
@@ -117,12 +116,7 @@ async def create_graph(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
 ) -> Graph:
-    """
-    Create a new agent graph.
-
-    The graph will be validated and assigned a new ID. It will automatically
-    be added to the user's library.
-    """
+    """Create a new agent graph."""
     from backend.api.features.library import db as library_db
 
     internal_graph = create_graph.to_internal(id=str(uuid4()), version=1)
@@ -140,7 +134,7 @@ async def create_graph(
 
 @graphs_router.put(
     path="/{graph_id}",
-    summary="Update graph (creates new version)",
+    summary="Update graph",
 )
 async def update_graph(
     graph_id: str,
@@ -152,8 +146,8 @@ async def update_graph(
     """
     Update a graph by creating a new version.
 
-    This does not modify existing versions - it creates a new version with
-    the provided content. The new version becomes the active version.
+    This does not modify existing versions; it creates a new version
+    with the provided graph definition.
     """
     from backend.api.features.library import db as library_db
 
@@ -161,7 +155,9 @@ async def update_graph(
         graph_id, user_id=auth.user_id
     )
     if not existing_versions:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
 
     latest_version_number = max(g.version for g in existing_versions)
 
@@ -199,35 +195,40 @@ async def update_graph(
     return Graph.from_internal(new_graph_version_with_subgraphs)
 
 
-@graphs_router.delete(
-    path="/{graph_id}",
-    summary="Delete graph permanently",
-)
-async def delete_graph(
-    graph_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
-) -> GraphDeleteResponse:
-    """
-    Permanently delete a graph and all its versions.
+# NOTE: we don't expose graph deletion in the UI, so this is commented for now
+# @graphs_router.delete(
+#     path="/{graph_id}",
+#     summary="Delete graph permanently",
+#     status_code=status.HTTP_204_NO_CONTENT,
+# )
+# async def delete_graph(
+#     graph_id: str,
+#     auth: APIAuthorizationInfo = Security(
+#         require_permission(APIKeyPermission.WRITE_GRAPH)
+#     ),
+# ) -> None:
+#     """
+#     Permanently delete a graph and all its versions.
 
-    This action cannot be undone. All associated executions will remain
-    but will reference a deleted graph.
-    """
-    if active_version := await graph_db.get_graph(
-        graph_id=graph_id, version=None, user_id=auth.user_id
-    ):
-        await on_graph_deactivate(active_version, user_id=auth.user_id)
+#     This action cannot be undone. All associated executions will remain
+#     but will reference a deleted graph.
+#     """
+#     if active_version := await graph_db.get_graph(
+#         graph_id=graph_id, version=None, user_id=auth.user_id
+#     ):
+#         await on_graph_deactivate(active_version, user_id=auth.user_id)
 
-    # FIXME: maybe only expose delete for library agents?
-    version_count = await graph_db.delete_graph(graph_id, user_id=auth.user_id)
-    return GraphDeleteResponse(version_count=version_count)
+#     # FIXME: maybe only expose delete for library agents?
+#     deleted_count = await graph_db.delete_graph(graph_id, user_id=auth.user_id)
+#     if deleted_count == 0:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND, detail=f"Graph {graph_id} not found"
+#         )
 
 
 @graphs_router.get(
     path="/{graph_id}/versions",
-    summary="List all graph versions",
+    summary="List graph versions",
 )
 async def list_graph_versions(
     graph_id: str,
@@ -235,14 +236,13 @@ async def list_graph_versions(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> list[Graph]:
-    """
-    Get all versions of a specific graph.
-
-    Returns a list of all versions, with the active version marked.
-    """
+    """Get all versions of a specific graph."""
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=auth.user_id)
     if not graphs:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph #{graph_id} not found.",
+        )
     return [Graph.from_internal(g) for g in graphs]
 
 
@@ -260,8 +260,8 @@ async def set_active_version(
     """
     Set which version of a graph is the active version.
 
-    The active version is used when executing the graph without specifying
-    a version number.
+    The active version is the one used when executing the graph
+    and what is shown to users in the UI.
     """
     from backend.api.features.library import db as library_db
 
@@ -270,7 +270,10 @@ async def set_active_version(
         graph_id, new_active_version, user_id=auth.user_id
     )
     if not new_active_graph:
-        raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"Graph #{graph_id} v{new_active_version} not found",
+        )
 
     current_active_graph = await graph_db.get_graph(
         graph_id=graph_id,
@@ -304,19 +307,16 @@ async def update_graph_settings(
         require_permission(APIKeyPermission.WRITE_GRAPH)
     ),
 ) -> GraphSettings:
-    """
-    Update settings for a graph.
-
-    Currently supports:
-    - human_in_the_loop_safe_mode: Enable/disable safe mode for human-in-the-loop blocks
-    """
+    """Update settings for a graph."""
     from backend.api.features.library import db as library_db
 
     library_agent = await library_db.get_library_agent_by_graph_id(
         graph_id=graph_id, user_id=auth.user_id
     )
     if not library_agent:
-        raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Graph #{graph_id} not found in user's library"
+        )
 
     updated_agent = await library_db.update_library_agent(
         user_id=auth.user_id,
@@ -331,7 +331,7 @@ async def update_graph_settings(
 
 @graphs_router.get(
     path="/{graph_id}/library-agent",
-    summary="Get library agent by graph ID",
+    summary="Get library agent for graph",
 )
 async def get_library_agent_by_graph(
     graph_id: str,
@@ -339,18 +339,14 @@ async def get_library_agent_by_graph(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """
-    Get the library agent associated with a specific graph.
-
-    Returns the user's library entry for this graph, if it exists.
-    """
+    """Get the library agent associated with a specific graph."""
     agent = await library_db.get_library_agent_by_graph_id(
         graph_id=graph_id,
         user_id=auth.user_id,
     )
     if not agent:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No library agent found for graph #{graph_id}",
         )
     return LibraryAgent.from_internal(agent)
@@ -358,19 +354,15 @@ async def get_library_agent_by_graph(
 
 @graphs_router.get(
     path="/{graph_id}/blocks",
-    summary="List blocks used by a graph",
+    summary="List graph blocks",
 )
 async def list_graph_blocks(
-    graph_id: str = Path(description="Graph ID"),
+    graph_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> list[BlockInfo]:
-    """
-    List the unique blocks used by a graph.
-
-    Returns metadata for each distinct block type referenced in the graph's nodes.
-    """
+    """List the unique blocks used by a graph."""
     from backend.blocks import get_block
 
     graph = await graph_db.get_graph(
@@ -380,7 +372,10 @@ async def list_graph_blocks(
         include_subgraphs=True,
     )
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph #{graph_id} not found.",
+        )
 
     seen_block_ids: set[str] = set()
     blocks: list[BlockInfo] = []
@@ -399,20 +394,15 @@ async def list_graph_blocks(
 
 @graphs_router.get(
     path="/{graph_id}/credentials",
-    summary="List credentials matching graph requirements",
+    summary="Get graph credentials",
 )
 async def list_graph_credential_requirements(
-    graph_id: str = Path(description="Graph ID"),
+    graph_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> CredentialRequirementsResponse:
-    """
-    List credential requirements for a graph and matching user credentials.
-
-    This helps identify which credentials the user needs to provide
-    when executing a graph.
-    """
+    """List credential requirements for a graph and matching user credentials."""
     graph = await graph_db.get_graph(
         graph_id=graph_id,
         version=None,
@@ -420,7 +410,9 @@ async def list_graph_credential_requirements(
         include_subgraphs=True,
     )
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
 
     requirements = await get_credential_requirements(
         graph.credentials_input_schema, auth.user_id

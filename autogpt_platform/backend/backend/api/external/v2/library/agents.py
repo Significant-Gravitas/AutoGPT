@@ -1,15 +1,11 @@
-"""
-V2 External API - Library Agent Endpoints
-
-Provides access to the user's agent library and agent execution.
-"""
+"""V2 External API - Library Agent Endpoints"""
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
-from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
@@ -45,9 +41,6 @@ agents_router = APIRouter()
     summary="List library agents",
 )
 async def list_library_agents(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
     published: Optional[bool] = Query(
         default=None,
         description="Filter by marketplace publish status",
@@ -63,12 +56,11 @@ async def list_library_agents(
         le=MAX_PAGE_SIZE,
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> LibraryAgentListResponse:
-    """
-    List agents in the user's library.
-
-    The library contains agents the user has created or added from the marketplace.
-    """
+    """List agents in the user's library."""
     result = await library_db.list_library_agents(
         user_id=auth.user_id,
         page=page,
@@ -88,128 +80,95 @@ async def list_library_agents(
 
 @agents_router.get(
     path="/agents/{agent_id}",
-    summary="Get library agent details",
+    summary="Get library agent",
 )
 async def get_library_agent(
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """
-    Get detailed information about a specific agent in the user's library.
-    """
-    try:
-        agent = await library_db.get_library_agent(
-            id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
-
+    """Get detailed information about a specific agent in the user's library."""
+    agent = await library_db.get_library_agent(
+        id=agent_id,
+        user_id=auth.user_id,
+    )
     return LibraryAgent.from_internal(agent)
 
 
 @agents_router.patch(
     path="/agents/{agent_id}",
-    summary="Update a library agent",
+    summary="Update library agent",
 )
 async def update_library_agent(
     request: LibraryAgentUpdateRequest,
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """
-    Update properties of a library agent.
-
-    Only the fields provided in the request body will be updated.
-    """
-    try:
-        updated = await library_db.update_library_agent(
-            library_agent_id=agent_id,
-            user_id=auth.user_id,
-            auto_update_version=request.auto_update_version,
-            graph_version=request.graph_version,
-            is_favorite=request.is_favorite,
-            is_archived=request.is_archived,
-            folder_id=request.folder_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
-
+    """Update properties of a library agent."""
+    updated = await library_db.update_library_agent(
+        library_agent_id=agent_id,
+        user_id=auth.user_id,
+        auto_update_version=request.auto_update_version,
+        graph_version=request.graph_version,
+        is_favorite=request.is_favorite,
+        is_archived=request.is_archived,
+        folder_id=request.folder_id,
+    )
     return LibraryAgent.from_internal(updated)
 
 
 @agents_router.delete(
     path="/agents/{agent_id}",
-    summary="Delete a library agent",
-    status_code=HTTP_204_NO_CONTENT,
+    summary="Delete library agent",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_library_agent(
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> None:
-    """
-    Remove an agent from the user's library.
-    """
-    try:
-        await library_db.delete_library_agent(
-            library_agent_id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
+    """Remove an agent from the user's library."""
+    await library_db.delete_library_agent(
+        library_agent_id=agent_id,
+        user_id=auth.user_id,
+    )
 
 
 @agents_router.post(
     path="/agents/{agent_id}/fork",
-    summary="Fork a library agent",
-    status_code=HTTP_201_CREATED,
+    summary="Fork library agent",
+    status_code=status.HTTP_201_CREATED,
 )
 async def fork_library_agent(
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """
-    Fork (clone) a library agent.
-
-    Creates a copy of the agent's graph with new IDs, owned by the
-    authenticated user.
-    """
-    try:
-        forked = await library_db.fork_library_agent(
-            library_agent_id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
-
+    """Fork (clone) a library agent."""
+    forked = await library_db.fork_library_agent(
+        library_agent_id=agent_id,
+        user_id=auth.user_id,
+    )
     return LibraryAgent.from_internal(forked)
 
 
 @agents_router.post(
     path="/agents/{agent_id}/runs",
-    summary="Execute an agent",
+    summary="Execute library agent",
 )
 async def execute_agent(
     request: AgentRunRequest,
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentGraphRun:
-    """
-    Execute an agent from the library.
-
-    This creates a new run with the provided inputs. The run executes
-    asynchronously and you can poll the run status using GET /runs/{run_id}.
-    """
+    """Execute an agent from the library."""
     execute_limiter.check(auth.user_id)
 
     # Check credit balance
@@ -217,18 +176,15 @@ async def execute_agent(
     current_balance = await user_credit_model.get_credits(auth.user_id)
     if current_balance <= 0:
         raise HTTPException(
-            status_code=402,
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
     # Get the library agent to find the graph ID and version
-    try:
-        library_agent = await library_db.get_library_agent(
-            id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
+    library_agent = await library_db.get_library_agent(
+        id=agent_id,
+        user_id=auth.user_id,
+    )
 
     try:
         result = await execution_utils.add_graph_execution(
@@ -243,32 +199,21 @@ async def execute_agent(
 
     except Exception as e:
         logger.error(f"Failed to execute agent: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @agents_router.get(
     path="/agents/{agent_id}/credentials",
-    summary="List credentials matching agent requirements",
+    summary="Get agent credentials",
 )
 async def list_agent_credential_requirements(
-    agent_id: str = Path(description="Library agent ID"),
+    agent_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> CredentialRequirementsResponse:
-    """
-    List credential requirements for a library agent and matching user credentials.
-
-    This helps identify which credentials the user needs to provide
-    when executing an agent from their library.
-    """
-    try:
-        library_agent = await library_db.get_library_agent(
-            id=agent_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Agent #{agent_id} not found")
+    """List credential requirements and matching user credentials for a library agent."""
+    library_agent = await library_db.get_library_agent(agent_id, user_id=auth.user_id)
 
     graph = await graph_db.get_graph(
         graph_id=library_agent.graph_id,
@@ -278,7 +223,7 @@ async def list_agent_credential_requirements(
     )
     if not graph:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph for agent #{agent_id} not found",
         )
 

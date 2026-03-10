@@ -36,9 +36,7 @@ async def get_balance(
         require_permission(APIKeyPermission.READ_CREDITS)
     ),
 ) -> CreditBalance:
-    """
-    Get the current credit balance for the authenticated user.
-    """
+    """Get the current credit balance for the authenticated user."""
     user_credit_model = await get_user_credit_model(auth.user_id)
     balance = await user_credit_model.get_credits(auth.user_id)
 
@@ -50,9 +48,6 @@ async def get_balance(
     summary="Get transaction history",
 )
 async def get_transactions(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         default=DEFAULT_PAGE_SIZE,
@@ -64,12 +59,11 @@ async def get_transactions(
         default=None,
         description="Filter by transaction type (TOP_UP, USAGE, GRANT, REFUND)",
     ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_CREDITS)
+    ),
 ) -> CreditTransactionsResponse:
-    """
-    Get credit transaction history for the authenticated user.
-
-    Returns transactions sorted by most recent first.
-    """
+    """Get credit transaction history for the authenticated user."""
     user_credit_model = await get_user_credit_model(auth.user_id)
 
     history = await user_credit_model.get_transaction_history(

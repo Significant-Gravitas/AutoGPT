@@ -56,20 +56,12 @@ async def _get_cached_blocks() -> list[BlockInfo]:
 
 @blocks_router.get(
     path="",
-    summary="List available blocks",
+    summary="List blocks",
 )
 async def list_blocks(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_BLOCK)
     ),
 ) -> list[BlockInfo]:
-    """
-    List all available building blocks that can be used in graphs.
-
-    Each block represents a specific capability (e.g., HTTP request, text processing,
-    AI completion, etc.) that can be connected in a graph to create an agent.
-
-    The response includes input/output schemas for each block, as well as
-    cost information for blocks that consume credits.
-    """
+    """List all available blocks with their input/output schemas and cost information."""
     return await _get_cached_blocks()

@@ -8,10 +8,10 @@ import logging
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
-from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
+from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
@@ -38,11 +38,7 @@ async def list_credentials(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> CredentialListResponse:
-    """
-    List integration credentials for the authenticated user.
-
-    Optionally filter by provider.
-    """
+    """List integration credentials for the authenticated user."""
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
 
     if provider:
@@ -55,8 +51,8 @@ async def list_credentials(
 
 @credentials_router.post(
     path="/credentials",
-    summary="Create an API key credential",
-    status_code=HTTP_201_CREATED,
+    summary="Create API key credential",
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_credential(
     request: CredentialCreateRequest,
@@ -68,7 +64,7 @@ async def create_credential(
     Create a new API key credential.
 
     Only API key credentials can be created via the external API.
-    OAuth credentials must be created via the OAuth flow in the web UI.
+    OAuth credentials must be set up through the web UI.
     """
     credentials = APIKeyCredentials(
         id=str(uuid4()),
@@ -83,11 +79,11 @@ async def create_credential(
 
 @credentials_router.delete(
     path="/credentials/{credential_id}",
-    summary="Delete a credential",
-    status_code=HTTP_204_NO_CONTENT,
+    summary="Delete credential",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_credential(
-    credential_id: str = Path(description="Credential ID"),
+    credential_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
@@ -95,15 +91,15 @@ async def delete_credential(
     """
     Delete an integration credential.
 
-    This permanently removes the credential. Any agents using this
-    credential will fail on their next execution.
+    Any agents using this credential will fail on their next run.
     """
     existing = await creds_manager.store.get_creds_by_id(
         user_id=auth.user_id, credentials_id=credential_id
     )
     if not existing:
         raise HTTPException(
-            status_code=404, detail=f"Credential #{credential_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Credential #{credential_id} not found",
         )
 
     await creds_manager.delete(auth.user_id, credential_id)
