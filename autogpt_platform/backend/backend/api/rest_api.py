@@ -40,7 +40,6 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
-import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
 from backend.api.features.library.exceptions import (
@@ -344,9 +343,9 @@ app.include_router(
     prefix="/api/llm/admin",
 )
 app.include_router(
-    public_llm_routes.router,
+    backend.server.v2.llm.routes.router,
     tags=["v2"],
-    prefix="/api",
+    prefix="/api/llm",
 )
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
