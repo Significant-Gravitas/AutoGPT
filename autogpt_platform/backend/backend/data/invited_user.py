@@ -177,9 +177,18 @@ async def _apply_tally_understanding(
     if not isinstance(invited_user.tallyUnderstanding, dict):
         return
 
-    input_data = BusinessUnderstandingInput.model_validate(
-        invited_user.tallyUnderstanding
-    )
+    try:
+        input_data = BusinessUnderstandingInput.model_validate(
+            invited_user.tallyUnderstanding
+        )
+    except Exception:
+        logger.warning(
+            "Malformed tallyUnderstanding for invited user %s; skipping",
+            invited_user.id,
+            exc_info=True,
+        )
+        return
+
     payload = merge_business_understanding_data({}, input_data)
     await prisma.models.CoPilotUnderstanding.prisma(tx).upsert(
         where={"userId": user_id},
