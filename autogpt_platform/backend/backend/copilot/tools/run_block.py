@@ -57,7 +57,9 @@ class RunBlockTool(BaseTool):
             "IMPORTANT: You MUST call find_block first to get the block's 'id' - "
             "do NOT guess or make up block IDs. "
             "On first attempt (without input_data), returns detailed schema showing "
-            "required inputs and outputs. Then call again with proper input_data to execute."
+            "required inputs and outputs. Then call again with proper input_data to execute. "
+            "If a previous call returned review_required with a review_id, pass that "
+            "review_id to resume execution after the user approves."
         )
 
     @property
@@ -85,6 +87,13 @@ class RunBlockTool(BaseTool):
                         "Input values for the block. "
                         "First call with empty {} to see the block's schema, "
                         "then call again with proper values to execute."
+                    ),
+                },
+                "review_id": {
+                    "type": "string",
+                    "description": (
+                        "The review_id from a previous review_required response. "
+                        "Pass this to resume execution after the user approves."
                     ),
                 },
             },
@@ -116,6 +125,9 @@ class RunBlockTool(BaseTool):
         """
         block_id = kwargs.get("block_id", "").strip()
         input_data = kwargs.get("input_data", {})
+        review_id = (
+            kwargs.get("review_id", "").strip() if kwargs.get("review_id") else ""
+        )
         session_id = session.session_id
 
         if not block_id:
@@ -290,14 +302,18 @@ class RunBlockTool(BaseTool):
 
             # Generate synthetic IDs for CoPilot context
             # Each chat session is treated as its own agent with one continuous run
-            # This means:
-            # - graph_id (agent) = session (memories scoped to session when limit_to_agent=True)
-            # - graph_exec_id (run) = session (memories scoped to session when limit_to_run=True)
-            # - node_exec_id = unique per block execution
+            # - graph_id/graph_exec_id = session-scoped
+            # - node_exec_id = unique per invocation, or reused via review_id after approval
             synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
             synthetic_graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
             synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
-            synthetic_node_exec_id = f"{COPILOT_SYNTHETIC_ID_PREFIX}{session.session_id}-{uuid.uuid4().hex[:8]}"
+            # Encode node_id in node_exec_id so it can be extracted later
+            # (e.g. for auto-approve, where we need node_id but have no NodeExecution row)
+            synthetic_node_exec_id = (
+                review_id
+                if review_id
+                else f"{synthetic_node_id}:{uuid.uuid4().hex[:8]}"
+            )
 
             # Create unified execution context with all required fields
             execution_context = ExecutionContext(
@@ -355,9 +371,9 @@ class RunBlockTool(BaseTool):
             if should_pause:
                 return ReviewRequiredResponse(
                     message=(
-                        f"Block '{block.name}' performs a sensitive action and "
-                        f"requires human review before execution. Please approve "
-                        f"or reject this action in the review panel, then try again."
+                        f"Block '{block.name}' requires human review. "
+                        f"After the user approves, call run_block again with "
+                        f"review_id='{synthetic_node_exec_id}' to execute."
                     ),
                     session_id=session_id,
                     block_id=block_id,

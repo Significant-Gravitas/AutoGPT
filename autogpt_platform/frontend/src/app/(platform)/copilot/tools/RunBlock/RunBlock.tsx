@@ -2,11 +2,12 @@
 
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
+import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
@@ -23,7 +24,7 @@ import {
   isRunBlockSetupRequirementsOutput,
   ToolIcon,
 } from "./helpers";
-import type { RunBlockInput } from "./helpers";
+import type { ReviewRequiredResponse, RunBlockInput } from "./helpers";
 
 export interface RunBlockToolPart {
   type: string;
@@ -41,6 +42,7 @@ export function RunBlockTool({ part }: Props) {
   const text = getAnimationText(part);
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
+  const { onSend } = useCopilotChatActions();
 
   const output = getRunBlockToolOutput(part);
   const inputData = (part.input as RunBlockInput | undefined)?.input_data;
@@ -49,6 +51,9 @@ export function RunBlockTool({ part }: Props) {
     part.state === "output-error" ||
     (!!output && isRunBlockErrorOutput(output));
   const isReviewRequired = !!output && isRunBlockReviewRequiredOutput(output);
+  const reviewOutput = isReviewRequired
+    ? (output as ReviewRequiredResponse)
+    : null;
   const setupRequirementsOutput =
     part.state === "output-available" &&
     output &&
@@ -67,23 +72,32 @@ export function RunBlockTool({ part }: Props) {
 
   // Convert ReviewRequiredResponse to PendingHumanReviewModel for reuse
   const reviewAsPendingReview = useMemo((): PendingHumanReviewModel[] => {
-    if (!output || !isRunBlockReviewRequiredOutput(output)) return [];
+    if (!reviewOutput) return [];
     return [
       {
-        node_exec_id: output.review_id,
-        node_id: output.block_id,
+        node_exec_id: reviewOutput.review_id,
+        node_id: reviewOutput.block_id,
         user_id: "",
-        graph_exec_id: output.session_id ?? "",
+        graph_exec_id: reviewOutput.session_id ?? "",
         graph_id: "",
         graph_version: 0,
-        payload: output.input_data,
-        instructions: output.block_name,
+        payload: reviewOutput.input_data,
+        instructions: reviewOutput.block_name,
         editable: true,
         status: ReviewStatus.WAITING,
         created_at: new Date(),
       },
     ];
-  }, [output]);
+  }, [reviewOutput]);
+
+  // After approval, automatically tell the LLM to continue with the review_id
+  const handleReviewComplete = useCallback(() => {
+    if (!reviewOutput) return;
+    onSend(
+      `The review for "${reviewOutput.block_name}" has been processed. ` +
+        `Please continue executing the block using review_id="${reviewOutput.review_id}".`,
+    );
+  }, [reviewOutput, onSend]);
 
   return (
     <div className="py-2">
@@ -103,7 +117,10 @@ export function RunBlockTool({ part }: Props) {
 
       {isReviewRequired && reviewAsPendingReview.length > 0 && (
         <div className="mt-2">
-          <PendingReviewsList reviews={reviewAsPendingReview} />
+          <PendingReviewsList
+            reviews={reviewAsPendingReview}
+            onReviewComplete={handleReviewComplete}
+          />
         </div>
       )}
 

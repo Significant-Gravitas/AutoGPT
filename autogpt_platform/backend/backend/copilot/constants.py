@@ -11,6 +11,10 @@ COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]"  # Renders as system info me
 # in PendingHumanReview and other tables.
 COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 
+# Separator used in synthetic node_exec_id to encode node_id.
+# Format: "{node_id}:{random_hex}" — extract node_id via rsplit(":", 1)[0]
+COPILOT_NODE_EXEC_ID_SEPARATOR = ":"
+
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
 COMPACTION_TOOL_NAME = "context_compaction"

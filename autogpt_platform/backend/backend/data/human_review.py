@@ -505,6 +505,10 @@ async def process_all_reviews_for_execution(
 
     # Fetch node_id for each review and return as dict for easy access
     # Local import to avoid event loop conflicts in tests
+    from backend.copilot.constants import (
+        COPILOT_NODE_EXEC_ID_SEPARATOR,
+        COPILOT_SYNTHETIC_ID_PREFIX,
+    )
     from backend.data.execution import get_node_execution
 
     # Combine updated reviews with already-processed ones (for idempotent response)
@@ -512,8 +516,12 @@ async def process_all_reviews_for_execution(
 
     result = {}
     for review in all_result_reviews:
-        node_exec = await get_node_execution(review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        if review.nodeExecId.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+            # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
+            node_id = review.nodeExecId.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
+        else:
+            node_exec = await get_node_execution(review.nodeExecId)
+            node_id = node_exec.node_id if node_exec else review.nodeExecId
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )

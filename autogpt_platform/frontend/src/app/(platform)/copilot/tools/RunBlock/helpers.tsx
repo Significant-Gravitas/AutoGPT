@@ -41,6 +41,7 @@ export interface RunBlockInput {
   block_id?: string;
   block_name?: string;
   input_data?: Record<string, unknown>;
+  review_id?: string;
 }
 
 export type RunBlockToolOutput =
