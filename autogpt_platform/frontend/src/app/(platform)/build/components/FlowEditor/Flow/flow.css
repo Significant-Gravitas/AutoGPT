@@ -7,3 +7,9 @@
   position: relative;
   transform: none;
 }
+
+/* Selection box styling for drag-to-select */
+.react-flow {
+  --xy-selection-background-color: rgba(99, 102, 241, 0.08);
+  --xy-selection-border: 1px solid rgba(99, 102, 241, 0.4);
+}
