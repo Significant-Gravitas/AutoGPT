@@ -1392,10 +1392,11 @@ model LlmModel {
 
   // Model-specific capabilities
   // These vary per model even within the same provider (e.g., Hugging Face)
-  supportsTools        Boolean @default(true)
-  supportsJsonOutput   Boolean @default(true)
-  supportsReasoning    Boolean @default(false)
-  supportsParallelTool Boolean @default(false)
+  // Default to false for safety - partially-seeded rows should not be assumed capable
+  supportsTools            Boolean @default(false)
+  supportsJsonOutput       Boolean @default(false)
+  supportsReasoning        Boolean @default(false)
+  supportsParallelToolCalls Boolean @default(false)
 
   capabilities Json @default("{}")
   metadata     Json @default("{}")
@@ -1427,7 +1428,6 @@ model LlmModelCost {
   Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
 
   @@unique([llmModelId, credentialProvider, unit])
-  @@index([llmModelId])
   @@index([credentialProvider])
   @@schema("platform")
 }
@@ -1475,13 +1475,15 @@ model LlmModelMigration {
   // If null, the target model's normal cost applies.
   //
   // TODO: Integrate with billing system to apply this override during cost calculation.
+  // LIMITATION: This is a simple Int and doesn't distinguish RUN vs TOKENS pricing.
+  // For token-priced models, this may be ambiguous. Consider migrating to a relation
+  // with LlmModelCost or a dedicated override model in a follow-up PR.
   customCreditCost Int? // DB constraint: >= 0 when not null
 
   // Revert tracking
   isReverted Boolean   @default(false)
   revertedAt DateTime?
 
-  @@index([sourceModelSlug])
   @@index([targetModelSlug])
   @@index([isReverted])
   @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries

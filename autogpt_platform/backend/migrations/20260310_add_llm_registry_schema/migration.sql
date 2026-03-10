@@ -50,10 +50,10 @@ CREATE TABLE "platform"."LlmModel" (
     "priceTier" INTEGER NOT NULL DEFAULT 1,
     "isEnabled" BOOLEAN NOT NULL DEFAULT true,
     "isRecommended" BOOLEAN NOT NULL DEFAULT false,
-    "supportsTools" BOOLEAN NOT NULL DEFAULT true,
-    "supportsJsonOutput" BOOLEAN NOT NULL DEFAULT true,
+    "supportsTools" BOOLEAN NOT NULL DEFAULT false,
+    "supportsJsonOutput" BOOLEAN NOT NULL DEFAULT false,
     "supportsReasoning" BOOLEAN NOT NULL DEFAULT false,
-    "supportsParallelTool" BOOLEAN NOT NULL DEFAULT false,
+    "supportsParallelToolCalls" BOOLEAN NOT NULL DEFAULT false,
     "capabilities" JSONB NOT NULL DEFAULT '{}',
     "metadata" JSONB NOT NULL DEFAULT '{}',
 
@@ -110,16 +110,10 @@ CREATE INDEX "LlmModel_providerId_isEnabled_idx" ON "platform"."LlmModel"("provi
 CREATE INDEX "LlmModel_creatorId_idx" ON "platform"."LlmModel"("creatorId");
 
 -- CreateIndex
-CREATE INDEX "LlmModelCost_llmModelId_idx" ON "platform"."LlmModelCost"("llmModelId");
-
--- CreateIndex
 CREATE INDEX "LlmModelCost_credentialProvider_idx" ON "platform"."LlmModelCost"("credentialProvider");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LlmModelCost_llmModelId_credentialProvider_unit_key" ON "platform"."LlmModelCost"("llmModelId", "credentialProvider", "unit");
-
--- CreateIndex
-CREATE INDEX "LlmModelMigration_sourceModelSlug_idx" ON "platform"."LlmModelMigration"("sourceModelSlug");
 
 -- CreateIndex
 CREATE INDEX "LlmModelMigration_targetModelSlug_idx" ON "platform"."LlmModelMigration"("targetModelSlug");
