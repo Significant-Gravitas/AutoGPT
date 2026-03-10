@@ -145,8 +145,12 @@ class TestContinueRunBlock:
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.continue_run_block.workspace_db",
+                "backend.copilot.tools.helpers.workspace_db",
                 return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
             ),
         ):
             mock_model.prisma.return_value.find_first = AsyncMock(return_value=review)

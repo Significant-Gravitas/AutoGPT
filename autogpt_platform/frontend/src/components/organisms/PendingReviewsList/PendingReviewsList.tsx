@@ -307,7 +307,7 @@ export function PendingReviewsList({
       {completedAction ? (
         <Text variant="body" className="font-medium text-textGrey">
           {completedAction === "approved"
-            ? "Approved — the block will execute on next attempt."
+            ? "Approved — execution will resume shortly."
             : "Rejected — the block will not execute."}
         </Text>
       ) : (

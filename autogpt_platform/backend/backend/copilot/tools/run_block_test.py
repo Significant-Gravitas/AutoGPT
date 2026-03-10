@@ -28,9 +28,16 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
+    mock.is_sensitive_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
-    mock.input_schema.get_credentials_fields_info.return_value = []
+    mock.input_schema.get_credentials_fields_info.return_value = {}
+    mock.input_schema.get_credentials_fields.return_value = {}
+
+    async def _no_review(input_data, **kwargs):
+        return False, input_data
+
+    mock.is_block_exec_need_review = _no_review
     return mock
 
 
@@ -134,9 +141,15 @@ class TestRunBlockFiltering:
             "standard-id", "HTTP Request", BlockType.STANDARD
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=standard_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=standard_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
             response = await tool._execute(
@@ -162,12 +175,7 @@ class TestRunBlockInputValidation:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_unknown_input_fields_are_rejected(self):
-        """run_block rejects unknown input fields instead of silently ignoring them.
-
-        Scenario: The AI Text Generator block has a field called 'model' (for LLM model
-        selection), but the LLM calling the tool guesses wrong and sends 'LLM_Model'
-        instead. The block should reject the request and return the valid schema.
-        """
+        """run_block rejects unknown input fields instead of silently ignoring them."""
         session = make_session(user_id=_TEST_USER_ID)
 
         mock_block = make_mock_block_with_schema(
@@ -190,27 +198,31 @@ class TestRunBlockInputValidation:
             output_properties={"response": {"type": "string"}},
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
-            # Provide 'prompt' (correct) but 'LLM_Model' instead of 'model' (wrong key)
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
                     "prompt": "Write a haiku about coding",
-                    "LLM_Model": "claude-opus-4-6",  # WRONG KEY - should be 'model'
+                    "LLM_Model": "claude-opus-4-6",
                 },
             )
 
         assert isinstance(response, InputValidationErrorResponse)
         assert "LLM_Model" in response.unrecognized_fields
         assert "Block was not executed" in response.message
-        assert "inputs" in response.model_dump()  # valid schema included
+        assert "inputs" in response.model_dump()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_multiple_wrong_keys_are_all_reported(self):
@@ -229,21 +241,26 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "prompt": "Hello",  # correct
-                    "llm_model": "claude-opus-4-6",  # WRONG - should be 'model'
-                    "system_prompt": "Be helpful",  # WRONG - should be 'sys_prompt'
-                    "retries": 5,  # WRONG - should be 'retry'
+                    "prompt": "Hello",
+                    "llm_model": "claude-opus-4-6",
+                    "system_prompt": "Be helpful",
+                    "retries": 5,
                 },
             )
 
@@ -270,23 +287,26 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
-            # 'prompt' is missing AND 'LLM_Model' is an unknown field
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "LLM_Model": "claude-opus-4-6",  # wrong key, and 'prompt' is missing
+                    "LLM_Model": "claude-opus-4-6",
                 },
             )
 
-        # Unknown fields are caught first
         assert isinstance(response, InputValidationErrorResponse)
         assert "LLM_Model" in response.unrecognized_fields
 
@@ -321,7 +341,11 @@ class TestRunBlockInputValidation:
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.run_block.workspace_db",
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
                 return_value=mock_workspace_db,
             ),
         ):
@@ -333,7 +357,7 @@ class TestRunBlockInputValidation:
                 block_id="ai-text-gen-id",
                 input_data={
                     "prompt": "Write a haiku",
-                    "model": "gpt-4o-mini",  # correct field name
+                    "model": "gpt-4o-mini",
                 },
             )
 
@@ -355,19 +379,24 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
 
-            # Only provide valid optional field, missing required 'prompt'
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "model": "gpt-4o-mini",  # valid but optional
+                    "model": "gpt-4o-mini",
                 },
             )
 
@@ -404,18 +433,14 @@ class TestRunBlockSensitiveAction:
             return_value=(True, input_data)
         )
 
-        mock_workspace = MagicMock(id="test-workspace-id")
-
         with (
             patch(
                 "backend.copilot.tools.run_block.get_block",
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
             ),
         ):
             tool = RunBlockTool()
@@ -459,7 +484,10 @@ class TestRunBlockSensitiveAction:
 
         mock_block.execute = mock_execute
 
-        mock_workspace = MagicMock(id="test-workspace-id")
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="test-workspace-id")
+        )
 
         with (
             patch(
@@ -467,10 +495,12 @@ class TestRunBlockSensitiveAction:
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
             ),
         ):
             tool = RunBlockTool()
@@ -508,7 +538,10 @@ class TestRunBlockSensitiveAction:
 
         mock_block.execute = mock_execute
 
-        mock_workspace = MagicMock(id="test-workspace-id")
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="test-workspace-id")
+        )
 
         with (
             patch(
@@ -516,10 +549,12 @@ class TestRunBlockSensitiveAction:
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.run_block.workspace_db",
-                return_value=MagicMock(
-                    get_or_create_workspace=AsyncMock(return_value=mock_workspace)
-                ),
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
             ),
         ):
             tool = RunBlockTool()

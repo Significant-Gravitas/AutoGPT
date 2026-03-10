@@ -6,11 +6,15 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
+from backend.copilot.constants import (
+    COPILOT_SYNTHETIC_ID_PREFIX,
+    parse_node_id_from_exec_id,
+)
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     get_graph_execution_meta,
+    get_node_executions,
 )
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
@@ -51,14 +55,7 @@ async def _resolve_node_ids(
         return {}
 
     if is_copilot:
-        from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-
-        return {
-            neid: neid.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
-            for neid in node_exec_ids
-        }
-
-    from backend.data.execution import get_node_executions
+        return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
 
     node_execs = await get_node_executions(
         graph_exec_id=graph_exec_id, include_exec_data=False

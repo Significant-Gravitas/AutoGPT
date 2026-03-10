@@ -1,12 +1,10 @@
 "use client";
 
-import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ToolUIPart } from "ai";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
-import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
@@ -56,14 +54,15 @@ export function RunBlockTool({ part }: Props) {
       ? (output as ReviewRequiredResponse)
       : null;
 
-  // Check if the review is still pending (survives page refresh)
+  // Fetch real pending reviews from API (survives page refresh)
   const { pendingReviews } = usePendingReviewsForExecution(
     reviewOutput?.session_id ?? "",
-    { enabled: !!reviewOutput?.session_id },
+    { enabled: !!reviewOutput?.session_id, refetchInterval: 2000 },
   );
-  const isReviewStillPending =
-    !!reviewOutput &&
-    pendingReviews.some((r) => r.node_exec_id === reviewOutput.review_id);
+  // Filter to only the review for this specific block execution
+  const reviewsForThisBlock = reviewOutput
+    ? pendingReviews.filter((r) => r.node_exec_id === reviewOutput.review_id)
+    : [];
   const setupRequirementsOutput =
     part.state === "output-available" &&
     output &&
@@ -79,26 +78,6 @@ export function RunBlockTool({ part }: Props) {
     (isRunBlockBlockOutput(output) ||
       isRunBlockDetailsOutput(output) ||
       isRunBlockErrorOutput(output));
-
-  // Convert ReviewRequiredResponse to PendingHumanReviewModel for reuse
-  const reviewAsPendingReview = useMemo((): PendingHumanReviewModel[] => {
-    if (!reviewOutput) return [];
-    return [
-      {
-        node_exec_id: reviewOutput.review_id,
-        node_id: reviewOutput.block_id,
-        user_id: "",
-        graph_exec_id: reviewOutput.session_id ?? "",
-        graph_id: "",
-        graph_version: 0,
-        payload: reviewOutput.input_data,
-        instructions: reviewOutput.block_name,
-        editable: true,
-        status: ReviewStatus.WAITING,
-        created_at: new Date(),
-      },
-    ];
-  }, [reviewOutput]);
 
   // After approval, automatically tell the LLM to continue with the review_id
   const handleReviewComplete = useCallback(() => {
@@ -125,10 +104,10 @@ export function RunBlockTool({ part }: Props) {
         </div>
       )}
 
-      {isReviewStillPending && reviewAsPendingReview.length > 0 && (
+      {reviewsForThisBlock.length > 0 && (
         <div className="mt-2">
           <PendingReviewsList
-            reviews={reviewAsPendingReview}
+            reviews={reviewsForThisBlock}
             onReviewComplete={handleReviewComplete}
           />
         </div>
