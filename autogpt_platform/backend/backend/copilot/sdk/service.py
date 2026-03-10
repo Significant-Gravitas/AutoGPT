@@ -456,31 +456,6 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
 
 
-def _is_tool_error_or_denial(content: str | None) -> bool:
-    """Check if a tool message content indicates an error or denial.
-
-    Currently unused — ``_format_conversation_context`` includes all tool
-    results.  Kept as a utility for future selective filtering.
-    """
-    if not content:
-        return False
-    lower = content.lower()
-    return any(
-        marker in lower
-        for marker in (
-            "[security]",
-            "cannot be bypassed",
-            "not allowed",
-            "not supported",  # background-task denial
-            "maximum",  # subtask-limit denial
-            "denied",
-            "blocked",
-            "failed to",  # internal tool execution failures
-            '"iserror": true',  # MCP protocol error flag
-        )
-    )
-
-
 async def _build_query_message(
     current_message: str,
     session: ChatSession,
@@ -838,7 +813,6 @@ async def stream_chat_completion_sdk(
         system_prompt = base_system_prompt + get_sdk_supplement(
             use_e2b=use_e2b, cwd=sdk_cwd
         )
-
         # Process transcript download result
         transcript_msg_count = 0
         if dl:
@@ -903,6 +877,11 @@ async def stream_chat_completion_sdk(
 
         allowed = get_copilot_tool_names(use_e2b=use_e2b)
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        def _on_stderr(line: str) -> None:
+            sid = session_id[:12] if session_id else "?"
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
             "mcp_servers": {"copilot": mcp_server},
@@ -911,6 +890,7 @@ async def stream_chat_completion_sdk(
             "hooks": security_hooks,
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
+            "stderr": _on_stderr,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -1082,6 +1062,19 @@ async def stream_chat_completion_sdk(
                         len(adapter.current_tool_calls),
                         len(adapter.resolved_tool_calls),
                     )
+
+                    # Log AssistantMessage API errors (e.g. invalid_request)
+                    # so we can debug Anthropic API 400s surfaced by the CLI.
+                    sdk_error = getattr(sdk_msg, "error", None)
+                    if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        logger.error(
+                            "[SDK] [%s] AssistantMessage has error=%s, "
+                            "content_blocks=%d, content_preview=%s",
+                            session_id[:12],
+                            sdk_error,
+                            len(sdk_msg.content),
+                            str(sdk_msg.content)[:500],
+                        )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next

@@ -35,10 +35,10 @@ const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.block_details,
   ResponseType.need_login,
   ResponseType.input_validation_error,
-  ResponseType.clarification_needed,
+  ResponseType.agent_builder_clarification_needed,
   ResponseType.suggested_goal,
-  ResponseType.agent_preview,
-  ResponseType.agent_saved,
+  ResponseType.agent_builder_preview,
+  ResponseType.agent_builder_saved,
 ]);
 
 export function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
