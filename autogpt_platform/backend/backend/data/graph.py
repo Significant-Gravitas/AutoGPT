@@ -28,6 +28,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
+from backend.data import llm_registry
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -1664,8 +1665,6 @@ async def migrate_llm_models(migrate_to: LlmModel):
                 llm_model_fields[block.id] = field_name
 
     # Get all model slugs from the registry (dynamic, not hardcoded enum)
-    from backend.data import llm_registry
-
     enum_values = list(llm_registry.get_all_model_slugs_for_validation())
 
     # Skip migration if registry is empty (fresh deployment before seeding)

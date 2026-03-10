@@ -541,9 +541,7 @@ async def llm_call(
             )
         prompt = result.messages
 
-    # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
-    # model_max_output already set above
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
@@ -1191,7 +1189,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     or "token limit" in str(e).lower()
                 ):
                     if input_data.max_tokens is None:
-                        # Use resolved model's max_output_tokens (handles fallback correctly)
                         input_data.max_tokens = resolved_max_output or 4096
                     input_data.max_tokens = int(input_data.max_tokens * 0.85)
                     logger.debug(
