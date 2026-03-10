@@ -350,7 +350,7 @@ class RunBlockTool(BaseTool):
             # We handle this explicitly so we can return ReviewRequiredResponse
             # instead of silently yielding nothing.
             should_pause, input_data = await block.is_block_exec_need_review(
-                input_data, **exec_kwargs
+                input_data, **exec_kwargs, skip_status_update=True
             )
             if should_pause:
                 return ReviewRequiredResponse(

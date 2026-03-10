@@ -9,7 +9,6 @@ from typing import Any, Optional
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
-from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
 from backend.data.human_review import ReviewResult
 from backend.util.clients import get_database_manager_async_client
 
@@ -68,6 +67,7 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        skip_status_update: bool = False,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -144,7 +144,7 @@ class HITLReviewHelper:
             logger.info(
                 f"Block {block_name} pausing execution for node {node_exec_id} - awaiting human review"
             )
-            if not node_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+            if not skip_status_update:
                 await HITLReviewHelper.update_node_execution_status(
                     exec_id=node_exec_id,
                     status=ExecutionStatus.REVIEW,
@@ -170,6 +170,7 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        skip_status_update: bool = False,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -199,6 +200,7 @@ class HITLReviewHelper:
             graph_version=graph_version,
             block_name=block_name,
             editable=editable,
+            skip_status_update=skip_status_update,
         )
 
         if review_result is None:
