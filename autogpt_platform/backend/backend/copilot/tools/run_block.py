@@ -318,6 +318,7 @@ class RunBlockTool(BaseTool):
                 block_id=block_id,
                 block_name=block.name,
                 review_id=synthetic_node_exec_id,
+                graph_exec_id=synthetic_graph_id,
                 input_data=input_data,
             )
 

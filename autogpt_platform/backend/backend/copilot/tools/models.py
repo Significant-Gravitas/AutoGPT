@@ -466,6 +466,9 @@ class ReviewRequiredResponse(ToolResponseBase):
     block_id: str
     block_name: str
     review_id: str = Field(description="The review ID for tracking approval status")
+    graph_exec_id: str = Field(
+        description="The graph execution ID for fetching review status"
+    )
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )

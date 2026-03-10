@@ -56,8 +56,8 @@ export function RunBlockTool({ part }: Props) {
 
   // Fetch real pending reviews from API (survives page refresh)
   const { pendingReviews } = usePendingReviewsForExecution(
-    reviewOutput?.session_id ?? "",
-    { enabled: !!reviewOutput?.session_id, refetchInterval: 2000 },
+    reviewOutput?.graph_exec_id ?? "",
+    { enabled: !!reviewOutput?.graph_exec_id, refetchInterval: 2000 },
   );
   // Filter to only the review for this specific block execution
   const reviewsForThisBlock = reviewOutput
