@@ -282,9 +282,9 @@ class RunBlockTool(BaseTool):
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
 
-        # Check for an existing WAITING review for this block in this session.
-        # If the LLM retries run_block, we reuse the existing review instead of
-        # creating duplicates (which would show multiple approval cards).
+        # Check for an existing WAITING review for this block with the same input.
+        # If the LLM retries run_block with identical input, we reuse the existing
+        # review instead of creating duplicates. Different inputs = new execution.
         existing_reviews = await review_db().get_pending_reviews_for_execution(
             synthetic_graph_id, user_id
         )
@@ -292,7 +292,9 @@ class RunBlockTool(BaseTool):
             (
                 r
                 for r in existing_reviews
-                if r.node_id == synthetic_node_id and r.status.value == "WAITING"
+                if r.node_id == synthetic_node_id
+                and r.status.value == "WAITING"
+                and r.payload == input_data
             ),
             None,
         )
