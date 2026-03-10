@@ -536,10 +536,12 @@ async def test_wait_for_stash_signaled():
     result = await wait_for_stash(timeout=1.0)
 
     assert result is True
-    assert _pto.get({}).get("WebSearch") == ["result data"]
+    pto = _pto.get()
+    assert pto is not None
+    assert pto.get("WebSearch") == ["result data"]
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
@@ -554,7 +556,7 @@ async def test_wait_for_stash_timeout():
     assert result is False
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
@@ -573,10 +575,12 @@ async def test_wait_for_stash_already_stashed():
     assert result is True
 
     # But the stash itself is populated
-    assert _pto.get({}).get("Read") == ["file contents"]
+    pto = _pto.get()
+    assert pto is not None
+    assert pto.get("Read") == ["file contents"]
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
