@@ -117,6 +117,14 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Refresh LLM registry before initializing blocks so blocks can use registry data
+    try:
+        from backend.data.llm_registry import refresh_llm_registry
+
+        await refresh_llm_registry()
+    except Exception as e:
+        logger.warning(f"Failed to refresh LLM registry at startup: {e}")
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
