@@ -71,6 +71,19 @@ export function MobileDrawer({
                 <X width="1rem" height="1rem" />
               </Button>
             </div>
+            {currentSessionId ? (
+              <div className="mt-2">
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={onNewChat}
+                  className="w-full"
+                  leftIcon={<PlusIcon width="1rem" height="1rem" />}
+                >
+                  New Chat
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div
             className={cn(
@@ -120,19 +133,6 @@ export function MobileDrawer({
               ))
             )}
           </div>
-          {currentSessionId && (
-            <div className="shrink-0 bg-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-              <Button
-                variant="primary"
-                size="small"
-                onClick={onNewChat}
-                className="w-full"
-                leftIcon={<PlusIcon width="1rem" height="1rem" />}
-              >
-                New Chat
-              </Button>
-            </div>
-          )}
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>

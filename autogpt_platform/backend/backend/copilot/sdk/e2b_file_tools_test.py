@@ -7,59 +7,60 @@ import os
 
 import pytest
 
-from .e2b_file_tools import _read_local, _resolve_remote
-from .tool_adapter import _current_project_dir
+from backend.copilot.context import _current_project_dir
+
+from .e2b_file_tools import _read_local, resolve_sandbox_path
 
 _SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
 
 
 # ---------------------------------------------------------------------------
-# _resolve_remote — sandbox path normalisation & boundary enforcement
+# resolve_sandbox_path — sandbox path normalisation & boundary enforcement
 # ---------------------------------------------------------------------------
 
 
-class TestResolveRemote:
+class TestResolveSandboxPath:
     def test_relative_path_resolved(self):
-        assert _resolve_remote("src/main.py") == "/home/user/src/main.py"
+        assert resolve_sandbox_path("src/main.py") == "/home/user/src/main.py"
 
     def test_absolute_within_sandbox(self):
-        assert _resolve_remote("/home/user/file.txt") == "/home/user/file.txt"
+        assert resolve_sandbox_path("/home/user/file.txt") == "/home/user/file.txt"
 
     def test_workdir_itself(self):
-        assert _resolve_remote("/home/user") == "/home/user"
+        assert resolve_sandbox_path("/home/user") == "/home/user"
 
     def test_relative_dotslash(self):
-        assert _resolve_remote("./README.md") == "/home/user/README.md"
+        assert resolve_sandbox_path("./README.md") == "/home/user/README.md"
 
     def test_traversal_blocked(self):
         with pytest.raises(ValueError, match="must be within /home/user"):
-            _resolve_remote("../../etc/passwd")
+            resolve_sandbox_path("../../etc/passwd")
 
     def test_absolute_traversal_blocked(self):
         with pytest.raises(ValueError, match="must be within /home/user"):
-            _resolve_remote("/home/user/../../etc/passwd")
+            resolve_sandbox_path("/home/user/../../etc/passwd")
 
     def test_absolute_outside_sandbox_blocked(self):
         with pytest.raises(ValueError, match="must be within /home/user"):
-            _resolve_remote("/etc/passwd")
+            resolve_sandbox_path("/etc/passwd")
 
     def test_root_blocked(self):
         with pytest.raises(ValueError, match="must be within /home/user"):
-            _resolve_remote("/")
+            resolve_sandbox_path("/")
 
     def test_home_other_user_blocked(self):
         with pytest.raises(ValueError, match="must be within /home/user"):
-            _resolve_remote("/home/other/file.txt")
+            resolve_sandbox_path("/home/other/file.txt")
 
     def test_deep_nested_allowed(self):
-        assert _resolve_remote("a/b/c/d/e.txt") == "/home/user/a/b/c/d/e.txt"
+        assert resolve_sandbox_path("a/b/c/d/e.txt") == "/home/user/a/b/c/d/e.txt"
 
     def test_trailing_slash_normalised(self):
-        assert _resolve_remote("src/") == "/home/user/src"
+        assert resolve_sandbox_path("src/") == "/home/user/src"
 
     def test_double_dots_within_sandbox_ok(self):
         """Path that resolves back within /home/user is allowed."""
-        assert _resolve_remote("a/b/../c.txt") == "/home/user/a/c.txt"
+        assert resolve_sandbox_path("a/b/../c.txt") == "/home/user/a/c.txt"
 
 
 # ---------------------------------------------------------------------------

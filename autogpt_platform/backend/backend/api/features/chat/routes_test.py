@@ -1,4 +1,6 @@
-"""Tests for chat route file_ids validation and enrichment."""
+"""Tests for chat API routes: session title update and file attachment validation."""
+
+from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
@@ -17,6 +19,7 @@ TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
@@ -24,7 +27,95 @@ def setup_app_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
-# ---- file_ids Pydantic validation (B1) ----
+def _mock_update_session_title(
+    mocker: pytest_mock.MockerFixture, *, success: bool = True
+):
+    """Mock update_session_title."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.update_session_title",
+        new_callable=AsyncMock,
+        return_value=success,
+    )
+
+
+# ─── Update title: success ─────────────────────────────────────────────
+
+
+def test_update_title_success(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_title(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/title",
+        json={"title": "My project"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    mock_update.assert_called_once_with("sess-1", test_user_id, "My project")
+
+
+def test_update_title_trims_whitespace(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = _mock_update_session_title(mocker, success=True)
+
+    response = client.patch(
+        "/sessions/sess-1/title",
+        json={"title": "  trimmed  "},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("sess-1", test_user_id, "trimmed")
+
+
+# ─── Update title: blank / whitespace-only → 422 ──────────────────────
+
+
+def test_update_title_blank_rejected(
+    test_user_id: str,
+) -> None:
+    """Whitespace-only titles must be rejected before hitting the DB."""
+    response = client.patch(
+        "/sessions/sess-1/title",
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_title_empty_rejected(
+    test_user_id: str,
+) -> None:
+    response = client.patch(
+        "/sessions/sess-1/title",
+        json={"title": ""},
+    )
+
+    assert response.status_code == 422
+
+
+# ─── Update title: session not found or wrong user → 404 ──────────────
+
+
+def test_update_title_not_found(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _mock_update_session_title(mocker, success=False)
+
+    response = client.patch(
+        "/sessions/sess-1/title",
+        json={"title": "New name"},
+    )
+
+    assert response.status_code == 404
+
+
+# ─── file_ids Pydantic validation ─────────────────────────────────────
 
 
 def test_stream_chat_rejects_too_many_file_ids():
@@ -92,7 +183,7 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockFixture):
     assert response.status_code == 200
 
 
-# ---- UUID format filtering ----
+# ─── UUID format filtering ─────────────────────────────────────────────
 
 
 def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
@@ -131,7 +222,7 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
     assert call_kwargs["where"]["id"]["in"] == [valid_id]
 
 
-# ---- Cross-workspace file_ids ----
+# ─── Cross-workspace file_ids ─────────────────────────────────────────
 
 
 def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):

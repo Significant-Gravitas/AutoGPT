@@ -22,6 +22,7 @@ from backend.copilot.model import (
     update_session_title,
     upsert_chat_session,
 )
+from backend.copilot.prompting import get_baseline_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -62,8 +63,8 @@ async def _update_title_async(
     """Generate and persist a session title in the background."""
     try:
         title = await _generate_session_title(message, user_id, session_id)
-        if title:
-            await update_session_title(session_id, title)
+        if title and user_id:
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
     except Exception as e:
         logger.warning("[Baseline] Failed to update session title: %s", e)
 
@@ -176,13 +177,16 @@ async def stream_chat_completion_baseline(
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
     if is_first_turn:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id, has_conversation_history=False
         )
     else:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id=None, has_conversation_history=True
         )
+
+    # Append tool documentation and technical notes
+    system_prompt = base_system_prompt + get_baseline_supplement()
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)

@@ -1,14 +1,16 @@
-import BackendAPI from "@/lib/autogpt-server-api";
+import { postV1UploadFileToCloudStorage } from "@/app/api/__generated__/endpoints/files/files";
+import { resolveResponse } from "@/app/api/helpers";
 import { useState } from "react";
 
 export function useRunAgentInputs() {
-  const api = new BackendAPI();
   const [uploadProgress, setUploadProgress] = useState(0);
 
   async function handleUploadFile(file: File) {
-    const result = await api.uploadFile(file, "gcs", 24, (progress) =>
-      setUploadProgress(progress),
+    setUploadProgress(0);
+    const result = await resolveResponse(
+      postV1UploadFileToCloudStorage({ file }, { expiration_hours: 24 }),
     );
+    setUploadProgress(100);
     return result;
   }
 

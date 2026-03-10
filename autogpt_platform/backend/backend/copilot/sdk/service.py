@@ -44,6 +44,7 @@ from ..model import (
     update_session_title,
     upsert_chat_session,
 )
+from ..prompting import get_sdk_supplement
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -59,7 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox
+from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
@@ -144,140 +145,6 @@ _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
-
-
-# Appended to the system prompt to inform the agent about available tools.
-# The SDK built-in Bash is NOT available — use mcp__copilot__bash_exec instead,
-# which has kernel-level network isolation (unshare --net).
-_SHARED_TOOL_NOTES = """\
-
-### Sharing files with the user
-After saving a file to the persistent workspace with `write_workspace_file`,
-share it with the user by embedding the `download_url` from the response in
-your message as a Markdown link or image:
-
-- **Any file** — shows as a clickable download link:
-  `[report.csv](workspace://file_id#text/csv)`
-- **Image** — renders inline in chat:
-  `![chart](workspace://file_id#image/png)`
-- **Video** — renders inline in chat with player controls:
-  `![recording](workspace://file_id#video/mp4)`
-
-The `download_url` field in the `write_workspace_file` response is already
-in the correct format — paste it directly after the `(` in the Markdown.
-
-### Long-running tools
-Long-running tools (create_agent, edit_agent, etc.) are handled
-asynchronously.  You will receive an immediate response; the actual result
-is delivered to the user via a background stream.
-
-### Large tool outputs
-When a tool output exceeds the display limit, it is automatically saved to
-the persistent workspace.  The truncated output includes a
-`<tool-output-truncated>` tag with the workspace path.  Use
-`read_workspace_file(path="...", offset=N, length=50000)` to retrieve
-additional sections.
-
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
-"""
-
-
-_LOCAL_TOOL_SUPPLEMENT = (
-    """
-
-## Tool notes
-
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a network-isolated sandbox.
-
-### Working directory
-- Your working directory is: `{cwd}`
-- All SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec` operate inside this
-  directory.  This is the ONLY writable path — do not attempt to read or write
-  anywhere else on the filesystem.
-- Use relative paths or absolute paths under `{cwd}` for all file operations.
-
-### Two storage systems — CRITICAL to understand
-
-1. **Ephemeral working directory** (`{cwd}`):
-   - Shared by SDK Read/Write/Edit/Glob/Grep tools AND `bash_exec`
-   - Files here are **lost between turns** — do NOT rely on them persisting
-   - Use for temporary work: running scripts, processing data, etc.
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across turns and sessions**
-   - Use `write_workspace_file` to save important files (code, outputs, configs)
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
-
-### Moving files between ephemeral and persistent storage
-- **Ephemeral → Persistent**: Use `write_workspace_file` with either:
-  - `content` param (plain text) — for text files
-  - `source_path` param — to copy any file directly from the ephemeral dir
-- **Persistent → Ephemeral**: Use `read_workspace_file` with `save_to_path`
-  param to download a workspace file to the ephemeral dir for processing
-
-### File persistence workflow
-When you create or modify important files (code, configs, outputs), you MUST:
-1. Save them using `write_workspace_file` so they persist
-2. At the start of a new turn, call `list_workspace_files` to see what files
-   are available from previous turns
-"""
-    + _SHARED_TOOL_NOTES
-)
-
-
-_E2B_TOOL_SUPPLEMENT = (
-    """
-
-## Tool notes
-
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs in a cloud sandbox with full internet access.
-
-### Working directory
-- Your working directory is: `/home/user` (cloud sandbox)
-- All file tools (`read_file`, `write_file`, `edit_file`, `glob`, `grep`)
-  AND `bash_exec` operate on the **same cloud sandbox filesystem**.
-- Files created by `bash_exec` are immediately visible to `read_file` and
-  vice-versa — they share one filesystem.
-- Use relative paths (resolved from `/home/user`) or absolute paths.
-
-### Two storage systems — CRITICAL to understand
-
-1. **Cloud sandbox** (`/home/user`):
-   - Shared by all file tools AND `bash_exec` — same filesystem
-   - Files **persist across turns** within the current session
-   - Full Linux environment with internet access
-   - Lost when the session expires (12 h inactivity)
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across sessions indefinitely**
-   - Use `write_workspace_file` to save important files permanently
-   - Use `read_workspace_file` to retrieve previously saved files
-   - Use `list_workspace_files` to see what files you've saved before
-   - Call `list_workspace_files(include_all_sessions=True)` to see files from
-     all sessions
-
-### Moving files between sandbox and persistent storage
-- **Sandbox → Persistent**: Use `write_workspace_file` with `source_path`
-  to copy from the sandbox to permanent storage
-- **Persistent → Sandbox**: Use `read_workspace_file` with `save_to_path`
-  to download into the sandbox for processing
-
-### File persistence workflow
-Important files that must survive beyond this session should be saved with
-`write_workspace_file`.  Sandbox files persist across turns but are lost
-when the session expires.
-"""
-    + _SHARED_TOOL_NOTES
-)
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
@@ -460,13 +327,14 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                 }
             )
         elif isinstance(block, ToolResultBlock):
-            result.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.tool_use_id,
-                    "content": block.content,
-                }
-            )
+            tool_result_entry: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": block.tool_use_id,
+                "content": block.content,
+            }
+            if block.is_error:
+                tool_result_entry["is_error"] = True
+            result.append(tool_result_entry)
         elif isinstance(block, ThinkingBlock):
             result.append(
                 {
@@ -586,31 +454,6 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         return None
 
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
-
-
-def _is_tool_error_or_denial(content: str | None) -> bool:
-    """Check if a tool message content indicates an error or denial.
-
-    Currently unused — ``_format_conversation_context`` includes all tool
-    results.  Kept as a utility for future selective filtering.
-    """
-    if not content:
-        return False
-    lower = content.lower()
-    return any(
-        marker in lower
-        for marker in (
-            "[security]",
-            "cannot be bypassed",
-            "not allowed",
-            "not supported",  # background-task denial
-            "maximum",  # subtask-limit denial
-            "denied",
-            "blocked",
-            "failed to",  # internal tool execution failures
-            '"iserror": true',  # MCP protocol error flag
-        )
-    )
 
 
 async def _build_query_message(
@@ -916,28 +759,29 @@ async def stream_chat_completion_sdk(
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
-            if config.use_e2b_sandbox and not config.e2b_api_key:
-                logger.warning(
-                    "[E2B] [%s] E2B sandbox enabled but no API key configured "
-                    "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
-                    session_id[:12],
-                )
-                return None
-            if config.use_e2b_sandbox and config.e2b_api_key:
-                try:
-                    return await get_or_create_sandbox(
-                        session_id,
-                        api_key=config.e2b_api_key,
-                        template=config.e2b_sandbox_template,
-                        timeout=config.e2b_sandbox_timeout,
-                    )
-                except Exception as e2b_err:
-                    logger.error(
-                        "[E2B] [%s] Setup failed: %s",
+            if not (e2b_api_key := config.active_e2b_api_key):
+                if config.use_e2b_sandbox:
+                    logger.warning(
+                        "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                        "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
                         session_id[:12],
-                        e2b_err,
-                        exc_info=True,
                     )
+                return None
+            try:
+                return await get_or_create_sandbox(
+                    session_id,
+                    api_key=e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                    on_timeout=config.e2b_sandbox_on_timeout,
+                )
+            except Exception as e2b_err:
+                logger.error(
+                    "[E2B] [%s] Setup failed: %s",
+                    session_id[:12],
+                    e2b_err,
+                    exc_info=True,
+                )
             return None
 
         async def _fetch_transcript():
@@ -965,12 +809,10 @@ async def stream_chat_completion_sdk(
         )
 
         use_e2b = e2b_sandbox is not None
-        system_prompt = base_system_prompt + (
-            _E2B_TOOL_SUPPLEMENT
-            if use_e2b
-            else _LOCAL_TOOL_SUPPLEMENT.format(cwd=sdk_cwd)
+        # Append appropriate supplement (Claude gets tool schemas automatically)
+        system_prompt = base_system_prompt + get_sdk_supplement(
+            use_e2b=use_e2b, cwd=sdk_cwd
         )
-
         # Process transcript download result
         transcript_msg_count = 0
         if dl:
@@ -1035,6 +877,11 @@ async def stream_chat_completion_sdk(
 
         allowed = get_copilot_tool_names(use_e2b=use_e2b)
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        def _on_stderr(line: str) -> None:
+            sid = session_id[:12] if session_id else "?"
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
             "mcp_servers": {"copilot": mcp_server},
@@ -1043,6 +890,7 @@ async def stream_chat_completion_sdk(
             "hooks": security_hooks,
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
+            "stderr": _on_stderr,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -1214,6 +1062,19 @@ async def stream_chat_completion_sdk(
                         len(adapter.current_tool_calls),
                         len(adapter.resolved_tool_calls),
                     )
+
+                    # Log AssistantMessage API errors (e.g. invalid_request)
+                    # so we can debug Anthropic API 400s surfaced by the CLI.
+                    sdk_error = getattr(sdk_msg, "error", None)
+                    if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        logger.error(
+                            "[SDK] [%s] AssistantMessage has error=%s, "
+                            "content_blocks=%d, content_preview=%s",
+                            session_id[:12],
+                            sdk_error,
+                            len(sdk_msg.content),
+                            str(sdk_msg.content)[:500],
+                        )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1549,6 +1410,17 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
 
+        # --- Pause E2B sandbox to stop billing between turns ---
+        # Fire-and-forget: pausing is best-effort and must not block the
+        # response or the transcript upload.  The task is anchored to
+        # _background_tasks to prevent garbage collection.
+        # Use pause_sandbox_direct to skip the Redis lookup and reconnect
+        # round-trip — e2b_sandbox is the live object from this turn.
+        if e2b_sandbox is not None:
+            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when
         # the streaming loop raises an exception.
@@ -1611,7 +1483,7 @@ async def _update_title_async(
             message, user_id=user_id, session_id=session_id
         )
         if title and user_id:
-            await update_session_title(session_id, title)
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
             logger.debug(f"[SDK] Generated title for {session_id}: {title}")
     except Exception as e:
         logger.warning(f"[SDK] Failed to update session title: {e}")
