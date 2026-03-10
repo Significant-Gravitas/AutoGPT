@@ -30,8 +30,9 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
     if (remaining.length > 0) return;
 
     onSend(
-      `All pending reviews have been approved. ` +
-        `Please call continue_run_block for each review_id from the previous run_block results to execute them.`,
+      `All pending reviews have been processed. ` +
+        `For any approved reviews, call continue_run_block with the corresponding review_id to execute them. ` +
+        `For rejected reviews, no further action is needed.`,
     );
   }, [refetch, onSend]);
 
