@@ -25,6 +25,7 @@ from .models import (
     BlockOutputResponse,
     ErrorResponse,
     InputValidationErrorResponse,
+    ReviewRequiredResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
@@ -308,6 +309,8 @@ class RunBlockTool(BaseTool):
                 # Workspace with session scoping
                 workspace_id=workspace.id,
                 session_id=session.session_id,
+                # Enable HITL review for sensitive blocks
+                sensitive_action_safe_mode=True,
             )
 
             # Prepare kwargs for block execution
@@ -342,12 +345,30 @@ class RunBlockTool(BaseTool):
                     )
 
             # Execute the block and collect outputs
+            # For sensitive blocks, the block's _execute will call
+            # is_block_exec_need_review() which creates a PendingHumanReview
+            # and pauses execution (yields nothing) if review is needed.
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in block.execute(
                 input_data,
                 **exec_kwargs,
             ):
                 outputs[output_name].append(output_data)
+
+            # Detect if execution was paused for human review
+            if not outputs and block.is_sensitive_action:
+                return ReviewRequiredResponse(
+                    message=(
+                        f"Block '{block.name}' performs a sensitive action and "
+                        f"requires human review before execution. Please approve "
+                        f"or reject this action in the review panel, then try again."
+                    ),
+                    session_id=session_id,
+                    block_id=block_id,
+                    block_name=block.name,
+                    review_id=synthetic_node_exec_id,
+                    input_data=input_data,
+                )
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",

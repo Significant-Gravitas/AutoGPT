@@ -143,10 +143,19 @@ class HITLReviewHelper:
             logger.info(
                 f"Block {block_name} pausing execution for node {node_exec_id} - awaiting human review"
             )
-            await HITLReviewHelper.update_node_execution_status(
-                exec_id=node_exec_id,
-                status=ExecutionStatus.REVIEW,
-            )
+            try:
+                await HITLReviewHelper.update_node_execution_status(
+                    exec_id=node_exec_id,
+                    status=ExecutionStatus.REVIEW,
+                )
+            except Exception:
+                # Status update may fail for non-graph contexts (e.g. CoPilot
+                # direct block execution with synthetic IDs). The review record
+                # is already created, so this is non-fatal.
+                logger.debug(
+                    f"Could not update node execution status for {node_exec_id} "
+                    f"(non-graph context)"
+                )
             return None  # Signal that execution should pause
 
         # Mark review as processed if not already done
