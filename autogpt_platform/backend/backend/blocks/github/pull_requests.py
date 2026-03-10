@@ -614,6 +614,7 @@ class GithubMergePullRequestBlock(Block):
                     "Pull Request successfully merged",
                 )
             },
+            is_sensitive_action=True,
         )
 
     @staticmethod

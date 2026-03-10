@@ -284,9 +284,9 @@ This block stars a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block forks a GitHub repository to your personal account or a specified organization using the Forks API. The fork is an independent copy of the repository that maintains a connection to the upstream source.
+This block stars a GitHub repository by sending a PUT request to the GitHub Starring API (`/user/starred/{owner}/{repo}`). Starring is a way to bookmark repositories and show appreciation for projects.
 
-The block returns the fork URL, clone URL, and full name immediately after the API call. Note that fork creation is asynchronous on GitHub's side, so the repository may take a few seconds to become fully available.
+The block returns a success status message upon completion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -304,11 +304,11 @@ The block returns the fork URL, clone URL, and full name immediately after the A
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Open Source Contribution**: Fork upstream repositories to create branches and submit pull requests from your own copy.
+**Bookmarking Repositories**: Automatically star repositories that match certain criteria for later reference.
 
-**Repository Templates**: Fork base repositories as starting points for new projects within an organization.
+**Community Engagement**: Star repositories from contributors as part of an automated thank-you workflow.
 
-**Backup and Archival**: Create forks of important repositories to maintain independent copies.
+**Interest Tracking**: Programmatically star repositories in specific topics to build a curated collection.
 <!-- END MANUAL -->
 
 ---
