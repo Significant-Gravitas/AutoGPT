@@ -123,9 +123,8 @@ function DiscriminatedUnionField({
     const newIndex = option !== undefined ? parseInt(option, 10) : -1;
     if (newIndex === selectedIndex || newIndex < 0) return;
 
-    setSelectedIndex(newIndex);
-
     const newVariant = variants.current[newIndex];
+    const oldVariant = variants.current[selectedIndex];
     const discValue = (newVariant.properties?.[discriminatorProp] as any)
       ?.const;
 
@@ -133,14 +132,22 @@ function DiscriminatedUnionField({
     const handlePrefix = cleanUpHandleId(field_id);
     useEdgeStore.getState().removeEdgesByHandlePrefix(nodeId, handlePrefix);
 
-    // Get default form state and set discriminator
-    let newFormData = schemaUtils.getDefaultFormState(
+    // Sanitize current data against old→new schema to preserve shared fields
+    let newFormData = schemaUtils.sanitizeDataForNewSchema(
       newVariant,
-      {},
+      oldVariant,
+      formData,
+    );
+
+    // Fill in defaults for the new variant
+    newFormData = schemaUtils.getDefaultFormState(
+      newVariant,
+      newFormData,
       "excludeObjectChildren",
     ) as any;
     newFormData = { ...newFormData, [discriminatorProp]: discValue };
 
+    setSelectedIndex(newIndex);
     onChange(newFormData, props.fieldPathId.path, undefined, field_id);
   }
 
