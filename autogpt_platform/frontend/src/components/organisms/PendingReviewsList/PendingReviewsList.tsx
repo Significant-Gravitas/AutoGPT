@@ -17,14 +17,12 @@ interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
   onReviewComplete?: () => void;
   emptyMessage?: string;
-  showAutoApproveToggle?: boolean;
 }
 
 export function PendingReviewsList({
   reviews,
   onReviewComplete,
   emptyMessage = "No pending reviews",
-  showAutoApproveToggle = true,
 }: PendingReviewsListProps) {
   const [reviewDataMap, setReviewDataMap] = useState<Record<string, string>>(
     () => {
@@ -42,10 +40,6 @@ export function PendingReviewsList({
 
   const [pendingAction, setPendingAction] = useState<
     "approve" | "reject" | null
-  >(null);
-
-  const [completedAction, setCompletedAction] = useState<
-    "approved" | "rejected" | null
   >(null);
 
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
@@ -100,7 +94,6 @@ export function PendingReviewsList({
           });
         }
 
-        setCompletedAction(result.approved_count > 0 ? "approved" : "rejected");
         setPendingAction(null);
         onReviewComplete?.();
       },
@@ -288,19 +281,17 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  {showAutoApproveToggle && (
-                    <div className="flex items-center gap-3 pt-2">
-                      <Switch
-                        checked={autoApproveFutureMap[nodeId] || false}
-                        onCheckedChange={(enabled: boolean) =>
-                          handleAutoApproveFutureToggle(nodeId, enabled)
-                        }
-                      />
-                      <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of this node
-                      </Text>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3 pt-2">
+                    <Switch
+                      checked={autoApproveFutureMap[nodeId] || false}
+                      onCheckedChange={(enabled: boolean) =>
+                        handleAutoApproveFutureToggle(nodeId, enabled)
+                      }
+                    />
+                    <Text variant="small" className="text-gray-700">
+                      Auto-approve future executions of this node
+                    </Text>
+                  </div>
                 </div>
               )}
             </div>
@@ -308,47 +299,37 @@ export function PendingReviewsList({
         })}
       </div>
 
-      {completedAction ? (
-        <Text variant="body" className="font-medium text-textGrey">
-          {completedAction === "approved"
-            ? "Approved — execution will resume shortly."
-            : "Rejected — the block will not execute."}
-        </Text>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={() => processReviews(true)}
-              disabled={reviewActionMutation.isPending || reviews.length === 0}
-              variant="primary"
-              className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-              loading={
-                pendingAction === "approve" && reviewActionMutation.isPending
-              }
-            >
-              Approve
-            </Button>
-            <Button
-              onClick={() => processReviews(false)}
-              disabled={reviewActionMutation.isPending || reviews.length === 0}
-              variant="destructive"
-              className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
-              loading={
-                pendingAction === "reject" && reviewActionMutation.isPending
-              }
-            >
-              Reject
-            </Button>
-          </div>
-
-          {showAutoApproveToggle && (
-            <Text variant="small" className="text-textGrey">
-              You can turn auto-approval on or off using the toggle above for
-              each node.
-            </Text>
-          )}
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => processReviews(true)}
+            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            variant="primary"
+            className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+            loading={
+              pendingAction === "approve" && reviewActionMutation.isPending
+            }
+          >
+            Approve
+          </Button>
+          <Button
+            onClick={() => processReviews(false)}
+            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            variant="destructive"
+            className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+            loading={
+              pendingAction === "reject" && reviewActionMutation.isPending
+            }
+          >
+            Reject
+          </Button>
         </div>
-      )}
+
+        <Text variant="small" className="text-textGrey">
+          You can turn auto-approval on or off using the toggle above for each
+          node.
+        </Text>
+      </div>
     </div>
   );
 }
