@@ -40,10 +40,28 @@ export const OutputHandler = ({
     setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function hasConnectedOrBrokenDescendant(
+    schema: RJSFSchema,
+    keyPrefix: string,
+  ): boolean {
+    if (!schema) return false;
+    return Object.entries(schema).some(
+      ([key, fieldSchema]: [string, RJSFSchema]) => {
+        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+        if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
+          return true;
+        if (fieldSchema?.properties)
+          return hasConnectedOrBrokenDescendant(fieldSchema.properties, fullKey);
+        return false;
+      },
+    );
+  }
+
   const renderOutputHandles = (
     schema: RJSFSchema,
     keyPrefix: string = "",
     titlePrefix: string = "",
+    connectedOnly: boolean = false,
   ): React.ReactNode[] => {
     return Object.entries(schema).map(
       ([key, fieldSchema]: [string, RJSFSchema]) => {
@@ -51,12 +69,23 @@ export const OutputHandler = ({
         const fieldTitle = titlePrefix + (fieldSchema?.title || key);
 
         const isConnected = isOutputConnected(nodeId, fullKey);
-        const shouldShow = isConnected || isOutputVisible;
-        const { displayType, colorClass, hexColor } =
-          getTypeDisplayInfo(fieldSchema);
         const isBroken = brokenOutputs.has(fullKey);
         const hasNestedProperties = !!fieldSchema?.properties;
+        const selfIsRelevant = isConnected || isBroken;
+        const descendantIsRelevant =
+          hasNestedProperties &&
+          hasConnectedOrBrokenDescendant(fieldSchema.properties!, fullKey);
+
+        const shouldShow = connectedOnly
+          ? selfIsRelevant || descendantIsRelevant
+          : isOutputVisible || selfIsRelevant || descendantIsRelevant;
+
+        const { displayType, colorClass, hexColor } =
+          getTypeDisplayInfo(fieldSchema);
         const isExpanded = expandedObjects[fullKey] ?? false;
+
+        // User expanded → show all children; auto-expanded → filter to connected only
+        const shouldRenderChildren = isExpanded || descendantIsRelevant;
 
         return shouldShow ? (
           <div
@@ -124,10 +153,15 @@ export const OutputHandler = ({
               )}
             </div>
 
-            {/* Nested properties: collapsed by default */}
+            {/* Nested properties */}
             {hasNestedProperties &&
-              isExpanded &&
-              renderOutputHandles(fieldSchema.properties!, fullKey)}
+              shouldRenderChildren &&
+              renderOutputHandles(
+                fieldSchema.properties!,
+                fullKey,
+                "",
+                !isExpanded,
+              )}
           </div>
         ) : null;
       },
@@ -155,7 +189,7 @@ export const OutputHandler = ({
       </Button>
 
       <div className="flex flex-col items-end gap-2">
-        {renderOutputHandles(properties)}
+        {renderOutputHandles(properties, "", "", !isOutputVisible)}
       </div>
     </div>
   );
