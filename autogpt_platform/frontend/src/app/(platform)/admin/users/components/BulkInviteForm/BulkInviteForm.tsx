@@ -47,17 +47,21 @@ export function BulkInviteForm({
         </p>
       </div>
 
-      <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-sm text-zinc-600 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
+      <label
+        htmlFor="bulk-invite-file-input"
+        className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-sm text-zinc-600 transition-colors focus-within:ring-2 focus-within:ring-zinc-500 focus-within:ring-offset-2 hover:border-zinc-400 hover:bg-zinc-100"
+      >
         <span className="font-medium text-zinc-900">
           {selectedFile ? selectedFile.name : "Choose invite file"}
         </span>
         <span>Maximum 500 rows, UTF-8 encoded.</span>
         <input
+          id="bulk-invite-file-input"
           key={inputKey}
           type="file"
           accept=".txt,.csv,text/plain,text/csv"
           disabled={isSubmitting}
-          className="hidden"
+          className="sr-only"
           onChange={(event) =>
             onFileChange(event.target.files?.item(0) ?? null)
           }

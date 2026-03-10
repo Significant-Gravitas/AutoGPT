@@ -5,8 +5,8 @@
 The current signup path is split across three places:
 
 - Supabase creates the auth user and password.
-- The backend lazily creates `platform.User` on first authenticated request in [`backend/backend/data/user.py`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/backend/data/user.py).
-- A Postgres trigger creates `platform.Profile` after `auth.users` insert in [`backend/migrations/20250205100104_add_profile_trigger/migration.sql`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/migrations/20250205100104_add_profile_trigger/migration.sql).
+- The backend lazily creates `platform.User` on first authenticated request in [`backend/backend/data/user.py`](backend/backend/data/user.py).
+- A Postgres trigger creates `platform.Profile` after `auth.users` insert in [`backend/migrations/20250205100104_add_profile_trigger/migration.sql`](backend/migrations/20250205100104_add_profile_trigger/migration.sql).
 
 That works for open signup plus a DB-level allowlist, but it does not give the platform a durable object representing:
 
@@ -14,7 +14,7 @@ That works for open signup plus a DB-level allowlist, but it does not give the p
 - pre-computed onboarding data tied to an email before auth exists
 - the distinction between "invited", "claimed", "active", and "revoked"
 
-It also makes first-login setup racey because `User`, `Profile`, `UserOnboarding`, and `CoPilotUnderstanding` are not created from one source of truth.
+It also makes first-login setup racy because `User`, `Profile`, `UserOnboarding`, and `CoPilotUnderstanding` are not created from one source of truth.
 
 ## Goals
 
@@ -101,7 +101,7 @@ This avoids polluting the main `User.metadata` blob and gives explicit ownership
 
 ## Why not pre-create `platform.User` directly?
 
-`platform.User.id` is currently designed to equal the Supabase user id in [`backend/schema.prisma`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/schema.prisma). Pre-creating `User` with a fake UUID would ripple through every FK and complicate the eventual bind. Reusing email as the join key inside `User` is also not safe enough because the rest of the system assumes `User.id` is the canonical identity.
+`platform.User.id` is currently designed to equal the Supabase user id in [`backend/schema.prisma`](backend/schema.prisma). Pre-creating `User` with a fake UUID would ripple through every FK and complicate the eventual bind. Reusing email as the join key inside `User` is also not safe enough because the rest of the system assumes `User.id` is the canonical identity.
 
 A separate pre-provisioning layer is lower risk:
 
@@ -194,7 +194,7 @@ When activating a pre-provisioned invite:
 
 ## Invite enforcement
 
-The current closed-beta gate appears to rely on a Supabase-side DB error surfaced as "not allowed" in [`frontend/src/app/api/auth/utils.ts`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/frontend/src/app/api/auth/utils.ts).
+The current closed-beta gate appears to rely on a Supabase-side DB error surfaced as "not allowed" in [`frontend/src/app/api/auth/utils.ts`](frontend/src/app/api/auth/utils.ts).
 
 That should evolve to:
 
@@ -273,14 +273,14 @@ Responsibilities:
 
 ### Existing module changes
 
-- [`backend/backend/data/user.py`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/backend/data/user.py)
+- [`backend/backend/data/user.py`](backend/backend/data/user.py)
   - move lazy creation logic into activation-aware flow
 
-- [`backend/backend/api/features/v1.py`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/backend/api/features/v1.py)
+- [`backend/backend/api/features/v1.py`](backend/backend/api/features/v1.py)
   - `/auth/user` should call activation-aware function
   - only run background Tally population if no seeded understanding exists
 
-- [`backend/backend/data/tally.py`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/backend/backend/data/tally.py)
+- [`backend/backend/data/tally.py`](backend/backend/data/tally.py)
   - add a reusable "seed from email" function for invite creation time
 
 ## Suggested frontend implementation
@@ -294,9 +294,9 @@ Responsibilities:
 
 Files likely affected:
 
-- [`frontend/src/app/(platform)/signup/page.tsx`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/frontend/src/app/(platform)/signup/page.tsx)
-- [`frontend/src/app/(platform)/signup/actions.ts`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/frontend/src/app/(platform)/signup/actions.ts)
-- [`frontend/src/components/auth/WaitlistErrorContent.tsx`](/Users/swifty/work/agpt/AutoGPT/autogpt_platform/frontend/src/components/auth/WaitlistErrorContent.tsx)
+- [`frontend/src/app/(platform)/signup/page.tsx`](frontend/src/app/(platform)/signup/page.tsx)
+- [`frontend/src/app/(platform)/signup/actions.ts`](frontend/src/app/(platform)/signup/actions.ts)
+- [`frontend/src/components/auth/WaitlistErrorContent.tsx`](frontend/src/components/auth/WaitlistErrorContent.tsx)
 
 ### Admin UI
 

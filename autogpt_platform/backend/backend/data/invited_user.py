@@ -11,6 +11,7 @@ from uuid import uuid4
 import prisma.enums
 import prisma.models
 import prisma.types
+from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.db import transaction
@@ -29,7 +30,7 @@ from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
-_tally_seed_tasks: set[asyncio.Task] = set()
+_tally_seed_tasks: dict[str, asyncio.Task] = {}
 _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
@@ -505,9 +506,19 @@ async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
 
 
 def schedule_invited_user_tally_precompute(invited_user_id: str) -> None:
+    existing = _tally_seed_tasks.get(invited_user_id)
+    if existing is not None and not existing.done():
+        logger.debug("Tally task already running for %s, skipping", invited_user_id)
+        return
+
     task = asyncio.create_task(_compute_invited_user_tally_seed(invited_user_id))
-    _tally_seed_tasks.add(task)
-    task.add_done_callback(_tally_seed_tasks.discard)
+    _tally_seed_tasks[invited_user_id] = task
+
+    def _on_done(t: asyncio.Task, _id: str = invited_user_id) -> None:
+        if _tally_seed_tasks.get(_id) is t:
+            del _tally_seed_tasks[_id]
+
+    task.add_done_callback(_on_done)
 
 
 async def get_or_activate_user(user_data: dict) -> User:
@@ -540,50 +551,63 @@ async def get_or_activate_user(user_data: dict) -> User:
     if invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
         raise NotAuthorizedError("Your invitation is no longer active")
 
-    async with transaction() as tx:
-        current_user = await prisma.models.User.prisma(tx).find_unique(
+    try:
+        async with transaction() as tx:
+            current_user = await prisma.models.User.prisma(tx).find_unique(
+                where={"id": auth_user_id}
+            )
+            if current_user is not None:
+                return User.from_db(current_user)
+
+            current_invited_user = await prisma.models.InvitedUser.prisma(
+                tx
+            ).find_unique(where={"email": normalized_email})
+            if current_invited_user is None:
+                raise NotAuthorizedError(
+                    "Your email is not allowed to access the platform"
+                )
+
+            if current_invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
+                raise NotAuthorizedError("Your invitation is no longer active")
+
+            if current_invited_user.authUserId not in (None, auth_user_id):
+                raise NotAuthorizedError("Your invitation has already been claimed")
+
+            preferred_name = current_invited_user.name or _normalize_name(metadata_name)
+            await prisma.models.User.prisma(tx).create(
+                data=prisma.types.UserCreateInput(
+                    id=auth_user_id,
+                    email=normalized_email,
+                    name=preferred_name,
+                )
+            )
+
+            await prisma.models.InvitedUser.prisma(tx).update(
+                where={"id": current_invited_user.id},
+                data={
+                    "status": prisma.enums.InvitedUserStatus.CLAIMED,
+                    "authUserId": auth_user_id,
+                },
+            )
+
+            await _ensure_default_profile(
+                auth_user_id,
+                normalized_email,
+                preferred_name,
+                tx,
+            )
+            await _ensure_default_onboarding(auth_user_id, tx)
+            await _apply_tally_understanding(auth_user_id, current_invited_user, tx)
+    except UniqueViolationError:
+        logger.info("Concurrent activation for user %s; re-fetching", auth_user_id)
+        already_created = await prisma.models.User.prisma().find_unique(
             where={"id": auth_user_id}
         )
-        if current_user is not None:
-            return User.from_db(current_user)
-
-        current_invited_user = await prisma.models.InvitedUser.prisma(tx).find_unique(
-            where={"email": normalized_email}
+        if already_created is not None:
+            return User.from_db(already_created)
+        raise RuntimeError(
+            f"UniqueViolationError during activation but user {auth_user_id} not found"
         )
-        if current_invited_user is None:
-            raise NotAuthorizedError("Your email is not allowed to access the platform")
-
-        if current_invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
-            raise NotAuthorizedError("Your invitation is no longer active")
-
-        if current_invited_user.authUserId not in (None, auth_user_id):
-            raise NotAuthorizedError("Your invitation has already been claimed")
-
-        preferred_name = current_invited_user.name or _normalize_name(metadata_name)
-        await prisma.models.User.prisma(tx).create(
-            data=prisma.types.UserCreateInput(
-                id=auth_user_id,
-                email=normalized_email,
-                name=preferred_name,
-            )
-        )
-
-        await prisma.models.InvitedUser.prisma(tx).update(
-            where={"id": current_invited_user.id},
-            data={
-                "status": prisma.enums.InvitedUserStatus.CLAIMED,
-                "authUserId": auth_user_id,
-            },
-        )
-
-        await _ensure_default_profile(
-            auth_user_id,
-            normalized_email,
-            preferred_name,
-            tx,
-        )
-        await _ensure_default_onboarding(auth_user_id, tx)
-        await _apply_tally_understanding(auth_user_id, current_invited_user, tx)
 
     from backend.data.user import get_user_by_email, get_user_by_id
 

@@ -11,15 +11,10 @@ import {
   usePostV2RevokeInvitedUser,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-
   if (error instanceof Error) {
     return error.message;
   }
@@ -185,6 +180,7 @@ export function useAdminUsersPage() {
     bulkInviteInputKey,
     lastBulkInviteResult,
     invitedUsers: invitedUsersQuery.data?.invited_users ?? [],
+    invitedUsersError: invitedUsersQuery.error,
     isLoadingInvitedUsers: invitedUsersQuery.isLoading,
     isRefreshingInvitedUsers: invitedUsersQuery.isFetching,
     isCreatingInvite: createInvitedUserMutation.isPending,

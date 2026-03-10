@@ -24,6 +24,11 @@ from .model import (
 logger = logging.getLogger(__name__)
 
 
+def _redact_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    return f"{local[:2]}***@{domain}" if domain else f"{local[:2]}***"
+
+
 router = APIRouter(
     prefix="/admin",
     tags=["users", "admin"],
@@ -83,11 +88,16 @@ async def create_invited_user_route(
     admin_user_id: str = Security(get_user_id),
 ) -> InvitedUserResponse:
     logger.info(
-        "Admin user %s created invited user for %s",
+        "Admin user %s creating invited user for %s",
         admin_user_id,
-        request.email,
+        _redact_email(request.email),
     )
     invited_user = await create_invited_user(request.email, request.name)
+    logger.info(
+        "Admin user %s created invited user %s",
+        admin_user_id,
+        invited_user.id,
+    )
     return _to_response(invited_user)
 
 
@@ -120,8 +130,11 @@ async def revoke_invited_user_route(
     invited_user_id: str,
     admin_user_id: str = Security(get_user_id),
 ) -> InvitedUserResponse:
-    logger.info("Admin user %s revoked invited user %s", admin_user_id, invited_user_id)
+    logger.info(
+        "Admin user %s revoking invited user %s", admin_user_id, invited_user_id
+    )
     invited_user = await revoke_invited_user(invited_user_id)
+    logger.info("Admin user %s revoked invited user %s", admin_user_id, invited_user_id)
     return _to_response(invited_user)
 
 
@@ -135,9 +148,14 @@ async def retry_invited_user_tally_route(
     admin_user_id: str = Security(get_user_id),
 ) -> InvitedUserResponse:
     logger.info(
-        "Admin user %s retried Tally seed for invited user %s",
+        "Admin user %s retrying Tally seed for invited user %s",
         admin_user_id,
         invited_user_id,
     )
     invited_user = await retry_invited_user_tally(invited_user_id)
+    logger.info(
+        "Admin user %s retried Tally seed for invited user %s",
+        admin_user_id,
+        invited_user_id,
+    )
     return _to_response(invited_user)
