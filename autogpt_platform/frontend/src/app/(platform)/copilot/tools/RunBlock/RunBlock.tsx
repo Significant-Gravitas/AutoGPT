@@ -1,13 +1,16 @@
 "use client";
 
+import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import type { ToolUIPart } from "ai";
+import { useMemo } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
-import { ReviewRequiredCard } from "./components/ReviewRequiredCard/ReviewRequiredCard";
 import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
 import {
   getAccordionMeta,
@@ -57,10 +60,30 @@ export function RunBlockTool({ part }: Props) {
     part.state === "output-available" &&
     !!output &&
     !setupRequirementsOutput &&
+    !isRunBlockReviewRequiredOutput(output) &&
     (isRunBlockBlockOutput(output) ||
       isRunBlockDetailsOutput(output) ||
-      isRunBlockReviewRequiredOutput(output) ||
       isRunBlockErrorOutput(output));
+
+  // Convert ReviewRequiredResponse to PendingHumanReviewModel for reuse
+  const reviewAsPendingReview = useMemo((): PendingHumanReviewModel[] => {
+    if (!output || !isRunBlockReviewRequiredOutput(output)) return [];
+    return [
+      {
+        node_exec_id: output.review_id,
+        node_id: output.block_id,
+        user_id: "",
+        graph_exec_id: output.session_id ?? "",
+        graph_id: "",
+        graph_version: 0,
+        payload: output.input_data,
+        instructions: output.block_name,
+        editable: false,
+        status: ReviewStatus.WAITING,
+        created_at: new Date(),
+      },
+    ];
+  }, [output]);
 
   return (
     <div className="py-2">
@@ -84,6 +107,12 @@ export function RunBlockTool({ part }: Props) {
         </div>
       )}
 
+      {isReviewRequired && reviewAsPendingReview.length > 0 && (
+        <div className="mt-2">
+          <PendingReviewsList reviews={reviewAsPendingReview} />
+        </div>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {hasInputData && <BlockInputCard inputData={inputData} />}
@@ -92,10 +121,6 @@ export function RunBlockTool({ part }: Props) {
 
           {isRunBlockDetailsOutput(output) && (
             <BlockDetailsCard output={output} />
-          )}
-
-          {isRunBlockReviewRequiredOutput(output) && (
-            <ReviewRequiredCard output={output} />
           )}
 
           {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}
