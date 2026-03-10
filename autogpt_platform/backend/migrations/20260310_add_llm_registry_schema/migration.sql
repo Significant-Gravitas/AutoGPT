@@ -1,3 +1,6 @@
+-- CreateSchema (idempotent - safe if already exists)
+CREATE SCHEMA IF NOT EXISTS "platform";
+
 -- CreateEnum
 CREATE TYPE "platform"."LlmCostUnit" AS ENUM ('RUN', 'TOKENS');
 
