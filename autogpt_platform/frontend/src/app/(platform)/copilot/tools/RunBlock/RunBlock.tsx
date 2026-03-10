@@ -7,6 +7,7 @@ import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
+import { ReviewRequiredCard } from "./components/ReviewRequiredCard/ReviewRequiredCard";
 import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
 import {
   getAccordionMeta,
@@ -15,6 +16,7 @@ import {
   isRunBlockBlockOutput,
   isRunBlockDetailsOutput,
   isRunBlockErrorOutput,
+  isRunBlockReviewRequiredOutput,
   isRunBlockSetupRequirementsOutput,
   ToolIcon,
 } from "./helpers";
@@ -43,6 +45,7 @@ export function RunBlockTool({ part }: Props) {
   const isError =
     part.state === "output-error" ||
     (!!output && isRunBlockErrorOutput(output));
+  const isReviewRequired = !!output && isRunBlockReviewRequiredOutput(output);
   const setupRequirementsOutput =
     part.state === "output-available" &&
     output &&
@@ -56,6 +59,7 @@ export function RunBlockTool({ part }: Props) {
     !setupRequirementsOutput &&
     (isRunBlockBlockOutput(output) ||
       isRunBlockDetailsOutput(output) ||
+      isRunBlockReviewRequiredOutput(output) ||
       isRunBlockErrorOutput(output));
 
   return (
@@ -64,7 +68,13 @@ export function RunBlockTool({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={
+            isError
+              ? "text-red-500"
+              : isReviewRequired
+                ? "text-amber-500"
+                : undefined
+          }
         />
       </div>
 
@@ -82,6 +92,10 @@ export function RunBlockTool({ part }: Props) {
 
           {isRunBlockDetailsOutput(output) && (
             <BlockDetailsCard output={output} />
+          )}
+
+          {isRunBlockReviewRequiredOutput(output) && (
+            <ReviewRequiredCard output={output} />
           )}
 
           {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}

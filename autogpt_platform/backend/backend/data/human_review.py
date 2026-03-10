@@ -123,14 +123,16 @@ async def create_auto_approval_record(
     Raises:
         ValueError: If the graph execution doesn't belong to the user
     """
-    # Validate that the graph execution belongs to this user (defense in depth)
-    graph_exec = await get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not graph_exec:
-        raise ValueError(
-            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+    # Validate that the graph execution belongs to this user (defense in depth).
+    # Skip for synthetic CoPilot IDs which don't have real graph execution records.
+    if not graph_exec_id.startswith("copilot-"):
+        graph_exec = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
         )
+        if not graph_exec:
+            raise ValueError(
+                f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
+            )
 
     auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
 

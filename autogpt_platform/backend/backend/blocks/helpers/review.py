@@ -40,7 +40,19 @@ class HITLReviewHelper:
 
     @staticmethod
     async def update_node_execution_status(**kwargs) -> None:
-        """Update the execution status of a node."""
+        """Update the execution status of a node.
+
+        Skips the update for synthetic node execution IDs (e.g., CoPilot
+        direct block execution) that don't have corresponding DB records.
+        """
+        exec_id = kwargs.get("exec_id", "")
+        if exec_id.startswith("copilot-"):
+            logger.info(
+                "Skipping node execution status update for synthetic ID: %s",
+                exec_id,
+            )
+            return
+
         from backend.executor.manager import async_update_node_execution_status
 
         await async_update_node_execution_status(
