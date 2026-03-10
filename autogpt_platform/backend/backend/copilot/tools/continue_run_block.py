@@ -18,8 +18,7 @@ from backend.util.exceptions import BlockError
 
 from .base import BaseTool
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
-from .run_block import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from .utils import match_credentials_to_requirements
+from .run_block import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX, RunBlockTool
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -234,15 +233,16 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+    # Reuse RunBlockTool's credential resolution (handles discriminated credentials)
+    _run_block_tool = RunBlockTool()
+
     async def _resolve_block_credentials(
         self,
         user_id: str,
         block: "AnyBlockSchema",
         input_data: dict[str, Any],
     ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
-        """Resolve credentials for the block."""
-        credentials_fields_info = block.input_schema.get_credentials_fields_info()
-        if not credentials_fields_info:
-            return {}, []
-
-        return await match_credentials_to_requirements(user_id, credentials_fields_info)
+        """Resolve credentials for the block (delegates to RunBlockTool)."""
+        return await self._run_block_tool._resolve_block_credentials(
+            user_id, block, input_data
+        )
