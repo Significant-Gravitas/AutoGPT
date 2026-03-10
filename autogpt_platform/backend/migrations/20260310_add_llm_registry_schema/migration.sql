@@ -112,8 +112,11 @@ CREATE INDEX "LlmModel_creatorId_idx" ON "platform"."LlmModel"("creatorId");
 -- CreateIndex
 CREATE INDEX "LlmModelCost_credentialProvider_idx" ON "platform"."LlmModelCost"("credentialProvider");
 
--- CreateIndex
-CREATE UNIQUE INDEX "LlmModelCost_llmModelId_credentialProvider_unit_key" ON "platform"."LlmModelCost"("llmModelId", "credentialProvider", "unit");
+-- CreateIndex (partial unique for default costs - no specific credential)
+CREATE UNIQUE INDEX "LlmModelCost_default_cost_key" ON "platform"."LlmModelCost"("llmModelId", "credentialProvider", "unit") WHERE "credentialId" IS NULL;
+
+-- CreateIndex (partial unique for credential-specific costs)
+CREATE UNIQUE INDEX "LlmModelCost_credential_cost_key" ON "platform"."LlmModelCost"("llmModelId", "credentialProvider", "credentialId", "unit") WHERE "credentialId" IS NOT NULL;
 
 -- CreateIndex
 CREATE INDEX "LlmModelMigration_targetModelSlug_idx" ON "platform"."LlmModelMigration"("targetModelSlug");
@@ -123,6 +126,9 @@ CREATE INDEX "LlmModelMigration_isReverted_idx" ON "platform"."LlmModelMigration
 
 -- CreateIndex
 CREATE INDEX "LlmModelMigration_sourceModelSlug_isReverted_idx" ON "platform"."LlmModelMigration"("sourceModelSlug", "isReverted");
+
+-- CreateIndex (partial unique to prevent multiple active migrations per source)
+CREATE UNIQUE INDEX "LlmModelMigration_active_source_key" ON "platform"."LlmModelMigration"("sourceModelSlug") WHERE "isReverted" = false;
 
 -- AddForeignKey
 ALTER TABLE "platform"."LlmModel" ADD CONSTRAINT "LlmModel_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "platform"."LlmProvider"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -1422,7 +1422,10 @@ model LlmModelCost {
   llmModelId String
   Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
 
-  @@unique([llmModelId, credentialProvider, unit])
+  // Note: Unique constraints are implemented as partial indexes in migration SQL:
+  // - One for default costs (WHERE credentialId IS NULL)
+  // - One for credential-specific costs (WHERE credentialId IS NOT NULL)
+  // This allows both provider-level defaults and credential-specific overrides
   @@index([credentialProvider])
 }
 
@@ -1477,6 +1480,8 @@ model LlmModelMigration {
   isReverted Boolean   @default(false)
   revertedAt DateTime?
 
+  // Note: Partial unique index in migration SQL prevents multiple active migrations per source:
+  // UNIQUE (sourceModelSlug) WHERE isReverted = false
   @@index([targetModelSlug])
   @@index([isReverted])
   @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
