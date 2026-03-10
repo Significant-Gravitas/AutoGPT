@@ -51,7 +51,10 @@ export const OutputHandler = ({
         if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
           return true;
         if (fieldSchema?.properties)
-          return hasConnectedOrBrokenDescendant(fieldSchema.properties, fullKey);
+          return hasConnectedOrBrokenDescendant(
+            fieldSchema.properties,
+            fullKey,
+          );
         return false;
       },
     );
