@@ -1,7 +1,7 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
@@ -60,10 +60,22 @@ export function RunBlockTool({ part }: Props) {
     reviewOutput?.graph_exec_id ?? "",
     { enabled: !!reviewOutput?.graph_exec_id, refetchInterval: 2000 },
   );
-  // Filter to only the review for this specific block execution
-  const reviewsForThisBlock = reviewOutput
-    ? pendingReviews.filter((r) => r.node_exec_id === reviewOutput.review_id)
-    : [];
+  // When multiple run_block calls create multiple reviews, consolidate them
+  // into a single PendingReviewsList on one tool card. We pick the card whose
+  // review_id is alphabetically last among pending reviews as the "primary"
+  // renderer, so exactly one card shows the full list.
+  const isPrimaryReviewCard = useMemo(() => {
+    if (!reviewOutput || pendingReviews.length === 0) return false;
+    const myId = reviewOutput.review_id;
+    const isStillPending = pendingReviews.some((r) => r.node_exec_id === myId);
+    if (!isStillPending) return false;
+    // Pick the last review_id alphabetically as the primary
+    const lastId = pendingReviews.reduce(
+      (max, r) => (r.node_exec_id > max ? r.node_exec_id : max),
+      "",
+    );
+    return myId === lastId;
+  }, [reviewOutput, pendingReviews]);
   const setupRequirementsOutput =
     part.state === "output-available" &&
     output &&
@@ -119,10 +131,10 @@ export function RunBlockTool({ part }: Props) {
         </div>
       )}
 
-      {reviewsForThisBlock.length > 0 && (
+      {isPrimaryReviewCard && (
         <div className="mt-2">
           <PendingReviewsList
-            reviews={reviewsForThisBlock}
+            reviews={pendingReviews}
             onReviewComplete={handleReviewComplete}
           />
         </div>
