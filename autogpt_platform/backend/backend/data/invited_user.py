@@ -310,13 +310,19 @@ def _parse_bulk_invite_csv(text: str) -> list[_ParsedInviteRow]:
     header = [cell.lower() for cell in indexed_rows[0][1]]
     has_header = "email" in header
     email_index = header.index("email") if has_header else 0
-    name_index = header.index("name") if has_header and "name" in header else 1
+    name_index: int | None = (
+        header.index("name") if has_header and "name" in header else (1 if not has_header else None)
+    )
     data_rows = indexed_rows[1:] if has_header else indexed_rows
 
     parsed_rows: list[_ParsedInviteRow] = []
     for row_number, row in data_rows:
         email = row[email_index].strip() if len(row) > email_index else ""
-        name = row[name_index].strip() if len(row) > name_index else ""
+        name = (
+            row[name_index].strip()
+            if name_index is not None and len(row) > name_index
+            else ""
+        )
         parsed_rows.append(
             _ParsedInviteRow(
                 row_number=row_number,
