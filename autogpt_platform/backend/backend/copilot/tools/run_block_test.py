@@ -427,7 +427,7 @@ class TestRunBlockSensitiveAction:
             )
 
         assert isinstance(response, ReviewRequiredResponse)
-        assert "sensitive action" in response.message
+        assert "requires human review" in response.message
         assert response.block_name == "Delete Branch"
 
     @pytest.mark.asyncio(loop_scope="session")
