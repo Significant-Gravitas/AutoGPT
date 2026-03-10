@@ -124,8 +124,8 @@ async def create_auto_approval_record(
     Raises:
         ValueError: If the graph execution doesn't belong to the user
     """
-    # Validate that the graph execution belongs to this user (defense in depth).
-    # Skip for synthetic CoPilot IDs which don't have real graph execution records.
+    # Validate ownership: if a graph execution record exists, it must belong
+    # to this user. Non-graph executions (e.g. CoPilot) won't have a record.
     if not graph_exec_id.startswith(
         COPILOT_SYNTHETIC_ID_PREFIX
     ) and not await get_graph_execution_meta(
