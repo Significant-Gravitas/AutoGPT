@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { DotsThree, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
-import { CopilotReviewsPanel } from "./components/CopilotReviewsPanel/CopilotReviewsPanel";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -130,7 +129,6 @@ export function CopilotPage() {
             Drop files here
           </span>
         </div>
-        {sessionId && <CopilotReviewsPanel sessionId={sessionId} />}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
             messages={messages}
