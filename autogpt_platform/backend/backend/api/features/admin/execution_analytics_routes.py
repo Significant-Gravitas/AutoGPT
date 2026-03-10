@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
 from backend.blocks.llm import LlmModel
+from backend.data import llm_registry
 from backend.data.analytics import (
     AccuracyTrendsResponse,
     get_accuracy_trends_and_alerts,
@@ -18,6 +19,7 @@ from backend.data.execution import (
     get_graph_executions,
     update_graph_execution_stats,
 )
+from backend.server.v2.llm import db as llm_db
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     DEFAULT_SYSTEM_PROMPT,
@@ -177,9 +179,6 @@ async def get_execution_analytics_config(
         return f"{provider_name}: {model_name}"
 
     # Get all models from the registry (dynamic, not hardcoded enum)
-    from backend.data import llm_registry
-    from backend.server.v2.llm import db as llm_db
-
     # Get the recommended model from the database (configurable via admin UI)
     recommended_model_slug = await llm_db.get_recommended_model_slug()
 
@@ -217,14 +216,8 @@ async def get_execution_analytics_config(
             "No enabled LLM models found in registry. "
             "Ensure models are configured and enabled in the LLM Registry."
         )
-        # Provide a placeholder entry so admins see meaningful feedback
-        available_models.append(
-            ModelInfo(
-                value="",
-                label="No models available - configure in LLM Registry",
-                provider="none",
-            )
-        )
+        # Return empty list - frontend will handle empty state appropriately
+        # Self-hosters should run database migrations to seed default models
 
     # Use the DB recommended model, or fallback to first enabled model
     final_recommended = recommended_model_slug or first_enabled_slug or ""
