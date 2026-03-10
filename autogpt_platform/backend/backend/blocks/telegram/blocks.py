@@ -640,7 +640,6 @@ class DeleteTelegramMessageBlock(Block):
                 ("status", "Message deleted"),
             ],
             test_mock={"_delete_message": lambda *args, **kwargs: True},
-            is_sensitive_action=True,
         )
 
     async def run(

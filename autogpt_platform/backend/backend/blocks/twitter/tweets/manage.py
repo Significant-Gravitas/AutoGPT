@@ -279,7 +279,6 @@ class TwitterDeleteTweetBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_tweet": lambda *args, **kwargs: True},
-            is_sensitive_action=True,
         )
 
     @staticmethod
