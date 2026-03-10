@@ -258,15 +258,8 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
 
   if (isRunBlockReviewRequiredOutput(output)) {
     return {
-      icon: (
-        <WarningDiamondIcon
-          size={32}
-          weight="light"
-          className="text-amber-500"
-        />
-      ),
+      icon,
       title: output.block_name,
-      titleClassName: "text-amber-500",
       description: "Sensitive action — awaiting review",
     };
   }

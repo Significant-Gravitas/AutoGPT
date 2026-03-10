@@ -6,6 +6,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
+from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -161,29 +162,32 @@ async def process_review_action(
 
     graph_exec_id = next(iter(graph_exec_ids))
 
-    # Validate execution status before processing reviews
-    graph_exec_meta = await get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-
-    if not graph_exec_meta:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph execution #{graph_exec_id} not found",
+    # Skip graph execution validation for non-graph executions (e.g. CoPilot)
+    # which use synthetic IDs that don't have corresponding DB records.
+    if not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+        # Validate execution status before processing reviews
+        graph_exec_meta = await get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
         )
 
-    # Only allow processing reviews if execution is paused for review
-    # or incomplete (partial execution with some reviews already processed)
-    if graph_exec_meta.status not in (
-        ExecutionStatus.REVIEW,
-        ExecutionStatus.INCOMPLETE,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}. "
-            f"Reviews can only be processed when execution is paused (REVIEW status). "
-            f"Current status: {graph_exec_meta.status}",
-        )
+        if not graph_exec_meta:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
+
+        # Only allow processing reviews if execution is paused for review
+        # or incomplete (partial execution with some reviews already processed)
+        if graph_exec_meta.status not in (
+            ExecutionStatus.REVIEW,
+            ExecutionStatus.INCOMPLETE,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}. "
+                f"Reviews can only be processed when execution is paused (REVIEW status). "
+                f"Current status: {graph_exec_meta.status}",
+            )
 
     # Build review decisions map and track which reviews requested auto-approval
     # Auto-approved reviews use original data (no modifications allowed)

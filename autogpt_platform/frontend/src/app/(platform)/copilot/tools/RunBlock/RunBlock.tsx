@@ -91,13 +91,7 @@ export function RunBlockTool({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={
-            isError
-              ? "text-red-500"
-              : isReviewRequired
-                ? "text-amber-500"
-                : undefined
-          }
+          className={isError ? "text-red-500" : undefined}
         />
       </div>
 
