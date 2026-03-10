@@ -337,6 +337,19 @@ async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     return count > 0
 
 
+async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
+    """Resolve node_id from a node_exec_id.
+
+    For CoPilot synthetic IDs (e.g. copilot-node-block-id:abc12345),
+    extract the node_id portion (copilot-node-block-id).
+    For real graph executions, look up the NodeExecution record.
+    """
+    if is_copilot_synthetic_id(node_exec_id):
+        return parse_node_id_from_exec_id(node_exec_id)
+    node_exec = await get_node_execution(node_exec_id)
+    return node_exec.node_id if node_exec else node_exec_id
+
+
 async def get_pending_reviews_for_user(
     user_id: str, page: int = 1, page_size: int = 25
 ) -> list["PendingHumanReviewModel"]:
@@ -367,8 +380,7 @@ async def get_pending_reviews_for_user(
     # Fetch node_id for each review from NodeExecution
     result = []
     for review in reviews:
-        node_exec = await get_node_execution(review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        node_id = await _resolve_node_id(review.nodeExecId, get_node_execution)
         result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
 
     return result
@@ -402,8 +414,7 @@ async def get_pending_reviews_for_execution(
     # Fetch node_id for each review from NodeExecution
     result = []
     for review in reviews:
-        node_exec = await get_node_execution(review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        node_id = await _resolve_node_id(review.nodeExecId, get_node_execution)
         result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
 
     return result
