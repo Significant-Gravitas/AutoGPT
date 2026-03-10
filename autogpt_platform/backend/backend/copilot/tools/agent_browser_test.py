@@ -72,7 +72,7 @@ def _run_result(rc: int = 0, stdout: str = "", stderr: str = "") -> tuple:
 # ---------------------------------------------------------------------------
 
 # Patch target: validate_url is imported directly into agent_browser's module scope.
-_VALIDATE_URL = "backend.copilot.tools.agent_browser.validate_url"
+_VALIDATE_URL = "backend.copilot.tools.agent_browser.validate_url_host"
 
 
 class TestSsrfViaValidateUrl:
@@ -143,7 +143,7 @@ class TestSsrfViaValidateUrl:
                         session=self.session,
                         url="https://example.com",
                     )
-        mock_validate.assert_called_once_with("https://example.com", trusted_origins=[])
+        mock_validate.assert_called_once_with("https://example.com")
 
 
 # ---------------------------------------------------------------------------
