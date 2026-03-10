@@ -1,3 +1,5 @@
+"use client";
+
 import { Sidebar } from "@/components/__legacy__/Sidebar";
 import {
   UsersIcon,
