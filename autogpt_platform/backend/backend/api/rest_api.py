@@ -5,16 +5,12 @@ from enum import Enum
 from typing import Any, Optional
 
 import fastapi
-import fastapi.responses
-import pydantic
 import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
-from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
@@ -41,22 +37,12 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features.library.exceptions import (
-    FolderAlreadyExistsError,
-    FolderValidationError,
-)
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
-from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.exceptions import (
-    MissingConfigError,
-    NotAuthorizedError,
-    NotFoundError,
-    PreconditionFailed,
-)
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -207,77 +193,7 @@ instrument_fastapi(
 )
 
 
-def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
-    def handler(request: fastapi.Request, exc: Exception):
-        if log_error:
-            logger.exception(
-                "%s %s failed. Investigate and resolve the underlying issue: %s",
-                request.method,
-                request.url.path,
-                exc,
-                exc_info=exc,
-            )
-
-        hint = (
-            "Adjust the request and retry."
-            if status_code < 500
-            else "Check server logs and dependent services."
-        )
-        return fastapi.responses.JSONResponse(
-            content={
-                "message": f"Failed to process {request.method} {request.url.path}",
-                "detail": str(exc),
-                "hint": hint,
-            },
-            status_code=status_code,
-        )
-
-    return handler
-
-
-async def validation_error_handler(
-    request: fastapi.Request, exc: Exception
-) -> fastapi.responses.Response:
-    logger.error(
-        "Validation failed for %s %s: %s. Fix the request payload and try again.",
-        request.method,
-        request.url.path,
-        exc,
-    )
-    errors: list | str
-    if hasattr(exc, "errors"):
-        errors = exc.errors()  # type: ignore[call-arg]
-    else:
-        errors = str(exc)
-
-    response_content = {
-        "message": f"Invalid data for {request.method} {request.url.path}",
-        "detail": errors,
-        "hint": "Ensure the request matches the API schema.",
-    }
-
-    content_json = json.dumps(response_content)
-
-    return fastapi.responses.Response(
-        content=content_json,
-        status_code=422,
-        media_type="application/json",
-    )
-
-
-app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(
-    FolderAlreadyExistsError, handle_internal_http_error(409, False)
-)
-app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
-app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
-app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
-app.add_exception_handler(RequestValidationError, validation_error_handler)
-app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
-app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
-app.add_exception_handler(ValueError, handle_internal_http_error(400))
-app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
-app.add_exception_handler(Exception, handle_internal_http_error(500))
+add_exception_handlers(app)
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(

@@ -44,7 +44,7 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
-class GraphNotFoundError(ValueError):
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 

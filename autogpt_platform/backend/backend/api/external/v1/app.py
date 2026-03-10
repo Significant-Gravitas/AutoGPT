@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from backend.api.external.middleware import add_auth_responses_to_openapi
 from backend.api.middleware.security import SecurityHeadersMiddleware
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.openapi import sort_openapi
 
 from .routes import v1_router
@@ -39,6 +40,9 @@ v1_app = FastAPI(
 
 v1_app.add_middleware(SecurityHeadersMiddleware)
 v1_app.include_router(v1_router)
+
+# Mounted sub-apps do NOT inherit exception handlers from the parent app.
+add_exception_handlers(v1_app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(v1_app)

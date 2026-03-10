@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from backend.api.external.middleware import add_auth_responses_to_openapi
 from backend.api.middleware.security import SecurityHeadersMiddleware
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.openapi import sort_openapi
 
 from .mcp_server import create_mcp_app
@@ -83,6 +84,10 @@ v2_app = FastAPI(
 
 v2_app.add_middleware(SecurityHeadersMiddleware)
 v2_app.include_router(v2_router)
+
+# Mounted sub-apps do NOT inherit exception handlers from the parent app,
+# so we must register them here for the v2 API specifically.
+add_exception_handlers(v2_app)
 
 # Mount MCP server (Copilot tools via Streamable HTTP)
 v2_app.mount("/mcp", create_mcp_app())
