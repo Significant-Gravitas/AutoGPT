@@ -271,7 +271,7 @@ async def get_pending_review_by_node_exec_id(
 
 async def get_reviews_by_node_exec_ids(
     node_exec_ids: list[str], user_id: str
-) -> dict[str, "PendingHumanReviewModel"]:
+) -> dict[str, PendingHumanReviewModel]:
     """
     Get multiple reviews by their node execution IDs regardless of status.
 
