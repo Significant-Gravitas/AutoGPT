@@ -60,7 +60,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox
+from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
@@ -456,31 +456,6 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
 
 
-def _is_tool_error_or_denial(content: str | None) -> bool:
-    """Check if a tool message content indicates an error or denial.
-
-    Currently unused — ``_format_conversation_context`` includes all tool
-    results.  Kept as a utility for future selective filtering.
-    """
-    if not content:
-        return False
-    lower = content.lower()
-    return any(
-        marker in lower
-        for marker in (
-            "[security]",
-            "cannot be bypassed",
-            "not allowed",
-            "not supported",  # background-task denial
-            "maximum",  # subtask-limit denial
-            "denied",
-            "blocked",
-            "failed to",  # internal tool execution failures
-            '"iserror": true',  # MCP protocol error flag
-        )
-    )
-
-
 async def _build_query_message(
     current_message: str,
     session: ChatSession,
@@ -784,28 +759,29 @@ async def stream_chat_completion_sdk(
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
-            if config.use_e2b_sandbox and not config.e2b_api_key:
-                logger.warning(
-                    "[E2B] [%s] E2B sandbox enabled but no API key configured "
-                    "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
-                    session_id[:12],
-                )
-                return None
-            if config.use_e2b_sandbox and config.e2b_api_key:
-                try:
-                    return await get_or_create_sandbox(
-                        session_id,
-                        api_key=config.e2b_api_key,
-                        template=config.e2b_sandbox_template,
-                        timeout=config.e2b_sandbox_timeout,
-                    )
-                except Exception as e2b_err:
-                    logger.error(
-                        "[E2B] [%s] Setup failed: %s",
+            if not (e2b_api_key := config.active_e2b_api_key):
+                if config.use_e2b_sandbox:
+                    logger.warning(
+                        "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                        "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
                         session_id[:12],
-                        e2b_err,
-                        exc_info=True,
                     )
+                return None
+            try:
+                return await get_or_create_sandbox(
+                    session_id,
+                    api_key=e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                    on_timeout=config.e2b_sandbox_on_timeout,
+                )
+            except Exception as e2b_err:
+                logger.error(
+                    "[E2B] [%s] Setup failed: %s",
+                    session_id[:12],
+                    e2b_err,
+                    exc_info=True,
+                )
             return None
 
         async def _fetch_transcript():
@@ -837,7 +813,6 @@ async def stream_chat_completion_sdk(
         system_prompt = base_system_prompt + get_sdk_supplement(
             use_e2b=use_e2b, cwd=sdk_cwd
         )
-
         # Process transcript download result
         transcript_msg_count = 0
         if dl:
@@ -902,6 +877,11 @@ async def stream_chat_completion_sdk(
 
         allowed = get_copilot_tool_names(use_e2b=use_e2b)
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+        def _on_stderr(line: str) -> None:
+            sid = session_id[:12] if session_id else "?"
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
             "mcp_servers": {"copilot": mcp_server},
@@ -910,6 +890,7 @@ async def stream_chat_completion_sdk(
             "hooks": security_hooks,
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
+            "stderr": _on_stderr,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -1081,6 +1062,19 @@ async def stream_chat_completion_sdk(
                         len(adapter.current_tool_calls),
                         len(adapter.resolved_tool_calls),
                     )
+
+                    # Log AssistantMessage API errors (e.g. invalid_request)
+                    # so we can debug Anthropic API 400s surfaced by the CLI.
+                    sdk_error = getattr(sdk_msg, "error", None)
+                    if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        logger.error(
+                            "[SDK] [%s] AssistantMessage has error=%s, "
+                            "content_blocks=%d, content_preview=%s",
+                            session_id[:12],
+                            sdk_error,
+                            len(sdk_msg.content),
+                            str(sdk_msg.content)[:500],
+                        )
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1415,6 +1409,17 @@ async def stream_chat_completion_sdk(
                     persist_err,
                     exc_info=True,
                 )
+
+        # --- Pause E2B sandbox to stop billing between turns ---
+        # Fire-and-forget: pausing is best-effort and must not block the
+        # response or the transcript upload.  The task is anchored to
+        # _background_tasks to prevent garbage collection.
+        # Use pause_sandbox_direct to skip the Redis lookup and reconnect
+        # round-trip — e2b_sandbox is the live object from this turn.
+        if e2b_sandbox is not None:
+            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
         # This MUST run in finally so the transcript is uploaded even when

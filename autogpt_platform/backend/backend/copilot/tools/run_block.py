@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic_core import PydanticUndefined
 
-from backend.blocks import get_block
+from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
@@ -83,7 +83,7 @@ class RunBlockTool(BaseTool):
                     ),
                 },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "block_name", "input_data"],
         }
 
     @property
@@ -149,11 +149,18 @@ class RunBlockTool(BaseTool):
             block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
             or block.id in COPILOT_EXCLUDED_BLOCK_IDS
         ):
+            # Provide actionable guidance for blocks with dedicated tools
+            if block.block_type == BlockType.MCP_TOOL:
+                hint = (
+                    " Use the `run_mcp_tool` tool instead — it handles "
+                    "MCP server discovery, authentication, and execution."
+                )
+            elif block.block_type == BlockType.AGENT:
+                hint = " Use the `run_agent` tool instead."
+            else:
+                hint = " This block is designed for use within graphs only."
             return ErrorResponse(
-                message=(
-                    f"Block '{block.name}' cannot be run directly in CoPilot. "
-                    "This block is designed for use within graphs only."
-                ),
+                message=f"Block '{block.name}' cannot be run directly.{hint}",
                 session_id=session_id,
             )
 
