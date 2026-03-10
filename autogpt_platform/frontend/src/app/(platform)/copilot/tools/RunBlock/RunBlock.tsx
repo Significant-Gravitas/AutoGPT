@@ -7,6 +7,7 @@ import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import { okData } from "@/app/api/helpers";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
@@ -55,7 +56,7 @@ export function RunBlockTool({ part }: Props) {
       : null;
 
   // Fetch real pending reviews from API (survives page refresh)
-  const { pendingReviews } = usePendingReviewsForExecution(
+  const { pendingReviews, refetch } = usePendingReviewsForExecution(
     reviewOutput?.graph_exec_id ?? "",
     { enabled: !!reviewOutput?.graph_exec_id, refetchInterval: 2000 },
   );
@@ -79,14 +80,28 @@ export function RunBlockTool({ part }: Props) {
       isRunBlockDetailsOutput(output) ||
       isRunBlockErrorOutput(output));
 
-  // After approval, automatically tell the LLM to continue with the review_id
-  const handleReviewComplete = useCallback(() => {
+  // After approval, check if all reviews for this session are done before
+  // telling the LLM to continue. This prevents a separate chat turn per review
+  // when multiple blocks are pending approval simultaneously.
+  const handleReviewComplete = useCallback(async () => {
     if (!reviewOutput) return;
+
+    // Brief delay for the server to propagate the approval
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const result = await refetch();
+    const remaining = okData(result.data) || [];
+
+    if (remaining.length > 0) {
+      // More reviews still pending — don't trigger the LLM yet
+      return;
+    }
+
+    // All reviews approved — send a single message for the LLM to continue
     onSend(
-      `The review for "${reviewOutput.block_name}" has been approved. ` +
-        `Please call continue_run_block with review_id="${reviewOutput.review_id}" to execute it.`,
+      `All pending reviews have been approved. ` +
+        `Please call continue_run_block for each review_id from the previous run_block results to execute them.`,
     );
-  }, [reviewOutput, onSend]);
+  }, [reviewOutput, refetch, onSend]);
 
   return (
     <div className="py-2">
