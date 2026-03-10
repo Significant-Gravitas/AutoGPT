@@ -3,14 +3,13 @@ datasource db {
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
   extensions = [pgvector(map: "vector")]
-  schemas    = ["platform", "public"]
 }
 
 generator client {
   provider               = "prisma-client-py"
   recursive_type_depth   = -1
   interface              = "asyncio"
-  previewFeatures        = ["views", "fullTextSearch", "postgresqlExtensions", "multiSchema"]
+  previewFeatures        = ["views", "fullTextSearch", "postgresqlExtensions"]
   partial_type_generator = "backend/data/partial_types.py"
 }
 
@@ -1343,8 +1342,6 @@ model OAuthRefreshToken {
 enum LlmCostUnit {
   RUN
   TOKENS
-
-  @@schema("platform")
 }
 
 model LlmProvider {
@@ -1364,7 +1361,6 @@ model LlmProvider {
 
   Models LlmModel[]
 
-  @@schema("platform")
 }
 
 model LlmModel {
@@ -1406,7 +1402,6 @@ model LlmModel {
   @@index([providerId, isEnabled])
   @@index([creatorId])
   // Note: slug already has @unique which creates an implicit index
-  @@schema("platform")
 }
 
 model LlmModelCost {
@@ -1429,7 +1424,6 @@ model LlmModelCost {
 
   @@unique([llmModelId, credentialProvider, unit])
   @@index([credentialProvider])
-  @@schema("platform")
 }
 
 model LlmModelCreator {
@@ -1447,7 +1441,6 @@ model LlmModelCreator {
 
   Models LlmModel[]
 
-  @@schema("platform")
 }
 
 model LlmModelMigration {
@@ -1487,5 +1480,4 @@ model LlmModelMigration {
   @@index([targetModelSlug])
   @@index([isReverted])
   @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
-  @@schema("platform")
 }
