@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
@@ -30,13 +30,41 @@ export const OutputHandler = ({
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
+  const [expandedObjects, setExpandedObjects] = useState<
+    Record<string, boolean>
+  >({});
 
   const showHandles = uiType !== BlockUIType.OUTPUT;
+
+  function toggleObjectExpanded(key: string) {
+    setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function hasConnectedOrBrokenDescendant(
+    schema: RJSFSchema,
+    keyPrefix: string,
+  ): boolean {
+    if (!schema) return false;
+    return Object.entries(schema).some(
+      ([key, fieldSchema]: [string, RJSFSchema]) => {
+        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+        if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
+          return true;
+        if (fieldSchema?.properties)
+          return hasConnectedOrBrokenDescendant(
+            fieldSchema.properties,
+            fullKey,
+          );
+        return false;
+      },
+    );
+  }
 
   const renderOutputHandles = (
     schema: RJSFSchema,
     keyPrefix: string = "",
     titlePrefix: string = "",
+    connectedOnly: boolean = false,
   ): React.ReactNode[] => {
     return Object.entries(schema).map(
       ([key, fieldSchema]: [string, RJSFSchema]) => {
@@ -44,10 +72,23 @@ export const OutputHandler = ({
         const fieldTitle = titlePrefix + (fieldSchema?.title || key);
 
         const isConnected = isOutputConnected(nodeId, fullKey);
-        const shouldShow = isConnected || isOutputVisible;
+        const isBroken = brokenOutputs.has(fullKey);
+        const hasNestedProperties = !!fieldSchema?.properties;
+        const selfIsRelevant = isConnected || isBroken;
+        const descendantIsRelevant =
+          hasNestedProperties &&
+          hasConnectedOrBrokenDescendant(fieldSchema.properties!, fullKey);
+
+        const shouldShow = connectedOnly
+          ? selfIsRelevant || descendantIsRelevant
+          : isOutputVisible || selfIsRelevant || descendantIsRelevant;
+
         const { displayType, colorClass, hexColor } =
           getTypeDisplayInfo(fieldSchema);
-        const isBroken = brokenOutputs.has(fullKey);
+        const isExpanded = expandedObjects[fullKey] ?? false;
+
+        // User expanded → show all children; auto-expanded → filter to connected only
+        const shouldRenderChildren = isExpanded || descendantIsRelevant;
 
         return shouldShow ? (
           <div
@@ -56,6 +97,19 @@ export const OutputHandler = ({
             data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
           >
             <div className="relative flex items-center gap-2">
+              {hasNestedProperties && (
+                <button
+                  onClick={() => toggleObjectExpanded(fullKey)}
+                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  aria-label={isExpanded ? "Collapse" : "Expand"}
+                >
+                  {isExpanded ? (
+                    <CaretDownIcon size={12} weight="bold" />
+                  ) : (
+                    <CaretRightIcon size={12} weight="bold" />
+                  )}
+                </button>
+              )}
               {fieldSchema?.description && (
                 <TooltipProvider>
                   <Tooltip>
@@ -102,12 +156,14 @@ export const OutputHandler = ({
               )}
             </div>
 
-            {/* Recursively render nested properties */}
-            {fieldSchema?.properties &&
+            {/* Nested properties */}
+            {hasNestedProperties &&
+              shouldRenderChildren &&
               renderOutputHandles(
-                fieldSchema.properties,
+                fieldSchema.properties!,
                 fullKey,
-                `${fieldTitle}.`,
+                "",
+                !isExpanded,
               )}
           </div>
         ) : null;
@@ -136,7 +192,7 @@ export const OutputHandler = ({
       </Button>
 
       <div className="flex flex-col items-end gap-2">
-        {renderOutputHandles(properties)}
+        {renderOutputHandles(properties, "", "", !isOutputVisible)}
       </div>
     </div>
   );
