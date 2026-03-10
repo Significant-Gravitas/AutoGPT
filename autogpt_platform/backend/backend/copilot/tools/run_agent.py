@@ -536,8 +536,7 @@ class RunAgentTool(BaseTool):
                         f"Agent '{library_agent.name}' is awaiting human review. "
                         f"The user can approve or reject inline. After approval, "
                         f"the execution resumes automatically. Use view_agent_output "
-                        f"with execution_id='{execution.id}' and wait_if_running=30 "
-                        f"to check the result."
+                        f"with execution_id='{execution.id}' to check the result."
                     ),
                     session_id=session_id,
                     execution_id=execution.id,
