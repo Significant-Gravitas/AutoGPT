@@ -33,6 +33,7 @@ const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.setup_requirements,
   ResponseType.agent_details,
   ResponseType.block_details,
+  ResponseType.review_required,
   ResponseType.need_login,
   ResponseType.input_validation_error,
   ResponseType.agent_builder_clarification_needed,
