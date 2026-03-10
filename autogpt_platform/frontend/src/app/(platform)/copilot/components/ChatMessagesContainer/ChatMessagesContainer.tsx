@@ -8,10 +8,19 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
-import { parseSpecialMarkers } from "./helpers";
+import {
+  buildRenderSegments,
+  getTurnMessages,
+  type MessagePart,
+  type RenderSegment,
+  parseSpecialMarkers,
+  splitReasoningAndResponse,
+} from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { ReasoningCollapse } from "./components/ReasoningCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -23,21 +32,23 @@ interface Props {
   sessionID?: string | null;
 }
 
-/** Collect all messages belonging to a turn: the user message + every
- *  assistant message up to (but not including) the next user message. */
-function getTurnMessages(
-  messages: UIMessage<unknown, UIDataTypes, UITools>[],
-  lastAssistantIndex: number,
-): UIMessage<unknown, UIDataTypes, UITools>[] {
-  const userIndex = messages.findLastIndex(
-    (m, i) => i < lastAssistantIndex && m.role === "user",
-  );
-  const nextUserIndex = messages.findIndex(
-    (m, i) => i > lastAssistantIndex && m.role === "user",
-  );
-  const start = userIndex >= 0 ? userIndex : lastAssistantIndex;
-  const end = nextUserIndex >= 0 ? nextUserIndex : messages.length;
-  return messages.slice(start, end);
+function renderSegments(
+  segments: RenderSegment[],
+  messageID: string,
+): React.ReactNode[] {
+  return segments.map((seg, segIdx) => {
+    if (seg.kind === "collapsed-group") {
+      return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    return (
+      <MessagePartRenderer
+        key={`${messageID}-${seg.index}`}
+        part={seg.part}
+        messageID={messageID}
+        partIndex={seg.index}
+      />
+    );
+  });
 }
 
 export function ChatMessagesContainer({
@@ -119,6 +130,26 @@ export function ChatMessagesContainer({
             (p): p is FileUIPart => p.type === "file",
           );
 
+          // For finalized assistant messages, split into reasoning + response.
+          // During streaming, show everything normally with tool collapsing.
+          const isFinalized =
+            message.role === "assistant" && !isCurrentlyStreaming;
+          const { reasoning, response } = isFinalized
+            ? splitReasoningAndResponse(message.parts)
+            : { reasoning: [] as MessagePart[], response: message.parts };
+          const hasReasoning = reasoning.length > 0;
+
+          // Note: when interactive tools are pinned from reasoning into response,
+          // this index approximates their position (used only for React keys).
+          const responseStartIndex = message.parts.length - response.length;
+          const responseSegments =
+            message.role === "assistant"
+              ? buildRenderSegments(response, responseStartIndex)
+              : null;
+          const reasoningSegments = hasReasoning
+            ? buildRenderSegments(reasoning, 0)
+            : null;
+
           return (
             <Message from={message.role} key={message.id}>
               <MessageContent
@@ -128,14 +159,21 @@ export function ChatMessagesContainer({
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
-                {message.parts.map((part, i) => (
-                  <MessagePartRenderer
-                    key={`${message.id}-${i}`}
-                    part={part}
-                    messageID={message.id}
-                    partIndex={i}
-                  />
-                ))}
+                {hasReasoning && reasoningSegments && (
+                  <ReasoningCollapse>
+                    {renderSegments(reasoningSegments, message.id)}
+                  </ReasoningCollapse>
+                )}
+                {responseSegments
+                  ? renderSegments(responseSegments, message.id)
+                  : message.parts.map((part, i) => (
+                      <MessagePartRenderer
+                        key={`${message.id}-${i}`}
+                        part={part}
+                        messageID={message.id}
+                        partIndex={i}
+                      />
+                    ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}

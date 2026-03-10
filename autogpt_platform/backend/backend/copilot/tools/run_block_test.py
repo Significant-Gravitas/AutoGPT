@@ -89,7 +89,7 @@ class TestRunBlockFiltering:
             )
 
         assert isinstance(response, ErrorResponse)
-        assert "cannot be run directly in CoPilot" in response.message
+        assert "cannot be run directly" in response.message
         assert "designed for use within graphs only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -115,7 +115,7 @@ class TestRunBlockFiltering:
             )
 
         assert isinstance(response, ErrorResponse)
-        assert "cannot be run directly in CoPilot" in response.message
+        assert "cannot be run directly" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
@@ -141,7 +141,7 @@ class TestRunBlockFiltering:
         # Should NOT be an ErrorResponse about CoPilot exclusion
         # (may be other errors like missing credentials, but not the exclusion guard)
         if isinstance(response, ErrorResponse):
-            assert "cannot be run directly in CoPilot" not in response.message
+            assert "cannot be run directly" not in response.message
 
 
 class TestRunBlockInputValidation:

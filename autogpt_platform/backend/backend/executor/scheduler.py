@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -601,6 +602,19 @@ class Scheduler(AppService):
                 hours=6,
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Block Description Optimization - Every 24 hours
+            # Generates concise LLM-optimized block descriptions for
+            # agent generation. Only processes blocks missing descriptions.
+            self.scheduler.add_job(
+                optimize_block_descriptions,
+                id="optimize_block_descriptions",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

@@ -2,32 +2,33 @@
   "submissions": [
     {
       "listing_id": "test-listing-id",
-      "agent_id": "test-agent-id",
-      "agent_version": 1,
+      "user_id": "test-user-id",
+      "slug": "test-agent",
+      "listing_version_id": "test-version-id",
+      "listing_version": 1,
+      "graph_id": "test-agent-id",
+      "graph_version": 1,
       "name": "Test Agent",
       "sub_heading": "Test agent subheading",
-      "slug": "test-agent",
       "description": "Test agent description",
-      "instructions": null,
+      "instructions": "Click the button!",
+      "categories": [
+        "test-category"
+      ],
       "image_urls": [
         "test.jpg"
       ],
-      "date_submitted": "2023-01-01T00:00:00",
+      "video_url": "test.mp4",
+      "agent_output_demo_url": "demo_video.mp4",
+      "submitted_at": "2023-01-01T00:00:00",
+      "changes_summary": "Initial Submission",
       "status": "APPROVED",
-      "runs": 50,
-      "rating": 4.2,
-      "store_listing_version_id": null,
-      "version": null,
+      "reviewed_at": null,
       "reviewer_id": null,
       "review_comments": null,
-      "internal_comments": null,
-      "reviewed_at": null,
-      "changes_summary": null,
-      "video_url": "test.mp4",
-      "agent_output_demo_url": null,
-      "categories": [
-        "test-category"
-      ]
+      "run_count": 50,
+      "review_count": 5,
+      "review_avg_rating": 4.2
     }
   ],
   "pagination": {

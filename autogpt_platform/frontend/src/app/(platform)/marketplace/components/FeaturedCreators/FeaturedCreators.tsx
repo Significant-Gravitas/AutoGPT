@@ -2,11 +2,11 @@
 
 import { CreatorCard } from "../CreatorCard/CreatorCard";
 import { useFeaturedCreators } from "./useFeaturedCreators";
-import { Creator } from "@/app/api/__generated__/models/creator";
+import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 
 interface FeaturedCreatorsProps {
   title?: string;
-  featuredCreators: Creator[];
+  featuredCreators: CreatorDetails[];
 }
 
 export const FeaturedCreators = ({

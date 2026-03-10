@@ -13,7 +13,14 @@ from prisma.types import (
 )
 
 # from backend.notifications.models import NotificationEvent
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
@@ -175,10 +182,26 @@ class RefundRequestData(BaseNotificationData):
     balance: int
 
 
-class AgentApprovalData(BaseNotificationData):
+class _LegacyAgentFieldsMixin:
+    """Temporary patch to handle existing queued payloads"""
+
+    # FIXME: remove in next release
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_legacy_agent_fields(cls, values: Any):
+        if isinstance(values, dict):
+            if "graph_id" not in values and "agent_id" in values:
+                values["graph_id"] = values.pop("agent_id")
+            if "graph_version" not in values and "agent_version" in values:
+                values["graph_version"] = values.pop("agent_version")
+        return values
+
+
+class AgentApprovalData(_LegacyAgentFieldsMixin, BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str
@@ -193,10 +216,10 @@ class AgentApprovalData(BaseNotificationData):
         return value
 
 
-class AgentRejectionData(BaseNotificationData):
+class AgentRejectionData(_LegacyAgentFieldsMixin, BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str
