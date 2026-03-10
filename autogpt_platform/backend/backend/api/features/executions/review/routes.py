@@ -161,10 +161,9 @@ async def process_review_action(
         )
 
     graph_exec_id = next(iter(graph_exec_ids))
-    is_graph_execution = not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
 
-    # Validate execution status for graph executions
-    if is_graph_execution:
+    # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
+    if not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
         graph_exec_meta = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -179,9 +178,7 @@ async def process_review_action(
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Cannot process reviews while execution status is "
-                f"{graph_exec_meta.status}. Reviews can only be processed "
-                f"when execution is paused (REVIEW or INCOMPLETE status).",
+                detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}",
             )
 
     # Build review decisions map and track which reviews requested auto-approval
