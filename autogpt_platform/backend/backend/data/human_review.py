@@ -18,7 +18,7 @@ from backend.api.features.executions.review.model import (
     SafeJsonData,
 )
 from backend.copilot.constants import (
-    COPILOT_SYNTHETIC_ID_PREFIX,
+    is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import get_graph_execution_meta
@@ -129,8 +129,8 @@ async def create_auto_approval_record(
     """
     # Validate ownership: if a graph execution record exists, it must belong
     # to this user. Non-graph executions (e.g. CoPilot) won't have a record.
-    if not graph_exec_id.startswith(
-        COPILOT_SYNTHETIC_ID_PREFIX
+    if not is_copilot_synthetic_id(
+        graph_exec_id
     ) and not await get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
@@ -515,7 +515,7 @@ async def process_all_reviews_for_execution(
 
     result = {}
     for review in all_result_reviews:
-        if review.nodeExecId.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+        if is_copilot_synthetic_id(review.nodeExecId):
             # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
             node_id = parse_node_id_from_exec_id(review.nodeExecId)
         else:

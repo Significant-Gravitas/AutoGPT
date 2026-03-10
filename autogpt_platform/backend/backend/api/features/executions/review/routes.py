@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import (
-    COPILOT_SYNTHETIC_ID_PREFIX,
+    is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import (
@@ -148,7 +148,7 @@ async def list_pending_reviews_for_execution(
 
     # Verify user owns the graph execution before returning reviews
     # (CoPilot synthetic IDs don't have graph execution records)
-    if not graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
+    if not is_copilot_synthetic_id(graph_exec_id):
         graph_exec = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -199,7 +199,7 @@ async def process_review_action(
         )
 
     graph_exec_id = next(iter(graph_exec_ids))
-    is_copilot = graph_exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
+    is_copilot = is_copilot_synthetic_id(graph_exec_id)
 
     # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
     if not is_copilot:

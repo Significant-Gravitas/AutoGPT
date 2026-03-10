@@ -24,6 +24,11 @@ COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context li
 COMPACTION_TOOL_NAME = "context_compaction"
 
 
+def is_copilot_synthetic_id(id_value: str) -> bool:
+    """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""
+    return id_value.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
+
+
 def parse_node_id_from_exec_id(node_exec_id: str) -> str:
     """Extract node_id from a synthetic node_exec_id.
 
