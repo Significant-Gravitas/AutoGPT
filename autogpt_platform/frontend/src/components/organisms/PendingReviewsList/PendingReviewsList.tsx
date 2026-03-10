@@ -17,15 +17,12 @@ interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
   onReviewComplete?: () => void;
   emptyMessage?: string;
-  /** When true, auto-approve toggle defaults to ON for all node groups. */
-  defaultAutoApprove?: boolean;
 }
 
 export function PendingReviewsList({
   reviews,
   onReviewComplete,
   emptyMessage = "No pending reviews",
-  defaultAutoApprove = false,
 }: PendingReviewsListProps) {
   const [reviewDataMap, setReviewDataMap] = useState<Record<string, string>>(
     () => {
@@ -47,15 +44,7 @@ export function PendingReviewsList({
 
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
     Record<string, boolean>
-  >(() => {
-    if (!defaultAutoApprove) return {};
-    const initial: Record<string, boolean> = {};
-    reviews.forEach((review) => {
-      const nodeId = review.node_id || "unknown";
-      initial[nodeId] = true;
-    });
-    return initial;
-  });
+  >({});
 
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>

@@ -109,10 +109,7 @@ export function RunBlockTool({ part }: Props) {
 
       {isReviewRequired && reviewAsPendingReview.length > 0 && (
         <div className="mt-2">
-          <PendingReviewsList
-            reviews={reviewAsPendingReview}
-            defaultAutoApprove
-          />
+          <PendingReviewsList reviews={reviewAsPendingReview} />
         </div>
       )}
 
