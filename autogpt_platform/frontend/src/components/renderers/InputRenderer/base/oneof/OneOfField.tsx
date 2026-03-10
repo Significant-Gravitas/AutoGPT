@@ -155,12 +155,24 @@ function DiscriminatedUnionField({
   // (e.g. undo/redo, loading saved state)
   const currentDiscValue = formData?.[discriminatorProp];
   useEffect(() => {
-    if (!currentDiscValue) return;
-    const idx = enumOptions.findIndex(
-      (o) => o.discriminatorValue === currentDiscValue,
-    );
-    if (idx >= 0 && idx !== selectedIndex) {
-      setSelectedIndex(idx);
+    const idx = currentDiscValue
+      ? enumOptions.findIndex((o) => o.discriminatorValue === currentDiscValue)
+      : -1;
+
+    if (idx >= 0) {
+      if (idx !== selectedIndex) setSelectedIndex(idx);
+    } else if (enumOptions.length > 0 && selectedIndex !== 0) {
+      // Unknown or cleared discriminator — reset to first variant
+      setSelectedIndex(0);
+      const defaultDisc = enumOptions[0].discriminatorValue;
+      if (defaultDisc) {
+        onChange(
+          { ...formData, [discriminatorProp]: defaultDisc },
+          props.fieldPathId.path,
+          undefined,
+          field_id,
+        );
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDiscValue]);
