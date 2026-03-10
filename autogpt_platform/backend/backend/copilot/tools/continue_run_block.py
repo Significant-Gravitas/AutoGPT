@@ -6,7 +6,11 @@ from typing import Any
 from prisma.enums import ReviewStatus
 
 from backend.blocks import get_block
-from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
+from backend.copilot.constants import (
+    COPILOT_NODE_PREFIX,
+    COPILOT_SESSION_PREFIX,
+    parse_node_id_from_exec_id,
+)
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import review_db
 
@@ -84,6 +88,14 @@ class ContinueRunBlockTool(BaseTool):
                     f"Review '{review_id}' not found or already executed. "
                     "It may have been consumed by a previous continue_run_block call."
                 ),
+                session_id=session_id,
+            )
+
+        # Validate the review belongs to this session
+        expected_graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
+        if review.graph_exec_id != expected_graph_exec_id:
+            return ErrorResponse(
+                message="Review does not belong to this session.",
                 session_id=session_id,
             )
 

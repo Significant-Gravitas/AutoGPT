@@ -16,12 +16,14 @@ def _make_review_model(
     node_exec_id: str,
     status: ReviewStatus = ReviewStatus.APPROVED,
     payload: dict | None = None,
+    graph_exec_id: str = "",
 ):
     """Create a mock PendingHumanReviewModel."""
     mock = MagicMock()
     mock.node_exec_id = node_exec_id
     mock.status = status
     mock.payload = payload or {"text": "hello"}
+    mock.graph_exec_id = graph_exec_id
     return mock
 
 
@@ -66,7 +68,10 @@ class TestContinueRunBlock:
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
         review_id = "copilot-node-some-block:abc12345"
-        review = _make_review_model(review_id, status=ReviewStatus.WAITING)
+        graph_exec_id = f"copilot-session-{session.session_id}"
+        review = _make_review_model(
+            review_id, status=ReviewStatus.WAITING, graph_exec_id=graph_exec_id
+        )
 
         mock_db = MagicMock()
         mock_db.get_reviews_by_node_exec_ids = AsyncMock(
@@ -91,7 +96,10 @@ class TestContinueRunBlock:
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
         review_id = "copilot-node-some-block:abc12345"
-        review = _make_review_model(review_id, status=ReviewStatus.REJECTED)
+        graph_exec_id = f"copilot-session-{session.session_id}"
+        review = _make_review_model(
+            review_id, status=ReviewStatus.REJECTED, graph_exec_id=graph_exec_id
+        )
 
         mock_db = MagicMock()
         mock_db.get_reviews_by_node_exec_ids = AsyncMock(
@@ -116,11 +124,13 @@ class TestContinueRunBlock:
         tool = ContinueRunBlockTool()
         session = make_session(user_id=_TEST_USER_ID)
         review_id = "copilot-node-delete-branch-id:abc12345"
+        graph_exec_id = f"copilot-session-{session.session_id}"
         input_data = {"repo_url": "https://github.com/test/repo", "branch": "main"}
         review = _make_review_model(
             review_id,
             status=ReviewStatus.APPROVED,
             payload=input_data,
+            graph_exec_id=graph_exec_id,
         )
 
         mock_block = MagicMock()

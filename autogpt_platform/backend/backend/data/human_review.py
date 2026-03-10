@@ -298,21 +298,26 @@ async def get_reviews_by_node_exec_ids(
     if not reviews:
         return {}
 
-    # Batch fetch all node executions to avoid N+1 queries
-    node_exec_ids_to_fetch = [review.nodeExecId for review in reviews]
-    node_execs = await AgentNodeExecution.prisma().find_many(
-        where={"id": {"in": node_exec_ids_to_fetch}},
-        include={"Node": True},
-    )
-
-    # Create mapping from node_exec_id to node_id
-    node_exec_id_to_node_id = {
-        node_exec.id: node_exec.agentNodeId for node_exec in node_execs
+    # Split into synthetic (CoPilot) and real IDs for different resolution paths
+    synthetic_ids = {
+        r.nodeExecId for r in reviews if is_copilot_synthetic_id(r.nodeExecId)
     }
+    real_ids = [r.nodeExecId for r in reviews if r.nodeExecId not in synthetic_ids]
+
+    # Batch fetch real node executions to avoid N+1 queries
+    node_exec_id_to_node_id: dict[str, str] = {}
+    if real_ids:
+        node_execs = await AgentNodeExecution.prisma().find_many(
+            where={"id": {"in": real_ids}},
+        )
+        node_exec_id_to_node_id = {ne.id: ne.agentNodeId for ne in node_execs}
 
     result = {}
     for review in reviews:
-        node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
+        if review.nodeExecId in synthetic_ids:
+            node_id = parse_node_id_from_exec_id(review.nodeExecId)
+        else:
+            node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )
