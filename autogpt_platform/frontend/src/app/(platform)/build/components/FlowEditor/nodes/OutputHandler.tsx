@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
@@ -30,8 +30,15 @@ export const OutputHandler = ({
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
+  const [expandedObjects, setExpandedObjects] = useState<
+    Record<string, boolean>
+  >({});
 
   const showHandles = uiType !== BlockUIType.OUTPUT;
+
+  function toggleObjectExpanded(key: string) {
+    setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   const renderOutputHandles = (
     schema: RJSFSchema,
@@ -48,6 +55,8 @@ export const OutputHandler = ({
         const { displayType, colorClass, hexColor } =
           getTypeDisplayInfo(fieldSchema);
         const isBroken = brokenOutputs.has(fullKey);
+        const hasNestedProperties = !!fieldSchema?.properties;
+        const isExpanded = expandedObjects[fullKey] ?? false;
 
         return shouldShow ? (
           <div
@@ -56,6 +65,19 @@ export const OutputHandler = ({
             data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
           >
             <div className="relative flex items-center gap-2">
+              {hasNestedProperties && (
+                <button
+                  onClick={() => toggleObjectExpanded(fullKey)}
+                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  aria-label={isExpanded ? "Collapse" : "Expand"}
+                >
+                  {isExpanded ? (
+                    <CaretDownIcon size={12} weight="bold" />
+                  ) : (
+                    <CaretRightIcon size={12} weight="bold" />
+                  )}
+                </button>
+              )}
               {fieldSchema?.description && (
                 <TooltipProvider>
                   <Tooltip>
@@ -102,13 +124,10 @@ export const OutputHandler = ({
               )}
             </div>
 
-            {/* Recursively render nested properties */}
-            {fieldSchema?.properties &&
-              renderOutputHandles(
-                fieldSchema.properties,
-                fullKey,
-                `${fieldTitle}.`,
-              )}
+            {/* Nested properties: collapsed by default */}
+            {hasNestedProperties &&
+              isExpanded &&
+              renderOutputHandles(fieldSchema.properties!, fullKey)}
           </div>
         ) : null;
       },
