@@ -224,14 +224,17 @@ async def create_invited_user(
     if existing_invited_user is not None:
         raise PreconditionFailed("An invited user with this email already exists")
 
-    invited_user = await prisma.models.InvitedUser.prisma().create(
-        data={
-            "email": normalized_email,
-            "name": normalized_name,
-            "status": prisma.enums.InvitedUserStatus.INVITED,
-            "tallyStatus": prisma.enums.TallyComputationStatus.PENDING,
-        }
-    )
+    try:
+        invited_user = await prisma.models.InvitedUser.prisma().create(
+            data={
+                "email": normalized_email,
+                "name": normalized_name,
+                "status": prisma.enums.InvitedUserStatus.INVITED,
+                "tallyStatus": prisma.enums.TallyComputationStatus.PENDING,
+            }
+        )
+    except UniqueViolationError:
+        raise PreconditionFailed("An invited user with this email already exists")
     schedule_invited_user_tally_precompute(invited_user.id)
     return InvitedUserRecord.from_db(invited_user)
 
