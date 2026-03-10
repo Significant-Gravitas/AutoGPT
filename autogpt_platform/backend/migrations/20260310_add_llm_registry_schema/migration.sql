@@ -138,3 +138,14 @@ ALTER TABLE "platform"."LlmModel" ADD CONSTRAINT "LlmModel_creatorId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "platform"."LlmModelCost" ADD CONSTRAINT "LlmModelCost_llmModelId_fkey" FOREIGN KEY ("llmModelId") REFERENCES "platform"."LlmModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddCheckConstraints (enforce data integrity)
+ALTER TABLE "platform"."LlmModel"
+    ADD CONSTRAINT "LlmModel_priceTier_check" CHECK ("priceTier" BETWEEN 1 AND 3);
+
+ALTER TABLE "platform"."LlmModelCost"
+    ADD CONSTRAINT "LlmModelCost_creditCost_check" CHECK ("creditCost" >= 0);
+
+ALTER TABLE "platform"."LlmModelMigration"
+    ADD CONSTRAINT "LlmModelMigration_nodeCount_check" CHECK ("nodeCount" >= 0),
+    ADD CONSTRAINT "LlmModelMigration_customCreditCost_check" CHECK ("customCreditCost" IS NULL OR "customCreditCost" >= 0);

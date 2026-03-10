@@ -1384,7 +1384,7 @@ model LlmModel {
 
   contextWindow   Int
   maxOutputTokens Int?
-  priceTier       Int     @default(1) // 1=cheapest, 2=medium, 3=expensive
+  priceTier       Int     @default(1) // 1=cheapest, 2=medium, 3=expensive (DB constraint: 1-3)
   isEnabled       Boolean @default(true)
   isRecommended   Boolean @default(false)
 
@@ -1412,7 +1412,7 @@ model LlmModelCost {
   updatedAt DateTime    @updatedAt
   unit      LlmCostUnit @default(RUN)
 
-  creditCost Int
+  creditCost Int // DB constraint: >= 0
 
   credentialProvider String
   credentialId       String?
@@ -1460,7 +1460,7 @@ model LlmModelMigration {
   // Track affected nodes as JSON array of node IDs
   // Format: ["node-uuid-1", "node-uuid-2", ...]
   migratedNodeIds Json @default("[]")
-  nodeCount       Int  // Number of nodes migrated
+  nodeCount       Int  // Number of nodes migrated (DB constraint: >= 0)
 
   // Custom pricing override for migrated workflows during the migration period.
   // Use case: When migrating users from an expensive model (e.g., GPT-4) to a cheaper
@@ -1473,7 +1473,7 @@ model LlmModelMigration {
   // If null, the target model's normal cost applies.
   //
   // TODO: Integrate with billing system to apply this override during cost calculation.
-  customCreditCost Int?
+  customCreditCost Int? // DB constraint: >= 0 when not null
 
   // Revert tracking
   isReverted Boolean   @default(false)
