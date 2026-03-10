@@ -17,12 +17,14 @@ interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
   onReviewComplete?: () => void;
   emptyMessage?: string;
+  showAutoApproveToggle?: boolean;
 }
 
 export function PendingReviewsList({
   reviews,
   onReviewComplete,
   emptyMessage = "No pending reviews",
+  showAutoApproveToggle = true,
 }: PendingReviewsListProps) {
   const [reviewDataMap, setReviewDataMap] = useState<Record<string, string>>(
     () => {
@@ -286,17 +288,19 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <Switch
-                      checked={autoApproveFutureMap[nodeId] || false}
-                      onCheckedChange={(enabled: boolean) =>
-                        handleAutoApproveFutureToggle(nodeId, enabled)
-                      }
-                    />
-                    <Text variant="small" className="text-gray-700">
-                      Auto-approve future executions of this node
-                    </Text>
-                  </div>
+                  {showAutoApproveToggle && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        checked={autoApproveFutureMap[nodeId] || false}
+                        onCheckedChange={(enabled: boolean) =>
+                          handleAutoApproveFutureToggle(nodeId, enabled)
+                        }
+                      />
+                      <Text variant="small" className="text-gray-700">
+                        Auto-approve future executions of this node
+                      </Text>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -337,10 +341,12 @@ export function PendingReviewsList({
             </Button>
           </div>
 
-          <Text variant="small" className="text-textGrey">
-            You can turn auto-approval on or off using the toggle above for each
-            node.
-          </Text>
+          {showAutoApproveToggle && (
+            <Text variant="small" className="text-textGrey">
+              You can turn auto-approval on or off using the toggle above for
+              each node.
+            </Text>
+          )}
         </div>
       )}
     </div>
