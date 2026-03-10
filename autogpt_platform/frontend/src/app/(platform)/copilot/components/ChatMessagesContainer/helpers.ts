@@ -19,6 +19,7 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-search_docs",
   "tool-get_doc_page",
   "tool-run_block",
+  "tool-continue_run_block",
   "tool-run_mcp_tool",
   "tool-run_agent",
   "tool-schedule_agent",

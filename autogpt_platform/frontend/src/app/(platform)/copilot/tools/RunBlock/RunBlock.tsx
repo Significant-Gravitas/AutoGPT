@@ -104,8 +104,8 @@ export function RunBlockTool({ part }: Props) {
   const handleReviewComplete = useCallback(() => {
     if (!reviewOutput) return;
     onSend(
-      `The review for "${reviewOutput.block_name}" has been processed. ` +
-        `Please continue executing the block using review_id="${reviewOutput.review_id}".`,
+      `The review for "${reviewOutput.block_name}" has been approved. ` +
+        `Please call continue_run_block with review_id="${reviewOutput.review_id}" to execute it.`,
     );
   }, [reviewOutput, onSend]);
 
