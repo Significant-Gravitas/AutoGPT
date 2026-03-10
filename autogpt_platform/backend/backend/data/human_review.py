@@ -17,6 +17,7 @@ from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
+from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
 from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
 
@@ -125,14 +126,14 @@ async def create_auto_approval_record(
     """
     # Validate that the graph execution belongs to this user (defense in depth).
     # Skip for synthetic CoPilot IDs which don't have real graph execution records.
-    if not graph_exec_id.startswith("copilot-"):
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    if not graph_exec_id.startswith(
+        COPILOT_SYNTHETIC_ID_PREFIX
+    ) and not await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    ):
+        raise ValueError(
+            f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
-        if not graph_exec:
-            raise ValueError(
-                f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
-            )
 
     auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
 

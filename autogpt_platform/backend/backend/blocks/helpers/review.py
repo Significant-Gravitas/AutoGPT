@@ -9,6 +9,7 @@ from typing import Any, Optional
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
+from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
 from backend.data.human_review import ReviewResult
 from backend.util.clients import get_database_manager_async_client
 
@@ -46,7 +47,7 @@ class HITLReviewHelper:
         direct block execution) that don't have corresponding DB records.
         """
         exec_id = kwargs.get("exec_id", "")
-        if exec_id.startswith("copilot-"):
+        if exec_id.startswith(COPILOT_SYNTHETIC_ID_PREFIX):
             logger.info(
                 "Skipping node execution status update for synthetic ID: %s",
                 exec_id,

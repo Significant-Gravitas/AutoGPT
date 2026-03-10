@@ -65,6 +65,12 @@ def make_mock_block_with_schema(
     mock.output_schema = MagicMock()
     mock.output_schema.jsonschema.return_value = output_schema
 
+    # Default: no review needed, pass through input_data unchanged
+    async def _no_review(input_data, **kwargs):
+        return False, input_data
+
+    mock.is_block_exec_need_review = _no_review
+
     return mock
 
 
@@ -371,16 +377,19 @@ class TestRunBlockInputValidation:
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
 
-    Sensitive blocks use the existing is_block_exec_need_review() mechanism.
-    When review is needed, the block yields nothing (pauses execution), and
-    run_block detects this to return ReviewRequiredResponse.
+    run_block calls is_block_exec_need_review() explicitly before execution.
+    When review is needed (should_pause=True), ReviewRequiredResponse is returned.
     """
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_sensitive_block_paused_returns_review_required(self):
-        """When a sensitive block pauses for review, ReviewRequiredResponse is returned."""
+        """When is_block_exec_need_review returns should_pause=True, ReviewRequiredResponse is returned."""
         session = make_session(user_id=_TEST_USER_ID)
 
+        input_data = {
+            "repo_url": "https://github.com/test/repo",
+            "branch": "feature-branch",
+        }
         mock_block = make_mock_block_with_schema(
             block_id="delete-branch-id",
             name="Delete Branch",
@@ -391,12 +400,9 @@ class TestRunBlockSensitiveAction:
             required_fields=["repo_url", "branch"],
         )
         mock_block.is_sensitive_action = True
-
-        async def mock_execute_paused(input_data, **kwargs):
-            return
-            yield  # noqa: unreachable - makes this an async generator
-
-        mock_block.execute = mock_execute_paused
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
 
         mock_workspace = MagicMock(id="test-workspace-id")
 
@@ -417,10 +423,7 @@ class TestRunBlockSensitiveAction:
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="delete-branch-id",
-                input_data={
-                    "repo_url": "https://github.com/test/repo",
-                    "branch": "feature-branch",
-                },
+                input_data=input_data,
             )
 
         assert isinstance(response, ReviewRequiredResponse)
@@ -429,9 +432,13 @@ class TestRunBlockSensitiveAction:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_sensitive_block_executes_after_approval(self):
-        """After approval, sensitive blocks execute and return outputs."""
+        """After approval (should_pause=False), sensitive blocks execute and return outputs."""
         session = make_session(user_id=_TEST_USER_ID)
 
+        input_data = {
+            "repo_url": "https://github.com/test/repo",
+            "branch": "feature-branch",
+        }
         mock_block = make_mock_block_with_schema(
             block_id="delete-branch-id",
             name="Delete Branch",
@@ -442,11 +449,14 @@ class TestRunBlockSensitiveAction:
             required_fields=["repo_url", "branch"],
         )
         mock_block.is_sensitive_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(False, input_data)
+        )
 
-        async def mock_execute_approved(input_data, **kwargs):
+        async def mock_execute(input_data, **kwargs):
             yield "result", "Branch deleted successfully"
 
-        mock_block.execute = mock_execute_approved
+        mock_block.execute = mock_execute
 
         mock_workspace = MagicMock(id="test-workspace-id")
 
@@ -467,10 +477,7 @@ class TestRunBlockSensitiveAction:
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="delete-branch-id",
-                input_data={
-                    "repo_url": "https://github.com/test/repo",
-                    "branch": "feature-branch",
-                },
+                input_data=input_data,
             )
 
         assert isinstance(response, BlockOutputResponse)
@@ -478,9 +485,10 @@ class TestRunBlockSensitiveAction:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_sensitive_block_executes_normally(self):
-        """Non-sensitive blocks execute without review."""
+        """Non-sensitive blocks skip review and execute directly."""
         session = make_session(user_id=_TEST_USER_ID)
 
+        input_data = {"url": "https://example.com"}
         mock_block = make_mock_block_with_schema(
             block_id="http-request-id",
             name="HTTP Request",
@@ -490,6 +498,9 @@ class TestRunBlockSensitiveAction:
             required_fields=["url"],
         )
         mock_block.is_sensitive_action = False
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(False, input_data)
+        )
 
         async def mock_execute(input_data, **kwargs):
             yield "response", {"status": 200}
@@ -515,7 +526,7 @@ class TestRunBlockSensitiveAction:
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="http-request-id",
-                input_data={"url": "https://example.com"},
+                input_data=input_data,
             )
 
         assert isinstance(response, BlockOutputResponse)

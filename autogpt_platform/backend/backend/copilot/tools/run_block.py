@@ -9,6 +9,7 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.constants import COPILOT_SYNTHETIC_ID_PREFIX
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
@@ -37,6 +38,9 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+COPILOT_SESSION_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}session-"
+COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
 
 
 class RunBlockTool(BaseTool):
@@ -290,12 +294,10 @@ class RunBlockTool(BaseTool):
             # - graph_id (agent) = session (memories scoped to session when limit_to_agent=True)
             # - graph_exec_id (run) = session (memories scoped to session when limit_to_run=True)
             # - node_exec_id = unique per block execution
-            synthetic_graph_id = f"copilot-session-{session.session_id}"
-            synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
-            synthetic_node_id = f"copilot-node-{block_id}"
-            synthetic_node_exec_id = (
-                f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
-            )
+            synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
+            synthetic_graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
+            synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
+            synthetic_node_exec_id = f"{COPILOT_SYNTHETIC_ID_PREFIX}{session.session_id}-{uuid.uuid4().hex[:8]}"
 
             # Create unified execution context with all required fields
             execution_context = ExecutionContext(
@@ -344,19 +346,13 @@ class RunBlockTool(BaseTool):
                         session_id=session_id,
                     )
 
-            # Execute the block and collect outputs.
-            # For sensitive blocks, the block's _execute calls
-            # is_block_exec_need_review() which creates a PendingHumanReview
-            # and pauses execution (yields nothing) if review is needed.
-            outputs: dict[str, list[Any]] = defaultdict(list)
-            async for output_name, output_data in block.execute(
-                input_data,
-                **exec_kwargs,
-            ):
-                outputs[output_name].append(output_data)
-
-            # Detect if execution was paused for human review
-            if not outputs and block.is_sensitive_action:
+            # Check for HITL review before execution.
+            # We handle this explicitly so we can return ReviewRequiredResponse
+            # instead of silently yielding nothing.
+            should_pause, input_data = await block.is_block_exec_need_review(
+                input_data, **exec_kwargs
+            )
+            if should_pause:
                 return ReviewRequiredResponse(
                     message=(
                         f"Block '{block.name}' performs a sensitive action and "
@@ -369,6 +365,17 @@ class RunBlockTool(BaseTool):
                     review_id=synthetic_node_exec_id,
                     input_data=input_data,
                 )
+
+            # Disable safe mode so _execute doesn't re-check review
+            execution_context.sensitive_action_safe_mode = False
+
+            # Execute the block and collect outputs.
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            async for output_name, output_data in block.execute(
+                input_data,
+                **exec_kwargs,
+            ):
+                outputs[output_name].append(output_data)
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
