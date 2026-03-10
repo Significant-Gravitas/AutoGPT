@@ -624,6 +624,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         graph_id: str,
         graph_version: int,
         execution_context: "ExecutionContext",
+        is_graph_execution: bool = True,
         **kwargs,
     ) -> tuple[bool, BlockInput]:
         """
@@ -652,6 +653,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             graph_version=graph_version,
             block_name=self.name,
             editable=True,
+            is_graph_execution=is_graph_execution,
         )
 
         if decision is None:
