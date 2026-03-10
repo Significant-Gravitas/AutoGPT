@@ -14,7 +14,7 @@ from backend.blocks.mcp.helpers import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url
+from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -144,7 +144,7 @@ class RunMCPToolTool(BaseTool):
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
-            await validate_url(server_url, trusted_origins=[])
+            await validate_url_host(server_url)
         except ValueError as e:
             msg = str(e)
             if "Unable to resolve" in msg or "No IP addresses" in msg:

@@ -26,6 +26,33 @@ your message as a Markdown link or image:
 The `download_url` field in the `write_workspace_file` response is already
 in the correct format — paste it directly after the `(` in the Markdown.
 
+### Passing file content to tools — @@agptfile: references
+Instead of copying large file contents into a tool argument, pass a file
+reference and the platform will load the content for you.
+
+Syntax: `@@agptfile:<uri>[<start>-<end>]`
+
+- `<uri>` **must** start with `workspace://` or `/` (absolute path):
+  - `workspace://<file_id>` — workspace file by ID
+  - `workspace:///<path>` — workspace file by virtual path
+  - `/absolute/local/path` — ephemeral or sdk_cwd file
+  - E2B sandbox absolute path (e.g. `/home/user/script.py`)
+- `[<start>-<end>]` is an optional 1-indexed inclusive line range.
+- URIs that do not start with `workspace://` or `/` are **not** expanded.
+
+Examples:
+```
+@@agptfile:workspace://abc123
+@@agptfile:workspace://abc123[10-50]
+@@agptfile:workspace:///reports/q1.md
+@@agptfile:/tmp/copilot-<session>/output.py[1-80]
+@@agptfile:/home/user/script.py
+```
+
+You can embed a reference inside any string argument, or use it as the entire
+value.  Multiple references in one argument are all expanded.
+
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
