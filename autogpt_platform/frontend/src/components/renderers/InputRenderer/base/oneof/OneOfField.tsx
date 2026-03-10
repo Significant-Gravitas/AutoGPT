@@ -144,6 +144,20 @@ function DiscriminatedUnionField({
     onChange(newFormData, props.fieldPathId.path, undefined, field_id);
   }
 
+  // Sync selectedIndex when formData discriminator changes externally
+  // (e.g. undo/redo, loading saved state)
+  const currentDiscValue = formData?.[discriminatorProp];
+  useEffect(() => {
+    if (!currentDiscValue) return;
+    const idx = enumOptions.findIndex(
+      (o) => o.discriminatorValue === currentDiscValue,
+    );
+    if (idx >= 0 && idx !== selectedIndex) {
+      setSelectedIndex(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDiscValue]);
+
   // Auto-set discriminator on initial render if missing
   useEffect(() => {
     const discValue = enumOptions[selectedIndex]?.discriminatorValue;
