@@ -48,6 +48,11 @@ class LlmModel(pydantic.BaseModel):
     max_output_tokens: Optional[int] = None
     is_enabled: bool = True
     is_recommended: bool = False
+    # Model-specific capabilities (moved from Provider)
+    supports_tools: bool = True
+    supports_json_output: bool = True
+    supports_reasoning: bool = False
+    supports_parallel_tool: bool = False
     capabilities: dict[str, Any] = pydantic.Field(default_factory=dict)
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     costs: list[LlmModelCost] = pydantic.Field(default_factory=list)
@@ -61,10 +66,6 @@ class LlmProvider(pydantic.BaseModel):
     default_credential_provider: Optional[str] = None
     default_credential_id: Optional[str] = None
     default_credential_type: Optional[str] = None
-    supports_tools: bool = True
-    supports_json_output: bool = True
-    supports_reasoning: bool = False
-    supports_parallel_tool: bool = False
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     models: list[LlmModel] = pydantic.Field(default_factory=list)
 

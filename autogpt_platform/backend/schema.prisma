@@ -1240,11 +1240,6 @@ model LlmProvider {
   defaultCredentialId       String?
   defaultCredentialType     String?
 
-  supportsTools        Boolean @default(true)
-  supportsJsonOutput   Boolean @default(true)
-  supportsReasoning    Boolean @default(false)
-  supportsParallelTool Boolean @default(false)
-
   metadata Json @default("{}")
 
   Models LlmModel[]
@@ -1272,6 +1267,13 @@ model LlmModel {
   priceTier       Int     @default(1) // 1=cheapest, 2=medium, 3=expensive
   isEnabled       Boolean @default(true)
   isRecommended   Boolean @default(false)
+
+  // Model-specific capabilities (moved from Provider per Nick's feedback)
+  // These vary per model even within the same provider (e.g., Hugging Face)
+  supportsTools        Boolean @default(true)
+  supportsJsonOutput   Boolean @default(true)
+  supportsReasoning    Boolean @default(false)
+  supportsParallelTool Boolean @default(false)
 
   capabilities Json @default("{}")
   metadata     Json @default("{}")
