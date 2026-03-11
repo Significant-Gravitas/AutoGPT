@@ -129,10 +129,18 @@ export function useChatSession() {
     }
   }
 
+  // Raw messages from the initial page — exposed for cross-page
+  // tool output matching by useLoadMoreMessages.
+  const rawSessionMessages =
+    sessionQuery.data?.status === 200
+      ? ((sessionQuery.data.data.messages ?? []) as unknown[])
+      : [];
+
   return {
     sessionId,
     setSessionId,
     hydratedMessages,
+    rawSessionMessages,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,

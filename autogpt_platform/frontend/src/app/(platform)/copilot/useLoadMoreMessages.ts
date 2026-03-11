@@ -1,15 +1,17 @@
 import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  concatWithAssistantMerge,
   convertChatSessionMessagesToUiMessages,
+  extractToolOutputsFromRaw,
 } from "./helpers/convertChatSessionToUiMessages";
 
 interface UseLoadMoreMessagesArgs {
   sessionId: string | null;
   initialOldestSequence: number | null;
   initialHasMore: boolean;
+  /** Raw messages from the initial page, used for cross-page tool output matching. */
+  initialPageRawMessages: unknown[];
 }
 
 const MAX_CONSECUTIVE_ERRORS = 3;
@@ -18,10 +20,12 @@ export function useLoadMoreMessages({
   sessionId,
   initialOldestSequence,
   initialHasMore,
+  initialPageRawMessages,
 }: UseLoadMoreMessagesArgs) {
-  const [olderMessages, setOlderMessages] = useState<
-    UIMessage<unknown, UIDataTypes, UITools>[]
-  >([]);
+  // Store accumulated raw messages from all older pages (in ascending order).
+  // Re-converting them all together ensures tool outputs are matched across
+  // inter-page boundaries.
+  const [olderRawMessages, setOlderRawMessages] = useState<unknown[]>([]);
   const [oldestSequence, setOldestSequence] = useState<number | null>(
     initialOldestSequence,
   );
@@ -42,7 +46,7 @@ export function useLoadMoreMessages({
       // Session changed — full reset
       prevSessionIdRef.current = sessionId;
       prevInitialOldestRef.current = initialOldestSequence;
-      setOlderMessages([]);
+      setOlderRawMessages([]);
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
@@ -51,12 +55,12 @@ export function useLoadMoreMessages({
       epochRef.current += 1;
     } else if (
       prevInitialOldestRef.current !== initialOldestSequence &&
-      olderMessages.length > 0
+      olderRawMessages.length > 0
     ) {
       // Same session but initial window shifted (e.g. new messages arrived) —
       // clear paged state to avoid gaps/duplicates
       prevInitialOldestRef.current = initialOldestSequence;
-      setOlderMessages([]);
+      setOlderRawMessages([]);
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
@@ -70,6 +74,24 @@ export function useLoadMoreMessages({
       setHasMore(initialHasMore);
     }
   }, [sessionId, initialOldestSequence, initialHasMore]);
+
+  // Convert all accumulated raw messages in one pass so tool outputs
+  // are matched across inter-page boundaries. Initial page tool outputs
+  // are included via extraToolOutputs to handle the boundary between
+  // the last older page and the initial/streaming page.
+  const olderMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
+    useMemo(() => {
+      if (!sessionId || olderRawMessages.length === 0) return [];
+      const extraToolOutputs =
+        initialPageRawMessages.length > 0
+          ? extractToolOutputsFromRaw(initialPageRawMessages)
+          : undefined;
+      return convertChatSessionMessagesToUiMessages(
+        sessionId,
+        olderRawMessages,
+        { isComplete: true, extraToolOutputs },
+      );
+    }, [sessionId, olderRawMessages, initialPageRawMessages]);
 
   async function loadMore() {
     if (
@@ -105,13 +127,8 @@ export function useLoadMoreMessages({
 
       consecutiveErrorsRef.current = 0;
 
-      const newMessages = convertChatSessionMessagesToUiMessages(
-        sessionId,
-        response.data.messages ?? [],
-        { isComplete: true },
-      );
-
-      setOlderMessages((prev) => concatWithAssistantMerge(newMessages, prev));
+      const newRaw = (response.data.messages ?? []) as unknown[];
+      setOlderRawMessages((prev) => [...newRaw, ...prev]);
       setOldestSequence(response.data.oldest_sequence ?? null);
       setHasMore(!!response.data.has_more_messages);
     } catch (error) {

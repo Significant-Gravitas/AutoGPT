@@ -39,6 +39,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    rawSessionMessages,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
@@ -69,6 +70,7 @@ export function useCopilotPage() {
       sessionId,
       initialOldestSequence: oldestSequence,
       initialHasMore: hasMoreMessages,
+      initialPageRawMessages: rawSessionMessages,
     });
 
   // Combine older (paginated) messages with current page messages,

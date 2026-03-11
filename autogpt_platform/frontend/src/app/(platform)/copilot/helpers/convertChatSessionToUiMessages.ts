@@ -126,13 +126,52 @@ export function concatWithAssistantMerge(
   return [...a, ...b];
 }
 
+/**
+ * Extract a toolCallId → output map from raw API messages.
+ * Used to provide cross-page tool output context when converting
+ * older pages that may have assistant tool_calls whose results
+ * are in a newer page.
+ */
+export function extractToolOutputsFromRaw(
+  rawMessages: unknown[],
+): Map<string, unknown> {
+  const map = new Map<string, unknown>();
+  for (const raw of rawMessages) {
+    if (!raw || typeof raw !== "object") continue;
+    const msg = raw as Record<string, unknown>;
+    if (
+      msg.role === "tool" &&
+      typeof msg.tool_call_id === "string" &&
+      msg.content != null
+    ) {
+      map.set(
+        msg.tool_call_id,
+        typeof msg.content === "string" ? msg.content : String(msg.content),
+      );
+    }
+  }
+  return map;
+}
+
 export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
-  options?: { isComplete?: boolean },
+  options?: {
+    isComplete?: boolean;
+    /** Tool outputs from adjacent pages, for cross-page tool_call matching. */
+    extraToolOutputs?: Map<string, unknown>;
+  },
 ): UIMessage<unknown, UIDataTypes, UITools>[] {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
+
+  // Seed with extra tool outputs from adjacent pages first;
+  // outputs from this page will override if present in both.
+  if (options?.extraToolOutputs) {
+    for (const [id, output] of options.extraToolOutputs) {
+      toolOutputsByCallId.set(id, output);
+    }
+  }
 
   for (const msg of messages) {
     if (msg.role !== "tool") continue;
