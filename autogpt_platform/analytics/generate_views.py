@@ -7,7 +7,10 @@ CREATE OR REPLACE VIEW in the analytics schema.
 
 Usage
 -----
-  # Dry-run: print the SQL without executing
+  # Print one-time setup SQL (schema, role, grants)
+  python generate_views.py --setup
+
+  # Dry-run: print all view SQL without executing
   python generate_views.py --dry-run
 
   # Apply to database (uses DATABASE_URL env var)
@@ -26,7 +29,7 @@ Environment variables
 
 Notes
 -----
-- Run setup.sql first (once) to create the schema and grants.
+- Run --setup output first (once) to create the schema and grants.
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
 - Looker, PostHog Data Warehouse, and Supabase MCP all benefit
   from the same analytics.* views after running this script.
@@ -39,6 +42,44 @@ from pathlib import Path
 
 QUERIES_DIR = Path(__file__).parent / "queries"
 SCHEMA = "analytics"
+
+SETUP_SQL = """\
+-- =============================================================
+-- AutoGPT Analytics Schema Setup
+-- Run ONCE in Supabase SQL Editor as the postgres superuser.
+-- After this, run generate_views.py to create/refresh the views.
+-- =============================================================
+
+-- 1. Create the analytics schema
+CREATE SCHEMA IF NOT EXISTS analytics;
+
+-- 2. Create the read-only role (skip if already exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analytics_readonly') THEN
+    CREATE ROLE analytics_readonly WITH LOGIN PASSWORD 'CHANGE_ME';
+  END IF;
+END
+$$;
+
+-- 3. Auth schema grants
+--    Supabase restricts the auth schema; run as postgres superuser.
+GRANT USAGE ON SCHEMA auth TO analytics_readonly;
+GRANT SELECT ON auth.sessions TO analytics_readonly;
+GRANT SELECT ON auth.audit_log_entries TO analytics_readonly;
+
+-- 4. Platform schema grants
+GRANT USAGE ON SCHEMA platform TO analytics_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA platform TO analytics_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA platform
+  GRANT SELECT ON TABLES TO analytics_readonly;
+
+-- 5. Analytics schema grants
+GRANT USAGE ON SCHEMA analytics TO analytics_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
+  GRANT SELECT ON TABLES TO analytics_readonly;
+"""
 
 
 def view_name_from_file(path: Path) -> str:
@@ -107,6 +148,9 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
+        "--setup", action="store_true", help="Print one-time schema/role/grant SQL"
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="Print SQL without executing"
     )
     parser.add_argument(
@@ -116,6 +160,10 @@ def main() -> None:
         "--only", help="Comma-separated list of view names to update (default: all)"
     )
     args = parser.parse_args()
+
+    if args.setup:
+        print(SETUP_SQL)
+        return
 
     only = [v.strip() for v in args.only.split(",")] if args.only else None
     views = generate_all(only=only)
