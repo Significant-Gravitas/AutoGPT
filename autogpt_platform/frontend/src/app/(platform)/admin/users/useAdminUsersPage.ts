@@ -35,7 +35,7 @@ export function useAdminUsersPage() {
     null,
   );
 
-  const invitedUsersQuery = useGetV2ListInvitedUsers({
+  const invitedUsersQuery = useGetV2ListInvitedUsers(undefined, {
     query: {
       select: okData,
       refetchInterval: 30_000,
