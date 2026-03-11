@@ -72,6 +72,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                 "_make_request": lambda *args, **kwargs: {"orderId": "314144241"},
                 "_convert_to_color": lambda *args, **kwargs: "black",
             },
+            is_sensitive_action=True,
         )
 
     async def run(
