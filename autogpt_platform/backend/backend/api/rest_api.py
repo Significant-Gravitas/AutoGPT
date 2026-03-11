@@ -37,6 +37,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -121,9 +122,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Note: Graceful fallback for now since no blocks consume registry yet (comes in PR #5)
     # When block integration lands, this should fail hard or skip block initialization
     try:
-        from backend.data.llm_registry import refresh_llm_registry
-
-        await refresh_llm_registry()
+        await backend.data.llm_registry.refresh_llm_registry()
         logger.info("LLM registry refreshed successfully at startup")
     except Exception as e:
         logger.warning(
