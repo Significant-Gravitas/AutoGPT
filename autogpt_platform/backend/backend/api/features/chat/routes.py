@@ -352,10 +352,8 @@ async def get_session(
         raise NotFoundError(f"Session {session_id} not found.")
 
     # Paginated message query
-    chat_messages, has_more, oldest_sequence = await get_chat_messages_paginated(
-        session_id, limit, before_sequence
-    )
-    messages = [message.model_dump() for message in chat_messages]
+    page = await get_chat_messages_paginated(session_id, limit, before_sequence)
+    messages = [message.model_dump() for message in page.messages]
 
     # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
@@ -380,8 +378,8 @@ async def get_session(
         user_id=session_info.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
-        has_more_messages=has_more,
-        oldest_sequence=oldest_sequence,
+        has_more_messages=page.has_more,
+        oldest_sequence=page.oldest_sequence,
     )
 
 

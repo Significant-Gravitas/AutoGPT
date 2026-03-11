@@ -14,6 +14,7 @@ from prisma.types import (
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
 )
+from pydantic import BaseModel
 
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
@@ -21,6 +22,14 @@ from backend.util.json import SafeJson, sanitize_string
 from .model import ChatMessage, ChatSession, ChatSessionInfo
 
 logger = logging.getLogger(__name__)
+
+
+class PaginatedMessages(BaseModel):
+    """Result of a paginated message query."""
+
+    messages: list[ChatMessage]
+    has_more: bool
+    oldest_sequence: int | None
 
 
 async def get_chat_session(session_id: str) -> ChatSession | None:
@@ -44,13 +53,9 @@ async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
     before_sequence: int | None = None,
-) -> tuple[list[ChatMessage], bool, int | None]:
-    """Get paginated messages for a session, newest first.
-
-    Returns:
-        Tuple of (messages in ascending order, has_more, oldest_sequence).
-    """
-    where: dict = {"sessionId": session_id}
+) -> PaginatedMessages:
+    """Get paginated messages for a session, newest first."""
+    where: dict[str, Any] = {"sessionId": session_id}
     if before_sequence is not None:
         where["sequence"] = {"lt": before_sequence}
 
@@ -71,24 +76,26 @@ async def get_chat_messages_paginated(
     # expand backward to include the preceding assistant message that
     # owns the tool_calls, so convertChatSessionMessagesToUiMessages
     # can pair them correctly.
+    _BOUNDARY_SCAN_LIMIT = 10
     if results and results[0].role == "tool":
-        boundary_where: dict = {
+        boundary_where: dict[str, Any] = {
             "sessionId": session_id,
             "sequence": {"lt": results[0].sequence},
         }
         extra = await PrismaChatMessage.prisma().find_many(
             where=boundary_where,
             order={"sequence": "desc"},
-            take=10,
+            take=_BOUNDARY_SCAN_LIMIT,
         )
         # Find the first non-tool message (should be the assistant)
         boundary_msgs = []
         found_owner = False
         for msg in extra:
-            boundary_msgs.insert(0, msg)
+            boundary_msgs.append(msg)
             if msg.role != "tool":
                 found_owner = True
                 break
+        boundary_msgs.reverse()
         if not found_owner:
             logger.warning(
                 "Boundary expansion did not find owning assistant message "
@@ -99,12 +106,19 @@ async def get_chat_messages_paginated(
             )
         if boundary_msgs:
             results = boundary_msgs + results
-            has_more = True  # There may be more before the expanded boundary
+            # Only mark has_more if the expanded boundary isn't the
+            # very start of the conversation (sequence 0).
+            if boundary_msgs[0].sequence > 0:
+                has_more = True
 
     messages = [ChatMessage.from_db(m) for m in results]
     oldest_sequence = messages[0].sequence if messages else None
 
-    return messages, has_more, oldest_sequence
+    return PaginatedMessages(
+        messages=messages,
+        has_more=has_more,
+        oldest_sequence=oldest_sequence,
+    )
 
 
 async def create_chat_session(
