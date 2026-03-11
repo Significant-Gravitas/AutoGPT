@@ -583,13 +583,18 @@ async def _open_signup_create_user(
     """Create a user without requiring an invite (open signup mode)."""
     preferred_name = _normalize_name(metadata_name)
     try:
-        user = await prisma.models.User.prisma().create(
-            data=prisma.types.UserCreateInput(
-                id=auth_user_id,
-                email=normalized_email,
-                name=preferred_name,
+        async with transaction() as tx:
+            user = await prisma.models.User.prisma(tx).create(
+                data=prisma.types.UserCreateInput(
+                    id=auth_user_id,
+                    email=normalized_email,
+                    name=preferred_name,
+                )
             )
-        )
+            await _ensure_default_profile(
+                auth_user_id, normalized_email, preferred_name, tx
+            )
+            await _ensure_default_onboarding(auth_user_id, tx)
     except UniqueViolationError:
         existing = await prisma.models.User.prisma().find_unique(
             where={"id": auth_user_id}
