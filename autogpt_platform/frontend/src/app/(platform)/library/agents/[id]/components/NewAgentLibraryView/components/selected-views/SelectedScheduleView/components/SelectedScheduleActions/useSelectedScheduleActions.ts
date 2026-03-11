@@ -28,13 +28,15 @@ export function useSelectedScheduleActions({
     mutation: {
       onSuccess: () => {
         toast({ title: "Schedule deleted" });
+        setShowDeleteDialog(false);
+
+        onDeleted?.();
+
         queryClient.invalidateQueries({
           queryKey: getGetV1ListExecutionSchedulesForAGraphQueryOptions(
             agent.graph_id,
           ).queryKey,
         });
-        setShowDeleteDialog(false);
-        onDeleted?.();
       },
       onError: (error: unknown) =>
         toast({

@@ -151,6 +151,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
+    MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
@@ -418,6 +422,42 @@ MODEL_METADATA = {
     ),
     LlmModel.MISTRAL_NEMO: ModelMetadata(
         "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
+    ),
+    LlmModel.MISTRAL_LARGE_3: ModelMetadata(
+        "open_router",
+        262144,
+        None,
+        "Mistral Large 3 2512",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_MEDIUM_3_1: ModelMetadata(
+        "open_router",
+        131072,
+        None,
+        "Mistral Medium 3.1",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_SMALL_3_2: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Mistral Small 3.2 24B",
+        "OpenRouter",
+        "Mistral AI",
+        1,
+    ),
+    LlmModel.CODESTRAL: ModelMetadata(
+        "open_router",
+        256000,
+        None,
+        "Codestral 2508",
+        "OpenRouter",
+        "Mistral AI",
+        1,
     ),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
