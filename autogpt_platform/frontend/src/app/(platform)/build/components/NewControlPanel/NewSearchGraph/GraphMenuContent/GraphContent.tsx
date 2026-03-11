@@ -114,7 +114,7 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                                 truncateLengthLimit={45}
                               />
                             </span>
-                            <span className="block break-all text-xs font-normal text-zinc-500">
+                            <span className="block text-xs font-normal break-all text-zinc-500">
                               <TextRenderer
                                 value={
                                   getNodeInputOutputSummary(node) ||

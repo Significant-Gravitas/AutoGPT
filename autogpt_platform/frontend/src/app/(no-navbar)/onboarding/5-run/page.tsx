@@ -63,15 +63,15 @@ export default function Page() {
               <OnboardingText variant="header">
                 Provide details for your agent
               </OnboardingText>
-              <span className="mt-9 text-base font-normal leading-normal text-zinc-600">
+              <span className="mt-9 text-base leading-normal font-normal text-zinc-600">
                 Give your agent the details it needs to work—just enter <br />
                 the key information and get started.
               </span>
-              <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
+              <span className="mt-4 text-base leading-normal font-normal text-zinc-600">
                 When you&apos;re done, click <b>Run Agent</b>.
               </span>
 
-              <Card className="agpt-box mt-4">
+              <Card className="mt-4 agpt-box">
                 <CardHeader>
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
                 </CardHeader>

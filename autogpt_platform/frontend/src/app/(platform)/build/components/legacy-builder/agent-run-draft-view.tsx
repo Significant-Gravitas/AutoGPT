@@ -623,7 +623,7 @@ export function AgentRunDraftView({
         : "inactive";
 
   return (
-    <div className={cn("agpt-div flex gap-6", className)}>
+    <div className={cn("flex gap-6 agpt-div", className)}>
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {graph.trigger_setup_info && agentPreset && (
           <Card className="agpt-box">
@@ -651,7 +651,7 @@ export function AgentRunDraftView({
                   <div className="nodrag mt-5 flex flex-col gap-1">
                     Webhook URL:
                     <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                      <code className="select-all text-sm">
+                      <code className="text-sm select-all">
                         {agentPreset.webhook.url}
                       </code>
                       <Button

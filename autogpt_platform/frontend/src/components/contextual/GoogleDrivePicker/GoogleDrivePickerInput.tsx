@@ -122,11 +122,7 @@ export function GoogleDrivePickerInput({
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={file.iconUrl}
-                    alt=""
-                    className="h-4 w-4 shrink-0"
-                  />
+                  <img src={file.iconUrl} alt="" className="h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate" title={file.name}>
                   {file.name || file.id}

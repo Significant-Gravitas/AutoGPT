@@ -47,7 +47,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
 
     return (
       <div className="relative">
-        <div className="h-60 overflow-hidden rounded-[26px] bg-customGray-200 dark:bg-neutral-700 sm:h-80 sm:w-full md:h-100 lg:h-120">
+        <div className="h-60 overflow-hidden rounded-[26px] bg-customGray-200 sm:h-80 sm:w-full md:h-100 lg:h-120 dark:bg-neutral-700">
           {isValidVideoUrl(image) ? (
             getYouTubeVideoId(image) ? (
               <iframe
@@ -99,10 +99,10 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 }
               }}
             >
-              <span className="pr-1 text-sm font-medium leading-6 tracking-tight text-customGray-700 dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
+              <span className="pr-1 text-sm leading-6 font-medium tracking-tight text-customGray-700 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9 dark:text-neutral-200">
                 Play demo
               </span>
-              <PlayIcon className="h-5 w-5 text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
+              <PlayIcon className="h-5 w-5 text-black sm:h-6 sm:w-6 md:h-7 md:w-7 dark:text-neutral-200" />
             </Button>
           </div>
         )}

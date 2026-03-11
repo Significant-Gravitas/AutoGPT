@@ -22,7 +22,7 @@ export function CookieConsentBanner() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 px-10 pb-4">
+      <div className="fixed right-0 bottom-0 left-0 z-50 px-10 pb-4">
         <div
           className="mx-auto max-w-6xl rounded-lg border border-neutral-200 bg-white p-4 shadow-lg dark:border-neutral-800 dark:bg-neutral-950"
           role="dialog"

@@ -92,7 +92,7 @@ export default function Page() {
       </h1>
       <p
         className={cn(
-          "mb-16 mt-4 font-poppins text-2xl font-medium text-violet-800 transition-opacity duration-500",
+          "mt-4 mb-16 font-poppins text-2xl font-medium text-violet-800 transition-opacity duration-500",
           showSubtext ? "opacity-100" : "opacity-0",
         )}
       >

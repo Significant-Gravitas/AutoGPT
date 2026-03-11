@@ -17,12 +17,12 @@ export function TallyPopupSimple() {
   }
 
   return (
-    <div className="fixed bottom-1 right-0 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
+    <div className="fixed right-0 bottom-1 z-20 hidden items-center gap-4 p-3 transition-all duration-300 ease-in-out select-none md:flex">
       {state.showTutorial && !isNewBuilder && (
         <Button
           variant="primary"
           onClick={handlers.handleResetTutorial}
-          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left font-sans text-lg font-medium leading-6"
+          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left font-sans text-lg leading-6 font-medium"
         >
           Tutorial
         </Button>
@@ -42,7 +42,7 @@ export function TallyPopupSimple() {
             : String(state.isAuthenticated)
         }
         data-email={state.userEmail || "not-authenticated"}
-        className="mb-0 h-14 rounded-2xl bg-[rgba(65,65,64,1)] text-center font-sans text-lg font-medium leading-6"
+        className="mb-0 h-14 rounded-2xl bg-[rgba(65,65,64,1)] text-center font-sans text-lg leading-6 font-medium"
       >
         Give Feedback
       </Button>

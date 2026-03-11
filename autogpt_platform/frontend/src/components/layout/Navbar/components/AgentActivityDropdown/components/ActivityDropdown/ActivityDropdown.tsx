@@ -69,7 +69,7 @@ export function ActivityDropdown({
   return (
     <div className="overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4 pb-1 pt-0">
+      <div className="sticky top-0 z-10 px-4 pt-0 pb-1">
         <div className="flex h-[60px] items-center justify-between">
           {isSearchVisible && withSearch ? (
             <div
@@ -93,7 +93,7 @@ export function ActivityDropdown({
                 />
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
                   <X size={16} className="text-gray-500" />
@@ -139,7 +139,7 @@ export function ActivityDropdown({
             style={{ width: 320, height: listHeight }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
+          <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
               <Bell className="h-6 w-6 text-zinc-300" />
             </div>

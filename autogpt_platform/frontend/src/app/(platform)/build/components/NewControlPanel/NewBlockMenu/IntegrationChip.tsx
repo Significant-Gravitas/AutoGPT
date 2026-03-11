@@ -22,7 +22,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
   return (
     <Button
       className={cn(
-        "flex h-13 w-full min-w-30 justify-start gap-2 whitespace-normal rounded-small bg-zinc-50 p-2 pr-3 shadow-none",
+        "flex h-13 w-full min-w-30 justify-start gap-2 rounded-small bg-zinc-50 p-2 pr-3 whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
         className,
       )}
@@ -40,7 +40,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-5.5 text-zinc-800">
+        <span className="truncate font-sans text-sm leading-5.5 font-normal text-zinc-800">
           {beautifyString(name)}
         </span>
       )}

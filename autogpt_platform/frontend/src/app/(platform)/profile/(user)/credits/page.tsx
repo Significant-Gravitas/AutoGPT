@@ -108,7 +108,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 sm:mb-8 sm:text-[35px] dark:text-neutral-100">
         Billing
       </h1>
 

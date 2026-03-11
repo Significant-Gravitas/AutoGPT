@@ -196,7 +196,7 @@ export function Input({
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600"
+          className="absolute top-1/2 right-4 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600"
           aria-label="Press and hold to show password"
         >
           {showPassword ? <Eye size={16} /> : <EyeSlash size={16} />}
@@ -212,7 +212,7 @@ export function Input({
         variant="small-medium"
         as="span"
         className={cn(
-          "absolute left-0 top-full mt-1 text-red-500! transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >

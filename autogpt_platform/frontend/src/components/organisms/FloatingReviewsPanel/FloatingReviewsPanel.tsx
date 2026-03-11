@@ -114,7 +114,7 @@ export function FloatingReviewsPanel({
   }
 
   return (
-    <div className={cn("fixed bottom-20 right-4 z-50", className)}>
+    <div className={cn("fixed right-4 bottom-20 z-50", className)}>
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
@@ -133,7 +133,7 @@ export function FloatingReviewsPanel({
             onClick={() => setIsOpen(false)}
             variant="icon"
             size="icon"
-            className="absolute right-4 top-4 z-10"
+            className="absolute top-4 right-4 z-10"
           >
             <XIcon size={16} />
           </Button>

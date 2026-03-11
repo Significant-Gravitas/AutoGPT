@@ -29,7 +29,7 @@ export function LlmMenuItem({
     <button
       type="button"
       onClick={onClick}
-      className={cn("w-full py-1 pl-2 pr-4 text-left hover:bg-zinc-100")}
+      className={cn("w-full py-1 pr-4 pl-2 text-left hover:bg-zinc-100")}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">

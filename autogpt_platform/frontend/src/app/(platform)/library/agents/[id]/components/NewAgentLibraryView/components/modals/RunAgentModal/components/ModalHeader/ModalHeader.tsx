@@ -29,7 +29,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
           <ShowMoreText
             previewLimit={400}
             variant="small"
-            className="mb-2 mt-4 text-zinc-700!"
+            className="mt-4 mb-2 text-zinc-700!"
           >
             {agent.description}
           </ShowMoreText>

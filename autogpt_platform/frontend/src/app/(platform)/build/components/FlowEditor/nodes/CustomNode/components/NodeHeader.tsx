@@ -57,8 +57,8 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                 onChange={(e) => setEditedTitle(e.target.value)}
                 autoFocus
                 className={cn(
-                  "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-hidden focus:ring-0",
-                  "font-sans text-[1rem] font-semibold leading-6 text-zinc-800",
+                  "m-0 h-fit w-full border-none bg-transparent p-0 focus:ring-0 focus:outline-hidden",
+                  "font-sans text-[1rem] leading-6 font-semibold text-zinc-800",
                 )}
                 onBlur={handleTitleEdit}
                 onKeyDown={handleTitleKeyDown}

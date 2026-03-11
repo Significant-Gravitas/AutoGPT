@@ -36,7 +36,7 @@ export default function AuthFeedback({
     <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
-        <div className="text-center text-sm font-medium leading-normal">
+        <div className="text-center text-sm leading-normal font-medium">
           {isError ? (
             <div className="flex items-center justify-center space-x-2 text-red-500">
               <AlertCircle className="h-4 w-4" />

@@ -198,7 +198,7 @@ function TwoColumnSection({
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <li className="text-sm text-gray-400 italic dark:text-gray-500">
                 None
               </li>
             )}
@@ -224,7 +224,7 @@ function TwoColumnSection({
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <li className="text-sm text-gray-400 italic dark:text-gray-500">
                 None
               </li>
             )}

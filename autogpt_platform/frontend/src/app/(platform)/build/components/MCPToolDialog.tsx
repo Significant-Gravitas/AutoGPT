@@ -451,7 +451,7 @@ function MCPToolCard({
       }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
         <span className="flex-1 text-sm font-semibold dark:text-white">
           {tool.name}
         </span>

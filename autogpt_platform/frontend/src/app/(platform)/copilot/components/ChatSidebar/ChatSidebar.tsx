@@ -217,7 +217,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-4 pt-4 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <SidebarHeader className="shrink-0 px-4 pt-4 pb-4 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -305,8 +305,8 @@ export function ChatSidebar() {
                         onClick={() => handleSelectSession(session.id)}
                         className="w-full px-3 py-2.5 pr-10 text-left"
                       >
-                        <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                          <div className="min-w-0 max-w-full">
+                        <div className="flex max-w-full min-w-0 flex-col overflow-hidden">
+                          <div className="max-w-full min-w-0">
                             <Text
                               variant="body"
                               className={cn(
@@ -341,7 +341,7 @@ export function ChatSidebar() {
                         <DropdownMenuTrigger asChild>
                           <button
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                            className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
                             aria-label="More actions"
                           >
                             <DotsThree className="h-4 w-4" />

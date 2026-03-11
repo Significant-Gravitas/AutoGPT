@@ -67,17 +67,17 @@ export const IntegrationBlocks = () => {
           <div className="flex items-center gap-1">
             <Button
               variant={"link"}
-              className="p-0 font-sans text-sm font-medium leading-5.5 text-zinc-800"
+              className="p-0 font-sans text-sm leading-5.5 font-medium text-zinc-800"
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
               Integrations
             </Button>
-            <p className="font-sans text-sm font-medium leading-5.5 text-zinc-800">
+            <p className="font-sans text-sm leading-5.5 font-medium text-zinc-800">
               /
             </p>
-            <p className="font-sans text-sm font-medium leading-5.5 text-zinc-800">
+            <p className="font-sans text-sm leading-5.5 font-medium text-zinc-800">
               {integration}
             </p>
           </div>

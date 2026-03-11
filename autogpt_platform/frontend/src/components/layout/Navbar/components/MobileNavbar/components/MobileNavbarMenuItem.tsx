@@ -24,8 +24,10 @@ export function MobileNavbarMenuItem({
       <div className="relative">
         <div
           className={cn(
-            "font-sans text-base font-normal leading-7",
-            isActive ? "font-semibold text-customGray-700" : "text-customGray-500",
+            "font-sans text-base leading-7 font-normal",
+            isActive
+              ? "font-semibold text-customGray-700"
+              : "text-customGray-500",
           )}
         >
           {text}

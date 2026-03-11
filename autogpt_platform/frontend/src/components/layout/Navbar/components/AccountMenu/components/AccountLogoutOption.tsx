@@ -18,7 +18,7 @@ export function AccountLogoutOption() {
       <div className="relative h-4 w-4">
         <IconLogOut />
       </div>
-      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+      <div className="font-sans text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
         Log out
       </div>
     </button>

@@ -77,7 +77,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-30 items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
+        "group flex h-16 w-full min-w-30 items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
         className,
       )}
@@ -100,7 +100,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         {title && (
           <span
             className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-5.5 text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-sm leading-5.5 font-medium text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(
@@ -112,7 +112,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         {description && (
           <span
             className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(description, highlightedText)}

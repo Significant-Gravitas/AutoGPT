@@ -62,7 +62,7 @@ export const AgentsSection = ({
             >
               <CarouselContent>
                 {displayedAgents.map((agent, index) => (
-                  <CarouselItem key={index} className="min-w-64 max-w-71">
+                  <CarouselItem key={index} className="max-w-71 min-w-64">
                     <StoreCard
                       agentName={agent.agent_name}
                       agentImage={agent.agent_image}

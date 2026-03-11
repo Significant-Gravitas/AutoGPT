@@ -174,7 +174,7 @@ const MultiSelectorTrigger = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm",
+        "agpt-border-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-sm agpt-shadow-input",
         className,
       )}
       {...props}
@@ -256,7 +256,7 @@ const MultiSelectorList = forwardRef<
     <CommandList
       ref={ref}
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg dark:scrollbar-thumb-muted",
+        "scrollbar-thumb-rounded-lg absolute top-0 z-10 scrollbar-thin flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thumb-muted-foreground scrollbar-track-transparent dark:scrollbar-thumb-muted",
         className,
       )}
     >

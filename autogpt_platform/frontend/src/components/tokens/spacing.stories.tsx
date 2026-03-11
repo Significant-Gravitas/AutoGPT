@@ -237,7 +237,7 @@ export function AllVariants() {
               <div className="ml-8 flex-1">
                 <div className="relative h-6 bg-gray-50">
                   <div
-                    className="absolute left-0 top-0 h-full bg-blue-500"
+                    className="absolute top-0 left-0 h-full bg-blue-500"
                     style={{ width: space.value }}
                   ></div>
                 </div>

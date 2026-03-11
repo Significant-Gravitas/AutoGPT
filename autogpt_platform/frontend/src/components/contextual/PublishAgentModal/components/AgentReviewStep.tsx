@@ -45,14 +45,14 @@ export function AgentReviewStep({
           <div className="gap- flex flex-col items-center">
             <Text
               variant="lead"
-              className="line-clamp-1 text-ellipsis text-center font-semibold"
+              className="line-clamp-1 text-center font-semibold text-ellipsis"
               data-testid="view-agent-name"
             >
               {agentName}
             </Text>
             <Text
               variant="large"
-              className="line-clamp-1 text-ellipsis text-center text-neutral-500"
+              className="line-clamp-1 text-center text-ellipsis text-neutral-500"
             >
               {subheader}
             </Text>
@@ -80,7 +80,7 @@ export function AgentReviewStep({
           {description ? (
             <Text
               variant="large"
-              className="line-clamp-1 text-ellipsis pt-2 text-center text-neutral-500"
+              className="line-clamp-1 pt-2 text-center text-ellipsis text-neutral-500"
             >
               {description}
             </Text>

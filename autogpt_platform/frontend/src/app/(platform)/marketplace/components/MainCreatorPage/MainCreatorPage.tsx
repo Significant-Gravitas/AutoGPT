@@ -60,11 +60,11 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <p className="text-underline-position-from-font text-decoration-skip-none text-left font-poppins text-base font-medium leading-6">
+              <p className="text-underline-position-from-font text-decoration-skip-none text-left font-poppins text-base leading-6 font-medium">
                 About
               </p>
               <div
-                className="text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
+                className="text-[48px] leading-[59px] font-normal text-neutral-900 dark:text-zinc-50"
                 style={{ whiteSpace: "pre-line" }}
                 data-testid="creator-description"
               >

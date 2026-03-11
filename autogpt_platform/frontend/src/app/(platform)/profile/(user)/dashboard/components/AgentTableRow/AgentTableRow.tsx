@@ -63,7 +63,7 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 md:flex dark:border-neutral-700 dark:hover:bg-neutral-800"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
         {/* Agent info column */}

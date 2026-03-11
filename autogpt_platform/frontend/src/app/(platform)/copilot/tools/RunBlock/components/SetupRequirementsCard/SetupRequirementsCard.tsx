@@ -126,7 +126,7 @@ export function SetupRequirementsCard({
           </Text>
           <FormRenderer
             jsonSchema={inputSchema}
-            className="mb-3 mt-3"
+            className="mt-3 mb-3"
             handleChange={(v) => setInputValues(v.formData ?? {})}
             uiSchema={{
               "ui:submitButtonOptions": { norender: true },

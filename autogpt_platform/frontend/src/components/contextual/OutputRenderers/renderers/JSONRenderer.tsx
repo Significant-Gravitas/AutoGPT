@@ -143,7 +143,7 @@ function JSONViewer({ data }: { data: any }) {
             </span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {value.map((item, index) => (
                 <div key={index} className="flex">
                   <span className="mr-2 text-muted-foreground">{index}:</span>
@@ -178,7 +178,7 @@ function JSONViewer({ data }: { data: any }) {
             <span className="ml-1 text-muted-foreground">Object</span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
                   <span className="mr-2 text-purple-600">

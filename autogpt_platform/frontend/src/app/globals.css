@@ -1,9 +1,9 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
-@plugin 'tailwind-scrollbar';
+@plugin "tailwind-scrollbar";
 
-@source '../../node_modules/streamdown/dist/**/*.js';
+@source "../../node_modules/streamdown/dist/**/*.js";
 
 @custom-variant dark (&:is(.dark-mode *));
 
@@ -246,7 +246,7 @@
 /* *** AutoGPT Design Components *** */
 
 @utility agpt-border-input {
-  @apply m-0.5 border border-input data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400 focus:border-gray-400 focus:outline-hidden focus:ring-1 focus:ring-gray-400;
+  @apply m-0.5 border border-input focus:border-gray-400 focus:ring-1 focus:ring-gray-400 focus:outline-hidden data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
 }
 
 @utility agpt-shadow-input {

@@ -82,7 +82,7 @@ export function LibraryFolder({
           <Text
             variant="h5"
             data-testid="library-folder-name"
-            className="line-clamp-2 hyphens-auto wrap-break-word"
+            className="line-clamp-2 wrap-break-word hyphens-auto"
           >
             {name}
           </Text>

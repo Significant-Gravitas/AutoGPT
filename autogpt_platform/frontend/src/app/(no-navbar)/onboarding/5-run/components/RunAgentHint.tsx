@@ -10,10 +10,10 @@ export function RunAgentHint(props: RunAgentHintProps) {
     <div className="ml-[104px] w-[481px] pl-5">
       <div className="flex flex-col">
         <OnboardingText variant="header">Run your first agent</OnboardingText>
-        <span className="mt-9 text-base font-normal leading-normal text-zinc-600">
+        <span className="mt-9 text-base leading-normal font-normal text-zinc-600">
           A &apos;run&apos; is when your agent starts working on a task
         </span>
-        <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
+        <span className="mt-4 text-base leading-normal font-normal text-zinc-600">
           Click on <b>New Run</b> below to try it out
         </span>
 
@@ -35,7 +35,7 @@ export function RunAgentHint(props: RunAgentHintProps) {
               <line x1="8" y1="16" x2="24" y2="16" />
             </g>
           </svg>
-          <span className="ml-3 font-sans text-[19px] font-medium leading-normal text-violet-700">
+          <span className="ml-3 font-sans text-[19px] leading-normal font-medium text-violet-700">
             New run
           </span>
         </div>

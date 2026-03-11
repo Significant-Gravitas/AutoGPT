@@ -78,7 +78,7 @@ function renderCode(
   return (
     <div className="group relative">
       {metadata?.language && (
-        <div className="absolute right-2 top-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground">
+        <div className="absolute top-2 right-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground">
           {language}
         </div>
       )}

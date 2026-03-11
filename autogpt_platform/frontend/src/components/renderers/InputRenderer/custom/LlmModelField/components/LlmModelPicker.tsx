@@ -130,7 +130,7 @@ export function LlmModelPicker({
           disabled={disabled}
           className={cn(
             "flex w-full min-w-60 items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left",
-            "hover:border-zinc-300 focus:outline-hidden focus:ring-2 focus:ring-zinc-200",
+            "hover:border-zinc-300 focus:ring-2 focus:ring-zinc-200 focus:outline-hidden",
             disabled && "cursor-not-allowed opacity-60",
           )}
         >

@@ -113,7 +113,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <iframe
           src={embedUrl}
           title="Embedded video player"
-          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          className="absolute top-0 left-0 h-full w-full rounded-lg shadow-md"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -217,7 +217,7 @@ function renderMarkdown(
           ),
           blockquote: ({ children, ...props }) => (
             <blockquote
-              className="my-4 border-l-4 border-blue-500 pl-4 italic text-gray-700 dark:border-blue-400 dark:text-gray-300"
+              className="my-4 border-l-4 border-blue-500 pl-4 text-gray-700 italic dark:border-blue-400 dark:text-gray-300"
               {...props}
             >
               {children}
@@ -235,7 +235,7 @@ function renderMarkdown(
           ),
           th: ({ children, ...props }) => (
             <th
-              className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold tracking-wider text-gray-700 uppercase dark:bg-gray-800 dark:text-gray-300"
               {...props}
             >
               {children}

@@ -193,7 +193,7 @@ const TreeIndicator = forwardRef<
       dir={direction}
       ref={ref}
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 dark:bg-neutral-500 rtl:right-1.5",
+        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 rtl:right-1.5 dark:bg-neutral-500",
         className,
       )}
       {...props}
@@ -314,7 +314,7 @@ const File = forwardRef<
         type="button"
         disabled={!isSelectable}
         className={cn(
-          "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pl-1 rtl:pr-0",
+          "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1",
           {
             "bg-neutral-100 dark:bg-neutral-800": isSelected && isSelectable,
           },
@@ -372,7 +372,7 @@ const CollapseButton = forwardRef<
     return (
       <Button
         variant={"ghost"}
-        className="absolute bottom-1 right-2 h-8 w-fit p-1"
+        className="absolute right-2 bottom-1 h-8 w-fit p-1"
         onClick={
           expandedItems && expandedItems.length > 0
             ? closeAll

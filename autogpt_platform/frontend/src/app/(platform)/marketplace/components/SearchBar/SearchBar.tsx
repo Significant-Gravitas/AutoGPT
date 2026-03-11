@@ -36,7 +36,7 @@ export const SearchBar = ({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className={`grow border-none bg-transparent ${textColor} font-sans text-lg font-normal leading-9 tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-hidden`}
+        className={`grow border-none bg-transparent ${textColor} font-sans text-lg leading-9 font-normal tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-hidden`}
         data-testid="store-search-input"
       />
     </form>

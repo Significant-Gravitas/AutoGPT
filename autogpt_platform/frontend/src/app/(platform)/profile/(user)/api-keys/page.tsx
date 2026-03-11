@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };
 
 const ApiKeysPage = () => {
   return (
-    <div className="w-full pr-4 pt-24 md:pt-0">
+    <div className="w-full pt-24 pr-4 md:pt-0">
       <Card>
         <CardHeader>
           <CardTitle>AutoGPT Platform API Keys</CardTitle>

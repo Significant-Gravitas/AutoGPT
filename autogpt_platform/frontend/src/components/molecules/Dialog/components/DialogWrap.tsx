@@ -123,7 +123,7 @@ export function DialogWrap({
               size="icon"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute right-4 top-4 z-50 size-10 bg-white"
+              className="absolute top-4 right-4 z-50 size-10 bg-white"
               withTooltip={false}
             >
               <X width="1rem" />
@@ -134,7 +134,7 @@ export function DialogWrap({
           <div
             ref={scrollRef}
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-x-hidden overflow-y-auto",
               scrollbarStyles,
             )}
             style={{

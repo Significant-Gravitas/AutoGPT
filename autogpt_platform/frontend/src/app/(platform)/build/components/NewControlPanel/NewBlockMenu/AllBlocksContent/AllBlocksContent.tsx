@@ -60,7 +60,7 @@ export const AllBlocksContent = () => {
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="font-sans text-sm font-medium leading-5.5 text-zinc-800">
+              <p className="font-sans text-sm leading-5.5 font-medium text-zinc-800">
                 {category.name && beautifyString(category.name)}
               </p>
               <span className="rounded-full bg-zinc-100 px-1.5 font-sans text-sm leading-5.5 text-zinc-600">

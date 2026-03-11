@@ -44,16 +44,16 @@ export const MainMarkeplacePage = () => {
           <FeaturedSection featuredAgents={featuredAgents.agents} />
         )}
         {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24" />
+        <Separator className="mt-24 mb-6" />
 
         {topAgents && (
           <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mt-[60px] mb-[25px]" />
         {featuredCreators && (
           <FeaturedCreators featuredCreators={featuredCreators.creators} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mt-[60px] mb-[25px]" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"

@@ -124,7 +124,7 @@ export function CollapsedToolGroup({ parts }: Props) {
       {expanded && (
         <div
           id={panelId}
-          className="ml-5 mt-1 space-y-0.5 border-l border-neutral-200 pl-3"
+          className="mt-1 ml-5 space-y-0.5 border-l border-neutral-200 pl-3"
         >
           {parts.map((part) => {
             const toolName = extractToolName(part);

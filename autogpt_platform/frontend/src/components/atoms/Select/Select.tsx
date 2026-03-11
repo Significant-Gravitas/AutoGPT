@@ -125,7 +125,7 @@ export function Select({
         variant="small-medium"
         as="span"
         className={cn(
-          "absolute left-0 top-full mt-1 text-red-500! transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >

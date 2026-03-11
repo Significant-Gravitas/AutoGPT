@@ -25,7 +25,7 @@ const InputNodeHandle = ({
       type={"target"}
       position={Position.Left}
       id={cleanedHandleId}
-      className={"-ml-6 mr-2"}
+      className={"mr-2 -ml-6"}
       data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">

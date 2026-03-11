@@ -70,9 +70,9 @@ export const ChatContainer = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative px-3 pb-2 pt-2"
+                className="relative px-3 pt-2 pb-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-linear-to-b from-transparent to-[#f8f8f9]" />
+                <div className="pointer-events-none absolute top-[-18px] right-0 left-0 z-10 h-6 bg-linear-to-b from-transparent to-[#f8f8f9]" />
                 <ChatInput
                   inputId="chat-input-session"
                   onSend={onSend}

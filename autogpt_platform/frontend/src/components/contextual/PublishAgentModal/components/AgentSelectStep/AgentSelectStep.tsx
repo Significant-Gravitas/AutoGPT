@@ -134,7 +134,7 @@ export function AgentSelectStep({
                     <div
                       key={agent.id}
                       data-testid="agent-card"
-                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-xs transition-all ${
+                      className={`cursor-pointer overflow-hidden rounded-2xl border border-neutral-200 shadow-xs transition-all select-none ${
                         selectedAgentId === agent.id
                           ? "border-transparent shadow-none ring-4 ring-violet-600"
                           : "hover:shadow-md"

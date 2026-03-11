@@ -73,12 +73,12 @@ export function AccountMenu({
               </>
             ) : (
               <>
-                <div className="max-w-42 truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
+                <div className="max-w-42 truncate font-sans text-base leading-none font-semibold text-white dark:text-neutral-200">
                   {userName}
                 </div>
                 <div
                   data-testid="account-menu-user-email"
-                  className="max-w-42 truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
+                  className="max-w-42 truncate font-sans text-base leading-none font-normal text-white dark:text-neutral-400"
                 >
                   {userEmail}
                 </div>
@@ -105,7 +105,7 @@ export function AccountMenu({
                       <div className="relative">
                         {getAccountMenuOptionIcon(item.icon)}
                       </div>
-                      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                      <div className="font-sans text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
                         {item.text}
                       </div>
                     </Link>
@@ -121,7 +121,7 @@ export function AccountMenu({
                           <div className="relative">
                             {getAccountMenuOptionIcon(item.icon)}
                           </div>
-                          <div className="font-sans text-base font-medium leading-normal text-neutral-800">
+                          <div className="font-sans text-base leading-normal font-medium text-neutral-800">
                             {item.text}
                           </div>
                         </div>
@@ -140,7 +140,7 @@ export function AccountMenu({
                       <div className="relative">
                         {getAccountMenuOptionIcon(item.icon)}
                       </div>
-                      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                      <div className="font-sans text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
                         {item.text}
                       </div>
                     </div>

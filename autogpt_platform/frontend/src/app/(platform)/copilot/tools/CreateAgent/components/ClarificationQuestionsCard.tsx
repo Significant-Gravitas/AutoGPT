@@ -183,7 +183,7 @@ export function ClarificationQuestionsCard({
                         {q.example && (
                           <Text
                             variant="body"
-                            className="mb-2 italic text-slate-500"
+                            className="mb-2 text-slate-500 italic"
                           >
                             Example: {q.example}
                           </Text>

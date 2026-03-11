@@ -37,15 +37,15 @@ export function AgentActivityDropdown() {
               {/* Running Agents Rotating Badge */}
               <div
                 data-testid="agent-activity-badge"
-                className="absolute right-px top-[0.5px] flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-medium text-white"
+                className="absolute top-[0.5px] right-px flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-medium text-white"
               >
                 {formatNotificationCount(activeCount)}
-                <div className="absolute -inset-0.5 animate-spin rounded-full border-[3px] border-transparent border-r-purple-200 border-t-purple-200" />
+                <div className="absolute -inset-0.5 animate-spin rounded-full border-[3px] border-transparent border-t-purple-200 border-r-purple-200" />
               </div>
               {/* Running Agent Hover Hint */}
               <div
                 data-testid="agent-activity-hover-hint"
-                className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block"
+                className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform rounded-small bg-white px-4 py-2 whitespace-nowrap shadow-md group-hover:block"
               >
                 <Text variant="body-medium">
                   {activeCount} active agent{activeCount > 1 ? "s" : ""}

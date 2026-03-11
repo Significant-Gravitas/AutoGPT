@@ -22,21 +22,17 @@ export const variants = {
 
   // Body Text
   lead: "font-sans text-[1.25rem] font-normal leading-7 text-black",
-  "lead-medium":
-    "font-sans text-[1.25rem] font-medium leading-7 text-black",
+  "lead-medium": "font-sans text-[1.25rem] font-medium leading-7 text-black",
   "lead-semibold":
     "font-sans text-[1.25rem] font-semibold leading-7 text-black",
   large: "font-sans text-[1rem] font-normal leading-6.5 text-black",
-  "large-medium":
-    "font-sans text-[1rem] font-medium leading-6.5 text-black",
+  "large-medium": "font-sans text-[1rem] font-medium leading-6.5 text-black",
   "large-semibold":
     "font-sans text-[1rem] font-semibold leading-6.5 text-black",
   body: "font-sans text-[0.875rem] font-normal leading-5.5 text-black",
-  "body-medium":
-    "font-sans text-[0.875rem] font-medium leading-5.5 text-black",
+  "body-medium": "font-sans text-[0.875rem] font-medium leading-5.5 text-black",
   small: "font-sans text-[0.75rem] font-normal leading-4.5 text-black",
-  "small-medium":
-    "font-sans text-[0.75rem] font-medium leading-4.5 text-black",
+  "small-medium": "font-sans text-[0.75rem] font-medium leading-4.5 text-black",
 
   // Label Text
   label:

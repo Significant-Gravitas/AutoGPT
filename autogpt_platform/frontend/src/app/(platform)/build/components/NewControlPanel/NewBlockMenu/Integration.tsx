@@ -26,7 +26,7 @@ export const Integration: IntegrationComponent = ({
   return (
     <Button
       className={cn(
-        "group flex h-16 w-full min-w-30 items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
+        "group flex h-16 w-full min-w-30 items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-50 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
         className,
       )}
@@ -47,7 +47,7 @@ export const Integration: IntegrationComponent = ({
       <div className="w-full">
         <div className="flex items-center justify-between gap-2">
           {title && (
-            <p className="line-clamp-1 flex-1 font-sans text-sm font-medium leading-5.5 text-zinc-700 group-disabled:text-zinc-400">
+            <p className="line-clamp-1 flex-1 font-sans text-sm leading-5.5 font-medium text-zinc-700 group-disabled:text-zinc-400">
               {beautifyString(title)}
             </p>
           )}
@@ -55,7 +55,7 @@ export const Integration: IntegrationComponent = ({
             {number_of_blocks}
           </span>
         </div>
-        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400">
+        <span className="line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400">
           {description}
         </span>
       </div>

@@ -75,7 +75,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             </Avatar>
             <Text
               variant="small-medium"
-              className="uppercase tracking-wide text-zinc-400"
+              className="tracking-wide text-zinc-400 uppercase"
             >
               {isFromMarketplace ? "FROM MARKETPLACE" : "Built by you"}
             </Text>
@@ -84,7 +84,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         <FavoriteButton
           isFavorite={isFavorite}
           onClick={handleToggleFavorite}
-          className="absolute right-10 top-0"
+          className="absolute top-0 right-10"
         />
         <AgentCardMenu agent={agent} />
 
@@ -96,7 +96,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             <Text
               variant="h5"
               data-testid="library-agent-card-name"
-              className="line-clamp-3 hyphens-auto wrap-break-word no-underline hover:no-underline"
+              className="line-clamp-3 wrap-break-word hyphens-auto no-underline hover:no-underline"
             >
               {name}
             </Text>
@@ -128,7 +128,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             )}
           </Link>
 
-          <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pb-1 pt-3">
+          <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pt-3 pb-1">
             <Link
               href={`/library/agents/${id}`}
               data-testid="library-agent-card-see-runs-link"

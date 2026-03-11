@@ -66,8 +66,8 @@ export function MultiToggle({
             onKeyDown={(e) => handleKeyDown(e, item.value)}
             className={cn(
               // Base button styles similar to outline variant
-              "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors",
-              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2",
+              "inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors",
+              "focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 focus-visible:outline-hidden",
               "disabled:pointer-events-none disabled:opacity-50",
               "rounded-full border font-sans",
               "h-9 px-4 py-2 text-sm leading-[22px]",

@@ -44,7 +44,7 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
         <Button
           variant="ghost"
           size="small"
-          className="absolute -right-2 -top-2"
+          className="absolute -top-2 -right-2"
         >
           <PencilSimpleIcon className="size-4" /> Edit schedule
         </Button>

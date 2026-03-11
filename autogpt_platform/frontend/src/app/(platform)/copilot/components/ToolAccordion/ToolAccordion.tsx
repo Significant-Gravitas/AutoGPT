@@ -93,7 +93,7 @@ export function ToolAccordion({
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}
           >
-            <div className="pb-2 pt-3">{children}</div>
+            <div className="pt-3 pb-2">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>

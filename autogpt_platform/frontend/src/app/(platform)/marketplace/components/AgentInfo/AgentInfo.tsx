@@ -151,39 +151,39 @@ export const AgentInfo = ({
       {/* Title */}
       <div
         data-testid="agent-title"
-        className="mb-3 w-full font-poppins text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10"
+        className="mb-3 w-full font-poppins text-2xl leading-normal font-medium text-neutral-900 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10 dark:text-neutral-100"
       >
         {name}
       </div>
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="text-base font-normal text-neutral-800 sm:text-lg lg:text-xl dark:text-neutral-200">
           by
         </div>
         <Link
           data-testid={"agent-creator"}
           href={`/marketplace/creator/${encodeURIComponent(creator)}`}
-          className="text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
+          className="text-base font-medium text-neutral-800 hover:underline sm:text-lg lg:text-xl dark:text-neutral-200"
         >
           {creator}
         </Link>
       </div>
 
       {/* Short Description */}
-      <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+      <div className="mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-neutral-600 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7 dark:text-neutral-300">
         {shortDescription}
       </div>
 
       {/* Rating and Runs */}
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+          <span className="text-base font-semibold whitespace-nowrap text-neutral-800 sm:text-lg dark:text-neutral-200">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="text-base font-semibold whitespace-nowrap text-neutral-800 sm:text-lg dark:text-neutral-200">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -204,7 +204,7 @@ export const AgentInfo = ({
               })
             }
           >
-            <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
+            <span className="justify-start font-sans text-sm leading-snug font-medium text-primary-foreground">
               {isAgentAddedToLibrary ? "See runs" : "Add to library"}
             </span>
           </button>
@@ -212,7 +212,7 @@ export const AgentInfo = ({
       )}
 
       {/* Download section */}
-      <p className="mt-6 text-zinc-600 dark:text-zinc-400 lg:mt-12">
+      <p className="mt-6 text-zinc-600 lg:mt-12 dark:text-zinc-400">
         Want to use this agent locally?{" "}
         <button
           className="underline"
@@ -231,12 +231,12 @@ export const AgentInfo = ({
       <div className="flex w-full flex-col gap-4 lg:gap-6">
         {/* Description Section */}
         <div className="w-full">
-          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+          <div className="decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-800 sm:mb-2 dark:text-neutral-200">
             Description
           </div>
           <div
             data-testid={"agent-description"}
-            className="whitespace-pre-line text-base font-normal leading-6 text-neutral-600 dark:text-neutral-400"
+            className="text-base leading-6 font-normal whitespace-pre-line text-neutral-600 dark:text-neutral-400"
           >
             {longDescription}
           </div>
@@ -244,14 +244,14 @@ export const AgentInfo = ({
 
         {/* Categories */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
-          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+          <div className="decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-800 sm:mb-2 dark:text-neutral-200">
             Categories
           </div>
           <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {categories.map((category, index) => (
               <div
                 key={index}
-                className="decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
+                className="decoration-skip-ink-none rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base leading-6 font-normal whitespace-nowrap text-neutral-800 underline-offset-[from-font] sm:px-[16px] sm:py-[10px] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
               >
                 {category}
               </div>
@@ -261,20 +261,20 @@ export const AgentInfo = ({
 
         {/* Version history */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
-          <div className="decoration-skip-ink-none text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200">
+          <div className="decoration-skip-ink-none text-base leading-6 font-medium text-neutral-800 dark:text-neutral-200">
             Version history
           </div>
-          <div className="decoration-skip-ink-none text-sm font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+          <div className="decoration-skip-ink-none text-sm leading-6 font-normal text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
             Last updated {formatTimeAgo(lastUpdated)}
           </div>
-          <div className="decoration-skip-ink-none text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+          <div className="decoration-skip-ink-none text-xs text-neutral-600 sm:text-sm dark:text-neutral-400">
             Version {version}.0
           </div>
 
           {/* Version List */}
           {agentVersions.length > 0 ? (
             <div className="mt-3">
-              <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-900 dark:text-neutral-200 sm:mb-2">
+              <div className="decoration-skip-ink-none mb-1.5 text-base leading-6 font-medium text-neutral-900 sm:mb-2 dark:text-neutral-200">
                 Changelog
               </div>
               {agentVersions.map(renderVersionItem)}
@@ -303,7 +303,7 @@ export const AgentInfo = ({
               )}
             </div>
           ) : (
-            <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+            <div className="text-xs text-neutral-600 sm:text-sm dark:text-neutral-400">
               Version {version}.0
             </div>
           )}

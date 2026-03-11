@@ -31,10 +31,10 @@ function OnboardingGridElement({
         imageContain
         className="h-12 w-12 rounded-lg"
       />
-      <span className="text-md mt-4 w-full text-left font-medium leading-normal text-[#121212]">
+      <span className="text-md mt-4 w-full text-left leading-normal font-medium text-[#121212]">
         {name}
       </span>
-      <span className="w-full text-left text-[11.5px] font-normal leading-5 text-zinc-500">
+      <span className="w-full text-left text-[11.5px] leading-5 font-normal text-zinc-500">
         {text}
       </span>
       <div

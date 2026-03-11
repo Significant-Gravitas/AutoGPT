@@ -23,7 +23,7 @@ export const CreatorInfoCard = ({
 }: CreatorInfoCardProps) => {
   return (
     <div
-      className="inline-flex h-auto min-h-[500px] w-full max-w-[440px] flex-col items-start justify-between rounded-[26px] bg-violet-100 p-4 dark:bg-violet-900 sm:h-[632px] sm:w-[440px] sm:p-6"
+      className="inline-flex h-auto min-h-[500px] w-full max-w-[440px] flex-col items-start justify-between rounded-[26px] bg-violet-100 p-4 sm:h-[632px] sm:w-[440px] sm:p-6 dark:bg-violet-900"
       role="article"
       aria-label={`Creator profile for ${username}`}
     >
@@ -47,11 +47,11 @@ export const CreatorInfoCard = ({
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
           <div
             data-testid="creator-title"
-            className="w-full font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10"
+            className="w-full font-poppins text-[35px] leading-10 font-medium text-neutral-900 sm:text-[35px] sm:leading-10 dark:text-neutral-100"
           >
             {username}
           </div>
-          <div className="w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
+          <div className="w-full text-lg leading-6 font-normal text-neutral-800 sm:text-xl sm:leading-7 dark:text-neutral-200">
             @{handle}
           </div>
         </div>
@@ -61,7 +61,7 @@ export const CreatorInfoCard = ({
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex flex-col items-start justify-start gap-2.5">
-            <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <div className="w-full text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
               Top categories
             </div>
             <div
@@ -75,7 +75,7 @@ export const CreatorInfoCard = ({
                   className="flex items-center justify-center gap-2.5 rounded-[34px] border border-neutral-600 px-4 py-3 dark:border-neutral-400"
                   role="listitem"
                 >
-                  <div className="text-base font-normal leading-normal text-neutral-800 dark:text-neutral-200">
+                  <div className="text-base leading-normal font-normal text-neutral-800 dark:text-neutral-200">
                     {category}
                   </div>
                 </div>
@@ -88,11 +88,11 @@ export const CreatorInfoCard = ({
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="w-full text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
-                <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+                <div className="text-[18px] leading-[28px] font-semibold text-neutral-800 dark:text-neutral-200">
                   {averageRating.toFixed(1)}
                 </div>
                 <div
@@ -105,10 +105,10 @@ export const CreatorInfoCard = ({
               </div>
             </div>
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+              <div className="w-full text-base leading-normal font-medium text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+              <div className="text-[18px] leading-[28px] font-semibold text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>

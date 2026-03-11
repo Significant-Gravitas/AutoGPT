@@ -112,7 +112,7 @@ export function CredentialRow({
           <Text
             variant="large"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden font-mono tracking-tight whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >

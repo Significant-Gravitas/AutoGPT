@@ -164,7 +164,7 @@ export function TaskGroups({ groups }: Props) {
               <div className="text-sm font-medium text-zinc-900">
                 {group.name}
               </div>
-              <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+              <div className="mt-1 text-xs leading-tight font-normal text-zinc-500">
                 {group.details}
                 <br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
@@ -178,7 +178,7 @@ export function TaskGroups({ groups }: Props) {
                   Done
                 </div>
               ) : (
-                <div className="text-xs font-medium leading-tight text-violet-600">
+                <div className="text-xs leading-tight font-medium text-violet-600">
                   $
                   {group.tasks
                     .reduce((sum, task) => sum + task.amount, 0)
@@ -204,7 +204,7 @@ export function TaskGroups({ groups }: Props) {
               <div
                 key={task.id}
                 ref={setRef(task.id)}
-                className="mx-3 border-t border-zinc-200 px-1 pb-0.5 pt-3"
+                className="mx-3 border-t border-zinc-200 px-1 pt-3 pb-0.5"
               >
                 <div className="mb-2 flex items-center justify-between">
                   {/* Checkmark and name */}
@@ -246,7 +246,7 @@ export function TaskGroups({ groups }: Props) {
                 </div>
                 {/* Progress bar and counter text */}
                 {task.progress && !isTaskCompleted(task) && (
-                  <div className="mb-1 flex w-full items-center justify-between pl-6 pr-3">
+                  <div className="mb-1 flex w-full items-center justify-between pr-3 pl-6">
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
                       <div
                         className="h-full bg-violet-400 transition-all duration-500 ease-in-out"
@@ -273,7 +273,7 @@ export function TaskGroups({ groups }: Props) {
                   <>
                     <div
                       className={cn(
-                        "mt-0 overflow-hidden pl-6 pt-0 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
+                        "mt-0 overflow-hidden pt-0 pl-6 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
                         openGroups[group.name]
                           ? "max-h-[100px] opacity-100"
@@ -322,14 +322,14 @@ export function TaskGroups({ groups }: Props) {
             <div className="text-sm font-medium text-zinc-900">
               Hidden Tasks
             </div>
-            <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+            <div className="mt-1 text-xs leading-tight font-normal text-zinc-500">
               Check back later — new tasks are on the way
             </div>
           </div>
         </div>
         {/* Tasks */}
         <div>
-          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
+          <div className="mx-3 border-t border-zinc-200 px-1 pt-3 pb-1">
             <div className="mb-2 flex items-center justify-between">
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
@@ -340,7 +340,7 @@ export function TaskGroups({ groups }: Props) {
               </div>
             </div>
           </div>
-          <div className="mx-3 border-t border-zinc-200 px-1 pb-1 pt-3">
+          <div className="mx-3 border-t border-zinc-200 px-1 pt-3 pb-1">
             <div className="mb-2 flex items-center justify-between">
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">

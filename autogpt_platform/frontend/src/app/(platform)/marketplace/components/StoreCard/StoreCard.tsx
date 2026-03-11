@@ -88,7 +88,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
         {/* Third Section: Description */}
         <div className="mt-2.5 flex w-full flex-col">
-          <p className="line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+          <p className="line-clamp-3 text-base leading-normal font-normal text-neutral-600 dark:text-neutral-400">
             {description}
           </p>
         </div>

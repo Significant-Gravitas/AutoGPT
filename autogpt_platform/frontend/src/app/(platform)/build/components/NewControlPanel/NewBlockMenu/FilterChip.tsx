@@ -34,7 +34,7 @@ export const FilterChip: React.FC<Props> = ({
       >
         <span
           className={cn(
-            "font-sans text-sm font-medium leading-5.5 text-zinc-600 group-hover:text-zinc-600 group-disabled:text-zinc-400",
+            "font-sans text-sm leading-5.5 font-medium text-zinc-600 group-hover:text-zinc-600 group-disabled:text-zinc-400",
             selected && "text-zinc-50",
           )}
         >

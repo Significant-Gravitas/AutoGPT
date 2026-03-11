@@ -18,7 +18,7 @@ export function TurnStatsBar({ turnMessages }: Props) {
             {index > 0 && (
               <span className="text-xs text-neutral-300">&middot;</span>
             )}
-            <span className="text-[11px] tabular-nums text-neutral-500">
+            <span className="text-[11px] text-neutral-500 tabular-nums">
               {counter.count} {counter.label}
             </span>
           </span>

@@ -108,7 +108,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600 italic"
           >
             {markerText}
           </div>

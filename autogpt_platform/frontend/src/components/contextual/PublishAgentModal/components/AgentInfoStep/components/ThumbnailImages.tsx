@@ -73,7 +73,7 @@ export function ThumbnailImages({
           <div className="flex w-full items-center justify-start gap-2 pl-2">
             <label
               htmlFor="image-upload"
-              className="inline-flex h-[2.50rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex h-[2.50rem] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:ring-1 focus-visible:ring-neutral-950 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
             >
               <input
                 id="image-upload"
@@ -103,13 +103,10 @@ export function ThumbnailImages({
         ) : (
           <>
             {images.map((src, index) => (
-              <div
-                key={index}
-                className="relative shrink-0 overflow-visible"
-              >
+              <div key={index} className="relative shrink-0 overflow-visible">
                 <button
                   onClick={() => handleRemoveImage(index)}
-                  className="absolute -right-2 -top-2 z-50 inline-flex size-6 items-center justify-center rounded-full bg-slate-900"
+                  className="absolute -top-2 -right-2 z-50 inline-flex size-6 items-center justify-center rounded-full bg-slate-900"
                   aria-label="Remove image"
                 >
                   <IconCross className="h-2 w-2 text-white" />

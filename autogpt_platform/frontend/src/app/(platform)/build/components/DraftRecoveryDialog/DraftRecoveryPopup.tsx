@@ -71,7 +71,7 @@ export function DraftRecoveryPopup({
       {isOpen && (
         <motion.div
           ref={popupRef}
-          className={cn("absolute left-1/2 top-4 z-50")}
+          className={cn("absolute top-4 left-1/2 z-50")}
           initial={{
             opacity: 0,
             x: "-50%",

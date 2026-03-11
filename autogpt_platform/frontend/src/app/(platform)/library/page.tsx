@@ -37,7 +37,7 @@ export default function LibraryPage() {
     <FavoriteAnimationProvider
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
-      <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
+      <main className="container min-h-screen space-y-4 pt-16 pt-160 pb-20 sm:px-8 md:px-12">
         <LibraryActionHeader setSearchTerm={setSearchTerm} />
         <LibraryAgentList
           searchTerm={searchTerm}
