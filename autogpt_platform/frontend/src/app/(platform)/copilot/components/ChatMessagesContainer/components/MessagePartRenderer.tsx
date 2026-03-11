@@ -130,6 +130,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
     case "tool-get_doc_page":
       return <SearchDocsTool key={key} part={part as ToolUIPart} />;
     case "tool-run_block":
+    case "tool-continue_run_block":
       return <RunBlockTool key={key} part={part as ToolUIPart} />;
     case "tool-run_mcp_tool":
       return <RunMCPToolComponent key={key} part={part as ToolUIPart} />;

@@ -24,6 +24,7 @@
 
 ## Using AI Services
 
+* [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
