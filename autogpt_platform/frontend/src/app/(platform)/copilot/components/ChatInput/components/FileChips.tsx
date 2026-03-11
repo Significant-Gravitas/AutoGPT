@@ -33,7 +33,7 @@ export function FileChips({ files, onRemove, isUploading }: Props) {
               type="button"
               aria-label={`Remove ${file.name}`}
               onClick={() => onRemove(index)}
-              className="ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
+              className="hit-area-4 ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
             >
               <XIcon className="h-3 w-3" weight="bold" />
             </button>

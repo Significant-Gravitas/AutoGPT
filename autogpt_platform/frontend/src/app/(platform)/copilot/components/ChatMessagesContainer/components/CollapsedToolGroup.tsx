@@ -96,7 +96,7 @@ export function CollapsedToolGroup({ parts }: Props) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="hit-area-y-2 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <CaretRightIcon
           size={12}

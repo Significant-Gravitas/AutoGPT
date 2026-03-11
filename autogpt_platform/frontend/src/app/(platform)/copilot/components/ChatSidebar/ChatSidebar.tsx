@@ -341,7 +341,7 @@ export function ChatSidebar() {
                         <DropdownMenuTrigger asChild>
                           <button
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                            className="hit-area-3 absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
                             aria-label="More actions"
                           >
                             <DotsThree className="h-4 w-4" />

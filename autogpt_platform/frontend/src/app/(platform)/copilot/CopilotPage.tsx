@@ -151,7 +151,7 @@ export function CopilotPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="rounded p-1.5 hover:bg-neutral-100"
+                        className="hit-area-3 rounded p-1.5 hover:bg-neutral-100"
                         aria-label="More actions"
                       >
                         <DotsThree className="h-5 w-5 text-neutral-600" />
