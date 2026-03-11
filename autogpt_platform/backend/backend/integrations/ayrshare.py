@@ -511,5 +511,5 @@ class AyrshareClient:
                 "Ayrshare API returned no posts",
                 response.status,
             )
-        logger.warn(f"Ayrshare API returned posts: {response_data['posts']}")
+        logger.warning(f"Ayrshare API returned posts: {response_data['posts']}")
         return PostResponse(**response_data["posts"][0])
