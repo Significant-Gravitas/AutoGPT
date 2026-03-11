@@ -100,7 +100,6 @@ LEFT JOIN (
     FROM platform."LibraryAgent"
     WHERE "isDeleted"  = FALSE
       AND "isArchived" = FALSE
-      AND ("settings"::jsonb->>'sensitive_action_safe_mode')::boolean = TRUE
     ORDER BY "userId", "agentGraphId", "agentGraphVersion" DESC
 ) la ON la."userId" = ge."userId" AND la."agentGraphId" = ge."agentGraphId"
 WHERE ge."createdAt" > CURRENT_DATE - INTERVAL '90 days'

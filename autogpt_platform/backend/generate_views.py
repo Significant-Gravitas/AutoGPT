@@ -48,6 +48,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 QUERIES_DIR = Path(__file__).parent.parent / "analytics" / "queries"
 ENV_FILE = Path(__file__).parent / ".env"
@@ -67,7 +68,7 @@ CREATE SCHEMA IF NOT EXISTS analytics;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analytics_readonly') THEN
-    CREATE ROLE analytics_readonly WITH LOGIN PASSWORD 'CHANGE_ME';
+    CREATE ROLE analytics_readonly NOLOGIN;
   END IF;
 END
 $$;
@@ -101,7 +102,11 @@ def load_db_url_from_env() -> str | None:
     dbname = env.get("DB_NAME", "postgres")
     if not password:
         return None
-    return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+    return (
+        "postgresql://"
+        f"{quote(user, safe='')}:{quote(password, safe='')}"
+        f"@{host}:{port}/{quote(dbname, safe='')}"
+    )
 
 
 def get_db_url(args: argparse.Namespace) -> str | None:

@@ -57,6 +57,14 @@ WITH raw AS (
            WHEN 'BUILDER_OPEN'          THEN 12
            WHEN 'BUILDER_SAVE_AGENT'    THEN 13
            WHEN 'BUILDER_RUN_AGENT'     THEN 14
+           WHEN 'VISIT_COPILOT'          THEN 15
+           WHEN 'RE_RUN_AGENT'           THEN 16
+           WHEN 'SCHEDULE_AGENT'         THEN 17
+           WHEN 'RUN_AGENTS'             THEN 18
+           WHEN 'RUN_3_DAYS'             THEN 19
+           WHEN 'TRIGGER_WEBHOOK'        THEN 20
+           WHEN 'RUN_14_DAYS'            THEN 21
+           WHEN 'RUN_AGENTS_100'         THEN 22
       END AS step_order
   FROM platform."UserOnboarding" u
   CROSS JOIN LATERAL UNNEST(u."completedSteps") AS step_txt

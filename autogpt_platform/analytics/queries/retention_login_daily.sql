@@ -36,7 +36,7 @@
 --   GROUP BY 1 ORDER BY 1;
 -- =============================================================
 
-WITH params AS (SELECT 30::int AS max_days),
+WITH params AS (SELECT 30::int AS max_days, (CURRENT_DATE - INTERVAL '90 days')::date AS cohort_start),
 events AS (
   SELECT s.user_id::text AS user_id, s.created_at::timestamptz AS created_at,
          DATE_TRUNC('day', s.created_at)::date AS day_start
@@ -46,6 +46,7 @@ first_login AS (
   SELECT user_id, MIN(created_at) AS first_login_time,
          DATE_TRUNC('day', MIN(created_at))::date AS cohort_day_start
   FROM events GROUP BY 1
+  HAVING MIN(created_at) >= (SELECT cohort_start FROM params)
 ),
 activity_days AS (SELECT DISTINCT user_id, day_start FROM events),
 user_day_age AS (

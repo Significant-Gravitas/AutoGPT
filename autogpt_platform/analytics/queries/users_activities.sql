@@ -75,7 +75,7 @@ user_agents AS (
   -- Aggregate AgentGraph directly by userId (no fan-out from user_logins)
   SELECT
     "userId"::text                AS user_id,
-    MAX("createdAt")              AS last_agent_save_time,
+    MAX("updatedAt")              AS last_agent_save_time,
     COUNT("id")                   AS agent_count
   FROM platform."AgentGraph"
   WHERE "isActive"
@@ -103,7 +103,9 @@ user_node_runs AS (
     COUNT(*) FILTER (WHERE n."executionStatus" = 'COMPLETED')          AS node_execution_completed,
     COUNT(*) FILTER (WHERE n."executionStatus" = 'TERMINATED')         AS node_execution_terminated,
     COUNT(*) FILTER (WHERE n."executionStatus" = 'QUEUED')             AS node_execution_queued,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'RUNNING')            AS node_execution_running
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'RUNNING')            AS node_execution_running,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'INCOMPLETE')         AS node_execution_incomplete,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'REVIEW')             AS node_execution_review
   FROM platform."AgentNodeExecution" n
   JOIN platform."AgentGraphExecution" g
     ON g."id" = n."agentGraphExecutionId"
@@ -126,6 +128,8 @@ SELECT
   COALESCE(nr.node_execution_terminated, 0) AS node_execution_terminated,
   COALESCE(nr.node_execution_queued, 0)     AS node_execution_queued,
   COALESCE(nr.node_execution_running, 0)    AS node_execution_running,
+  COALESCE(nr.node_execution_incomplete, 0) AS node_execution_incomplete,
+  COALESCE(nr.node_execution_review, 0)     AS node_execution_review,
   CASE
     WHEN ul.first_login_time < NOW() - INTERVAL '7 days'
      AND ul.last_visit_time  >= ul.first_login_time + INTERVAL '7 days' THEN 1

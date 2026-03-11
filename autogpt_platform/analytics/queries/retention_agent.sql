@@ -76,7 +76,7 @@ grid AS (
   SELECT cc.agent_id, cc.cohort_week_start, gs AS user_lifetime_week, cc.cohort_users
   FROM cohort_caps cc CROSS JOIN LATERAL generate_series(0, cc.cap_weeks) gs
 ),
-agent_names AS (SELECT g."id" AS agent_id, MAX(g."name") AS agent_name FROM platform."AgentGraph" g GROUP BY 1),
+agent_names AS (SELECT DISTINCT ON (g."id") g."id" AS agent_id, g."name" AS agent_name FROM platform."AgentGraph" g ORDER BY g."id", g."version" DESC),
 agent_total_users AS (SELECT agent_id, SUM(cohort_users) AS agent_total_users FROM cohort_sizes GROUP BY 1)
 SELECT
   g.agent_id,

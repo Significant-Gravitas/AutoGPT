@@ -61,10 +61,10 @@ SELECT
     c.metadata->'input'->'credentials'->>'provider'           AS llm_provider,
     c.metadata->'input'->>'model'                             AS llm_model,
     c.metadata->>'node_exec_id'                               AS node_exec_id,
-    (ne."stats"->'llm_call_count')::int                       AS llm_call_count,
-    (ne."stats"->'llm_retry_count')::int                      AS llm_retry_count,
-    (ne."stats"->'input_token_count')::int                    AS llm_input_token_count,
-    (ne."stats"->'output_token_count')::int                   AS llm_output_token_count
+    (ne."stats"->>'llm_call_count')::int                       AS llm_call_count,
+    (ne."stats"->>'llm_retry_count')::int                      AS llm_retry_count,
+    (ne."stats"->>'input_token_count')::int                    AS llm_input_token_count,
+    (ne."stats"->>'output_token_count')::int                   AS llm_output_token_count
 FROM platform."CreditTransaction" c
 LEFT JOIN platform."AgentNodeExecution" ne
        ON (c.metadata->>'node_exec_id') = ne."id"::text
