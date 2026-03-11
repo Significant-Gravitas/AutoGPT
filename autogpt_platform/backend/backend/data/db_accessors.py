@@ -116,3 +116,16 @@ def workspace_db():
         workspace_db = get_database_manager_async_client()
 
     return workspace_db
+
+
+def review_db():
+    if db.is_connected():
+        from backend.data import human_review as _review_db
+
+        review_db = _review_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        review_db = get_database_manager_async_client()
+
+    return review_db

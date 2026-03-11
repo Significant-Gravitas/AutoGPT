@@ -144,75 +144,105 @@ async def _resolve_host(hostname: str) -> list[str]:
     return ip_addresses
 
 
-async def validate_url(
-    url: str, trusted_origins: list[str]
+async def validate_url_host(
+    url: str, trusted_hostnames: Optional[list[str]] = None
 ) -> tuple[URL, bool, list[str]]:
     """
-    Validates the URL to prevent SSRF attacks by ensuring it does not point
-    to a private, link-local, or otherwise blocked IP address — unless
+    Validates a (URL's) host string to prevent SSRF attacks by ensuring it does not
+    point to a private, link-local, or otherwise blocked IP address — unless
     the hostname is explicitly trusted.
 
+    Hosts in `trusted_hostnames` are permitted without checks.
+    All other hosts are resolved and checked against `BLOCKED_IP_NETWORKS`.
+
+    Params:
+        url: A hostname, netloc, or URL to validate.
+             If no scheme is included, `http://` is assumed.
+        trusted_hostnames: A list of hostnames that don't require validation.
+
+    Raises:
+      ValueError:
+        - if the URL has a disallowed URL scheme
+        - if the URL/host string can't be parsed
+        - if the hostname contains invalid or unsupported (non-ASCII) characters
+        - if the host resolves to a blocked IP
+
     Returns:
-        str: The validated, canonicalized, parsed URL
-        is_trusted: Boolean indicating if the hostname is in trusted_origins
-        ip_addresses: List of IP addresses for the host; empty if the host is trusted
+        1. The validated, canonicalized, parsed host/URL,
+           with hostname ASCII-safe encoding
+        2. Whether the host is trusted (based on the passed `trusted_hostnames`).
+        3. List of resolved IP addresses for the host; empty if the host is trusted.
     """
     parsed = parse_url(url)
 
-    # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
         raise ValueError(
-            f"Scheme '{parsed.scheme}' is not allowed. Only HTTP/HTTPS are supported."
+            f"URL scheme '{parsed.scheme}' is not allowed; allowed schemes: "
+            f"{', '.join(ALLOWED_SCHEMES)}"
         )
 
-    # Validate and IDNA encode hostname
     if not parsed.hostname:
-        raise ValueError("Invalid URL: No hostname found.")
+        raise ValueError(f"Invalid host/URL; no host in parse result: {url}")
 
     # IDNA encode to prevent Unicode domain attacks
     try:
         ascii_hostname = idna.encode(parsed.hostname).decode("ascii")
     except idna.IDNAError:
-        raise ValueError("Invalid hostname with unsupported characters.")
+        raise ValueError(f"Hostname '{parsed.hostname}' has unsupported characters")
 
-    # Check hostname characters
     if not HOSTNAME_REGEX.match(ascii_hostname):
-        raise ValueError("Hostname contains invalid characters.")
+        raise ValueError(f"Hostname '{parsed.hostname}' has unsupported characters")
 
-    # Check if hostname is trusted
-    is_trusted = ascii_hostname in trusted_origins
-
-    # If not trusted, validate IP addresses
-    ip_addresses: list[str] = []
-    if not is_trusted:
-        # Resolve all IP addresses for the hostname
-        ip_addresses = await _resolve_host(ascii_hostname)
-
-        # Block any IP address that belongs to a blocked range
-        for ip_str in ip_addresses:
-            if _is_ip_blocked(ip_str):
-                raise ValueError(
-                    f"Access to blocked or private IP address {ip_str} "
-                    f"for hostname {ascii_hostname} is not allowed."
-                )
-
-    # Reconstruct the netloc with IDNA-encoded hostname and preserve port
-    netloc = ascii_hostname
-    if parsed.port:
-        netloc = f"{ascii_hostname}:{parsed.port}"
-
-    return (
-        URL(
-            parsed.scheme,
-            netloc,
-            quote(parsed.path, safe="/%:@"),
-            parsed.params,
-            parsed.query,
-            parsed.fragment,
-        ),
-        is_trusted,
-        ip_addresses,
+    # Re-create parsed URL object with IDNA-encoded hostname
+    parsed = URL(
+        parsed.scheme,
+        (ascii_hostname if parsed.port is None else f"{ascii_hostname}:{parsed.port}"),
+        quote(parsed.path, safe="/%:@"),
+        parsed.params,
+        parsed.query,
+        parsed.fragment,
     )
+
+    is_trusted = trusted_hostnames and any(
+        matches_allowed_host(parsed, allowed)
+        for allowed in (
+            # Normalize + parse allowlist entries the same way for consistent matching
+            parse_url(w)
+            for w in trusted_hostnames
+        )
+    )
+
+    if is_trusted:
+        return parsed, True, []
+
+    # If not allowlisted, go ahead with host resolution and IP target check
+    return parsed, False, await _resolve_and_check_blocked(ascii_hostname)
+
+
+def matches_allowed_host(url: URL, allowed: URL) -> bool:
+    if url.hostname != allowed.hostname:
+        return False
+
+    # Allow any port if not explicitly specified in the allowlist
+    if allowed.port is None:
+        return True
+
+    return url.port == allowed.port
+
+
+async def _resolve_and_check_blocked(hostname: str) -> list[str]:
+    """
+    Resolves hostname to IPs and raises ValueError if any resolve to
+    a blocked network. Returns the list of resolved IP addresses.
+    """
+    ip_addresses = await _resolve_host(hostname)
+    for ip_str in ip_addresses:
+        if _is_ip_blocked(ip_str):
+            raise ValueError(
+                f"Access to blocked or private IP address {ip_str} "
+                f"for hostname {hostname} is not allowed."
+            )
+    return ip_addresses
 
 
 def parse_url(url: str) -> URL:
@@ -352,7 +382,7 @@ class Requests:
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
-            hostname = urlparse(url).hostname
+            hostname = parse_url(url).netloc  # {host}[:{port}]
             if not hostname:
                 raise ValueError(f"Invalid URL: Unable to determine hostname of {url}")
             self.trusted_origins.append(hostname)
@@ -450,7 +480,7 @@ class Requests:
             data = form
 
         # Validate URL and get trust status
-        parsed_url, is_trusted, ip_addresses = await validate_url(
+        parsed_url, is_trusted, ip_addresses = await validate_url_host(
             url, self.trusted_origins
         )
 
@@ -503,7 +533,6 @@ class Requests:
                 json=json,
                 **kwargs,
             ) as response:
-
                 if self.raise_for_status:
                     try:
                         response.raise_for_status()
