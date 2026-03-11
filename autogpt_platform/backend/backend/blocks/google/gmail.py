@@ -241,11 +241,8 @@ class GmailBase(Block, ABC):
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)
-                except ImportError:
-                    # Fallback: return raw HTML if html2text is not available
-                    return html_content
                 except Exception:
-                    # Keep extraction resilient if converter fails on malformed HTML.
+                    # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
         # Handle content stored as attachment
