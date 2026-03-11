@@ -1166,8 +1166,8 @@ enum APIKeyPermission {
   READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
   WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
   READ_CREDITS // Can get credit balance and transactions
-  UPLOAD_FILES // Can upload files for agent input
-  DOWNLOAD_FILES // Can download files from workspace
+  READ_FILES // Can list and download workspace files
+  WRITE_FILES // Can upload and delete workspace files
 }
 
 model APIKey {

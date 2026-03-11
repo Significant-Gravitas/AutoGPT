@@ -73,6 +73,7 @@ async def list_agents(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentListResponse:
     """List agents available in the marketplace, with optional filtering and sorting."""
@@ -102,6 +103,7 @@ async def list_agents(
 )
 async def get_agent_by_version(
     version_id: str,
+    # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """Get details of a marketplace agent by its store listing version ID."""
@@ -117,6 +119,7 @@ async def get_agent_by_version(
 async def get_agent_details(
     username: str,
     agent_name: str,
+    # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """Get details of a specific marketplace agent."""
@@ -140,7 +143,7 @@ async def add_agent_to_library(
     username: str,
     agent_name: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE, APIKeyPermission.WRITE_LIBRARY)
+        require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
     """Add a marketplace agent to the authenticated user's library."""
@@ -183,6 +186,7 @@ async def list_creators(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
+    # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceCreatorsResponse:
     """List or search marketplace creators."""
@@ -210,6 +214,7 @@ async def list_creators(
 )
 async def get_creator_details(
     username: str,
+    # This data is public, but we still require auth for access tracking and rate limits
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceCreatorDetails:
     """Get a marketplace creator's profile w/ stats."""

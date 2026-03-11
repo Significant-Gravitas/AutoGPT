@@ -61,7 +61,7 @@ async def list_files(
         description=f"Items per page (max {MAX_PAGE_SIZE})",
     ),
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.DOWNLOAD_FILES)
+        require_permission(APIKeyPermission.READ_FILES)
     ),
 ) -> WorkspaceFileListResponse:
     """List files in the user's workspace."""
@@ -109,7 +109,7 @@ async def list_files(
 async def get_file(
     file_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.DOWNLOAD_FILES)
+        require_permission(APIKeyPermission.READ_FILES)
     ),
 ) -> WorkspaceFileInfo:
     """Get metadata for a specific file in the user's workspace."""
@@ -147,7 +147,7 @@ async def get_file(
 async def delete_file(
     file_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.UPLOAD_FILES)
+        require_permission(APIKeyPermission.WRITE_FILES)
     ),
 ) -> None:
     """Soft-delete a file from the user's workspace."""
@@ -188,7 +188,7 @@ async def upload_file(
         default=24, ge=1, le=48, description="Hours until file expires (1-48)"
     ),
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.UPLOAD_FILES)
+        require_permission(APIKeyPermission.WRITE_FILES)
     ),
 ) -> UploadWorkspaceFileResponse:
     """
@@ -279,7 +279,7 @@ def _sanitize_filename_for_header(filename: str) -> str:
 async def download_file(
     file_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.DOWNLOAD_FILES)
+        require_permission(APIKeyPermission.READ_FILES)
     ),
 ) -> Response:
     """Download a file from the user's workspace."""

@@ -6938,8 +6938,8 @@
           "READ_RUN_REVIEW",
           "WRITE_RUN_REVIEW",
           "READ_CREDITS",
-          "UPLOAD_FILES",
-          "DOWNLOAD_FILES"
+          "READ_FILES",
+          "WRITE_FILES"
         ],
         "title": "APIKeyPermission"
       },

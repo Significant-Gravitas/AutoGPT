@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from prisma.enums import ContentType
+from prisma.enums import APIKeyPermission, ContentType
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
@@ -48,6 +48,10 @@ class FindBlockTool(BaseTool):
     @property
     def name(self) -> str:
         return "find_block"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_BLOCK]
 
     @property
     def description(self) -> str:

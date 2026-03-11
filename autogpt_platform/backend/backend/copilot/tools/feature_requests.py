@@ -133,6 +133,10 @@ class SearchFeatureRequestsTool(BaseTool):
         return "search_feature_requests"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Search existing feature requests to check if a similar request "

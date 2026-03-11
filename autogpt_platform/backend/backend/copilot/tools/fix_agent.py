@@ -20,6 +20,10 @@ class FixAgentGraphTool(BaseTool):
         return "fix_agent_graph"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Auto-fix common issues in an agent JSON graph. Applies fixes for:\n"

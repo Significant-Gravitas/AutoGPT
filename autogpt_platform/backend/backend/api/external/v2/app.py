@@ -32,7 +32,7 @@ For authentication details and usage examples, see the
 
 List endpoints return paginated responses. Use `page` and `page_size` query
 parameters to navigate results. Maximum page size is 100 items.
-"""
+""".strip()
 
 v2_app = FastAPI(
     title="AutoGPT Platform External API",

@@ -5,6 +5,7 @@ import logging
 import os
 from typing import Any, Optional
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.copilot.context import (
@@ -326,6 +327,10 @@ class ListWorkspaceFilesTool(BaseTool):
         return "list_workspace_files"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
+
+    @property
     def description(self) -> str:
         return (
             "List files in the user's persistent workspace (cloud storage). "
@@ -438,6 +443,10 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "read_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
 
     @property
     def description(self) -> str:
@@ -657,6 +666,10 @@ class WriteWorkspaceFileTool(BaseTool):
         return "write_workspace_file"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
     def description(self) -> str:
         return (
             "Write or create a file in the user's persistent workspace (cloud storage). "
@@ -845,6 +858,10 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
 
     @property
     def description(self) -> str:
