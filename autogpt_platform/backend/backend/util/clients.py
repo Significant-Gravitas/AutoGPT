@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
 settings = Settings()
 
 if TYPE_CHECKING:
@@ -165,14 +167,20 @@ def get_openai_client() -> "AsyncOpenAI | None":
     """
     Get a process-cached async OpenAI client for embeddings.
 
-    Returns None if API key is not configured.
+    Prefers openai_internal_api_key (direct OpenAI). Falls back to
+    open_router_api_key via OpenRouter's OpenAI-compatible endpoint.
+    Returns None if neither key is configured.
     """
     from openai import AsyncOpenAI
 
-    api_key = settings.secrets.openai_internal_api_key
-    if not api_key:
-        return None
-    return AsyncOpenAI(api_key=api_key)
+    if settings.secrets.openai_internal_api_key:
+        return AsyncOpenAI(api_key=settings.secrets.openai_internal_api_key)
+    if settings.secrets.open_router_api_key:
+        return AsyncOpenAI(
+            api_key=settings.secrets.open_router_api_key,
+            base_url=OPENROUTER_BASE_URL,
+        )
+    return None
 
 
 # ============ Notification Queue Helpers ============ #
