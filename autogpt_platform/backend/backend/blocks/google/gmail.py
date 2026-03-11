@@ -244,6 +244,9 @@ class GmailBase(Block, ABC):
                 except ImportError:
                     # Fallback: return raw HTML if html2text is not available
                     return html_content
+                except Exception:
+                    # Keep extraction resilient if converter fails on malformed HTML.
+                    return html_content
 
         # Handle content stored as attachment
         if body.get("attachmentId"):
