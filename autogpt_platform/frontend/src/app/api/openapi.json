@@ -6651,6 +6651,32 @@
         "tags": ["v2", "admin", "users", "admin"],
         "summary": "List Invited Users",
         "operationId": "getV2List invited users",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6664,23 +6690,31 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       },
       "post": {
         "tags": ["v2", "admin", "users", "admin"],
         "summary": "Create Invited User",
         "operationId": "postV2Create invited user",
+        "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateInvitedUserRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -6702,8 +6736,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/users/admin/invited-users/bulk": {
@@ -10018,10 +10051,11 @@
             "items": { "$ref": "#/components/schemas/InvitedUserResponse" },
             "type": "array",
             "title": "Invited Users"
-          }
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
         },
         "type": "object",
-        "required": ["invited_users"],
+        "required": ["invited_users", "pagination"],
         "title": "InvitedUsersResponse"
       },
       "LibraryAgent": {
