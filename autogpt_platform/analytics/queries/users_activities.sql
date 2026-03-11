@@ -128,15 +128,15 @@ SELECT
   COALESCE(nr.node_execution_terminated, 0) AS node_execution_terminated,
   COALESCE(nr.node_execution_queued, 0)     AS node_execution_queued,
   COALESCE(nr.node_execution_running, 0)    AS node_execution_running,
-  COALESCE(nr.node_execution_incomplete, 0) AS node_execution_incomplete,
-  COALESCE(nr.node_execution_review, 0)     AS node_execution_review,
   CASE
     WHEN ul.first_login_time < NOW() - INTERVAL '7 days'
      AND ul.last_visit_time  >= ul.first_login_time + INTERVAL '7 days' THEN 1
     WHEN ul.first_login_time < NOW() - INTERVAL '7 days'
      AND ul.last_visit_time  <  ul.first_login_time + INTERVAL '7 days' THEN 0
     ELSE NULL
-  END AS is_active_after_7d
+  END AS is_active_after_7d,
+  COALESCE(nr.node_execution_incomplete, 0) AS node_execution_incomplete,
+  COALESCE(nr.node_execution_review, 0)     AS node_execution_review
 FROM user_logins ul
 LEFT JOIN user_agents     ua ON ul.user_id = ua.user_id
 LEFT JOIN user_graph_runs gr ON ul.user_id = gr.user_id
