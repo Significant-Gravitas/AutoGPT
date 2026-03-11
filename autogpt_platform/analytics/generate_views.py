@@ -5,6 +5,25 @@ AutoGPT Analytics — View Generator
 Reads every .sql file in queries/ and registers it as a
 CREATE OR REPLACE VIEW in the analytics schema.
 
+Quick start
+-----------
+Step 1 — one-time setup (creates schema, role, grants).
+Run the output in Supabase SQL Editor as the postgres superuser:
+
+  python generate_views.py --setup | psql <db-url>
+  # or copy-paste the printed SQL into the Supabase SQL Editor
+
+Step 2 — create / refresh all 14 analytics views.
+Credentials are auto-detected from backend/.env (DB_* vars);
+override with --db-url or DATABASE_URL if needed:
+
+  python generate_views.py
+
+Step 3 (optional) — set a password for the read-only role so
+external tools (Supabase MCP, PostHog Data Warehouse) can connect:
+
+  ALTER ROLE analytics_readonly WITH PASSWORD 'your-password';
+
 Usage
 -----
   # Print one-time setup SQL (schema, role, grants)
@@ -13,26 +32,25 @@ Usage
   # Dry-run: print all view SQL without executing
   python generate_views.py --dry-run
 
-  # Apply to database (uses DATABASE_URL env var)
-  DATABASE_URL="postgresql://analytics_readonly:pass@host:5432/postgres" \\
-    python generate_views.py
+  # Apply to database (auto-reads backend/.env)
+  python generate_views.py
 
   # Apply to database (explicit connection string)
-  python generate_views.py --db-url "postgresql://..."
+  python generate_views.py --db-url "postgresql://user:pass@host:5432/db"
 
-  # Apply only specific views
+  # Apply only specific views (e.g. after editing one query)
   python generate_views.py --only graph_execution,retention_login_weekly
 
 Environment variables
 ---------------------
-  DATABASE_URL   Postgres connection string (alternative to --db-url)
+  DATABASE_URL   Postgres connection string (checked before backend/.env)
 
 Notes
 -----
-- Run --setup output first (once) to create the schema and grants.
+- backend/.env DB_* vars are read automatically as a fallback.
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
-- Looker, PostHog Data Warehouse, and Supabase MCP all benefit
-  from the same analytics.* views after running this script.
+- Looker, PostHog Data Warehouse, and Supabase MCP all read from the
+  same analytics.* views — no raw tables exposed.
 """
 
 import argparse
