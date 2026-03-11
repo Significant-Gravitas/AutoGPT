@@ -81,19 +81,10 @@ BEGIN
 END
 $$;
 
--- 3. Auth schema grants
---    Supabase restricts the auth schema; run as postgres superuser.
-GRANT USAGE ON SCHEMA auth TO analytics_readonly;
-GRANT SELECT ON auth.sessions TO analytics_readonly;
-GRANT SELECT ON auth.audit_log_entries TO analytics_readonly;
-
--- 4. Platform schema grants
-GRANT USAGE ON SCHEMA platform TO analytics_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA platform TO analytics_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA platform
-  GRANT SELECT ON TABLES TO analytics_readonly;
-
--- 5. Analytics schema grants
+-- 3. Analytics schema grants only.
+--    Views are created with security_invoker = false so they execute as their
+--    owner (postgres). analytics_readonly never needs direct access to the
+--    platform or auth schemas — it can only see analytics.* views.
 GRANT USAGE ON SCHEMA analytics TO analytics_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
@@ -132,7 +123,10 @@ def view_name_from_file(path: Path) -> str:
 def build_view_sql(name: str, query_body: str) -> str:
     # Strip any trailing semicolons so we can wrap cleanly
     body = query_body.strip().rstrip(";")
-    return f"CREATE OR REPLACE VIEW {SCHEMA}.{name} AS\n{body};\n"
+    # security_invoker = false → view executes as its owner (postgres), not the
+    # calling user. This lets analytics_readonly query views without needing
+    # direct SELECT grants on the underlying platform / auth tables.
+    return f"CREATE OR REPLACE VIEW {SCHEMA}.{name} WITH (security_invoker = false) AS\n{body};\n"
 
 
 def generate_all(only: list[str] | None = None) -> list[tuple[str, str]]:
