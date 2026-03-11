@@ -45,13 +45,27 @@ function isLikelyRobotic(voice: SpeechSynthesisVoice): boolean {
   return ROBOTIC_VOICE_INDICATORS.some((ind) => lower.includes(ind));
 }
 
-function pickBestVoice(): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
-
+/**
+ * Selects the best available voice using a 4-tier fallback:
+ * 1. Known high-quality voices by name (PREFERRED_VOICES)
+ * 2. Non-robotic remote/cloud voices
+ * 3. Non-robotic local English voices
+ * 4. Any remaining voice
+ */
+function pickBestVoice(
+  voices: SpeechSynthesisVoice[],
+): SpeechSynthesisVoice | undefined {
   // 1. Try preferred voices first (known high-quality)
   for (const name of PREFERRED_VOICES) {
-    const match = voices.find((v) => v.name.includes(name));
-    if (match) return match;
+    const matches = voices.filter((v) => v.name.includes(name));
+    if (matches.length === 0) continue;
+
+    return (
+      matches.find((v) => !isLikelyRobotic(v) && !v.localService) ||
+      matches.find((v) => !isLikelyRobotic(v)) ||
+      matches.find((v) => !v.localService) ||
+      matches[0]
+    );
   }
 
   // 2. Filter out known robotic / low-quality voices
@@ -77,9 +91,31 @@ export function useTextToSpeech(text: string) {
   const [status, setStatus] = useState<TTSStatus>("idle");
   const [isSupported, setIsSupported] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const cachedVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    setIsSupported("speechSynthesis" in window);
+    const supported = "speechSynthesis" in window;
+    setIsSupported(supported);
+
+    if (supported) {
+      // Populate cache immediately (may already be available)
+      cachedVoicesRef.current = window.speechSynthesis.getVoices();
+
+      // Listen for voiceschanged to populate cache when voices load async
+      function onVoicesChanged() {
+        cachedVoicesRef.current = window.speechSynthesis.getVoices();
+      }
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+
+      return () => {
+        window.speechSynthesis.removeEventListener(
+          "voiceschanged",
+          onVoicesChanged,
+        );
+        window.speechSynthesis.cancel();
+      };
+    }
+
     return () => {
       window.speechSynthesis?.cancel();
     };
@@ -106,7 +142,7 @@ export function useTextToSpeech(text: string) {
 
     const utterance = new SpeechSynthesisUtterance(text);
 
-    const voice = pickBestVoice();
+    const voice = pickBestVoice(cachedVoicesRef.current);
     if (voice) utterance.voice = voice;
 
     utteranceRef.current = utterance;
