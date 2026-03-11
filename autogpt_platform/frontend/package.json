@@ -120,8 +120,6 @@
     "sonner": "2.0.7",
     "streamdown": "2.1.0",
     "tailwind-merge": "2.6.0",
-    "tailwind-scrollbar": "3.1.0",
-    "tailwindcss-animate": "1.0.7",
     "use-stick-to-bottom": "1.1.2",
     "uuid": "11.1.0",
     "vaul": "1.1.2",
@@ -169,7 +167,9 @@
     "prettier-plugin-tailwindcss": "0.7.2",
     "require-in-the-middle": "8.0.1",
     "storybook": "9.1.5",
+    "tailwind-scrollbar": "4.0.2",
     "tailwindcss": "4.2.1",
+    "tw-animate-css": "1.4.0",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
     "vitest": "4.0.17"
