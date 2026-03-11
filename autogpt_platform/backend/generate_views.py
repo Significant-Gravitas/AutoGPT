@@ -18,11 +18,12 @@ Step 2 — create / refresh all 14 analytics views:
 Both commands auto-detect credentials from .env (DB_* vars).
 Use --db-url to override.
 
-Step 3 (optional) — set a password for the read-only role so
-external tools (Supabase MCP, PostHog Data Warehouse) can connect.
+Step 3 (optional) — enable login and set a password for the read-only
+role so external tools (Supabase MCP, PostHog Data Warehouse) can connect.
+The role is created as NOLOGIN, so you must grant LOGIN at the same time.
 Run in Supabase SQL Editor:
 
-  ALTER ROLE analytics_readonly WITH PASSWORD 'your-password';
+  ALTER ROLE analytics_readonly WITH LOGIN PASSWORD 'your-password';
 
 Usage
 -----
@@ -156,6 +157,16 @@ def load_views(only: list[str] | None = None) -> list[tuple[str, str]]:
     if not files:
         print(f"No .sql files found in {QUERIES_DIR}", file=sys.stderr)
         sys.exit(1)
+    known = {f.stem for f in files}
+    if only:
+        unknown = [n for n in only if n not in known]
+        if unknown:
+            print(
+                f"Unknown view name(s): {', '.join(unknown)}\n"
+                f"Available: {', '.join(sorted(known))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     result = []
     for f in files:
         name = f.stem

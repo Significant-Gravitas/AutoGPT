@@ -28,11 +28,11 @@
 --   last_login_time           TIMESTAMPTZ  Most recent session created_at
 --   last_visit_time           TIMESTAMPTZ  Max of last refresh or login
 --   last_agent_save_time      TIMESTAMPTZ  Last time user saved an agent graph
---   agent_count               BIGINT       Number of active graphs built
+--   agent_count               BIGINT       Number of distinct active graphs built (0 if none)
 --   first_agent_run_time      TIMESTAMPTZ  First ever graph execution
 --   last_agent_run_time       TIMESTAMPTZ  Most recent graph execution
---   unique_agent_runs         BIGINT       Distinct agent graphs ever run
---   agent_runs                BIGINT       Total graph execution count
+--   unique_agent_runs         BIGINT       Distinct agent graphs ever run (0 if none)
+--   agent_runs                BIGINT       Total graph execution count (0 if none)
 --   node_execution_count      BIGINT       Total node executions across all runs
 --   node_execution_failed     BIGINT       Node executions with FAILED status
 --   node_execution_completed  BIGINT       Node executions with COMPLETED status
@@ -40,6 +40,8 @@
 --   node_execution_queued     BIGINT       Node executions with QUEUED status
 --   node_execution_running    BIGINT       Node executions with RUNNING status
 --   is_active_after_7d        INT          1=returned after day 7, 0=did not, NULL=too early to tell
+--   node_execution_incomplete BIGINT       Node executions with INCOMPLETE status
+--   node_execution_review     BIGINT       Node executions with REVIEW status
 --
 -- EXAMPLE QUERIES
 --   -- Users who ran at least one agent and returned after 7 days
@@ -76,7 +78,7 @@ user_agents AS (
   SELECT
     "userId"::text                AS user_id,
     MAX("updatedAt")              AS last_agent_save_time,
-    COUNT("id")                   AS agent_count
+    COUNT(DISTINCT "id")          AS agent_count
   FROM platform."AgentGraph"
   WHERE "isActive"
   GROUP BY "userId"
@@ -117,11 +119,11 @@ SELECT
   ul.last_login_time,
   ul.last_visit_time,
   ua.last_agent_save_time,
-  ua.agent_count,
+  COALESCE(ua.agent_count, 0)             AS agent_count,
   gr.first_agent_run_time,
   gr.last_agent_run_time,
-  gr.unique_agent_runs,
-  gr.agent_runs,
+  COALESCE(gr.unique_agent_runs, 0)       AS unique_agent_runs,
+  COALESCE(gr.agent_runs, 0)              AS agent_runs,
   COALESCE(nr.node_execution_count, 0)      AS node_execution_count,
   COALESCE(nr.node_execution_failed, 0)     AS node_execution_failed,
   COALESCE(nr.node_execution_completed, 0)  AS node_execution_completed,
