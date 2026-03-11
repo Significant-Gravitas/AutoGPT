@@ -77,7 +77,7 @@ def test_get_invited_users(
 ) -> None:
     mocker.patch(
         "backend.api.features.admin.user_admin_routes.list_invited_users",
-        AsyncMock(return_value=[_sample_invited_user()]),
+        AsyncMock(return_value=([_sample_invited_user()], 1)),
     )
 
     response = client.get("/admin/invited-users")
@@ -87,6 +87,9 @@ def test_get_invited_users(
     assert len(data["invited_users"]) == 1
     assert data["invited_users"][0]["email"] == "invited@example.com"
     assert data["invited_users"][0]["status"] == "INVITED"
+    assert data["pagination"]["total_items"] == 1
+    assert data["pagination"]["current_page"] == 1
+    assert data["pagination"]["page_size"] == 50
 
 
 def test_create_invited_user(

@@ -1,7 +1,8 @@
 import logging
+import math
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, File, Security, UploadFile
+from fastapi import APIRouter, File, Query, Security, UploadFile
 
 from backend.data.invited_user import (
     BulkInvitedUsersResult,
@@ -12,6 +13,8 @@ from backend.data.invited_user import (
     retry_invited_user_tally,
     revoke_invited_user,
 )
+from backend.data.tally import mask_email
+from backend.util.models import Pagination
 
 from .model import (
     BulkInvitedUserRowResponse,
@@ -22,11 +25,6 @@ from .model import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _redact_email(email: str) -> str:
-    local, _, domain = email.partition("@")
-    return f"{local[:2]}***@{domain}" if domain else f"{local[:2]}***"
 
 
 router = APIRouter(
@@ -70,11 +68,19 @@ def _to_bulk_response(result: BulkInvitedUsersResult) -> BulkInvitedUsersRespons
 )
 async def get_invited_users(
     admin_user_id: str = Security(get_user_id),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ) -> InvitedUsersResponse:
     logger.info("Admin user %s requested invited users", admin_user_id)
-    invited_users = await list_invited_users()
+    invited_users, total = await list_invited_users(page=page, page_size=page_size)
     return InvitedUsersResponse(
-        invited_users=[_to_response(invited_user) for invited_user in invited_users]
+        invited_users=[_to_response(iu) for iu in invited_users],
+        pagination=Pagination(
+            total_items=total,
+            total_pages=max(1, math.ceil(total / page_size)),
+            current_page=page,
+            page_size=page_size,
+        ),
     )
 
 
@@ -90,7 +96,7 @@ async def create_invited_user_route(
     logger.info(
         "Admin user %s creating invited user for %s",
         admin_user_id,
-        _redact_email(request.email),
+        mask_email(request.email),
     )
     invited_user = await create_invited_user(request.email, request.name)
     logger.info(

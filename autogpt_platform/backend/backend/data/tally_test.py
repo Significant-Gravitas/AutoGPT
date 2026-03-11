@@ -12,11 +12,11 @@ from backend.data.tally import (
     _build_email_index,
     _format_answer,
     _make_tally_client,
-    _mask_email,
     _refresh_cache,
     extract_business_understanding,
     find_submission_by_email,
     format_submission_for_llm,
+    mask_email,
     populate_understanding_from_tally,
 )
 
@@ -356,13 +356,13 @@ async def test_populate_understanding_handles_llm_timeout():
 
 
 def test_mask_email():
-    assert _mask_email("alice@example.com") == "a***e@example.com"
-    assert _mask_email("ab@example.com") == "a***@example.com"
-    assert _mask_email("a@example.com") == "a***@example.com"
+    assert mask_email("alice@example.com") == "a***e@example.com"
+    assert mask_email("ab@example.com") == "a***@example.com"
+    assert mask_email("a@example.com") == "a***@example.com"
 
 
 def test_mask_email_invalid():
-    assert _mask_email("no-at-sign") == "***"
+    assert mask_email("no-at-sign") == "***"
 
 
 # ── Prompt construction (curly-brace safety) ─────────────────────────────────

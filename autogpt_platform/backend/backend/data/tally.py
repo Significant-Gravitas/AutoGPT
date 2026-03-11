@@ -41,7 +41,7 @@ _MAX_PAGES = 100
 _LLM_TIMEOUT = 30
 
 
-def _mask_email(email: str) -> str:
+def mask_email(email: str) -> str:
     """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
     try:
         local, domain = email.rsplit("@", 1)
@@ -196,8 +196,7 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
 
     Returns (email_index, questions).
     """
-    settings = Settings()
-    client = _make_tally_client(settings.secrets.tally_api_key)
+    client = _make_tally_client(_settings.secrets.tally_api_key)
 
     redis = await get_redis_async()
     last_fetch_key = _LAST_FETCH_KEY.format(form_id=form_id)
@@ -346,8 +345,7 @@ async def extract_business_understanding(
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
-    settings = Settings()
-    api_key = settings.secrets.open_router_api_key
+    api_key = _settings.secrets.open_router_api_key
     client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
     try:
@@ -386,14 +384,13 @@ async def get_business_understanding_input_from_tally(
     *,
     require_api_key: bool = False,
 ) -> Optional[BusinessUnderstandingInput]:
-    settings = Settings()
-    if not settings.secrets.tally_api_key:
+    if not _settings.secrets.tally_api_key:
         if require_api_key:
             raise RuntimeError("Tally API key is not configured")
         logger.debug("Tally: no API key configured, skipping")
         return None
 
-    masked = _mask_email(email)
+    masked = mask_email(email)
     result = await find_submission_by_email(TALLY_FORM_ID, email)
     if result is None:
         logger.debug(f"Tally: no submission found for {masked}")

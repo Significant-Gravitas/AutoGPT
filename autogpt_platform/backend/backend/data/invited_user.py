@@ -16,7 +16,7 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.db import transaction
 from backend.data.model import User
-from backend.data.tally import get_business_understanding_input_from_tally
+from backend.data.tally import get_business_understanding_input_from_tally, mask_email
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     merge_business_understanding_data,
@@ -30,7 +30,11 @@ from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
+# Process-local dedup for Tally seed tasks.  Does not deduplicate across
+# multiple workers; that is acceptable because the underlying operation is
+# idempotent and the staleness check below handles stuck entries on restart.
 _tally_seed_tasks: dict[str, asyncio.Task] = {}
+_TALLY_STALE_SECONDS = 300
 _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
@@ -123,8 +127,8 @@ def _sanitize_username_base(email: str) -> str:
 async def _generate_unique_profile_username(email: str, tx) -> str:
     base = _sanitize_username_base(email)
 
-    for attempt in range(10):
-        candidate = base if attempt == 0 else f"{base}-{uuid4().hex[:6]}"
+    for _ in range(2):
+        candidate = f"{base}-{uuid4().hex[:6]}"
         existing = await prisma.models.Profile.prisma(tx).find_unique(
             where={"username": candidate}
         )
@@ -199,11 +203,17 @@ async def _apply_tally_understanding(
     )
 
 
-async def list_invited_users() -> list[InvitedUserRecord]:
+async def list_invited_users(
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[InvitedUserRecord], int]:
+    total = await prisma.models.InvitedUser.prisma().count()
     invited_users = await prisma.models.InvitedUser.prisma().find_many(
-        order={"createdAt": "desc"}
+        order={"createdAt": "desc"},
+        skip=(page - 1) * page_size,
+        take=page_size,
     )
-    return [InvitedUserRecord.from_db(invited_user) for invited_user in invited_users]
+    return [InvitedUserRecord.from_db(iu) for iu in invited_users], total
 
 
 async def create_invited_user(
@@ -319,6 +329,8 @@ def _parse_bulk_invite_csv(text: str) -> list[_ParsedInviteRow]:
 
     parsed_rows: list[_ParsedInviteRow] = []
     for row_number, row in data_rows:
+        if len(parsed_rows) >= MAX_BULK_INVITE_ROWS:
+            break
         email = row[email_index].strip() if len(row) > email_index else ""
         name = (
             row[name_index].strip()
@@ -340,6 +352,8 @@ def _parse_bulk_invite_text(text: str) -> list[_ParsedInviteRow]:
     parsed_rows: list[_ParsedInviteRow] = []
 
     for row_number, raw_line in enumerate(text.splitlines(), start=1):
+        if len(parsed_rows) >= MAX_BULK_INVITE_ROWS:
+            break
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -369,11 +383,6 @@ def _parse_bulk_invite_file(
 
     if not parsed_rows:
         raise ValueError("Invite file did not contain any emails")
-
-    if len(parsed_rows) > MAX_BULK_INVITE_ROWS:
-        raise ValueError(
-            f"Invite file contains too many rows. Maximum supported rows: {MAX_BULK_INVITE_ROWS}"
-        )
 
     return parsed_rows
 
@@ -438,8 +447,7 @@ async def bulk_create_invited_users_from_file(
                 )
             )
         except Exception:
-            local, domain = normalized_email.split("@", 1)
-            masked = f"{local[0]}***@{domain}" if local else f"***@{domain}"
+            masked = mask_email(normalized_email)
             logger.exception(
                 "Failed to create bulk invite for row %s (%s)",
                 row.row_number,
@@ -485,6 +493,24 @@ async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
 
     if invited_user.status == prisma.enums.InvitedUserStatus.REVOKED:
         return
+
+    if (
+        invited_user.tallyStatus == prisma.enums.TallyComputationStatus.RUNNING
+        and invited_user.updatedAt is not None
+    ):
+        age = (datetime.now(timezone.utc) - invited_user.updatedAt).total_seconds()
+        if age < _TALLY_STALE_SECONDS:
+            logger.debug(
+                "Tally task for %s still RUNNING (age=%ds), skipping",
+                invited_user_id,
+                int(age),
+            )
+            return
+        logger.info(
+            "Tally task for %s is stale (age=%ds), re-running",
+            invited_user_id,
+            int(age),
+        )
 
     await prisma.models.InvitedUser.prisma().update(
         where={"id": invited_user_id},

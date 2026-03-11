@@ -41,6 +41,7 @@ class InvitedUserResponse(BaseModel):
 
 class InvitedUsersResponse(BaseModel):
     invited_users: list[InvitedUserResponse]
+    pagination: Pagination
 
 
 class BulkInvitedUserRowResponse(BaseModel):
