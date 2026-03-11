@@ -202,7 +202,7 @@ async def list_sessions(
         processing_set = {
             session.session_id
             for session, st in zip(sessions, statuses)
-            if st == b"running"
+            if st == "running"
         }
 
     return ListSessionsResponse(

@@ -24,12 +24,19 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import {
+  Bell,
+  BellRinging,
+  BellSlash,
   CheckCircle,
   DotsThree,
   PlusCircleIcon,
   PlusIcon,
-  SpeakerHigh,
-  SpeakerSlash,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -48,14 +55,44 @@ export function ChatSidebar() {
     setSessionToDelete,
     completedSessionIDs,
     clearCompletedSession,
+    isNotificationsEnabled,
+    setNotificationsEnabled,
     isSoundEnabled,
     toggleSound,
+    setShowNotificationDialog,
+    clearCopilotLocalData,
   } = useCopilotUIStore();
+
+  async function handleToggleNotifications() {
+    if (isNotificationsEnabled) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      toast({
+        title: "Notifications not supported",
+        description: "Your browser does not support notifications.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      setNotificationsEnabled(true);
+    } else {
+      toast({
+        title: "Notifications blocked",
+        description:
+          "Please allow notifications in your browser settings to enable this feature.",
+        variant: "destructive",
+      });
+    }
+  }
 
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 });
+    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
@@ -241,8 +278,67 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="relative left-6">
-                  <SidebarTrigger />
+                <div className="flex items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="rounded p-1 text-zinc-600 transition-colors hover:text-zinc-800"
+                        aria-label="Notification settings"
+                      >
+                        {!isNotificationsEnabled ? (
+                          <BellSlash className="!size-5" />
+                        ) : isSoundEnabled ? (
+                          <BellRinging className="!size-5" />
+                        ) : (
+                          <Bell className="!size-5" />
+                        )}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-56 p-3">
+                      <div className="flex flex-col gap-3">
+                        <label className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-700">
+                            Notifications
+                          </span>
+                          <Switch
+                            checked={isNotificationsEnabled}
+                            onCheckedChange={handleToggleNotifications}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between">
+                          <span
+                            className={cn(
+                              "text-sm text-zinc-700",
+                              !isNotificationsEnabled && "opacity-50",
+                            )}
+                          >
+                            Sound
+                          </span>
+                          <Switch
+                            checked={isSoundEnabled && isNotificationsEnabled}
+                            onCheckedChange={toggleSound}
+                            disabled={!isNotificationsEnabled}
+                          />
+                        </label>
+                        <hr className="border-zinc-200" />
+                        <button
+                          onClick={() => setShowNotificationDialog(true)}
+                          className="rounded px-1 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100"
+                        >
+                          Show notification popup
+                        </button>
+                        <button
+                          onClick={clearCopilotLocalData}
+                          className="rounded px-1 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Clear local data
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <div className="relative left-6">
+                    <SidebarTrigger />
+                  </div>
                 </div>
               </div>
               <Button
@@ -259,44 +355,6 @@ export function ChatSidebar() {
         )}
 
         <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {!isCollapsed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, delay: 0.1 }}
-              className="flex items-center justify-between px-3"
-            >
-              <Text variant="h3" size="body-medium">
-                Your chats
-              </Text>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={toggleSound}
-                  className="rounded p-1 text-zinc-400 transition-colors hover:text-zinc-600"
-                  aria-label={
-                    isSoundEnabled
-                      ? "Disable notification sound"
-                      : "Enable notification sound"
-                  }
-                  title={
-                    isSoundEnabled
-                      ? "Sound notifications on"
-                      : "Sound notifications off"
-                  }
-                >
-                  {isSoundEnabled ? (
-                    <SpeakerHigh className="h-4 w-4" />
-                  ) : (
-                    <SpeakerSlash className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="relative left-6">
-                  <SidebarTrigger />
-                </div>
-              </div>
-            </motion.div>
-          )}
-
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -355,12 +413,17 @@ export function ChatSidebar() {
                           handleSelectSession(session.id);
                           if (completedSessionIDs.has(session.id)) {
                             clearCompletedSession(session.id);
+                            const remaining = completedSessionIDs.size - 1;
+                            document.title =
+                              remaining > 0
+                                ? `(${remaining}) Otto is ready - AutoGPT`
+                                : "AutoGPT";
                           }
                         }}
                         className="w-full px-3 py-2.5 pr-10 text-left"
                       >
-                        <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                          <div className="flex min-w-0 max-w-full items-center gap-1.5">
+                        <div className="flex min-w-0 max-w-full items-center gap-2">
+                          <div className="min-w-0 flex-1">
                             <Text
                               variant="body"
                               className={cn(
@@ -383,13 +446,14 @@ export function ChatSidebar() {
                                 </motion.span>
                               </AnimatePresence>
                             </Text>
+                            <Text variant="small" className="text-neutral-400">
+                              {formatDate(session.updated_at)}
+                            </Text>
                           </div>
-                          <Text variant="small" className="text-neutral-400">
-                            {formatDate(session.updated_at)}
-                          </Text>
                           {session.is_processing &&
-                            session.id !== sessionId && (
-                              <PulseLoader size={8} className="shrink-0" />
+                            session.id !== sessionId &&
+                            !completedSessionIDs.has(session.id) && (
+                              <PulseLoader size={16} className="shrink-0" />
                             )}
                           {completedSessionIDs.has(session.id) &&
                             session.id !== sessionId && (

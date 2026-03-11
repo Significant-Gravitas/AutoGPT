@@ -6,8 +6,15 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
 import { BellRinging } from "@phosphor-icons/react";
 import { useState } from "react";
+import { useCopilotUIStore } from "../../store";
 
 export function NotificationDialog() {
+  const {
+    showNotificationDialog,
+    setShowNotificationDialog,
+    setNotificationsEnabled,
+  } = useCopilotUIStore();
+
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED) === "true",
   );
@@ -15,20 +22,27 @@ export function NotificationDialog() {
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
-  const shouldShow =
+  const shouldShowAuto =
     typeof Notification !== "undefined" &&
     permission === "default" &&
     !dismissed;
 
+  const isOpen = showNotificationDialog || shouldShowAuto;
+
   function handleEnable() {
     Notification.requestPermission().then((result) => {
       setPermission(result);
+      if (result === "granted") {
+        setNotificationsEnabled(true);
+        handleDismiss();
+      }
     });
   }
 
   function handleDismiss() {
     storage.set(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED, "true");
     setDismissed(true);
+    setShowNotificationDialog(false);
   }
 
   return (
@@ -36,7 +50,7 @@ export function NotificationDialog() {
       title="Stay in the loop"
       styling={{ maxWidth: "28rem", minWidth: "auto" }}
       controlled={{
-        isOpen: shouldShow,
+        isOpen,
         set: async (open) => {
           if (!open) handleDismiss();
         },
@@ -50,8 +64,7 @@ export function NotificationDialog() {
           </div>
           <Text variant="body" className="text-center text-neutral-600">
             Otto can notify you when a response is ready, even if you switch
-            tabs or close this page. Enable notifications so you never miss a
-            response.
+            tabs or close this page. Enable notifications so you never miss one.
           </Text>
         </div>
         <Dialog.Footer>

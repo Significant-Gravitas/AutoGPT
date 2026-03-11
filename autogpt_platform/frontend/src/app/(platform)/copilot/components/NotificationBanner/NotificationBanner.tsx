@@ -5,8 +5,12 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Key, storage } from "@/services/storage/local-storage";
 import { BellRinging, X } from "@phosphor-icons/react";
 import { useState } from "react";
+import { useCopilotUIStore } from "../../store";
 
 export function NotificationBanner() {
+  const { setNotificationsEnabled, isNotificationsEnabled } =
+    useCopilotUIStore();
+
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
   );
@@ -14,11 +18,12 @@ export function NotificationBanner() {
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
-  // Don't show if notifications aren't supported, already decided, or dismissed
+  // Don't show if notifications aren't supported, already decided, dismissed, or already enabled
   if (
     typeof Notification === "undefined" ||
     permission !== "default" ||
-    dismissed
+    dismissed ||
+    isNotificationsEnabled
   ) {
     return null;
   }
@@ -26,6 +31,10 @@ export function NotificationBanner() {
   function handleEnable() {
     Notification.requestPermission().then((result) => {
       setPermission(result);
+      if (result === "granted") {
+        setNotificationsEnabled(true);
+        handleDismiss();
+      }
     });
   }
 

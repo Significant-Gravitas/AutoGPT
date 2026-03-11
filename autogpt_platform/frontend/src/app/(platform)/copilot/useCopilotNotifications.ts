@@ -35,19 +35,39 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
       const state = useCopilotUIStore.getState();
 
+      // Skip all notifications if disabled
+      if (!state.isNotificationsEnabled) return;
+
+      // Only notify for background sessions
+      if (sessionID === activeSessionRef.current) return;
+
       // Play sound if enabled
       if (state.isSoundEnabled && audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(() => {});
       }
 
-      // If the completed session is NOT the active one, track it
-      if (sessionID !== activeSessionRef.current) {
-        state.addCompletedSession(sessionID);
+      state.addCompletedSession(sessionID);
 
-        // Update document title to show count
-        const count = state.completedSessionIDs.size + 1; // +1 for the one we just added
-        document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
+      // Update document title to show count
+      const count = state.completedSessionIDs.size + 1; // +1 for the one we just added
+      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
+
+      // Send browser notification if permitted
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted" &&
+        document.visibilityState === "hidden"
+      ) {
+        const n = new Notification("Otto is ready", {
+          body: "A response is waiting for you.",
+          icon: "/favicon.ico",
+        });
+        n.onclick = () => {
+          window.focus();
+          window.location.href = `/copilot?sessionId=${sessionID}`;
+          n.close();
+        };
       }
     }
 

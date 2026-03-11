@@ -18,8 +18,16 @@ interface CopilotUIState {
   clearCompletedSession: (id: string) => void;
   clearAllCompletedSessions: () => void;
 
+  isNotificationsEnabled: boolean;
+  setNotificationsEnabled: (enabled: boolean) => void;
+
   isSoundEnabled: boolean;
   toggleSound: () => void;
+
+  showNotificationDialog: boolean;
+  setShowNotificationDialog: (show: boolean) => void;
+
+  clearCopilotLocalData: () => void;
 }
 
 export const useCopilotUIStore = create<CopilotUIState>((set) => ({
@@ -45,6 +53,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   clearAllCompletedSessions: () =>
     set({ completedSessionIDs: new Set<string>() }),
 
+  isNotificationsEnabled:
+    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted",
+  setNotificationsEnabled: (enabled) => {
+    storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
+    set({ isNotificationsEnabled: enabled });
+  },
+
   isSoundEnabled: storage.get(Key.COPILOT_SOUND_ENABLED) !== "false",
   toggleSound: () =>
     set((state) => {
@@ -52,4 +69,18 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
+
+  showNotificationDialog: false,
+  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
+
+  clearCopilotLocalData: () => {
+    storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
+    storage.clean(Key.COPILOT_SOUND_ENABLED);
+    storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
+    storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+    set({
+      isNotificationsEnabled: false,
+      isSoundEnabled: true,
+    });
+  },
 }));

@@ -12,6 +12,7 @@ export enum Key {
   COOKIE_CONSENT = "autogpt_cookie_consent",
   AI_AGENT_SAFETY_POPUP_SHOWN = "ai-agent-safety-popup-shown",
   COPILOT_SOUND_ENABLED = "copilot-sound-enabled",
+  COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",
   COPILOT_NOTIFICATION_BANNER_DISMISSED = "copilot-notification-banner-dismissed",
   COPILOT_NOTIFICATION_DIALOG_DISMISSED = "copilot-notification-dialog-dismissed",
 }
