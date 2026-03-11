@@ -27,8 +27,10 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.json import SafeJson
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+_settings = Settings()
 
 # Process-local dedup for Tally seed tasks.  Does not deduplicate across
 # multiple workers; that is acceptable because the underlying operation is
@@ -573,6 +575,32 @@ def schedule_invited_user_tally_precompute(invited_user_id: str) -> None:
     task.add_done_callback(_on_done)
 
 
+async def _open_signup_create_user(
+    auth_user_id: str,
+    normalized_email: str,
+    metadata_name: Optional[str],
+) -> User:
+    """Create a user without requiring an invite (open signup mode)."""
+    preferred_name = _normalize_name(metadata_name)
+    try:
+        user = await prisma.models.User.prisma().create(
+            data=prisma.types.UserCreateInput(
+                id=auth_user_id,
+                email=normalized_email,
+                name=preferred_name,
+            )
+        )
+    except UniqueViolationError:
+        existing = await prisma.models.User.prisma().find_unique(
+            where={"id": auth_user_id}
+        )
+        if existing is not None:
+            return User.from_db(existing)
+        raise
+
+    return User.from_db(user)
+
+
 async def get_or_activate_user(user_data: dict) -> User:
     auth_user_id = user_data.get("sub")
     if not auth_user_id:
@@ -593,6 +621,11 @@ async def get_or_activate_user(user_data: dict) -> User:
     )
     if existing_user is not None:
         return User.from_db(existing_user)
+
+    if not _settings.config.enable_invite_gate:
+        return await _open_signup_create_user(
+            auth_user_id, normalized_email, metadata_name
+        )
 
     invited_user = await prisma.models.InvitedUser.prisma().find_unique(
         where={"email": normalized_email}
