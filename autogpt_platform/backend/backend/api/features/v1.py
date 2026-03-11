@@ -181,7 +181,13 @@ async def get_user_timezone_route(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    user = await get_user_by_id(user_id)
+    try:
+        user = await get_user_by_id(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="User not found. Please complete activation via /auth/user first.",
+        )
     return TimezoneResponse(timezone=user.timezone)
 
 
