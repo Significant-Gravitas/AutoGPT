@@ -4,24 +4,18 @@
   - You are about to drop the column `search` on the `StoreListingVersion` table. All the data in the column will be lost.
 
 */-- CreateEnum
-CREATE TYPE "InvitedUserStatus" AS ENUM(
-  'INVITED',
-  'CLAIMED',
-  'REVOKED'
-);
+CREATE TYPE "InvitedUserStatus" AS ENUM('INVITED',
+'CLAIMED',
+'REVOKED');
 -- CreateEnum
-CREATE TYPE "TallyComputationStatus" AS ENUM(
-  'PENDING',
-  'RUNNING',
-  'READY',
-  'FAILED'
-);
--- AlterTable
-ALTER TABLE "StoreListingVersion" DROP COLUMN "search";
+CREATE TYPE "TallyComputationStatus" AS ENUM('PENDING',
+'RUNNING',
+'READY',
+'FAILED');
 -- CreateTable
 CREATE TABLE "InvitedUser"(
   "id" TEXT NOT NULL,
-  "createdAt"TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   "email" TEXT NOT NULL,
   "status" "InvitedUserStatus" NOT NULL DEFAULT 'INVITED',
@@ -29,7 +23,7 @@ CREATE TABLE "InvitedUser"(
   "name" TEXT,
   "tallyUnderstanding" JSONB,
   "tallyStatus" "TallyComputationStatus" NOT NULL DEFAULT 'PENDING',
-  "tallyComputedAt"TIMESTAMP(3),
+  "tallyComputedAt" TIMESTAMP(3),
   "tallyError" TEXT,
   CONSTRAINT "InvitedUser_pkey" PRIMARY KEY("id")
 );
