@@ -151,6 +151,9 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
+          </PromptInputTools>
+
+          <div className="flex items-center gap-4">
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -160,13 +163,12 @@ export function ChatInput({
                 onClick={toggleRecording}
               />
             )}
-          </PromptInputTools>
-
-          {isStreaming ? (
-            <PromptInputSubmit status="streaming" onStop={onStop} />
-          ) : (
-            <PromptInputSubmit disabled={!canSend} />
-          )}
+            {isStreaming ? (
+              <PromptInputSubmit status="streaming" onStop={onStop} />
+            ) : (
+              <PromptInputSubmit disabled={!canSend} />
+            )}
+          </div>
         </PromptInputFooter>
       </InputGroup>
     </form>

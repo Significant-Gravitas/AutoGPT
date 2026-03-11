@@ -31,9 +31,9 @@ function parseOutput(output: unknown): EditAgentToolOutput | null {
   if (typeof output === "object") {
     const type = (output as { type?: unknown }).type;
     if (
-      type === ResponseType.agent_preview ||
-      type === ResponseType.agent_saved ||
-      type === ResponseType.clarification_needed ||
+      type === ResponseType.agent_builder_preview ||
+      type === ResponseType.agent_builder_saved ||
+      type === ResponseType.agent_builder_clarification_needed ||
       type === ResponseType.error
     ) {
       return output as EditAgentToolOutput;
@@ -59,14 +59,17 @@ export function getEditAgentToolOutput(
 export function isAgentPreviewOutput(
   output: EditAgentToolOutput,
 ): output is AgentPreviewResponse {
-  return output.type === ResponseType.agent_preview || "agent_json" in output;
+  return (
+    output.type === ResponseType.agent_builder_preview || "agent_json" in output
+  );
 }
 
 export function isAgentSavedOutput(
   output: EditAgentToolOutput,
 ): output is AgentSavedResponse {
   return (
-    output.type === ResponseType.agent_saved || "agent_page_link" in output
+    output.type === ResponseType.agent_builder_saved ||
+    "agent_page_link" in output
   );
 }
 
@@ -74,7 +77,8 @@ export function isClarificationNeededOutput(
   output: EditAgentToolOutput,
 ): output is ClarificationNeededResponse {
   return (
-    output.type === ResponseType.clarification_needed || "questions" in output
+    output.type === ResponseType.agent_builder_clarification_needed ||
+    "questions" in output
   );
 }
 

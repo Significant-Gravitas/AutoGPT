@@ -12,6 +12,7 @@ from .models import (
     BlockOutputResponse,
     ErrorResponse,
     InputValidationErrorResponse,
+    ReviewRequiredResponse,
 )
 from .run_block import RunBlockTool
 
@@ -27,9 +28,16 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
+    mock.is_sensitive_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
-    mock.input_schema.get_credentials_fields_info.return_value = []
+    mock.input_schema.get_credentials_fields_info.return_value = {}
+    mock.input_schema.get_credentials_fields.return_value = {}
+
+    async def _no_review(input_data, **kwargs):
+        return False, input_data
+
+    mock.is_block_exec_need_review = _no_review
     return mock
 
 
@@ -46,6 +54,7 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
+    mock.is_sensitive_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -62,6 +71,12 @@ def make_mock_block_with_schema(
     }
     mock.output_schema = MagicMock()
     mock.output_schema.jsonschema.return_value = output_schema
+
+    # Default: no review needed, pass through input_data unchanged
+    async def _no_review(input_data, **kwargs):
+        return False, input_data
+
+    mock.is_block_exec_need_review = _no_review
 
     return mock
 
@@ -89,7 +104,7 @@ class TestRunBlockFiltering:
             )
 
         assert isinstance(response, ErrorResponse)
-        assert "cannot be run directly in CoPilot" in response.message
+        assert "cannot be run directly" in response.message
         assert "designed for use within graphs only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -115,7 +130,7 @@ class TestRunBlockFiltering:
             )
 
         assert isinstance(response, ErrorResponse)
-        assert "cannot be run directly in CoPilot" in response.message
+        assert "cannot be run directly" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
@@ -126,9 +141,15 @@ class TestRunBlockFiltering:
             "standard-id", "HTTP Request", BlockType.STANDARD
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=standard_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=standard_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
             response = await tool._execute(
@@ -141,7 +162,7 @@ class TestRunBlockFiltering:
         # Should NOT be an ErrorResponse about CoPilot exclusion
         # (may be other errors like missing credentials, but not the exclusion guard)
         if isinstance(response, ErrorResponse):
-            assert "cannot be run directly in CoPilot" not in response.message
+            assert "cannot be run directly" not in response.message
 
 
 class TestRunBlockInputValidation:
@@ -154,12 +175,7 @@ class TestRunBlockInputValidation:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_unknown_input_fields_are_rejected(self):
-        """run_block rejects unknown input fields instead of silently ignoring them.
-
-        Scenario: The AI Text Generator block has a field called 'model' (for LLM model
-        selection), but the LLM calling the tool guesses wrong and sends 'LLM_Model'
-        instead. The block should reject the request and return the valid schema.
-        """
+        """run_block rejects unknown input fields instead of silently ignoring them."""
         session = make_session(user_id=_TEST_USER_ID)
 
         mock_block = make_mock_block_with_schema(
@@ -182,27 +198,31 @@ class TestRunBlockInputValidation:
             output_properties={"response": {"type": "string"}},
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
-            # Provide 'prompt' (correct) but 'LLM_Model' instead of 'model' (wrong key)
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
                     "prompt": "Write a haiku about coding",
-                    "LLM_Model": "claude-opus-4-6",  # WRONG KEY - should be 'model'
+                    "LLM_Model": "claude-opus-4-6",
                 },
             )
 
         assert isinstance(response, InputValidationErrorResponse)
         assert "LLM_Model" in response.unrecognized_fields
         assert "Block was not executed" in response.message
-        assert "inputs" in response.model_dump()  # valid schema included
+        assert "inputs" in response.model_dump()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_multiple_wrong_keys_are_all_reported(self):
@@ -221,21 +241,26 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "prompt": "Hello",  # correct
-                    "llm_model": "claude-opus-4-6",  # WRONG - should be 'model'
-                    "system_prompt": "Be helpful",  # WRONG - should be 'sys_prompt'
-                    "retries": 5,  # WRONG - should be 'retry'
+                    "prompt": "Hello",
+                    "llm_model": "claude-opus-4-6",
+                    "system_prompt": "Be helpful",
+                    "retries": 5,
                 },
             )
 
@@ -262,23 +287,26 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
-
-            # 'prompt' is missing AND 'LLM_Model' is an unknown field
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "LLM_Model": "claude-opus-4-6",  # wrong key, and 'prompt' is missing
+                    "LLM_Model": "claude-opus-4-6",
                 },
             )
 
-        # Unknown fields are caught first
         assert isinstance(response, InputValidationErrorResponse)
         assert "LLM_Model" in response.unrecognized_fields
 
@@ -313,7 +341,11 @@ class TestRunBlockInputValidation:
                 return_value=mock_block,
             ),
             patch(
-                "backend.copilot.tools.run_block.workspace_db",
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
                 return_value=mock_workspace_db,
             ),
         ):
@@ -325,7 +357,7 @@ class TestRunBlockInputValidation:
                 block_id="ai-text-gen-id",
                 input_data={
                     "prompt": "Write a haiku",
-                    "model": "gpt-4o-mini",  # correct field name
+                    "model": "gpt-4o-mini",
                 },
             )
 
@@ -347,20 +379,191 @@ class TestRunBlockInputValidation:
             required_fields=["prompt"],
         )
 
-        with patch(
-            "backend.copilot.tools.run_block.get_block",
-            return_value=mock_block,
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
         ):
             tool = RunBlockTool()
 
-            # Only provide valid optional field, missing required 'prompt'
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
                 block_id="ai-text-gen-id",
                 input_data={
-                    "model": "gpt-4o-mini",  # valid but optional
+                    "model": "gpt-4o-mini",
                 },
             )
 
         assert isinstance(response, BlockDetailsResponse)
+
+
+class TestRunBlockSensitiveAction:
+    """Tests for sensitive action HITL review in RunBlockTool.
+
+    run_block calls is_block_exec_need_review() explicitly before execution.
+    When review is needed (should_pause=True), ReviewRequiredResponse is returned.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_sensitive_block_paused_returns_review_required(self):
+        """When is_block_exec_need_review returns should_pause=True, ReviewRequiredResponse is returned."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        input_data = {
+            "repo_url": "https://github.com/test/repo",
+            "branch": "feature-branch",
+        }
+        mock_block = make_mock_block_with_schema(
+            block_id="delete-branch-id",
+            name="Delete Branch",
+            input_properties={
+                "repo_url": {"type": "string"},
+                "branch": {"type": "string"},
+            },
+            required_fields=["repo_url", "branch"],
+        )
+        mock_block.is_sensitive_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="delete-branch-id",
+                input_data=input_data,
+            )
+
+        assert isinstance(response, ReviewRequiredResponse)
+        assert "requires human review" in response.message
+        assert "continue_run_block" in response.message
+        assert response.block_name == "Delete Branch"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_sensitive_block_executes_after_approval(self):
+        """After approval (should_pause=False), sensitive blocks execute and return outputs."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        input_data = {
+            "repo_url": "https://github.com/test/repo",
+            "branch": "feature-branch",
+        }
+        mock_block = make_mock_block_with_schema(
+            block_id="delete-branch-id",
+            name="Delete Branch",
+            input_properties={
+                "repo_url": {"type": "string"},
+                "branch": {"type": "string"},
+            },
+            required_fields=["repo_url", "branch"],
+        )
+        mock_block.is_sensitive_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(False, input_data)
+        )
+
+        async def mock_execute(input_data, **kwargs):
+            yield "result", "Branch deleted successfully"
+
+        mock_block.execute = mock_execute
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="test-workspace-id")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="delete-branch-id",
+                input_data=input_data,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_non_sensitive_block_executes_normally(self):
+        """Non-sensitive blocks skip review and execute directly."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        input_data = {"url": "https://example.com"}
+        mock_block = make_mock_block_with_schema(
+            block_id="http-request-id",
+            name="HTTP Request",
+            input_properties={
+                "url": {"type": "string"},
+            },
+            required_fields=["url"],
+        )
+        mock_block.is_sensitive_action = False
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(False, input_data)
+        )
+
+        async def mock_execute(input_data, **kwargs):
+            yield "response", {"status": 200}
+
+        mock_block.execute = mock_execute
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="test-workspace-id")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="http-request-id",
+                input_data=input_data,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
