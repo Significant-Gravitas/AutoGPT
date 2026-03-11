@@ -19,14 +19,14 @@ import { useSelectedScheduleView } from "./useSelectedScheduleView";
 interface Props {
   agent: LibraryAgent;
   scheduleId: string;
-  onClearSelectedRun?: () => void;
+  onScheduleDeleted?: (deletedScheduleId: string) => void;
   banner?: React.ReactNode;
 }
 
 export function SelectedScheduleView({
   agent,
   scheduleId,
-  onClearSelectedRun,
+  onScheduleDeleted,
   banner,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
@@ -89,7 +89,7 @@ export function SelectedScheduleView({
                   <SelectedScheduleActions
                     agent={agent}
                     scheduleId={schedule.id}
-                    onDeleted={onClearSelectedRun}
+                    onDeleted={() => onScheduleDeleted?.(schedule.id)}
                   />
                 </div>
               ) : null}
@@ -168,7 +168,7 @@ export function SelectedScheduleView({
           <SelectedScheduleActions
             agent={agent}
             scheduleId={schedule.id}
-            onDeleted={onClearSelectedRun}
+            onDeleted={() => onScheduleDeleted?.(schedule.id)}
           />
         </div>
       ) : null}

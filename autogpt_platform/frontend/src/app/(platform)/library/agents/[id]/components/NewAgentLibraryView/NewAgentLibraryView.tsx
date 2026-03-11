@@ -44,6 +44,7 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleScheduleDeleted,
     onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
@@ -196,6 +197,7 @@ export function NewAgentLibraryView() {
             selectedRunId={activeItem ?? undefined}
             onSelectRun={handleSelectRun}
             onClearSelectedRun={handleClearSelectedRun}
+            onScheduleDeleted={handleScheduleDeleted}
             onTabChange={setActiveTab}
             onCountsChange={handleCountsChange}
           />
@@ -206,7 +208,7 @@ export function NewAgentLibraryView() {
             <SelectedScheduleView
               agent={agent}
               scheduleId={activeItem}
-              onClearSelectedRun={handleClearSelectedRun}
+              onScheduleDeleted={handleScheduleDeleted}
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "templates" ? (
