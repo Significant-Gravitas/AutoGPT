@@ -1,28 +1,22 @@
--- Migration: Migrate deprecated Gemini 3 Pro Preview to Gemini 3.1 Pro Preview
--- Date: 2026-03-08
--- Reason: Google is shutting down Gemini 3 Pro Preview on March 9, 2026
--- Migration strategy: Replace all instances of "google/gemini-3-pro-preview" with "google/gemini-3.1-pro-preview"
+-- Migrate Gemini 3 Pro Preview to Gemini 3.1 Pro Preview
+-- This updates all AgentNode blocks that use the deprecated Gemini 3 Pro Preview model
+-- Google is shutting down google/gemini-3-pro-preview on March 9, 2026
 
--- Update AgentNode constantInput field where model is set to the deprecated Gemini 3 Pro Preview
--- (This is where block configuration including model selection is actually stored)
+-- Update AgentNode constant inputs
 UPDATE "AgentNode"
-SET "constantInput" = replace("constantInput"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
-WHERE "constantInput"::text LIKE '%google/gemini-3-pro-preview%';
+SET "constantInput" = JSONB_SET(
+    "constantInput"::jsonb,
+    '{model}',
+    '"google/gemini-3.1-pro-preview"'::jsonb
+)
+WHERE "constantInput"::jsonb->>'model' = 'google/gemini-3-pro-preview';
 
--- Update AgentGraphExecution where any block uses the deprecated model
-UPDATE "AgentGraphExecution"
-SET "inputs" = replace("inputs"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
-WHERE "inputs"::text LIKE '%google/gemini-3-pro-preview%';
-
--- Update AgentNodeExecution where the deprecated model is referenced
-UPDATE "AgentNodeExecution"
-SET "executionData" = replace("executionData"::text, 'google/gemini-3-pro-preview', 'google/gemini-3.1-pro-preview')::jsonb
-WHERE "executionData"::text LIKE '%google/gemini-3-pro-preview%';
-
--- Log the migration completion
-DO $$
-BEGIN
-    RAISE NOTICE 'Migration completed: Replaced all instances of google/gemini-3-pro-preview with google/gemini-3.1-pro-preview';
-    RAISE NOTICE 'Updated tables: AgentNode (constantInput), AgentGraphExecution (inputs), AgentNodeExecution (executionData)';
-    RAISE NOTICE 'Note: AgentGraph has no metadata field - model configuration is stored in AgentNode.constantInput';
-END $$;
+-- Update AgentPreset input overrides (stored in AgentNodeExecutionInputOutput)
+UPDATE "AgentNodeExecutionInputOutput"
+SET "data" = JSONB_SET(
+    "data"::jsonb,
+    '{model}',
+    '"google/gemini-3.1-pro-preview"'::jsonb
+)
+WHERE "agentPresetId" IS NOT NULL
+  AND "data"::jsonb->>'model' = 'google/gemini-3-pro-preview';
