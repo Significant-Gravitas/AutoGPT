@@ -251,6 +251,7 @@ async def test_create_store_submission(mocker):
     mock_sl.return_value.find_unique = mocker.AsyncMock(return_value=None)
 
     mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_first = mocker.AsyncMock(return_value=None)
     mock_slv.return_value.create = mocker.AsyncMock(return_value=mock_version)
 
     # Call function
