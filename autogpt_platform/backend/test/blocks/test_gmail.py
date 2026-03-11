@@ -104,6 +104,7 @@ class TestGmailReadBlock:
 
             result = await self.gmail_block._get_email_body(msg, self.mock_service)
             assert result == html_text
+
     @pytest.mark.asyncio
     async def test_html_fallback_when_html2text_unavailable(self):
         """Test fallback to raw HTML when html2text is not available."""
