@@ -14,6 +14,7 @@ import fastapi.responses
 import pydantic
 from fastapi.exceptions import RequestValidationError
 from prisma.errors import PrismaError
+from prisma.errors import RecordNotFoundError as PrismaRecordNotFoundError
 from starlette import status
 
 from backend.api.features.library.exceptions import (
@@ -44,6 +45,7 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
         PreconditionFailed: _handle_error(status.HTTP_428_PRECONDITION_REQUIRED),
         RequestValidationError: _handle_validation_error,
         pydantic.ValidationError: _handle_validation_error,
+        PrismaRecordNotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
         FolderAlreadyExistsError: _handle_error(
             status.HTTP_409_CONFLICT, log_error=False
         ),
