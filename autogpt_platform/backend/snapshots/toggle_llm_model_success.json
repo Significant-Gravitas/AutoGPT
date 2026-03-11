@@ -1,0 +1,21 @@
+{
+  "migrated_to_slug": null,
+  "migration_id": null,
+  "model": {
+    "capabilities": {},
+    "context_window": 128000,
+    "costs": [],
+    "creator": null,
+    "creator_id": null,
+    "description": "GPT-4 Optimized",
+    "display_name": "GPT-4o",
+    "id": "model-1",
+    "is_enabled": false,
+    "is_recommended": false,
+    "max_output_tokens": 16384,
+    "metadata": {},
+    "provider_id": "provider-1",
+    "slug": "gpt-4o"
+  },
+  "nodes_migrated": 0
+}

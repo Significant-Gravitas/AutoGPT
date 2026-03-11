@@ -40,6 +40,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.llm_registry import update_schema_with_llm_registry
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -570,7 +571,9 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
             else:
                 schema["credentials_provider"] = allowed_providers
             schema["credentials_types"] = model_class.allowed_cred_types()
-        # Do not return anything, just mutate schema in place
+
+        # Ensure LLM discriminators are populated (delegates to shared helper)
+        update_schema_with_llm_registry(schema, model_class)
 
     model_config = ConfigDict(
         json_schema_extra=_add_json_schema_extra,  # type: ignore
@@ -732,16 +735,20 @@ def CredentialsField(
     This is enforced by the `BlockSchema` base class.
     """
 
-    field_schema_extra = {
-        k: v
-        for k, v in {
-            "credentials_scopes": list(required_scopes) or None,
-            "discriminator": discriminator,
-            "discriminator_mapping": discriminator_mapping,
-            "discriminator_values": discriminator_values,
-        }.items()
-        if v is not None
-    }
+    # Build field_schema_extra - always include discriminator and mapping if discriminator is set
+    field_schema_extra: dict[str, Any] = {}
+
+    # Always include discriminator if provided
+    if discriminator is not None:
+        field_schema_extra["discriminator"] = discriminator
+        # Always include discriminator_mapping when discriminator is set (even if empty initially)
+        field_schema_extra["discriminator_mapping"] = discriminator_mapping or {}
+
+    # Include other optional fields (only if not None)
+    if required_scopes:
+        field_schema_extra["credentials_scopes"] = list(required_scopes)
+    if discriminator_values:
+        field_schema_extra["discriminator_values"] = discriminator_values
 
     # Merge any json_schema_extra passed in kwargs
     if "json_schema_extra" in kwargs:

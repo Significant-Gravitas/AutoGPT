@@ -1,0 +1,37 @@
+{
+  "models": [
+    {
+      "capabilities": {},
+      "context_window": 128000,
+      "costs": [
+        {
+          "credential_id": null,
+          "credential_provider": "openai",
+          "credential_type": null,
+          "credit_cost": 10,
+          "currency": null,
+          "id": "cost-1",
+          "metadata": {},
+          "unit": "RUN"
+        }
+      ],
+      "creator": null,
+      "creator_id": null,
+      "description": "GPT-4 Optimized",
+      "display_name": "GPT-4o",
+      "id": "model-1",
+      "is_enabled": true,
+      "is_recommended": false,
+      "max_output_tokens": 16384,
+      "metadata": {},
+      "provider_id": "provider-1",
+      "slug": "gpt-4o"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "page_size": 50,
+    "total_items": 1,
+    "total_pages": 1
+  }
+}

@@ -134,7 +134,26 @@ class BlockInfo(BaseModel):
 
 
 class BlockSchema(BaseModel):
-    cached_jsonschema: ClassVar[dict[str, Any]]
+    cached_jsonschema: ClassVar[dict[str, Any] | None] = None
+
+    @classmethod
+    def clear_schema_cache(cls) -> None:
+        """Clear the cached JSON schema for this class."""
+        # Use None instead of {} because {} is truthy and would prevent regeneration
+        cls.cached_jsonschema = None  # type: ignore
+
+    @staticmethod
+    def clear_all_schema_caches() -> None:
+        """Clear cached JSON schemas for all BlockSchema subclasses."""
+
+        def clear_recursive(cls: type) -> None:
+            """Recursively clear cache for class and all subclasses."""
+            if hasattr(cls, "clear_schema_cache"):
+                cls.clear_schema_cache()
+            for subclass in cls.__subclasses__():
+                clear_recursive(subclass)
+
+        clear_recursive(BlockSchema)
 
     @classmethod
     def jsonschema(cls) -> dict[str, Any]:
@@ -225,7 +244,8 @@ class BlockSchema(BaseModel):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Reset cached JSON schema to prevent inheriting it from parent class
-        cls.cached_jsonschema = {}
+        # Use None instead of {} because {} is truthy and would prevent regeneration
+        cls.cached_jsonschema = None
 
         credentials_fields = cls.get_credentials_fields()
 

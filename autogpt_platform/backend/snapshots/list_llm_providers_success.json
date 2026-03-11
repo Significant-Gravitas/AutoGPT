@@ -1,0 +1,34 @@
+{
+  "providers": [
+    {
+      "default_credential_id": null,
+      "default_credential_provider": null,
+      "default_credential_type": null,
+      "description": "OpenAI LLM provider",
+      "display_name": "OpenAI",
+      "id": "provider-1",
+      "metadata": {},
+      "models": [],
+      "name": "openai",
+      "supports_json_output": true,
+      "supports_parallel_tool": true,
+      "supports_reasoning": false,
+      "supports_tools": true
+    },
+    {
+      "default_credential_id": null,
+      "default_credential_provider": null,
+      "default_credential_type": null,
+      "description": "Anthropic LLM provider",
+      "display_name": "Anthropic",
+      "id": "provider-2",
+      "metadata": {},
+      "models": [],
+      "name": "anthropic",
+      "supports_json_output": true,
+      "supports_parallel_tool": true,
+      "supports_reasoning": false,
+      "supports_tools": true
+    }
+  ]
+}

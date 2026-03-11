@@ -45,6 +45,10 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.llm_registry_init import (
+    initialize_registry_for_executor,
+    subscribe_to_registry_updates,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
 from backend.util import json
@@ -750,6 +754,15 @@ class ExecutionProcessor:
         )
         self.node_execution_thread.start()
         self.node_evaluation_thread.start()
+
+        # Initialize LLM registry and subscribe to updates
+        asyncio.run_coroutine_threadsafe(
+            initialize_registry_for_executor(), self.node_execution_loop
+        )
+        asyncio.run_coroutine_threadsafe(
+            subscribe_to_registry_updates(), self.node_execution_loop
+        )
+
         logger.info(f"[GraphExecutor] {self.tid} started")
 
     @error_logged(swallow=False)

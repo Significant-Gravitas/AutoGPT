@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
 from backend.blocks.llm import LlmModel
+from backend.data import llm_registry
 from backend.data.analytics import (
     AccuracyTrendsResponse,
     get_accuracy_trends_and_alerts,
@@ -18,6 +19,7 @@ from backend.data.execution import (
     get_graph_executions,
     update_graph_execution_stats,
 )
+from backend.server.v2.llm import db as llm_db
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     DEFAULT_SYSTEM_PROMPT,
@@ -176,30 +178,55 @@ async def get_execution_analytics_config(
         # Return with provider prefix for clarity
         return f"{provider_name}: {model_name}"
 
-    # Include all LlmModel values (no more filtering by hardcoded list)
-    recommended_model = LlmModel.GPT4O_MINI.value
-    for model in LlmModel:
+    # Get all models from the registry (dynamic, not hardcoded enum)
+    # Get the recommended model from the database (configurable via admin UI)
+    recommended_model_slug = await llm_db.get_recommended_model_slug()
+
+    # Build the available models list
+    first_enabled_slug = None
+    for registry_model in llm_registry.iter_dynamic_models():
+        # Only include enabled models in the list
+        if not registry_model.is_enabled:
+            continue
+
+        # Track first enabled model as fallback
+        if first_enabled_slug is None:
+            first_enabled_slug = registry_model.slug
+
+        model = LlmModel(registry_model.slug)
         label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model
-        if model.value == recommended_model:
+        if registry_model.slug == recommended_model_slug:
             label += " (Recommended)"
 
         available_models.append(
             ModelInfo(
-                value=model.value,
+                value=registry_model.slug,
                 label=label,
-                provider=model.provider,
+                provider=registry_model.metadata.provider,
             )
         )
 
     # Sort models by provider and name for better UX
     available_models.sort(key=lambda x: (x.provider, x.label))
 
+    # Handle case where no models are available
+    if not available_models:
+        logger.warning(
+            "No enabled LLM models found in registry. "
+            "Ensure models are configured and enabled in the LLM Registry."
+        )
+        # Return empty list - frontend will handle empty state appropriately
+        # Self-hosters should run database migrations to seed default models
+
+    # Use the DB recommended model, or fallback to first enabled model
+    final_recommended = recommended_model_slug or first_enabled_slug or ""
+
     return ExecutionAnalyticsConfig(
         available_models=available_models,
         default_system_prompt=DEFAULT_SYSTEM_PROMPT,
         default_user_prompt=DEFAULT_USER_PROMPT,
-        recommended_model=recommended_model,
+        recommended_model=final_recommended,
     )
 
 

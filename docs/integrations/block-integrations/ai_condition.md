@@ -20,7 +20,7 @@ The block uses a Large Language Model (LLM) to evaluate the condition by:
 | Condition | A plaintext English description of the condition to evaluate |
 | Yes Value | (Optional) The value to output if the condition is true. If not provided, Input Value will be used |
 | No Value | (Optional) The value to output if the condition is false. If not provided, Input Value will be used |
-| Model | The LLM model to use for evaluation (defaults to GPT-4o) |
+| Model | The LLM model to use for evaluation. Defaults to the platform's recommended model (configurable by your admin via the LLM Registry) |
 | Credentials | API credentials for the LLM provider |
 
 ## Outputs

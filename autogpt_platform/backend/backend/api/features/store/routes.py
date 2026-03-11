@@ -311,6 +311,7 @@ async def get_creators(
 @router.get(
     "/creators/{username}",
     summary="Get creator details",
+    operation_id="getV2GetCreatorDetails",
     tags=["store", "public"],
 )
 async def get_creator(username: str) -> store_model.CreatorDetails:

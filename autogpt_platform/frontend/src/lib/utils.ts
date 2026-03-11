@@ -284,17 +284,20 @@ export function fillObjectDefaultsFromSchema(
       // Apply simple default values
       obj[key] ??= propertySchema.default;
     } else if (
+      "type" in propertySchema &&
       propertySchema.type === "object" &&
       "properties" in propertySchema
     ) {
       // Recursively fill defaults for nested objects
       obj[key] = fillObjectDefaultsFromSchema(obj[key] ?? {}, propertySchema);
-    } else if (propertySchema.type === "array") {
+    } else if ("type" in propertySchema && propertySchema.type === "array") {
       obj[key] ??= [];
       // If the array items are objects, fill their defaults as well
       if (
         Array.isArray(obj[key]) &&
-        propertySchema.items?.type === "object" &&
+        propertySchema.items &&
+        "type" in propertySchema.items &&
+        propertySchema.items.type === "object" &&
         "properties" in propertySchema.items
       ) {
         for (const item of obj[key]) {

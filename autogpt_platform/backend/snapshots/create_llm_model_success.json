@@ -1,0 +1,27 @@
+{
+  "capabilities": {},
+  "context_window": 128000,
+  "costs": [
+    {
+      "credential_id": null,
+      "credential_provider": "openai",
+      "credential_type": null,
+      "credit_cost": 5,
+      "currency": null,
+      "id": "cost-id",
+      "metadata": {},
+      "unit": "RUN"
+    }
+  ],
+  "creator": null,
+  "creator_id": null,
+  "description": "Latest GPT-4.1 Mini model",
+  "display_name": "GPT-4.1 Mini",
+  "id": "new-model-id",
+  "is_enabled": true,
+  "is_recommended": false,
+  "max_output_tokens": 16384,
+  "metadata": {},
+  "provider_id": "provider-1",
+  "slug": "gpt-4.1-mini"
+}

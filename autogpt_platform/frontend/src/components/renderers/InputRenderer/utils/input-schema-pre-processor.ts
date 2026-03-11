@@ -1,8 +1,19 @@
 import { RJSFSchema } from "@rjsf/utils";
 
 /**
+ * Options type for fields with label/value pairs (e.g., LLM model picker)
+ */
+type SchemaOption = {
+  label: string;
+  value: string;
+  group?: string;
+  description?: string;
+};
+
+/**
  * Pre-processes the input schema to ensure all properties have a type defined.
  * If a property doesn't have a type, it assigns a union of all supported JSON Schema types.
+ * Also converts custom 'options' array to RJSF's enum/enumNames format.
  */
 
 export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
@@ -19,6 +30,20 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
     for (const [key, property] of Object.entries(processedSchema.properties)) {
       if (property && typeof property === "object") {
         const processedProperty = { ...property };
+
+        // Convert custom 'options' array to RJSF's enum/enumNames format
+        // This enables proper label display for dropdowns like the LLM model picker
+        if (
+          (processedProperty as any).options &&
+          Array.isArray((processedProperty as any).options) &&
+          (processedProperty as any).options.length > 0
+        ) {
+          const options = (processedProperty as any).options as SchemaOption[];
+          processedProperty.enum = options.map((opt) => opt.value);
+          (processedProperty as any).enumNames = options.map(
+            (opt) => opt.label,
+          );
+        }
 
         // Only add type if no type is defined AND no anyOf/oneOf/allOf is present
         if (
