@@ -28,6 +28,7 @@ def _json_to_dict(value: Any) -> dict[str, Any]:
 class RegistryModelCost:
     """Cost configuration for an LLM model."""
 
+    unit: str  # "RUN" or "TOKENS"
     credit_cost: int
     credential_provider: str
     credential_id: str | None
@@ -95,6 +96,7 @@ async def refresh_llm_registry() -> None:
                 # Parse costs
                 costs = tuple(
                     RegistryModelCost(
+                        unit=str(cost.unit),  # Convert enum to string
                         credit_cost=cost.creditCost,
                         credential_provider=cost.credentialProvider,
                         credential_id=cost.credentialId,
@@ -130,11 +132,22 @@ async def refresh_llm_registry() -> None:
                     else record.providerId
                 )
 
+                # Extract creator name (fallback to "Unknown" if no creator)
+                creator_name = (
+                    record.Creator.displayName if record.Creator else "Unknown"
+                )
+
+                # Price tier defaults to 1 if not set
+                price_tier = record.priceTier if record.priceTier in (1, 2, 3) else 1
+
                 metadata = ModelMetadata(
                     provider=provider_name,
                     context_window=record.contextWindow,
-                    max_output_tokens=record.maxOutputTokens or record.contextWindow,
-                    supports_vision=capabilities.get("supportsVision", False),
+                    max_output_tokens=record.maxOutputTokens,
+                    display_name=record.displayName,
+                    provider_name=provider_display,
+                    creator_name=creator_name,
+                    price_tier=price_tier,
                 )
 
                 # Create model instance
@@ -206,8 +219,8 @@ def get_schema_options() -> list[dict[str, str]]:
 
 def get_default_model_slug() -> str | None:
     """Get the default model slug (first recommended, or first enabled)."""
-    # Prefer recommended models
-    for model in _dynamic_models.values():
+    # Prefer recommended models (sorted for deterministic selection)
+    for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name):
         if model.is_recommended and model.is_enabled:
             return model.slug
 

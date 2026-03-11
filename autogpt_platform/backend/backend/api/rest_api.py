@@ -118,12 +118,18 @@ async def lifespan_context(app: fastapi.FastAPI):
     AutoRegistry.patch_integrations()
 
     # Refresh LLM registry before initializing blocks so blocks can use registry data
+    # Note: Graceful fallback for now since no blocks consume registry yet (comes in PR #5)
+    # When block integration lands, this should fail hard or skip block initialization
     try:
         from backend.data.llm_registry import refresh_llm_registry
 
         await refresh_llm_registry()
+        logger.info("LLM registry refreshed successfully at startup")
     except Exception as e:
-        logger.warning(f"Failed to refresh LLM registry at startup: {e}")
+        logger.warning(
+            f"Failed to refresh LLM registry at startup: {e}. "
+            "Blocks will initialize with empty registry."
+        )
 
     await backend.data.block.initialize_blocks()
 
