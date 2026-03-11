@@ -25,34 +25,60 @@ type HistoryStore = {
 
 const MAX_HISTORY = 50;
 
+// Microtask batching state — kept outside the store to avoid triggering
+// re-renders. When multiple pushState calls happen in the same synchronous
+// execution (e.g. node deletion cascading to edge cleanup), only the first
+// (pre-change) state is kept and committed as a single history entry.
+let pendingState: HistoryState | null = null;
+let batchScheduled = false;
+
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
   past: [{ nodes: [], edges: [] }],
   future: [],
 
   pushState: (state: HistoryState) => {
-    const { past } = get();
-    const lastState = past[past.length - 1];
-
-    if (lastState && isEqual(lastState, state)) {
-      return;
+    // Keep only the first state within a microtask batch — it represents
+    // the true pre-change snapshot before any cascading mutations.
+    if (!pendingState) {
+      pendingState = state;
     }
 
-    const actualCurrentState = {
-      nodes: useNodeStore.getState().nodes,
-      edges: useEdgeStore.getState().edges,
-    };
+    if (!batchScheduled) {
+      batchScheduled = true;
+      queueMicrotask(() => {
+        const stateToCommit = pendingState;
+        pendingState = null;
+        batchScheduled = false;
 
-    if (isEqual(state, actualCurrentState)) {
-      return;
+        if (!stateToCommit) return;
+
+        const { past } = get();
+        const lastState = past[past.length - 1];
+
+        if (lastState && isEqual(lastState, stateToCommit)) {
+          return;
+        }
+
+        const actualCurrentState = {
+          nodes: useNodeStore.getState().nodes,
+          edges: useEdgeStore.getState().edges,
+        };
+
+        if (isEqual(stateToCommit, actualCurrentState)) {
+          return;
+        }
+
+        set((prev) => ({
+          past: [...prev.past.slice(-MAX_HISTORY + 1), stateToCommit],
+          future: [],
+        }));
+      });
     }
-
-    set((prev) => ({
-      past: [...prev.past.slice(-MAX_HISTORY + 1), state],
-      future: [],
-    }));
   },
 
   initializeHistory: () => {
+    pendingState = null;
+
     const currentNodes = useNodeStore.getState().nodes;
     const currentEdges = useEdgeStore.getState().edges;
 
@@ -122,5 +148,8 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   },
   canRedo: () => get().future.length > 0,
 
-  clear: () => set({ past: [{ nodes: [], edges: [] }], future: [] }),
+  clear: () => {
+    pendingState = null;
+    set({ past: [{ nodes: [], edges: [] }], future: [] });
+  },
 }));
