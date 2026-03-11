@@ -14,7 +14,7 @@ from backend.blocks.mcp.helpers import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url
+from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -53,15 +53,9 @@ class RunMCPToolTool(BaseTool):
     def description(self) -> str:
         return (
             "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Two-step workflow: (1) Call with just `server_url` to discover available tools. "
-            "(2) Call again with `server_url`, `tool_name`, and `tool_arguments` to execute. "
-            "Known hosted servers (use directly): Notion (https://mcp.notion.com/mcp), "
-            "Linear (https://mcp.linear.app/mcp), Stripe (https://mcp.stripe.com), "
-            "Intercom (https://mcp.intercom.com/mcp), Cloudflare (https://mcp.cloudflare.com/mcp), "
-            "Atlassian/Jira (https://mcp.atlassian.com/mcp). "
-            "For other services, search the MCP registry at https://registry.modelcontextprotocol.io/. "
-            "Authentication: If the server requires credentials, user will be prompted to complete the MCP credential setup flow."
-            "Once connected and user confirms, retry the same call immediately."
+            "Two-step: (1) call with server_url to list available tools, "
+            "(2) call again with server_url + tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide for known server URLs and auth details."
         )
 
     @property
@@ -150,7 +144,7 @@ class RunMCPToolTool(BaseTool):
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
-            await validate_url(server_url, trusted_origins=[])
+            await validate_url_host(server_url)
         except ValueError as e:
             msg = str(e)
             if "Unable to resolve" in msg or "No IP addresses" in msg:

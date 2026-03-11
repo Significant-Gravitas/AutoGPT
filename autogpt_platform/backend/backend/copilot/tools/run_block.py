@@ -2,38 +2,34 @@
 
 import logging
 import uuid
-from collections import defaultdict
 from typing import Any
 
-from pydantic_core import PydanticUndefined
-
-from backend.blocks import get_block
+from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.constants import (
+    COPILOT_NODE_EXEC_ID_SEPARATOR,
+    COPILOT_NODE_PREFIX,
+    COPILOT_SESSION_PREFIX,
+)
 from backend.copilot.model import ChatSession
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import review_db
 from backend.data.execution import ExecutionContext
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
-from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.exceptions import BlockError
 
 from .base import BaseTool
 from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
-from .helpers import get_inputs_from_schema
+from .helpers import execute_block, get_inputs_from_schema, resolve_block_credentials
 from .models import (
     BlockDetails,
     BlockDetailsResponse,
-    BlockOutputResponse,
     ErrorResponse,
     InputValidationErrorResponse,
+    ReviewRequiredResponse,
     SetupInfo,
     SetupRequirementsResponse,
     ToolResponseBase,
     UserReadiness,
 )
-from .utils import (
-    build_missing_credentials_from_field_info,
-    match_credentials_to_requirements,
-)
+from .utils import build_missing_credentials_from_field_info
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +48,9 @@ class RunBlockTool(BaseTool):
             "IMPORTANT: You MUST call find_block first to get the block's 'id' - "
             "do NOT guess or make up block IDs. "
             "On first attempt (without input_data), returns detailed schema showing "
-            "required inputs and outputs. Then call again with proper input_data to execute."
+            "required inputs and outputs. Then call again with proper input_data to execute. "
+            "If a block requires human review, use continue_run_block with the "
+            "review_id after the user approves."
         )
 
     @property
@@ -83,7 +81,7 @@ class RunBlockTool(BaseTool):
                     ),
                 },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "block_name", "input_data"],
         }
 
     @property
@@ -149,21 +147,27 @@ class RunBlockTool(BaseTool):
             block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
             or block.id in COPILOT_EXCLUDED_BLOCK_IDS
         ):
+            # Provide actionable guidance for blocks with dedicated tools
+            if block.block_type == BlockType.MCP_TOOL:
+                hint = (
+                    " Use the `run_mcp_tool` tool instead — it handles "
+                    "MCP server discovery, authentication, and execution."
+                )
+            elif block.block_type == BlockType.AGENT:
+                hint = " Use the `run_agent` tool instead."
+            else:
+                hint = " This block is designed for use within graphs only."
             return ErrorResponse(
-                message=(
-                    f"Block '{block.name}' cannot be run directly in CoPilot. "
-                    "This block is designed for use within graphs only."
-                ),
+                message=f"Block '{block.name}' cannot be run directly.{hint}",
                 session_id=session_id,
             )
 
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
-        creds_manager = IntegrationCredentialsManager()
         (
             matched_credentials,
             missing_credentials,
-        ) = await self._resolve_block_credentials(user_id, block, input_data)
+        ) = await resolve_block_credentials(user_id, block, input_data)
 
         # Get block schemas for details/validation
         try:
@@ -272,169 +276,97 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             )
 
-        try:
-            # Get or create user's workspace for CoPilot file operations
-            workspace = await workspace_db().get_or_create_workspace(user_id)
+        # Generate synthetic IDs for CoPilot context.
+        # Encode node_id in node_exec_id so it can be extracted later
+        # (e.g. for auto-approve, where we need node_id but have no NodeExecution row).
+        synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
+        synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
 
-            # Generate synthetic IDs for CoPilot context
-            # Each chat session is treated as its own agent with one continuous run
-            # This means:
-            # - graph_id (agent) = session (memories scoped to session when limit_to_agent=True)
-            # - graph_exec_id (run) = session (memories scoped to session when limit_to_run=True)
-            # - node_exec_id = unique per block execution
-            synthetic_graph_id = f"copilot-session-{session.session_id}"
-            synthetic_graph_exec_id = f"copilot-session-{session.session_id}"
-            synthetic_node_id = f"copilot-node-{block_id}"
-            synthetic_node_exec_id = (
-                f"copilot-{session.session_id}-{uuid.uuid4().hex[:8]}"
-            )
-
-            # Create unified execution context with all required fields
-            execution_context = ExecutionContext(
-                # Execution identity
-                user_id=user_id,
-                graph_id=synthetic_graph_id,
-                graph_exec_id=synthetic_graph_exec_id,
-                graph_version=1,  # Versions are 1-indexed
-                node_id=synthetic_node_id,
-                node_exec_id=synthetic_node_exec_id,
-                # Workspace with session scoping
-                workspace_id=workspace.id,
-                session_id=session.session_id,
-            )
-
-            # Prepare kwargs for block execution
-            # Keep individual kwargs for backwards compatibility with existing blocks
-            exec_kwargs: dict[str, Any] = {
-                "user_id": user_id,
-                "execution_context": execution_context,
-                # Legacy: individual kwargs for blocks not yet using execution_context
-                "workspace_id": workspace.id,
-                "graph_exec_id": synthetic_graph_exec_id,
-                "node_exec_id": synthetic_node_exec_id,
-                "node_id": synthetic_node_id,
-                "graph_version": 1,  # Versions are 1-indexed
-                "graph_id": synthetic_graph_id,
-            }
-
-            for field_name, cred_meta in matched_credentials.items():
-                # Inject metadata into input_data (for validation)
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
-
-                # Fetch actual credentials and pass as kwargs (for execution)
-                actual_credentials = await creds_manager.get(
-                    user_id, cred_meta.id, lock=False
-                )
-                if actual_credentials:
-                    exec_kwargs[field_name] = actual_credentials
-                else:
-                    return ErrorResponse(
-                        message=f"Failed to retrieve credentials for {field_name}",
-                        session_id=session_id,
-                    )
-
-            # Execute the block and collect outputs
-            outputs: dict[str, list[Any]] = defaultdict(list)
-            async for output_name, output_data in block.execute(
-                input_data,
-                **exec_kwargs,
-            ):
-                outputs[output_name].append(output_data)
-
-            return BlockOutputResponse(
-                message=f"Block '{block.name}' executed successfully",
+        # Check for an existing WAITING review for this block with the same input.
+        # If the LLM retries run_block with identical input, we reuse the existing
+        # review instead of creating duplicates. Different inputs = new execution.
+        existing_reviews = await review_db().get_pending_reviews_for_execution(
+            synthetic_graph_id, user_id
+        )
+        existing_review = next(
+            (
+                r
+                for r in existing_reviews
+                if r.node_id == synthetic_node_id
+                and r.status.value == "WAITING"
+                and r.payload == input_data
+            ),
+            None,
+        )
+        if existing_review:
+            return ReviewRequiredResponse(
+                message=(
+                    f"Block '{block.name}' requires human review. "
+                    f"After the user approves, call continue_run_block with "
+                    f"review_id='{existing_review.node_exec_id}' to execute."
+                ),
+                session_id=session_id,
                 block_id=block_id,
                 block_name=block.name,
-                outputs=dict(outputs),
-                success=True,
-                session_id=session_id,
+                review_id=existing_review.node_exec_id,
+                graph_exec_id=synthetic_graph_id,
+                input_data=input_data,
             )
 
-        except BlockError as e:
-            logger.warning(f"Block execution failed: {e}")
-            return ErrorResponse(
-                message=f"Block execution failed: {e}",
-                error=str(e),
+        synthetic_node_exec_id = (
+            f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+            f"{uuid.uuid4().hex[:8]}"
+        )
+
+        # Check for HITL review before execution.
+        # This creates the review record in the DB for CoPilot flows.
+        review_context = ExecutionContext(
+            user_id=user_id,
+            graph_id=synthetic_graph_id,
+            graph_exec_id=synthetic_graph_id,
+            graph_version=1,
+            node_id=synthetic_node_id,
+            node_exec_id=synthetic_node_exec_id,
+            sensitive_action_safe_mode=True,
+        )
+        should_pause, input_data = await block.is_block_exec_need_review(
+            input_data,
+            user_id=user_id,
+            node_id=synthetic_node_id,
+            node_exec_id=synthetic_node_exec_id,
+            graph_exec_id=synthetic_graph_id,
+            graph_id=synthetic_graph_id,
+            graph_version=1,
+            execution_context=review_context,
+            is_graph_execution=False,
+        )
+        if should_pause:
+            return ReviewRequiredResponse(
+                message=(
+                    f"Block '{block.name}' requires human review. "
+                    f"After the user approves, call continue_run_block with "
+                    f"review_id='{synthetic_node_exec_id}' to execute."
+                ),
                 session_id=session_id,
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error executing block: {e}", exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to execute block: {str(e)}",
-                error=str(e),
-                session_id=session_id,
+                block_id=block_id,
+                block_name=block.name,
+                review_id=synthetic_node_exec_id,
+                graph_exec_id=synthetic_graph_id,
+                input_data=input_data,
             )
 
-    async def _resolve_block_credentials(
-        self,
-        user_id: str,
-        block: AnyBlockSchema,
-        input_data: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
-        """
-        Resolve credentials for a block by matching user's available credentials.
-
-        Args:
-            user_id: User ID
-            block: Block to resolve credentials for
-            input_data: Input data for the block (used to determine provider via discriminator)
-
-        Returns:
-            tuple of (matched_credentials, missing_credentials) - matched credentials
-            are used for block execution, missing ones indicate setup requirements.
-        """
-        input_data = input_data or {}
-        requirements = self._resolve_discriminated_credentials(block, input_data)
-
-        if not requirements:
-            return {}, []
-
-        return await match_credentials_to_requirements(user_id, requirements)
+        return await execute_block(
+            block=block,
+            block_id=block_id,
+            input_data=input_data,
+            user_id=user_id,
+            session_id=session_id,
+            node_exec_id=synthetic_node_exec_id,
+            matched_credentials=matched_credentials,
+        )
 
     def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
         """Extract non-credential inputs from block schema."""
         schema = block.input_schema.jsonschema()
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
         return get_inputs_from_schema(schema, exclude_fields=credentials_fields)
-
-    def _resolve_discriminated_credentials(
-        self,
-        block: AnyBlockSchema,
-        input_data: dict[str, Any],
-    ) -> dict[str, CredentialsFieldInfo]:
-        """Resolve credential requirements, applying discriminator logic where needed."""
-        credentials_fields_info = block.input_schema.get_credentials_fields_info()
-        if not credentials_fields_info:
-            return {}
-
-        resolved: dict[str, CredentialsFieldInfo] = {}
-
-        for field_name, field_info in credentials_fields_info.items():
-            effective_field_info = field_info
-
-            if field_info.discriminator and field_info.discriminator_mapping:
-                discriminator_value = input_data.get(field_info.discriminator)
-                if discriminator_value is None:
-                    field = block.input_schema.model_fields.get(
-                        field_info.discriminator
-                    )
-                    if field and field.default is not PydanticUndefined:
-                        discriminator_value = field.default
-
-                if (
-                    discriminator_value
-                    and discriminator_value in field_info.discriminator_mapping
-                ):
-                    effective_field_info = field_info.discriminate(discriminator_value)
-                    # For host-scoped credentials, add the discriminator value
-                    # (e.g., URL) so _credential_is_for_host can match it
-                    effective_field_info.discriminator_values.add(discriminator_value)
-                    logger.debug(
-                        f"Discriminated provider for {field_name}: "
-                        f"{discriminator_value} -> {effective_field_info.provider}"
-                    )
-
-            resolved[field_name] = effective_field_info
-
-        return resolved
