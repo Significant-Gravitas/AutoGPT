@@ -566,8 +566,6 @@ model AgentGraphExecution {
   shareToken String?   @unique
   sharedAt   DateTime?
 
-  PendingHumanReviews PendingHumanReview[]
-
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
@@ -664,8 +662,7 @@ model PendingHumanReview {
   updatedAt     DateTime?    @updatedAt
   reviewedAt    DateTime?
 
-  User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])

@@ -17,6 +17,10 @@ from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
+from backend.copilot.constants import (
+    is_copilot_synthetic_id,
+    parse_node_id_from_exec_id,
+)
 from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -121,11 +125,13 @@ async def create_auto_approval_record(
     Raises:
         ValueError: If the graph execution doesn't belong to the user
     """
-    # Validate that the graph execution belongs to this user (defense in depth)
-    graph_exec = await get_graph_execution_meta(
+    # Validate ownership: if a graph execution record exists, it must belong
+    # to this user. Non-graph executions (e.g. CoPilot) won't have a record.
+    if not is_copilot_synthetic_id(
+        graph_exec_id
+    ) and not await get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
-    )
-    if not graph_exec:
+    ):
         raise ValueError(
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
@@ -290,21 +296,26 @@ async def get_reviews_by_node_exec_ids(
     if not reviews:
         return {}
 
-    # Batch fetch all node executions to avoid N+1 queries
-    node_exec_ids_to_fetch = [review.nodeExecId for review in reviews]
-    node_execs = await AgentNodeExecution.prisma().find_many(
-        where={"id": {"in": node_exec_ids_to_fetch}},
-        include={"Node": True},
-    )
-
-    # Create mapping from node_exec_id to node_id
-    node_exec_id_to_node_id = {
-        node_exec.id: node_exec.agentNodeId for node_exec in node_execs
+    # Split into synthetic (CoPilot) and real IDs for different resolution paths
+    synthetic_ids = {
+        r.nodeExecId for r in reviews if is_copilot_synthetic_id(r.nodeExecId)
     }
+    real_ids = [r.nodeExecId for r in reviews if r.nodeExecId not in synthetic_ids]
+
+    # Batch fetch real node executions to avoid N+1 queries
+    node_exec_id_to_node_id: dict[str, str] = {}
+    if real_ids:
+        node_execs = await AgentNodeExecution.prisma().find_many(
+            where={"id": {"in": real_ids}},
+        )
+        node_exec_id_to_node_id = {ne.id: ne.agentNodeId for ne in node_execs}
 
     result = {}
     for review in reviews:
-        node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
+        if review.nodeExecId in synthetic_ids:
+            node_id = parse_node_id_from_exec_id(review.nodeExecId)
+        else:
+            node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )
@@ -370,8 +381,7 @@ async def get_reviews(
 
     reviews = []
     for _review in _reviews:
-        node_exec = await get_node_execution(_review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else _review.nodeExecId
+        node_id = await _resolve_node_id(_review.nodeExecId, get_node_execution)
         reviews.append(PendingHumanReviewModel.from_db(_review, node_id=node_id))
 
     total_pages = max(1, (total_count + page_size - 1) // page_size)
@@ -382,6 +392,19 @@ async def get_reviews(
         current_page=page,
         page_size=page_size,
     )
+
+
+async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
+    """Resolve node_id from a node_exec_id.
+
+    For CoPilot synthetic IDs (e.g. copilot-node-block-id:abc12345),
+    extract the node_id portion (copilot-node-block-id).
+    For real graph executions, look up the NodeExecution record.
+    """
+    if is_copilot_synthetic_id(node_exec_id):
+        return parse_node_id_from_exec_id(node_exec_id)
+    node_exec = await get_node_execution(node_exec_id)
+    return node_exec.node_id if node_exec else node_exec_id
 
 
 async def get_pending_reviews_for_user(
@@ -513,8 +536,12 @@ async def process_all_reviews_for_execution(
         if review is None:
             continue
 
-        node_exec = await get_node_execution(review.nodeExecId)
-        node_id = node_exec.node_id if node_exec else review.nodeExecId
+        if is_copilot_synthetic_id(review.nodeExecId):
+            # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
+            node_id = parse_node_id_from_exec_id(review.nodeExecId)
+        else:
+            node_exec = await get_node_execution(review.nodeExecId)
+            node_id = node_exec.node_id if node_exec else review.nodeExecId
         result[review.nodeExecId] = PendingHumanReviewModel.from_db(
             review, node_id=node_id
         )
@@ -568,3 +595,21 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
         },
     )
     return result
+
+
+async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
+    """Delete a review record by node execution ID after it has been consumed.
+
+    Used by CoPilot's continue_run_block to clean up one-time-use review records
+    after successful execution.
+
+    Args:
+        node_exec_id: The node execution ID of the review to delete
+        user_id: User ID for authorization
+
+    Returns:
+        Number of records deleted
+    """
+    return await PendingHumanReview.prisma().delete_many(
+        where={"nodeExecId": node_exec_id, "userId": user_id}
+    )

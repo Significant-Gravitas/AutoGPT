@@ -12,6 +12,7 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .edit_agent import EditAgentTool
@@ -70,6 +71,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
         MoveAgentsToFolderTool(),
         RunAgentTool(),
         RunBlockTool(),
+        ContinueRunBlockTool(),
         RunMCPToolTool(),
         GetMCPGuideTool(),
         AgentOutputTool(),
