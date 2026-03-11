@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # idempotent and the staleness check below handles stuck entries on restart.
 _tally_seed_tasks: dict[str, asyncio.Task] = {}
 _TALLY_STALE_SECONDS = 300
+_MAX_TALLY_ERROR_LENGTH = 200
 _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
@@ -544,11 +545,14 @@ async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
             "Failed to compute Tally understanding for invited user %s",
             invited_user_id,
         )
+        sanitized_error = re.sub(
+            r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
+        )[:_MAX_TALLY_ERROR_LENGTH]
         await prisma.models.InvitedUser.prisma().update(
             where={"id": invited_user_id},
             data={
                 "tallyStatus": prisma.enums.TallyComputationStatus.FAILED,
-                "tallyError": str(exc),
+                "tallyError": sanitized_error,
             },
         )
 

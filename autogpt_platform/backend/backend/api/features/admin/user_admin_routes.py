@@ -5,8 +5,6 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, File, Query, Security, UploadFile
 
 from backend.data.invited_user import (
-    BulkInvitedUsersResult,
-    InvitedUserRecord,
     bulk_create_invited_users_from_file,
     create_invited_user,
     list_invited_users,
@@ -17,7 +15,6 @@ from backend.data.tally import mask_email
 from backend.util.models import Pagination
 
 from .model import (
-    BulkInvitedUserRowResponse,
     BulkInvitedUsersResponse,
     CreateInvitedUserRequest,
     InvitedUserResponse,
@@ -34,33 +31,6 @@ router = APIRouter(
 )
 
 
-def _to_response(invited_user: InvitedUserRecord) -> InvitedUserResponse:
-    return InvitedUserResponse(**invited_user.model_dump())
-
-
-def _to_bulk_response(result: BulkInvitedUsersResult) -> BulkInvitedUsersResponse:
-    return BulkInvitedUsersResponse(
-        created_count=result.created_count,
-        skipped_count=result.skipped_count,
-        error_count=result.error_count,
-        results=[
-            BulkInvitedUserRowResponse(
-                row_number=row.row_number,
-                email=row.email,
-                name=row.name,
-                status=row.status,
-                message=row.message,
-                invited_user=(
-                    _to_response(row.invited_user)
-                    if row.invited_user is not None
-                    else None
-                ),
-            )
-            for row in result.results
-        ],
-    )
-
-
 @router.get(
     "/invited-users",
     response_model=InvitedUsersResponse,
@@ -74,7 +44,7 @@ async def get_invited_users(
     logger.info("Admin user %s requested invited users", admin_user_id)
     invited_users, total = await list_invited_users(page=page, page_size=page_size)
     return InvitedUsersResponse(
-        invited_users=[_to_response(iu) for iu in invited_users],
+        invited_users=[InvitedUserResponse.from_record(iu) for iu in invited_users],
         pagination=Pagination(
             total_items=total,
             total_pages=max(1, math.ceil(total / page_size)),
@@ -104,7 +74,7 @@ async def create_invited_user_route(
         admin_user_id,
         invited_user.id,
     )
-    return _to_response(invited_user)
+    return InvitedUserResponse.from_record(invited_user)
 
 
 @router.post(
@@ -124,7 +94,7 @@ async def bulk_create_invited_users_route(
     )
     content = await file.read()
     result = await bulk_create_invited_users_from_file(file.filename, content)
-    return _to_bulk_response(result)
+    return BulkInvitedUsersResponse.from_result(result)
 
 
 @router.post(
@@ -141,7 +111,7 @@ async def revoke_invited_user_route(
     )
     invited_user = await revoke_invited_user(invited_user_id)
     logger.info("Admin user %s revoked invited user %s", admin_user_id, invited_user_id)
-    return _to_response(invited_user)
+    return InvitedUserResponse.from_record(invited_user)
 
 
 @router.post(
@@ -164,4 +134,4 @@ async def retry_invited_user_tally_route(
         admin_user_id,
         invited_user_id,
     )
-    return _to_response(invited_user)
+    return InvitedUserResponse.from_record(invited_user)
