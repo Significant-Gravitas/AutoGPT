@@ -41,6 +41,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Only notify for background sessions
       if (sessionID === activeSessionRef.current) return;
 
+      // Skip if we already notified for this session (e.g. WS replay)
+      if (state.completedSessionIDs.has(sessionID)) return;
+
       // Play sound if enabled
       if (state.isSoundEnabled && audioRef.current) {
         audioRef.current.currentTime = 0;
@@ -50,8 +53,8 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       state.addCompletedSession(sessionID);
 
       // Update document title to show count
-      const count = state.completedSessionIDs.size + 1; // +1 for the one we just added
-      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
+      const nextCount = state.completedSessionIDs.size + 1;
+      document.title = `(${nextCount}) Otto is ready - ${ORIGINAL_TITLE}`;
 
       // Send browser notification if permitted
       if (

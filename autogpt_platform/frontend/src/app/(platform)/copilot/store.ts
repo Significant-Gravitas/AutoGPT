@@ -79,8 +79,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     set({
+      completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
     });
+    document.title = "AutoGPT";
   },
 }));

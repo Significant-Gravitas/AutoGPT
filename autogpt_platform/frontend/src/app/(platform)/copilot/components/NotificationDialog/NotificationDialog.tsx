@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
 import { BellRinging } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 
 export function NotificationDialog() {
@@ -13,6 +13,7 @@ export function NotificationDialog() {
     showNotificationDialog,
     setShowNotificationDialog,
     setNotificationsEnabled,
+    isNotificationsEnabled,
   } = useCopilotUIStore();
 
   const [dismissed, setDismissed] = useState(
@@ -22,6 +23,15 @@ export function NotificationDialog() {
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
+  // Re-read dismissed flag when notifications are toggled off (e.g. clearCopilotLocalData)
+  useEffect(() => {
+    if (!isNotificationsEnabled) {
+      setDismissed(
+        storage.get(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED) === "true",
+      );
+    }
+  }, [isNotificationsEnabled]);
+
   const shouldShowAuto =
     typeof Notification !== "undefined" &&
     permission === "default" &&
@@ -30,6 +40,10 @@ export function NotificationDialog() {
   const isOpen = showNotificationDialog || shouldShowAuto;
 
   function handleEnable() {
+    if (typeof Notification === "undefined") {
+      handleDismiss();
+      return;
+    }
     Notification.requestPermission().then((result) => {
       setPermission(result);
       if (result === "granted") {

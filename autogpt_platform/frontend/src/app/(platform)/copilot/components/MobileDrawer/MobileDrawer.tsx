@@ -161,6 +161,7 @@ export function MobileDrawer({
                         {session.title || "Untitled chat"}
                       </Text>
                       {session.is_processing &&
+                        !completedSessionIDs.has(session.id) &&
                         session.id !== currentSessionId && (
                           <PulseLoader size={8} className="shrink-0" />
                         )}

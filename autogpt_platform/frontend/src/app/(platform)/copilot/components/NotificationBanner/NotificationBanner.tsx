@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Key, storage } from "@/services/storage/local-storage";
 import { BellRinging, X } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 
 export function NotificationBanner() {
@@ -17,6 +17,15 @@ export function NotificationBanner() {
   const [permission, setPermission] = useState(() =>
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
+
+  // Re-read dismissed flag when notifications are toggled off (e.g. clearCopilotLocalData)
+  useEffect(() => {
+    if (!isNotificationsEnabled) {
+      setDismissed(
+        storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
+      );
+    }
+  }, [isNotificationsEnabled]);
 
   // Don't show if notifications aren't supported, already decided, dismissed, or already enabled
   if (
