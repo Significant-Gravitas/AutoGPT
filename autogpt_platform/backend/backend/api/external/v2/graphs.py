@@ -33,6 +33,7 @@ from .models import (
     GraphSetActiveVersionRequest,
     GraphSettings,
     LibraryAgent,
+    MarketplaceAgentDetails,
 )
 
 logger = logging.getLogger(__name__)
@@ -428,3 +429,30 @@ async def list_graph_credential_requirements(
         graph.credentials_input_schema, auth.user_id
     )
     return CredentialRequirementsResponse(requirements=requirements)
+
+
+@graphs_router.get(
+    path="/{graph_id}/marketplace-listing",
+    summary="Get marketplace listing for graph",
+    operation_id="getMarketplaceListingForGraph",
+)
+async def get_marketplace_listing_for_graph(
+    graph_id: str,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_STORE)
+    ),
+) -> MarketplaceAgentDetails:
+    """Get the marketplace listing for a given graph, if one exists."""
+    import prisma.models
+
+    from backend.api.features.store.model import StoreAgentDetails
+
+    agent = await prisma.models.StoreAgent.prisma().find_first(
+        where={"graph_id": graph_id}
+    )
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No marketplace listing found for graph {graph_id}",
+        )
+    return MarketplaceAgentDetails.from_internal(StoreAgentDetails.from_db(agent))
