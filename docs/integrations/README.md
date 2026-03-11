@@ -444,19 +444,24 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Assign Issue](block-integrations/github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](block-integrations/github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
 | [Github Comment](block-integrations/github/issues.md#github-comment) | A block that posts comments on GitHub issues or pull requests using the GitHub API |
+| [Github Compare Branches](block-integrations/github/repo_branches.md#github-compare-branches) | This block compares two branches or commits in a GitHub repository |
 | [Github Create Check Run](block-integrations/github/checks.md#github-create-check-run) | Creates a new check run for a specific commit in a GitHub repository |
 | [Github Create Comment Object](block-integrations/github/reviews.md#github-create-comment-object) | Creates a comment object for use with GitHub blocks |
-| [Github Create File](block-integrations/github/repo.md#github-create-file) | This block creates a new file in a GitHub repository |
+| [Github Create File](block-integrations/github/repo_files.md#github-create-file) | This block creates a new file in a GitHub repository |
 | [Github Create PR Review](block-integrations/github/reviews.md#github-create-pr-review) | This block creates a review on a GitHub pull request with optional inline comments |
 | [Github Create Repository](block-integrations/github/repo.md#github-create-repository) | This block creates a new GitHub repository |
 | [Github Create Status](block-integrations/github/statuses.md#github-create-status) | Creates a new commit status in a GitHub repository |
-| [Github Delete Branch](block-integrations/github/repo.md#github-delete-branch) | This block deletes a specified branch |
+| [Github Delete Branch](block-integrations/github/repo_branches.md#github-delete-branch) | This block deletes a specified branch |
 | [Github Discussion Trigger](block-integrations/github/triggers.md#github-discussion-trigger) | This block triggers on GitHub Discussions events |
+| [Github Fork Repository](block-integrations/github/repo.md#github-fork-repository) | This block forks a GitHub repository to your account or an organization |
 | [Github Get CI Results](block-integrations/github/ci.md#github-get-ci-results) | This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs |
 | [Github Get PR Review Comments](block-integrations/github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
+| [Github Get Repository Info](block-integrations/github/repo.md#github-get-repository-info) | This block retrieves metadata about a GitHub repository |
+| [Github Get Repository Tree](block-integrations/github/repo_files.md#github-get-repository-tree) | This block lists the entire file tree of a GitHub repository recursively |
 | [Github Issues Trigger](block-integrations/github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |
-| [Github List Branches](block-integrations/github/repo.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
+| [Github List Branches](block-integrations/github/repo_branches.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
 | [Github List Comments](block-integrations/github/issues.md#github-list-comments) | A block that retrieves all comments from a GitHub issue or pull request, including comment metadata and content |
+| [Github List Commits](block-integrations/github/commits.md#github-list-commits) | This block lists commits on a branch in a GitHub repository |
 | [Github List Discussions](block-integrations/github/repo.md#github-list-discussions) | This block lists recent discussions for a specified GitHub repository |
 | [Github List Issues](block-integrations/github/issues.md#github-list-issues) | A block that retrieves a list of issues from a GitHub repository with their titles and URLs |
 | [Github List PR Reviewers](block-integrations/github/pull_requests.md#github-list-pr-reviewers) | This block lists all reviewers for a specified GitHub pull request |
@@ -465,24 +470,28 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github List Releases](block-integrations/github/repo.md#github-list-releases) | This block lists all releases for a specified GitHub repository |
 | [Github List Stargazers](block-integrations/github/repo.md#github-list-stargazers) | This block lists all users who have starred a specified GitHub repository |
 | [Github List Tags](block-integrations/github/repo.md#github-list-tags) | This block lists all tags for a specified GitHub repository |
-| [Github Make Branch](block-integrations/github/repo.md#github-make-branch) | This block creates a new branch from a specified source branch |
+| [Github Make Branch](block-integrations/github/repo_branches.md#github-make-branch) | This block creates a new branch from a specified source branch |
 | [Github Make Issue](block-integrations/github/issues.md#github-make-issue) | A block that creates new issues on GitHub repositories with a title and body content |
 | [Github Make Pull Request](block-integrations/github/pull_requests.md#github-make-pull-request) | This block creates a new pull request on a specified GitHub repository |
+| [Github Merge Pull Request](block-integrations/github/pull_requests.md#github-merge-pull-request) | This block merges a pull request using merge, squash, or rebase |
+| [Github Multi File Commit](block-integrations/github/commits.md#github-multi-file-commit) | This block creates a single commit with multiple file upsert/delete operations using the Git Trees API |
 | [Github Pull Request Trigger](block-integrations/github/triggers.md#github-pull-request-trigger) | This block triggers on pull request events and outputs the event type and payload |
-| [Github Read File](block-integrations/github/repo.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
-| [Github Read Folder](block-integrations/github/repo.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
+| [Github Read File](block-integrations/github/repo_files.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
+| [Github Read Folder](block-integrations/github/repo_files.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
 | [Github Read Issue](block-integrations/github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
 | [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
 | [Github Release Trigger](block-integrations/github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
+| [Github Search Code](block-integrations/github/repo_files.md#github-search-code) | This block searches for code in GitHub repositories |
+| [Github Star Repository](block-integrations/github/repo.md#github-star-repository) | This block stars a GitHub repository |
 | [Github Star Trigger](block-integrations/github/triggers.md#github-star-trigger) | This block triggers on GitHub star events |
 | [Github Submit Pending Review](block-integrations/github/reviews.md#github-submit-pending-review) | This block submits a pending (draft) review on a GitHub pull request |
 | [Github Unassign Issue](block-integrations/github/issues.md#github-unassign-issue) | A block that removes a user's assignment from a GitHub issue |
 | [Github Unassign PR Reviewer](block-integrations/github/pull_requests.md#github-unassign-pr-reviewer) | This block unassigns a reviewer from a specified GitHub pull request |
 | [Github Update Check Run](block-integrations/github/checks.md#github-update-check-run) | Updates an existing check run in a GitHub repository |
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
-| [Github Update File](block-integrations/github/repo.md#github-update-file) | This block updates an existing file in a GitHub repository |
+| [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
