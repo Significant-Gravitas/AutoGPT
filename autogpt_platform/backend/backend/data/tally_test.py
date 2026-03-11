@@ -248,7 +248,7 @@ async def test_populate_understanding_skips_no_api_key():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -291,7 +291,7 @@ async def test_populate_understanding_full_flow():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -331,7 +331,7 @@ async def test_populate_understanding_handles_llm_timeout():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -492,7 +492,7 @@ async def test_refresh_cache_full_fetch():
     submissions = SAMPLE_SUBMISSIONS
 
     with (
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.get_redis_async",
             new_callable=AsyncMock,
@@ -540,7 +540,7 @@ async def test_refresh_cache_incremental_fetch():
     new_submissions = [SAMPLE_SUBMISSIONS[0]]  # Just Alice
 
     with (
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.get_redis_async",
             new_callable=AsyncMock,
