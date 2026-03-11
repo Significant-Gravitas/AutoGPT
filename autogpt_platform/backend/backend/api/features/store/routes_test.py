@@ -8,6 +8,8 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.store.db import StoreAgentsSortOptions
+
 from . import model as store_model
 from . import routes as store_routes
 
@@ -196,7 +198,7 @@ def test_get_agents_sorted(
     mock_db_call.assert_called_once_with(
         featured=False,
         creators=None,
-        sorted_by="runs",
+        sorted_by=StoreAgentsSortOptions.RUNS,
         search_query=None,
         category=None,
         page=1,
@@ -380,9 +382,11 @@ def test_get_agent_details(
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
-        agentGraphVersions=["1", "2"],
-        agentGraphId="test-graph-id",
+        graph_versions=["1", "2"],
+        graph_id="test-graph-id",
         last_updated=FIXED_NOW,
+        active_version_id="test-version-id",
+        has_approved_version=True,
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agent_details")
     mock_db_call.return_value = mocked_value
@@ -435,15 +439,17 @@ def test_get_creators_pagination(
 ) -> None:
     mocked_value = store_model.CreatorsResponse(
         creators=[
-            store_model.Creator(
+            store_model.CreatorDetails(
                 name=f"Creator {i}",
                 username=f"creator{i}",
-                description=f"Creator {i} description",
                 avatar_url=f"avatar{i}.jpg",
-                num_agents=1,
-                agent_rating=4.5,
-                agent_runs=100,
+                description=f"Creator {i} description",
+                links=[f"user{i}.link.com"],
                 is_featured=False,
+                num_agents=1,
+                agent_runs=100,
+                agent_rating=4.5,
+                top_categories=["cat1", "cat2", "cat3"],
             )
             for i in range(5)
         ],
@@ -496,19 +502,19 @@ def test_get_creator_details(
     mocked_value = store_model.CreatorDetails(
         name="Test User",
         username="creator1",
+        avatar_url="avatar.jpg",
         description="Test creator description",
         links=["link1.com", "link2.com"],
-        avatar_url="avatar.jpg",
-        agent_rating=4.8,
+        is_featured=True,
+        num_agents=5,
         agent_runs=1000,
+        agent_rating=4.8,
         top_categories=["category1", "category2"],
     )
-    mock_db_call = mocker.patch(
-        "backend.api.features.store.db.get_store_creator_details"
-    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creator")
     mock_db_call.return_value = mocked_value
 
-    response = client.get("/creator/creator1")
+    response = client.get("/creators/creator1")
     assert response.status_code == 200
 
     data = store_model.CreatorDetails.model_validate(response.json())
@@ -528,19 +534,26 @@ def test_get_submissions_success(
         submissions=[
             store_model.StoreSubmission(
                 listing_id="test-listing-id",
-                name="Test Agent",
-                description="Test agent description",
-                image_urls=["test.jpg"],
-                date_submitted=FIXED_NOW,
-                status=prisma.enums.SubmissionStatus.APPROVED,
-                runs=50,
-                rating=4.2,
-                agent_id="test-agent-id",
-                agent_version=1,
-                sub_heading="Test agent subheading",
+                user_id="test-user-id",
                 slug="test-agent",
-                video_url="test.mp4",
+                listing_version_id="test-version-id",
+                listing_version=1,
+                graph_id="test-agent-id",
+                graph_version=1,
+                name="Test Agent",
+                sub_heading="Test agent subheading",
+                description="Test agent description",
+                instructions="Click the button!",
                 categories=["test-category"],
+                image_urls=["test.jpg"],
+                video_url="test.mp4",
+                agent_output_demo_url="demo_video.mp4",
+                submitted_at=FIXED_NOW,
+                changes_summary="Initial Submission",
+                status=prisma.enums.SubmissionStatus.APPROVED,
+                run_count=50,
+                review_count=5,
+                review_avg_rating=4.2,
             )
         ],
         pagination=store_model.Pagination(

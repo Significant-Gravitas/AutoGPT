@@ -22,6 +22,9 @@ class FindLibraryAgentTool(BaseTool):
             "Search for or list agents in the user's library. Use this to find "
             "agents the user has already added to their library, including agents "
             "they created or added from the marketplace. "
+            "When creating agents with sub-agent composition, use this to get "
+            "the agent's graph_id, graph_version, input_schema, and output_schema "
+            "needed for AgentExecutorBlock nodes. "
             "Omit the query to list all agents."
         )
 

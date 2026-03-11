@@ -44,6 +44,15 @@ class TranscriptBuilder:
         self._entries: list[TranscriptEntry] = []
         self._last_uuid: str | None = None
 
+    def _last_is_assistant(self) -> bool:
+        return bool(self._entries) and self._entries[-1].type == "assistant"
+
+    def _last_message_id(self) -> str:
+        """Return the message.id of the last entry, or '' if none."""
+        if self._entries:
+            return self._entries[-1].message.get("id", "")
+        return ""
+
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
 
@@ -91,10 +100,8 @@ class TranscriptBuilder:
             self._last_uuid[:12] if self._last_uuid else None,
         )
 
-    def add_user_message(
-        self, content: str | list[dict], uuid: str | None = None
-    ) -> None:
-        """Add user message to the complete context."""
+    def append_user(self, content: str | list[dict], uuid: str | None = None) -> None:
+        """Append a user entry."""
         msg_uuid = uuid or str(uuid4())
 
         self._entries.append(
@@ -107,10 +114,34 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
-    def add_assistant_message(
-        self, content_blocks: list[dict], model: str = ""
+    def append_tool_result(self, tool_use_id: str, content: str) -> None:
+        """Append a tool result as a user entry (one per tool call)."""
+        self.append_user(
+            content=[
+                {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+            ]
+        )
+
+    def append_assistant(
+        self,
+        content_blocks: list[dict],
+        model: str = "",
+        stop_reason: str | None = None,
     ) -> None:
-        """Add assistant message to the complete context."""
+        """Append an assistant entry.
+
+        Consecutive assistant entries automatically share the same message ID
+        so the CLI can merge them (thinking → text → tool_use) into a single
+        API message on ``--resume``.  A new ID is assigned whenever an
+        assistant entry follows a non-assistant entry (user message or tool
+        result), because that marks the start of a new API response.
+        """
+        message_id = (
+            self._last_message_id()
+            if self._last_is_assistant()
+            else f"msg_sdk_{uuid4().hex[:24]}"
+        )
+
         msg_uuid = str(uuid4())
 
         self._entries.append(
@@ -121,7 +152,11 @@ class TranscriptBuilder:
                 message={
                     "role": "assistant",
                     "model": model,
+                    "id": message_id,
+                    "type": "message",
                     "content": content_blocks,
+                    "stop_reason": stop_reason,
+                    "stop_sequence": None,
                 },
             )
         )
@@ -129,6 +164,9 @@ class TranscriptBuilder:
 
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
+
+        Consecutive assistant entries are kept separate to match the
+        native CLI format — the SDK merges them internally on resume.
 
         Returns the FULL conversation state (all entries), not incremental.
         This output REPLACES any previous transcript.
