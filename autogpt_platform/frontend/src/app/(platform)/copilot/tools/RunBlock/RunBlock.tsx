@@ -15,6 +15,7 @@ import {
   isRunBlockBlockOutput,
   isRunBlockDetailsOutput,
   isRunBlockErrorOutput,
+  isRunBlockReviewRequiredOutput,
   isRunBlockSetupRequirementsOutput,
   ToolIcon,
 } from "./helpers";
@@ -54,9 +55,14 @@ export function RunBlockTool({ part }: Props) {
     part.state === "output-available" &&
     !!output &&
     !setupRequirementsOutput &&
+    !isRunBlockReviewRequiredOutput(output) &&
     (isRunBlockBlockOutput(output) ||
       isRunBlockDetailsOutput(output) ||
       isRunBlockErrorOutput(output));
+
+  // Review UI is rendered at the chat level by CopilotPendingReviews,
+  // not inside each tool card. This matches the non-copilot flow where
+  // a single PendingReviewsList shows all reviews grouped together.
 
   return (
     <div className="py-2">
