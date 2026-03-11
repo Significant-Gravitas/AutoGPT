@@ -335,7 +335,7 @@ export function CronScheduler({
               <Button
                 key={day.value}
                 variant={
-                  selectedWeekDays.includes(day.value) ? "default" : "outline"
+                  selectedWeekDays.includes(day.value) ? "default" : "outline-solid"
                 }
                 className="h-10 w-10 p-0"
                 onClick={() => {
@@ -362,7 +362,7 @@ export function CronScheduler({
           <Label>Days of Month</Label>
           <div className="flex gap-2">
             <Button
-              variant={selectedMonthDays.length === 31 ? "default" : "outline"}
+              variant={selectedMonthDays.length === 31 ? "default" : "outline-solid"}
               onClick={() => {
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
@@ -375,7 +375,7 @@ export function CronScheduler({
               variant={
                 selectedMonthDays.length < 31 && selectedMonthDays.length > 0
                   ? "default"
-                  : "outline"
+                  : "outline-solid"
               }
               onClick={() => {
                 setSelectedMonthDays([]);
@@ -402,7 +402,7 @@ export function CronScheduler({
                 <Button
                   key={i + 1}
                   variant={
-                    selectedMonthDays.includes(i + 1) ? "default" : "outline"
+                    selectedMonthDays.includes(i + 1) ? "default" : "outline-solid"
                   }
                   className="h-10 w-10 p-0"
                   onClick={() => {
@@ -454,7 +454,7 @@ export function CronScheduler({
                 <Button
                   key={i}
                   variant={
-                    selectedMonths.includes(monthNumber) ? "default" : "outline"
+                    selectedMonths.includes(monthNumber) ? "default" : "outline-solid"
                   }
                   className="px-2 py-1"
                   onClick={() => {

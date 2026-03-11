@@ -202,7 +202,7 @@ export function ChatMessagesContainer({
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:rounded-br-none " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
@@ -259,7 +259,7 @@ export function ChatMessagesContainer({
               The assistant encountered an error. Please try sending your
               message again.
             </summary>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-xs text-red-600">
               {error instanceof Error ? error.message : String(error)}
             </pre>
           </details>

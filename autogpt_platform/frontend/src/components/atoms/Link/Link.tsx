@@ -11,7 +11,7 @@ interface LinkProps {
 }
 
 export const linkBaseClasses =
-  "font-sans text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]";
+  "font-sans text-sm font-medium leading-[22px] text-(--AutoGPT-Text-text-black,#141414)";
 
 export const linkVariantClasses: Record<
   Required<LinkProps>["variant"],
@@ -22,7 +22,7 @@ export const linkVariantClasses: Record<
 };
 
 export const linkFocusClasses =
-  "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm";
+  "focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm";
 
 const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   {

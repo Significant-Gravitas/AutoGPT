@@ -83,9 +83,9 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     id: "adding-second-calculator",
     title: "Adding Second Calculator",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Great job configuring the first Calculator!</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Great job configuring the first Calculator!</p>
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
         
         <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
           <p class="text-sm font-medium text-blue-600 m-0 mb-1">We'll create a chain:</p>
@@ -111,9 +111,9 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     id: "second-calculator-added",
     title: "Second Calculator Added! ✅",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
         
         <div class="mt-3 p-3 bg-green-50 ring-1 ring-green-200 rounded-2xl">
           <p class="text-sm font-medium text-green-600 m-0">You now have 2 Calculator blocks!</p>
@@ -138,8 +138,8 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     id: "configure-second-calculator",
     title: "Configure Second Calculator",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now configure the <strong>second Calculator block</strong>.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Now configure the <strong>second Calculator block</strong>.</p>
         ${getSecondCalcRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in field B and select an Operation", "action")}
       </div>

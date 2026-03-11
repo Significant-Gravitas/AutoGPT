@@ -79,7 +79,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               )}
             </div>
           ) : scheduleRecurrence ? (
-            <Text variant="small" className="mt-1 !text-zinc-600">
+            <Text variant="small" className="mt-1 text-zinc-600!">
               {scheduleRecurrence}
             </Text>
           ) : null}

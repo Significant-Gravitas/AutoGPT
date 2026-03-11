@@ -16,7 +16,7 @@ function ExecutionAnalyticsDashboard() {
           </div>
         </div>
 
-        <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-white p-6 shadow-xs">
           <h2 className="mb-4 text-xl font-semibold">
             Execution Analytics & Accuracy Monitoring
           </h2>

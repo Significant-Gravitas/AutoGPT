@@ -60,7 +60,7 @@ export const banner = (
   const styles = bannerStyles[variant];
   return `
   <div class="${styles.bg} ring-1 ${styles.ring} rounded-2xl p-2 px-4 mt-2 flex items-start gap-2 text-sm font-medium ${styles.text} ${className || ""}">  
-    <span class="flex-shrink-0">${icon}</span>
+    <span class="shrink-0">${icon}</span>
     <span>${content}</span>
   </div>
 `;

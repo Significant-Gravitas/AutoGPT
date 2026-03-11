@@ -299,14 +299,14 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               type="button"
               onClick={onCancel}
               disabled={isLoading}
-              className="min-w-[10rem]"
+              className="min-w-40"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isLoading || !form.formState.isDirty}
-              className="min-w-[10rem]"
+              className="min-w-40"
               loading={isLoading}
             >
               {isLoading ? "Saving..." : "Save preferences"}

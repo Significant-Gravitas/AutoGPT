@@ -702,7 +702,7 @@ export function AgentRunDraftView({
             {/* Setup Instructions */}
             {graph.instructions && (
               <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
-                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
+                <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
                 <div className="text-sm text-violet-800">
                   <strong>Setup Instructions:</strong>{" "}
                   <span className="whitespace-pre-wrap">

@@ -32,7 +32,7 @@ function ErrorPageContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="relative w-full max-w-xl lg:bottom-[4rem]">
+      <div className="relative w-full max-w-xl lg:bottom-16">
         <ErrorCard
           responseError={errorDetails.responseError}
           context={errorDetails.context}
@@ -48,7 +48,7 @@ export default function ErrorPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-          <div className="relative w-full max-w-xl lg:-top-[4rem]">
+          <div className="relative w-full max-w-xl lg:-top-16">
             <ErrorCard
               responseError={{ message: "Loading..." }}
               context="application"

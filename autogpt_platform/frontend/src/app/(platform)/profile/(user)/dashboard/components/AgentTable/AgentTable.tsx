@@ -30,7 +30,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
       <div className="hidden flex-col md:flex">
         <div className="border-t border-neutral-300 dark:border-neutral-700" />
         <div className="flex items-center px-4 py-2">
-          <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
+          <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
             <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Agent info
             </div>

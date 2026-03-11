@@ -54,7 +54,7 @@ export function AccountMenu({
 
       <PopoverContent
         id={popupId}
-        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/65 p-4 shadow backdrop-blur-[10px] dark:bg-zinc-800/70"
+        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/65 p-4 shadow-sm backdrop-blur-[10px] dark:bg-zinc-800/70"
         data-testid="account-menu-popover"
       >
         {/* Header with avatar and user info */}
@@ -73,12 +73,12 @@ export function AccountMenu({
               </>
             ) : (
               <>
-                <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
+                <div className="max-w-42 truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
                   {userName}
                 </div>
                 <div
                   data-testid="account-menu-user-email"
-                  className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
+                  className="max-w-42 truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
                 >
                   {userEmail}
                 </div>

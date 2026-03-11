@@ -217,7 +217,7 @@ export function SelectedRunView({
         </SelectedViewLayout>
       </div>
       {isLgScreenUp ? (
-        <div className="max-w-[3.75rem] flex-shrink-0">
+        <div className="max-w-15 shrink-0">
           <SelectedRunActions
             agent={agent}
             run={run}

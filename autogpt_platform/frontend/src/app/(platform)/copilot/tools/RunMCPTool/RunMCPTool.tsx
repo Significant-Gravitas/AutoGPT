@@ -70,7 +70,7 @@ export function RunMCPToolComponent({ part }: Props) {
         <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {errorOutput.message}
           {errorOutput.error && (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
+            <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-xs opacity-80">
               {errorOutput.error}
             </pre>
           )}

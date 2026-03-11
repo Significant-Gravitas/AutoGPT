@@ -18,7 +18,7 @@ export const TimeWidget = (props: WidgetProps) => {
       id={id}
       hideLabel={true}
       size={inputSize as any}
-      wrapperClassName="!mb-0 "
+      wrapperClassName="mb-0! "
       disabled={disabled || readonly}
       placeholder={placeholder}
     />

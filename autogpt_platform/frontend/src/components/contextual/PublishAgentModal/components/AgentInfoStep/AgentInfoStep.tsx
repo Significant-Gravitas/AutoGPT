@@ -66,7 +66,7 @@ export function AgentInfoStep({
       />
 
       <Form {...form}>
-        <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6">
+        <form onSubmit={handleSubmit} className="grow overflow-y-auto p-6">
           {/* Changes summary field - only shown for updates */}
           {isMarketplaceUpdate && (
             <FormField

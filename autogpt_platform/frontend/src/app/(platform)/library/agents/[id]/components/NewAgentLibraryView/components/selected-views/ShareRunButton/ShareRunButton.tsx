@@ -67,7 +67,7 @@ export function ShareRunButton({
 
           {!isShared ? (
             <>
-              <div className="!mb-4">
+              <div className="mb-4!">
                 <Alert>
                   <WarningIcon className="h-4 w-4" />
                   <Text variant="body">
@@ -96,14 +96,14 @@ export function ShareRunButton({
                   label="Share URL"
                   id="share-url"
                   size="small"
-                  className="!m-0"
+                  className="m-0!"
                   wrapperClassName="flex-1"
                 />
                 <Button
                   variant="secondary"
                   onClick={handleCopy}
                   size="small"
-                  className="mt-0.5 !min-w-0"
+                  className="mt-0.5 min-w-0!"
                 >
                   {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                 </Button>

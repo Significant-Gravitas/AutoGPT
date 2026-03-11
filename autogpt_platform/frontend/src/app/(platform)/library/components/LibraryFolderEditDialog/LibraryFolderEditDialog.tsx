@@ -188,7 +188,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     label="Folder name"
                     placeholder="Enter folder name"
                     className="w-full"
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0!"
                   />
                 </FormControl>
                 <FormMessage />
@@ -208,7 +208,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     placeholder="Select a color"
                     value={field.value}
                     onValueChange={field.onChange}
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0!"
                     options={FOLDER_COLORS.map((color) => ({
                       value: color.value,
                       label: color.label,

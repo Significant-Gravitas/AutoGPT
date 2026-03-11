@@ -129,8 +129,8 @@ export default function LibraryFolderCreationDialog() {
                     id={field.name}
                     label="Folder name"
                     placeholder="Enter folder name"
-                    className="!mb-0 w-full"
-                    wrapperClassName="!mb-0"
+                    className="mb-0! w-full"
+                    wrapperClassName="mb-0!"
                   />
                 </FormControl>
                 <FormMessage />
@@ -160,7 +160,7 @@ export default function LibraryFolderCreationDialog() {
                         />
                       ),
                     }))}
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0!"
                     renderItem={(option) => (
                       <div className="flex items-center gap-2">
                         {option.icon}

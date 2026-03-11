@@ -113,7 +113,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-[#FAFAFA] to-transparent" />
+        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-linear-to-l from-[#FAFAFA] to-transparent" />
         <div className="scrollbar-hide overflow-x-auto">
           <TabsLineList
             className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}
@@ -155,7 +155,7 @@ export function SidebarRunsList({
             className="flex max-h-[76vh] flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
-              <div className="w-[15rem] lg:w-full">
+              <div className="w-60 lg:w-full">
                 <TaskListItem
                   run={run}
                   title={agent.name}
@@ -177,7 +177,7 @@ export function SidebarRunsList({
           <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
-                <div className="w-[15rem] lg:w-full" key={s.id}>
+                <div className="w-60 lg:w-full" key={s.id}>
                   <ScheduleListItem
                     schedule={s}
                     agent={agent}
@@ -206,7 +206,7 @@ export function SidebarRunsList({
             <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
               {triggers.length > 0 ? (
                 triggers.map((trigger) => (
-                  <div className="w-[15rem] lg:w-full" key={trigger.id}>
+                  <div className="w-60 lg:w-full" key={trigger.id}>
                     <TriggerListItem
                       trigger={trigger}
                       agent={agent}
@@ -235,7 +235,7 @@ export function SidebarRunsList({
           <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {templates.length > 0 ? (
               templates.map((template) => (
-                <div className="w-[15rem] lg:w-full" key={template.id}>
+                <div className="w-60 lg:w-full" key={template.id}>
                   <TemplateListItem
                     template={template}
                     agent={agent}

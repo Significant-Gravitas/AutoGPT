@@ -123,7 +123,7 @@ export function DialogWrap({
               size="icon"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+              className="absolute right-4 top-4 z-50 size-10 bg-white"
               withTooltip={false}
             >
               <X width="1rem" />

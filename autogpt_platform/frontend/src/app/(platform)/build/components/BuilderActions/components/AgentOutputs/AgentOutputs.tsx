@@ -112,7 +112,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
             {outputs.length > 0 && <OutputActions items={actionItems} />}
           </div>
         </SheetHeader>
-        <div className="flex-grow overflow-y-auto px-2 py-2">
+        <div className="grow overflow-y-auto px-2 py-2">
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-6">
               {outputs && outputs.length > 0 ? (

@@ -12,7 +12,7 @@ interface Props {
   actions: Array<{
     label: string;
     onClick: () => void;
-    variant?: "outline" | "ghost";
+    variant?: "outline-solid" | "ghost";
   }>;
 }
 
@@ -40,13 +40,13 @@ export function ToolErrorCard({
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-100 p-2">
                 {error}
               </pre>
             </details>
           )}
           {details && (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-100 p-2 text-xs text-red-700">
               {details}
             </pre>
           )}
@@ -56,7 +56,7 @@ export function ToolErrorCard({
         {actions.map((action, i) => (
           <Button
             key={i}
-            variant={action.variant ?? "outline"}
+            variant={action.variant ?? "outline-solid"}
             size="small"
             onClick={action.onClick}
           >

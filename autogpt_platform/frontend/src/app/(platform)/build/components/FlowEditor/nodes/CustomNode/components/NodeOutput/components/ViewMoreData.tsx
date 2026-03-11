@@ -56,7 +56,7 @@ export const ViewMoreData = ({
         <Button
           variant="secondary"
           size="small"
-          className="h-fit w-fit min-w-0 !text-xs"
+          className="h-fit w-fit min-w-0 text-xs!"
         >
           View More
         </Button>
@@ -72,7 +72,7 @@ export const ViewMoreData = ({
               {reversedExecutionResults.map((result) => (
                 <div
                   key={result.node_exec_id}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs"
                 >
                   <div className="flex items-center gap-2">
                     <Text variant="body" className="text-slate-600">
@@ -103,7 +103,7 @@ export const ViewMoreData = ({
                             <div className="flex items-center gap-2">
                               <Text
                                 variant="body-medium"
-                                className="!font-semibold text-slate-600"
+                                className="font-semibold! text-slate-600"
                               >
                                 Pin:
                               </Text>
@@ -117,7 +117,7 @@ export const ViewMoreData = ({
                             <div className="w-full space-y-2">
                               <Text
                                 variant="body-medium"
-                                className="!font-semibold text-slate-600"
+                                className="font-semibold! text-slate-600"
                               >
                                 Data:
                               </Text>

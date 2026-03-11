@@ -71,7 +71,7 @@ export function MCPToolOutputCard({ output }: Props) {
             {resultText}
           </ContentCodeBlock>
         ) : (
-          <p className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-zinc-800">
+          <p className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap wrap-break-word text-sm text-zinc-800">
             {resultText}
           </p>
         )}

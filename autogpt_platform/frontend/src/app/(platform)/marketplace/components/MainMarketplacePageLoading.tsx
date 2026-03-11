@@ -13,16 +13,16 @@ export const MainMarketplacePageLoading = () => {
             <Skeleton className="h-8 w-[60%]" />
           </div>
           <div className="mx-auto flex w-[80%] flex-wrap items-center justify-center gap-8 pt-24">
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
-            <Skeleton className="h-[12rem] w-[12rem]" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
+            <Skeleton className="h-48 w-48" />
           </div>
         </div>
       </main>

@@ -45,7 +45,7 @@ export function ThumbnailImages({
         <Text variant="large-medium" className="leading-tight">
           Thumbnail images
         </Text>
-        <Text variant="body" className="!text-zinc-500">
+        <Text variant="body" className="text-zinc-500!">
           The first image will be used as the thumbnail for your agent.
         </Text>
         {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
@@ -73,7 +73,7 @@ export function ThumbnailImages({
           <div className="flex w-full items-center justify-start gap-2 pl-2">
             <label
               htmlFor="image-upload"
-              className="inline-flex h-[2.50rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex h-[2.50rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50"
             >
               <input
                 id="image-upload"
@@ -105,7 +105,7 @@ export function ThumbnailImages({
             {images.map((src, index) => (
               <div
                 key={index}
-                className="relative flex-shrink-0 overflow-visible"
+                className="relative shrink-0 overflow-visible"
               >
                 <button
                   onClick={() => handleRemoveImage(index)}
@@ -138,7 +138,7 @@ export function ThumbnailImages({
                 onClick={handleAddImage}
                 variant="outline"
                 size="small"
-                className="!ml-4"
+                className="ml-4!"
               >
                 <IconPlus className="h-4 w-4" />
                 <span>Add image</span>

@@ -41,7 +41,7 @@ export default function LibraryUploadAgentDialog() {
         <Button
           data-testid="upload-agent-button"
           variant="primary"
-          className="h-[2.78rem] w-full md:w-[12rem]"
+          className="h-[2.78rem] w-full md:w-48"
           size="small"
         >
           <UploadSimpleIcon width={18} height={18} />

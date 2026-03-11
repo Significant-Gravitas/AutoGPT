@@ -25,13 +25,13 @@ export function MobileNavbarMenuItem({
         <div
           className={cn(
             "font-sans text-base font-normal leading-7",
-            isActive ? "font-semibold text-[#272727]" : "text-[#474747]",
+            isActive ? "font-semibold text-customGray-700" : "text-customGray-500",
           )}
         >
           {text}
         </div>
         {isActive && (
-          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727]"></div>
+          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-customGray-700"></div>
         )}
       </div>
     </div>

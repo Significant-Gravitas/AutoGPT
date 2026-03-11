@@ -87,7 +87,7 @@ export function ActivityDropdown({
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="!focus:border-1 w-full pr-10"
-                  wrapperClassName="!mb-0"
+                  wrapperClassName="mb-0!"
                   autoComplete="off"
                   autoFocus
                 />
@@ -102,7 +102,7 @@ export function ActivityDropdown({
             </div>
           ) : (
             <div className={styles.headerContainer}>
-              <Text variant="large-semibold" className="!text-black">
+              <Text variant="large-semibold" className="text-black!">
                 Agent Activity
               </Text>
               {withSearch ? (
@@ -144,12 +144,12 @@ export function ActivityDropdown({
               <Bell className="h-6 w-6 text-zinc-300" />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium" className="!text-black">
+              <Text variant="body-medium" className="text-black!">
                 {searchQuery
                   ? "No matching agents found"
                   : "No recent runs to show yet"}
               </Text>
-              <Text variant="body" className="!text-zinc-500">
+              <Text variant="body" className="text-zinc-500!">
                 {searchQuery
                   ? "Try another search term"
                   : "Start an agent to get updates"}

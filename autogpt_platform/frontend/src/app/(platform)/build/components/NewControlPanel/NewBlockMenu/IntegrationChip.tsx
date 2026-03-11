@@ -22,13 +22,13 @@ export const IntegrationChip: IntegrationChipComponent = ({
   return (
     <Button
       className={cn(
-        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-zinc-50 p-2 pr-3 shadow-none",
+        "flex h-13 w-full min-w-30 justify-start gap-2 whitespace-normal rounded-small bg-zinc-50 p-2 pr-3 shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
         className,
       )}
       {...rest}
     >
-      <div className="relative h-9 w-9 rounded-[0.5rem] bg-transparent">
+      <div className="relative h-9 w-9 rounded-small bg-transparent">
         {icon_url && (
           <Image
             src={icon_url}
@@ -40,7 +40,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+        <span className="truncate font-sans text-sm font-normal leading-5.5 text-zinc-800">
           {beautifyString(name)}
         </span>
       )}
@@ -50,8 +50,8 @@ export const IntegrationChip: IntegrationChipComponent = ({
 
 const IntegrationChipSkeleton: React.FC = () => {
   return (
-    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3">
-      <Skeleton className="h-9 w-12 rounded-[0.5rem] bg-zinc-200" />
+    <Skeleton className="flex h-13 w-full min-w-30 gap-2 rounded-small bg-zinc-100 p-2 pr-3">
+      <Skeleton className="h-9 w-12 rounded-small bg-zinc-200" />
       <Skeleton className="h-5 w-24 self-center rounded-sm bg-zinc-200" />
     </Skeleton>
   );

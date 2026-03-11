@@ -11,7 +11,7 @@ const meta: Meta<typeof MultiToggle> = {
     docs: {
       description: {
         component:
-          "MultiToggle component that behaves like a checkbox group, allowing multiple items to be selected. Each item uses outline button styling with purple-600 accent for selected state.",
+          "MultiToggle component that behaves like a checkbox group, allowing multiple items to be selected. Each item uses outline-solid button styling with purple-600 accent for selected state.",
       },
     },
   },

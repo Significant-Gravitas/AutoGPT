@@ -34,7 +34,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
+      className="flex h-108 w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -76,7 +76,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       <div className="mt-3 flex w-full flex-1 flex-col px-4">
         {/* Second Section: Agent Name and Creator Name */}
         <div className="flex w-full flex-col">
-          <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
+          <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-customGray-700 dark:text-neutral-100">
             {agentName}
           </h3>
           {!hideAvatar && creatorName && (
@@ -93,7 +93,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           </p>
         </div>
 
-        <div className="flex-grow" />
+        <div className="grow" />
         {/* Spacer to push stats to bottom */}
 
         {/* Fourth Section: Stats Row - aligned to bottom */}

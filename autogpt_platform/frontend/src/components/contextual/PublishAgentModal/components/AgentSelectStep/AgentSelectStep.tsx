@@ -53,7 +53,7 @@ export function AgentSelectStep({
           title="Publish Agent"
           description="Select your project that you'd like to publish"
         />
-        <div className="flex-grow p-4 sm:p-6">
+        <div className="grow p-4 sm:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
@@ -115,7 +115,7 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="flex-grow overflow-hidden p-4 sm:p-6">
+          <div className="grow overflow-hidden p-4 sm:p-6">
             <h3 className="sr-only">List of agents</h3>
             <div
               className={cn(
@@ -134,7 +134,7 @@ export function AgentSelectStep({
                     <div
                       key={agent.id}
                       data-testid="agent-card"
-                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
+                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-xs transition-all ${
                         selectedAgentId === agent.id
                           ? "border-transparent shadow-none ring-4 ring-violet-600"
                           : "hover:shadow-md"
@@ -163,7 +163,7 @@ export function AgentSelectStep({
                       </div>
                       <div className="flex flex-col gap-2 p-3">
                         <Text variant="large-medium">{agent.name}</Text>
-                        <Text variant="small" className="!text-neutral-500">
+                        <Text variant="small" className="text-neutral-500!">
                           Edited {agent.lastEdited}
                         </Text>
                       </div>

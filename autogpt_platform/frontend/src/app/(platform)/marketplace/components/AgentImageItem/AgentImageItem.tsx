@@ -28,7 +28,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-[26px] bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-60 overflow-hidden rounded-[26px] bg-customGray-200 dark:bg-neutral-700 sm:h-80 sm:w-full md:h-100 lg:h-120">
         {isValidVideoUrl(image) ? (
           getYouTubeVideoId(image) ? (
             <iframe
@@ -71,7 +71,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
         )}
       </div>
       {isVideoFile && playingVideoIndex !== index && (
-        <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-[1.25rem] lg:left-[1.25rem]">
+        <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-5 lg:left-5">
           <Button
             size="default"
             onClick={() => {
@@ -80,7 +80,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
               }
             }}
           >
-            <span className="pr-1 text-sm font-medium leading-6 tracking-tight text-[#272727] dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
+            <span className="pr-1 text-sm font-medium leading-6 tracking-tight text-customGray-700 dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
               Play demo
             </span>
             <PlayIcon className="h-5 w-5 text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />

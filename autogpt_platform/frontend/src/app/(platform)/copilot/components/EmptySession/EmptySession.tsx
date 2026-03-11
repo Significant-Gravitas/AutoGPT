@@ -57,16 +57,16 @@ export function EmptySession({
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
       <motion.div
-        className="w-full max-w-[52rem] text-center"
+        className="w-full max-w-208 text-center"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto max-w-[52rem]">
-          <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
+        <div className="mx-auto max-w-208">
+          <Text variant="h3" className="mb-1 text-[1.375rem]! text-zinc-700">
             Hey, <span className="text-violet-600">{greetingName}</span>
           </Text>
-          <Text variant="h3" className="mb-8 !font-normal">
+          <Text variant="h3" className="mb-8 font-normal!">
             Tell me about your work — I&apos;ll find what to automate.
           </Text>
 

@@ -53,7 +53,7 @@ export function ShowMoreText({
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-full bg-zinc-100 pb-2 font-medium text-black",
+          "mt-2 flex h-4 w-7 items-center justify-center rounded-full bg-zinc-100 pb-2 font-medium text-black",
           toggleClassName,
         )}
         type="button"

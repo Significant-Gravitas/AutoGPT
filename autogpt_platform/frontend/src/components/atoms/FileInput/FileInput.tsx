@@ -273,7 +273,7 @@ export function FileInput(props: Props) {
           ) : value ? (
             <div className="flex items-center gap-2">
               <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
-                <FileTextIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
+                <FileTextIcon className="h-4 w-4 shrink-0 text-gray-600 dark:text-gray-400" />
 
                 <Text
                   variant="small-medium"
@@ -295,7 +295,7 @@ export function FileInput(props: Props) {
               <Button
                 variant="outline"
                 size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
               >

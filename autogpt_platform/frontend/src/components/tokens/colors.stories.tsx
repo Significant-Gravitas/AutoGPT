@@ -204,7 +204,7 @@ export function AllVariants() {
                     className="flex items-center gap-4 rounded-lg border border-gray-200 p-4"
                   >
                     <div
-                      className="h-12 w-12 flex-shrink-0 rounded border border-gray-300"
+                      className="h-12 w-12 shrink-0 rounded border border-gray-300"
                       style={{ backgroundColor: color.hex }}
                     ></div>
                     <div className="flex-1 space-y-1">

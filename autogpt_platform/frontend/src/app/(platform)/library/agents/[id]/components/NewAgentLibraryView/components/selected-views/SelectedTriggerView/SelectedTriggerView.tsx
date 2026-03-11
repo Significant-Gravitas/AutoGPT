@@ -169,7 +169,7 @@ export function SelectedTriggerView({
         </SelectedViewLayout>
       </div>
       {trigger ? (
-        <div className="-mt-2 max-w-[3.75rem] flex-shrink-0">
+        <div className="-mt-2 max-w-15 shrink-0">
           <SelectedTriggerActions
             agent={agent}
             triggerId={trigger.id}

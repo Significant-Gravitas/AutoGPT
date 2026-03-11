@@ -46,13 +46,13 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
     <div
       draggable={draggable}
       onDragStart={handleDragStart}
-      className="[@media(pointer:fine)]:cursor-grab [@media(pointer:fine)]:active:cursor-grabbing"
+      className="pointer-fine:cursor-grab pointer-fine:active:cursor-grabbing"
     >
       <motion.div
         layoutId={`agent-card-${id}`}
         data-testid="library-agent-card"
         data-agent-id={id}
-        className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white hover:shadow-md"
+        className="group relative inline-flex h-42.5 w-full max-w-100 flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white hover:shadow-md"
         transition={{
           type: "spring",
           damping: 25,
@@ -60,7 +60,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         }}
         style={{ willChange: "transform" }}
       >
-        <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
+        <NextLink href={`/library/agents/${id}`} className="shrink-0">
           <div className="relative flex items-center gap-2 px-4 pt-3">
             <Avatar className="h-4 w-4 rounded-full">
               <AvatarImage
@@ -96,20 +96,20 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             <Text
               variant="h5"
               data-testid="library-agent-card-name"
-              className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
+              className="line-clamp-3 hyphens-auto wrap-break-word no-underline hover:no-underline"
             >
               {name}
             </Text>
 
             {!image_url ? (
               <div
-                className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
+                className={`h-[3.64rem] w-[6.70rem] shrink-0 rounded-small ${
                   [
-                    "bg-gradient-to-r from-green-200 to-blue-200",
-                    "bg-gradient-to-r from-pink-200 to-purple-200",
-                    "bg-gradient-to-r from-yellow-200 to-orange-200",
-                    "bg-gradient-to-r from-blue-200 to-cyan-200",
-                    "bg-gradient-to-r from-indigo-200 to-purple-200",
+                    "bg-linear-to-r from-green-200 to-blue-200",
+                    "bg-linear-to-r from-pink-200 to-purple-200",
+                    "bg-linear-to-r from-yellow-200 to-orange-200",
+                    "bg-linear-to-r from-blue-200 to-cyan-200",
+                    "bg-linear-to-r from-indigo-200 to-purple-200",
                   ][parseInt(id.slice(0, 8), 16) % 5]
                 }`}
                 style={{
@@ -123,7 +123,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
                 alt={`${name} preview image`}
                 width={107}
                 height={58}
-                className="flex-shrink-0 rounded-small object-cover"
+                className="shrink-0 rounded-small object-cover"
               />
             )}
           </Link>

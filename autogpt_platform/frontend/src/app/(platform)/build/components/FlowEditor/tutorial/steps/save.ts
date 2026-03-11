@@ -13,8 +13,8 @@ export const createSaveSteps = (): StepOptions[] => [
     id: "open-save",
     title: "Save Your Agent",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Before running, we need to <strong>save</strong> your agent.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Before running, we need to <strong>save</strong> your agent.</p>
         ${banner(ICONS.ClickIcon, "Click the Save button", "action")}
       </div>
     `,
@@ -43,10 +43,10 @@ export const createSaveSteps = (): StepOptions[] => [
     id: "save-details",
     title: "Name Your Agent",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Give your agent a <strong>name</strong> and optional description.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Give your agent a <strong>name</strong> and optional description.</p>
         ${banner(ICONS.ClickIcon, 'Enter a name and click "Save Agent"', "action")}
-        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0" style="margin-top: 0.5rem;">Example: "My Calculator Agent"</p>
+        <p class="text-xs font-normal leading-4.5 text-zinc-500 m-0" style="margin-top: 0.5rem;">Example: "My Calculator Agent"</p>
       </div>
     `,
     attachTo: {

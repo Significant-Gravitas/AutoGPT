@@ -37,7 +37,7 @@ export function EditAgentForm({
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(handleFormSubmit)}
-          className="flex-grow overflow-y-auto p-6"
+          className="grow overflow-y-auto p-6"
         >
           <FormField
             control={form.control}

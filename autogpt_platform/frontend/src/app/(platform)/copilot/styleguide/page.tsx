@@ -207,7 +207,7 @@ export default function StyleguidePage() {
             <Section title="Messages">
               <SubSection label="User message">
                 <Message from="user">
-                  <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                  <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:rounded-br-none">
                     <MessageResponse>
                       Find me an agent that can summarize YouTube videos
                     </MessageResponse>
@@ -239,7 +239,7 @@ export default function StyleguidePage() {
               <SubSection label="Thinking state">
                 <Message from="assistant">
                   <MessageContent className="text-[1rem] leading-relaxed">
-                    <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
+                    <span className="inline-block animate-shimmer bg-linear-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-size-[200%_100%] bg-clip-text text-transparent">
                       Thinking...
                     </span>
                   </MessageContent>
@@ -1740,7 +1740,7 @@ export default function StyleguidePage() {
               <Conversation className="min-h-0 rounded-lg border bg-white">
                 <ConversationContent className="gap-6 px-3 py-6">
                   <Message from="user">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:rounded-br-none">
                       <MessageResponse>
                         Find me a block that can fetch weather data
                       </MessageResponse>
@@ -1792,7 +1792,7 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="user">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:rounded-br-none">
                       <MessageResponse>
                         Yes, run the Get Weather block for San Francisco
                       </MessageResponse>

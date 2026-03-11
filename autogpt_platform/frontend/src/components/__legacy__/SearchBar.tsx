@@ -19,10 +19,10 @@ interface SearchBarProps {
 export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = 'Search for tasks like "optimise SEO"',
   backgroundColor = "bg-neutral-100 dark:bg-neutral-800",
-  iconColor = "text-[#646464] dark:text-neutral-400",
+  iconColor = "text-customGray-400 dark:text-neutral-400",
   textColor = "text-[#707070] dark:text-neutral-200",
   placeholderColor = "text-[#707070] dark:text-neutral-400",
-  width = "w-9/10 lg:w-[56.25rem]",
+  width = "w-9/10 lg:w-225",
   height = "h-[60px]",
 }) => {
   const router = useRouter();
@@ -52,7 +52,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className={`flex-grow border-none bg-transparent ${textColor} font-sans text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-none`}
+        className={`grow border-none bg-transparent ${textColor} font-sans text-lg font-normal leading-9 tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-hidden`}
         data-testid="store-search-input"
       />
     </form>

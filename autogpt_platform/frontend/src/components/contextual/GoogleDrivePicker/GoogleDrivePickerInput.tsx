@@ -125,7 +125,7 @@ export function GoogleDrivePickerInput({
                   <img
                     src={file.iconUrl}
                     alt=""
-                    className="h-4 w-4 flex-shrink-0"
+                    className="h-4 w-4 shrink-0"
                   />
                 )}
                 <span className="truncate" title={file.name}>
@@ -137,7 +137,7 @@ export function GoogleDrivePickerInput({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 flex-shrink-0"
+                  className="h-6 w-6 shrink-0"
                   onClick={() => handleRemoveFile(idx)}
                 >
                   <Cross2Icon className="h-3 w-3" />

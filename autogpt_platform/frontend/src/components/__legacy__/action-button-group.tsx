@@ -21,7 +21,7 @@ export default function ActionButtonGroup({
         "callback" in action ? (
           <Button
             key={i}
-            variant={action.variant ?? "outline"}
+            variant={action.variant ?? "outline-solid"}
             disabled={action.disabled}
             onClick={action.callback}
             {...action.extraProps}

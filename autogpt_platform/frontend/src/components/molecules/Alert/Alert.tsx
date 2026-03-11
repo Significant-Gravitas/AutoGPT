@@ -46,7 +46,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(alertVariants({ variant: currentVariant }), className)}
         {...props}
       >
-        <IconComponent className="h-[1.125rem] w-[1.125rem]" />
+        <IconComponent className="h-4.5 w-4.5" />
         {children}
       </div>
     );

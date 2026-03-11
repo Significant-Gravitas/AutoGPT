@@ -118,7 +118,7 @@ export function WalletRefill() {
           <TabsTrigger value="top-up">One-time top up</TabsTrigger>
           <TabsTrigger value="auto-refill">Auto-refill</TabsTrigger>
         </TabsList>
-        <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-zinc-200">
+        <div className="mt-4 w-full rounded-lg px-5 outline-solid outline-1 outline-offset-2 outline-zinc-200">
           <TabsContent value="top-up" className="flex flex-col">
             <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
               One-time top-up

@@ -123,7 +123,7 @@ export function EmptyTasks({
                 <Button
                   variant="primary"
                   size="large"
-                  className="inline-flex w-[19.75rem]"
+                  className="inline-flex w-79"
                 >
                   Setup your task
                 </Button>
@@ -137,7 +137,7 @@ export function EmptyTasks({
         </div>
       </RunDetailCard>
 
-      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
+      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-118">
         <Text variant="label" className="text-zinc-500">
           About this agent
         </Text>

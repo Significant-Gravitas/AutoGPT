@@ -18,7 +18,7 @@ export const FieldError = ({
   return (
     <div>
       {fieldError && (
-        <Text variant="small" className="mt-1 pl-4 !text-red-600">
+        <Text variant="small" className="mt-1 pl-4 text-red-600!">
           {fieldError}
         </Text>
       )}

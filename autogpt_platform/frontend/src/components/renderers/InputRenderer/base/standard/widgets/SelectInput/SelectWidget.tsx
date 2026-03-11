@@ -69,7 +69,7 @@ export const SelectWidget = (props: WidgetProps) => {
             label: option.label,
           })) || []
         }
-        wrapperClassName="!mb-0 "
+        wrapperClassName="mb-0! "
         className={className}
       />
     );

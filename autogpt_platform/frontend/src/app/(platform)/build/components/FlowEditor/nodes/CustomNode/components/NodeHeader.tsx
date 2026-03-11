@@ -42,7 +42,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
   };
 
   return (
-    <div className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-zinc-200 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4 pt-3">
+    <div className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-zinc-200 bg-linear-to-r from-slate-50/80 to-white/90 px-4 py-4 pt-3">
       {/* Title row with context menu */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -57,8 +57,8 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                 onChange={(e) => setEditedTitle(e.target.value)}
                 autoFocus
                 className={cn(
-                  "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-none focus:ring-0",
-                  "font-sans text-[1rem] font-semibold leading-[1.5rem] text-zinc-800",
+                  "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-hidden focus:ring-0",
+                  "font-sans text-[1rem] font-semibold leading-6 text-zinc-800",
                 )}
                 onBlur={handleTitleEdit}
                 onKeyDown={handleTitleKeyDown}
@@ -87,7 +87,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
           <div className="flex items-center gap-2">
             <Text
               variant="small"
-              className="shrink-0 !font-medium !text-slate-500"
+              className="shrink-0 font-medium! text-slate-500!"
             >
               #{nodeId.split("-")[0]}
             </Text>

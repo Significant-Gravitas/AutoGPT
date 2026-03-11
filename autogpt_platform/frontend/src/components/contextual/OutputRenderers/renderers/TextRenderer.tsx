@@ -21,7 +21,7 @@ function renderText(
   const textValue = String(value);
 
   return (
-    <p className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700">
+    <p className="resize-none overflow-x-auto whitespace-pre-wrap wrap-break-word border-none text-sm text-neutral-700">
       {textValue}
     </p>
   );

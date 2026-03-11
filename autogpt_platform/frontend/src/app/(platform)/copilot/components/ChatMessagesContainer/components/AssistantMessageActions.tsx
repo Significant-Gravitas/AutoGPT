@@ -59,7 +59,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           disabled={feedback === "downvote"}
           className={cn(
             feedback === "upvote" && "text-green-300 hover:text-green-300",
-            feedback === "downvote" && "!opacity-20",
+            feedback === "downvote" && "opacity-20!",
           )}
         >
           <ThumbsUp
@@ -76,7 +76,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           disabled={feedback === "upvote"}
           className={cn(
             feedback === "downvote" && "text-red-300 hover:text-red-300",
-            feedback === "upvote" && "!opacity-20",
+            feedback === "upvote" && "opacity-20!",
           )}
         >
           <ThumbsDown

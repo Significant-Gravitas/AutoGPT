@@ -30,7 +30,7 @@ export function ContentCard({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-lg bg-gradient-to-r from-purple-500/30 to-blue-500/30 p-[1px]",
+        "min-w-0 rounded-lg bg-linear-to-r from-purple-500/30 to-blue-500/30 p-px",
         className,
       )}
     >
@@ -223,7 +223,7 @@ export function ContentSuggestionsList({
   return (
     <ul
       className={cn(
-        "mt-2 list-disc space-y-1 pl-5 font-sans text-[0.75rem] leading-[1.125rem] text-zinc-800",
+        "mt-2 list-disc space-y-1 pl-5 font-sans text-[0.75rem] leading-4.5 text-zinc-800",
         className,
       )}
     >

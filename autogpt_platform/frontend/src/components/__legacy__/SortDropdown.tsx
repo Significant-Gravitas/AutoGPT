@@ -34,7 +34,7 @@ export const SortDropdown: React.FC<{
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-1.5 focus:outline-none">
+      <DropdownMenuTrigger className="flex items-center gap-1.5 focus:outline-hidden">
         <span className="text-base text-neutral-800 dark:text-neutral-200">
           Sort by
         </span>

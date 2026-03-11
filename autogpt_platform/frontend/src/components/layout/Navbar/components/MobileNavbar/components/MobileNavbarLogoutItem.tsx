@@ -21,7 +21,7 @@ export function MobileNavbarLogoutItem({ icon, text }: Props) {
       <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-[#e0e0e0]">
         {getAccountMenuOptionIcon(icon)}
         <div className="relative">
-          <div className="font-sans text-base font-normal leading-7 text-[#474747]">
+          <div className="font-sans text-base font-normal leading-7 text-customGray-500">
             {text}
           </div>
         </div>

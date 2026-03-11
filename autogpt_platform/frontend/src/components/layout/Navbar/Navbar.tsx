@@ -87,7 +87,7 @@ export function Navbar() {
           ) : null}
 
           {/* Centered logo */}
-          <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
+          <div className="static h-auto w-18 md:absolute md:left-1/2 md:top-1/2 md:w-22 md:-translate-x-1/2 md:-translate-y-1/2">
             <IconAutoGPTLogo className="h-full w-full" />
           </div>
 

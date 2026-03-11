@@ -28,7 +28,7 @@ export function MiniGame() {
         <canvas
           ref={canvasRef}
           tabIndex={0}
-          className="block w-full outline-none"
+          className="block w-full outline-hidden"
         />
         {showOverlay && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40">

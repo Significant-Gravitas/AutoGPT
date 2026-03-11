@@ -46,7 +46,7 @@ export function OnboardingListElement({
             ref={inputRef}
             className={cn(
               selected ? "text-zinc-600" : "text-zinc-400",
-              "font-poppin w-full border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
+              "font-poppin w-full border-0 bg-[#F5F3FF80] text-sm focus:outline-hidden",
             )}
             placeholder="Please specify"
             value={content}

@@ -48,7 +48,7 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-zinc-300" />
+      <Separator className="h-px w-full text-zinc-300" />
 
       {/* Search Results */}
       <div className="flex-1 overflow-hidden">
@@ -88,7 +88,7 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                         className={`mx-4 my-2 flex h-20 cursor-pointer rounded-lg border border-zinc-200 bg-white ${
                           index === selectedIndex
                             ? "border-zinc-400 shadow-md"
-                            : "hover:border-zinc-300 hover:shadow-sm"
+                            : "hover:border-zinc-300 hover:shadow-xs"
                         }`}
                         onClick={() => onNodeSelect(node.id)}
                         onMouseEnter={() => {

@@ -95,7 +95,7 @@ export function RemoveButton(props: AutogptIconButtonProps) {
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
       className={"border-destructive"}
-      icon={<TrashIcon size={16} className="!text-zinc-800" />}
+      icon={<TrashIcon size={16} className="text-zinc-800!" />}
     />
   );
 }

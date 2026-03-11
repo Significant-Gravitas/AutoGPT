@@ -518,7 +518,7 @@ function getTodoAccordionData(input: unknown): AccordionData {
       <div className="space-y-1 py-1">
         {todos.map((todo, i) => (
           <div key={i} className="flex items-start gap-2 text-xs">
-            <span className="mt-0.5 flex-shrink-0">
+            <span className="mt-0.5 shrink-0">
               {todo.status === "completed" ? (
                 <CheckCircleIcon
                   size={14}

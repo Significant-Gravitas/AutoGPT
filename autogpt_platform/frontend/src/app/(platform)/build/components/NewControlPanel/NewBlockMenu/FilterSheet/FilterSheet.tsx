@@ -44,7 +44,7 @@ export function FilterSheet({
         {isOpen && (
           <motion.div
             className={cn(
-              "absolute bottom-2 left-2 top-2 z-20 w-3/4 max-w-[22.5rem] space-y-4 overflow-hidden rounded-[0.75rem] bg-white pb-4 shadow-[0_4px_12px_2px_rgba(0,0,0,0.1)]",
+              "absolute bottom-2 left-2 top-2 z-20 w-3/4 max-w-90 space-y-4 overflow-hidden rounded-[0.75rem] bg-white pb-4 shadow-[0_4px_12px_2px_rgba(0,0,0,0.1)]",
             )}
             initial={{ x: "-100%", filter: "blur(10px)" }}
             animate={{ x: 0, filter: "blur(0px)" }}
@@ -64,7 +64,7 @@ export function FilterSheet({
               </Button>
             </div>
 
-            <Separator className="h-[1px] w-full text-zinc-300" />
+            <Separator className="h-px w-full text-zinc-300" />
 
             {/* Category section */}
             <div className="space-y-4 px-5">
@@ -85,7 +85,7 @@ export function FilterSheet({
                     />
                     <label
                       htmlFor={category.key}
-                      className="font-sans text-sm leading-[1.375rem] text-zinc-600"
+                      className="font-sans text-sm leading-5.5 text-zinc-600"
                     >
                       {category.name}
                     </label>
@@ -110,7 +110,7 @@ export function FilterSheet({
                     />
                     <label
                       htmlFor={`creator-${creator}`}
-                      className="font-sans text-sm leading-[1.375rem] text-zinc-600"
+                      className="font-sans text-sm leading-5.5 text-zinc-600"
                     >
                       {creator}
                     </label>
@@ -120,7 +120,7 @@ export function FilterSheet({
               {creators.length > INITIAL_CREATORS_TO_SHOW && (
                 <Button
                   variant={"link"}
-                  className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+                  className="m-0 p-0 font-sans text-sm font-medium leading-5.5 text-zinc-800 underline hover:text-zinc-600"
                   onClick={handleToggleShowMoreCreators}
                 >
                   {displayedCreatorsCount < creators.length ? "More" : "Less"}

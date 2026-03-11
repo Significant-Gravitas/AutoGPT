@@ -9,8 +9,8 @@ interface AgentImagesProps {
 export const AgentImages: React.FC<AgentImagesProps> = ({ images }) => {
   const { playingVideoIndex, handlePlay, handlePause } = useAgentImage();
   return (
-    <div className="w-full overflow-y-auto bg-white px-2 dark:bg-transparent lg:w-[56.25rem]">
-      <div className="space-y-4 sm:space-y-6 md:space-y-[1.875rem]">
+    <div className="w-full overflow-y-auto bg-white px-2 dark:bg-transparent lg:w-225">
+      <div className="space-y-4 sm:space-y-6 md:space-y-7.5">
         {images.map((image, index) => (
           <AgentImageItem
             key={index}

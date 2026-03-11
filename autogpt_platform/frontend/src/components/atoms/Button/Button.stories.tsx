@@ -30,7 +30,7 @@ const meta: Meta<typeof Button> = {
         "primary",
         "secondary",
         "destructive",
-        "outline",
+        "outline-solid",
         "ghost",
         "link",
         "loading",

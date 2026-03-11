@@ -70,10 +70,10 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           {children}
         </div>
         {canScrollLeft && (
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-background via-background/80 to-background/0" />
         )}
         {canScrollRight && (
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-background via-background/80 to-background/0" />
         )}
         {canScrollLeft && (
           <button
@@ -84,7 +84,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           >
             <ArrowLeftIcon
               size={28}
-              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
+              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow-sm"
               weight="light"
             />
           </button>
@@ -98,7 +98,7 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           >
             <ArrowRightIcon
               size={28}
-              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow"
+              className="rounded-full bg-zinc-700 p-1 text-white drop-shadow-sm"
               weight="light"
             />
           </button>

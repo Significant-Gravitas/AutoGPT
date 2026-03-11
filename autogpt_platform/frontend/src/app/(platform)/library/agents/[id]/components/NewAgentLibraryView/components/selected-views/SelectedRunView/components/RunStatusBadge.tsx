@@ -23,41 +23,41 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
       <WarningCircleIcon size={16} className="text-red-700" weight="bold" />
     ),
     bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    textColor: "text-red-700!",
   },
   QUEUED: {
     icon: <ClockIcon size={16} className="text-yellow-700" weight="bold" />,
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700!",
   },
   RUNNING: {
     icon: (
       <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
     ),
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700!",
   },
   REVIEW: {
     icon: <WarningIcon size={16} className="text-yellow-700" weight="bold" />,
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700!",
   },
   COMPLETED: {
     icon: (
       <CheckCircleIcon size={16} className="text-green-700" weight="bold" />
     ),
     bgColor: "bg-green-50",
-    textColor: "!text-green-700",
+    textColor: "text-green-700!",
   },
   TERMINATED: {
     icon: <StopCircleIcon size={16} className="text-slate-700" weight="bold" />,
     bgColor: "bg-slate-50",
-    textColor: "!text-slate-700",
+    textColor: "text-slate-700!",
   },
   FAILED: {
     icon: <XCircleIcon size={16} className="text-red-700" weight="bold" />,
     bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    textColor: "text-red-700!",
   },
 };
 

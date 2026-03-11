@@ -54,7 +54,7 @@ export function MobileNavBar({
         <Button
           variant="ghost"
           aria-label="Open menu"
-          className="min-w-auto flex !min-w-[3.75rem] items-center justify-center md:hidden"
+          className="min-w-auto flex min-w-15! items-center justify-center md:hidden"
           data-testid="mobile-nav-bar-trigger"
         >
           {isOpen ? (
@@ -86,10 +86,10 @@ export function MobileNavBar({
                     </AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-full">
-                    <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747]">
+                    <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-customGray-500">
                       {userName || "Unknown User"}
                     </div>
-                    <div className="absolute left-0 top-6 font-sans text-base font-normal leading-7 text-[#474747]">
+                    <div className="absolute left-0 top-6 font-sans text-base font-normal leading-7 text-customGray-500">
                       {userEmail || "No Email Set"}
                     </div>
                   </div>

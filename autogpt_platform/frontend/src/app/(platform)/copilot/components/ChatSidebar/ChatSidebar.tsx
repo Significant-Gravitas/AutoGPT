@@ -182,7 +182,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[50px] !h-[calc(100vh-50px)] border-r border-zinc-100 px-0"
+        className="top-[50px]! h-[calc(100vh-50px)]! border-r border-zinc-100 px-0"
       >
         {isCollapsed && (
           <SidebarHeader
@@ -208,7 +208,7 @@ export function ChatSidebar() {
                     onClick={handleNewChat}
                     style={{ minWidth: "auto", width: "auto" }}
                   >
-                    <PlusCircleIcon className="!size-5" />
+                    <PlusCircleIcon className="size-5!" />
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
@@ -256,7 +256,7 @@ export function ChatSidebar() {
               className="flex flex-col gap-1"
             >
               {isLoadingSessions ? (
-                <div className="flex min-h-[30rem] items-center justify-center py-4">
+                <div className="flex min-h-120 items-center justify-center py-4">
                   <LoadingSpinner size="small" className="text-neutral-600" />
                 </div>
               ) : sessions.length === 0 ? (
@@ -297,7 +297,7 @@ export function ChatSidebar() {
                             }
                             handleRenameSubmit(session.id);
                           }}
-                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
                     ) : (

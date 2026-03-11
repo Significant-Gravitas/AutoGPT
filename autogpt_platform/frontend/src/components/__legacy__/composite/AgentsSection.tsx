@@ -50,7 +50,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
       <div className="w-full max-w-[1360px]">
         <h2
           style={{ marginBottom: margin }}
-          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
+          className="font-poppins text-lg font-semibold text-customGray-600 dark:text-neutral-200"
         >
           {sectionTitle}
         </h2>

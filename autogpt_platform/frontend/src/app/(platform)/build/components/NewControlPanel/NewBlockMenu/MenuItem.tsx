@@ -23,18 +23,18 @@ export const MenuItem: React.FC<Props> = ({
     <Button
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
-        "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
+        "flex h-9.5 w-51.5 justify-between whitespace-normal rounded-small bg-transparent p-2 pl-3 shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0",
         selected && "bg-zinc-100",
         className,
       )}
       {...rest}
     >
-      <span className="truncate font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+      <span className="truncate font-sans text-sm font-medium leading-5.5 text-zinc-800">
         {name}
       </span>
       {number !== undefined && (
-        <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-600">
+        <span className="font-sans text-sm font-normal leading-5.5 text-zinc-600">
           {number > 100 ? "100+" : number}
         </span>
       )}

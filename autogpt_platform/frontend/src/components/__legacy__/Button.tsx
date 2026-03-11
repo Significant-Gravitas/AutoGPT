@@ -7,7 +7,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center whitespace-nowrap overflow-hidden font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-sans leading-9 tracking-tight",
+  "inline-flex items-center whitespace-nowrap overflow-hidden font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-sans leading-9 tracking-tight",
   {
     variants: {
       variant: {
@@ -28,7 +28,7 @@ const buttonVariants = cva(
         sm: "h-8 px-3 py-1.5 rounded-full text-xs",
         lg: "h-12 px-5 py-2.5 rounded-full text-lg",
         primary:
-          "h-10 w-28 rounded-full sm:h-12 sm:w-32 md:h-[4.375rem] md:w-[11rem] lg:h-[3.125rem] lg:w-[7rem]",
+          "h-10 w-28 rounded-full sm:h-12 sm:w-32 md:h-17.5 md:w-44 lg:h-12.5 lg:w-28",
         icon: "h-10 w-10 justify-center",
         card: "h-12 p-5 agpt-rounded-card justify-center text-lg",
       },
@@ -48,7 +48,7 @@ export interface ButtonProps
     | "destructive"
     | "accent"
     | "primary"
-    | "outline"
+    | "outline-solid"
     | "secondary"
     | "ghost"
     | "link";

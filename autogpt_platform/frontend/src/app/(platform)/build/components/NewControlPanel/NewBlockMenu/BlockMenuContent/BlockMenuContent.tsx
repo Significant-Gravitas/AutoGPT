@@ -11,7 +11,7 @@ export const BlockMenuContent = () => {
   return (
     <div className="flex h-full w-full flex-col">
       <BlockMenuSearchBar />
-      <Separator className="h-[1px] w-full text-zinc-300" />
+      <Separator className="h-px w-full text-zinc-300" />
       {searchQuery ? <BlockMenuSearch /> : <BlockMenuDefault />}
     </div>
   );

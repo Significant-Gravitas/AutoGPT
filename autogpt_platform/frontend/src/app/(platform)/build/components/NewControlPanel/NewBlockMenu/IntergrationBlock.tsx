@@ -77,7 +77,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
+        "group flex h-16 w-full min-w-30 items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
         className,
       )}
@@ -85,7 +85,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       onClick={handleClick}
       {...rest}
     >
-      <div className="relative h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-white">
+      <div className="relative h-10.5 w-10.5 rounded-small bg-white">
         {icon_url && (
           <Image
             src={icon_url}
@@ -100,7 +100,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
         {title && (
           <span
             className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-sm font-medium leading-5.5 text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(
@@ -121,7 +121,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-small bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
         <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
@@ -134,16 +134,16 @@ const IntegrationBlockSkeleton = ({ className }: { className?: string }) => {
   return (
     <Skeleton
       className={cn(
-        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]",
+        "flex h-16 w-full min-w-30 animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 px-3.5 py-2.5",
         className,
       )}
     >
-      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-10.5 w-10.5 rounded-small bg-zinc-200" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton className="h-5.5 w-24 rounded bg-zinc-200" />
         <Skeleton className="h-5 w-32 rounded bg-zinc-200" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-small bg-zinc-200" />
     </Skeleton>
   );
 };

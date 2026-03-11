@@ -73,7 +73,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
 
       <div className="mb-8 sm:mb-12">
         <div className="mb-8 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          <div className="relative h-[130px] w-[130px] rounded-full bg-[#d9d9d9] dark:bg-[#333333]">
+          <div className="relative h-[130px] w-[130px] rounded-full bg-customGray-100 dark:bg-[#333333]">
             {profileData.avatar_url ? (
               <Image
                 src={profileData.avatar_url}
@@ -117,7 +117,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                 data-testid="profile-info-form-display-name"
                 defaultValue={profileData.name}
                 placeholder="Enter your display name"
-                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -143,7 +143,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                 id="handle"
                 defaultValue={profileData.username}
                 placeholder="@username"
-                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -168,7 +168,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                 id="bio"
                 defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
-                className="font-circular h-full w-full resize-none border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="font-circular h-full w-full resize-none border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden dark:text-white dark:placeholder:text-neutral-500"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -206,7 +206,7 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
                         id={`link${linkNum}`}
                         placeholder="https://"
                         defaultValue={link || ""}
-                        className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                        className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-hidden dark:text-white dark:placeholder:text-neutral-500"
                         onChange={(e) => {
                           const newLinks = [...profileData.links];
                           newLinks[linkNum - 1] = e.target.value;

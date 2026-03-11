@@ -69,7 +69,7 @@ export function ScheduleAgentModal({
     >
       <Dialog.Content>
         <div className="flex h-full flex-col">
-          <Text variant="lead" as="h2" className="!font-medium !text-black">
+          <Text variant="lead" as="h2" className="font-medium! text-black!">
             Schedule run
           </Text>
 

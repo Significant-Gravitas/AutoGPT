@@ -164,7 +164,7 @@ export function SelectedScheduleView({
         </SelectedViewLayout>
       </div>
       {schedule && isLgScreenUp ? (
-        <div className="max-w-[3.75rem] flex-shrink-0">
+        <div className="max-w-15 shrink-0">
           <SelectedScheduleActions
             agent={agent}
             scheduleId={schedule.id}

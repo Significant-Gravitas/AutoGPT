@@ -70,7 +70,7 @@ export const NewSaveControl = () => {
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
                         maxLength={100}
-                        wrapperClassName="!mb-0"
+                        wrapperClassName="mb-0!"
                         {...field}
                       />
                     )}
@@ -88,7 +88,7 @@ export const NewSaveControl = () => {
                         data-id="save-control-description-input"
                         data-testid="save-control-description-input"
                         maxLength={500}
-                        wrapperClassName="!mb-0"
+                        wrapperClassName="mb-0!"
                         {...field}
                       />
                     )}
@@ -104,7 +104,7 @@ export const NewSaveControl = () => {
                       data-testid="save-control-version-output"
                       data-tutorial-id="save-control-version-output"
                       label="Version"
-                      wrapperClassName="!mb-0"
+                      wrapperClassName="mb-0!"
                     />
                   )}
                 </div>

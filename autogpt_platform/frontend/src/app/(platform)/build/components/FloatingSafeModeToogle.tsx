@@ -41,7 +41,7 @@ function SafeModeButton({
     <Tooltip delayDuration={100}>
       <TooltipTrigger asChild>
         <Button
-          variant={isEnabled ? "primary" : "outline"}
+          variant={isEnabled ? "primary" : "outline-solid"}
           size="small"
           onClick={onToggle}
           disabled={isPending}

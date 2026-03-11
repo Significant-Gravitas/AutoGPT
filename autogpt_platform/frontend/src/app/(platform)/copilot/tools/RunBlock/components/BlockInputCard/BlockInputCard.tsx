@@ -36,7 +36,7 @@ export function BlockInputCard({ inputData }: Props) {
           {entries.map(([key, value]) => (
             <ContentCard key={key}>
               <ContentCardTitle className="text-xs">{key}</ContentCardTitle>
-              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap wrap-break-word text-xs text-muted-foreground">
                 {renderValue(value)}
               </pre>
             </ContentCard>

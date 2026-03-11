@@ -38,7 +38,7 @@ export function NodeAdvancedToggle({
         <Text
           variant="body"
           as="span"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2 font-semibold! text-slate-700"
         >
           Advanced{" "}
           <CaretDownIcon

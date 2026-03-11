@@ -34,7 +34,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
             variant="icon"
             size="small"
             onClick={onClearSelectedRun}
-            className="w-[2.375rem]"
+            className="w-9.5"
           >
             <ArrowLeftIcon />
           </Button>

@@ -67,10 +67,10 @@ export function MultiToggle({
             className={cn(
               // Base button styles similar to outline variant
               "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2",
               "disabled:pointer-events-none disabled:opacity-50",
               "rounded-full border font-sans",
-              "h-[2.25rem] px-4 py-2 text-sm leading-[22px]",
+              "h-9 px-4 py-2 text-sm leading-[22px]",
               // Default outline styles
               "border-zinc-700 bg-transparent text-black hover:bg-zinc-100",
               // Selected styles with purple-600

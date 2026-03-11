@@ -64,7 +64,7 @@ export function LibraryFolder({
     <div
       data-testid="library-folder"
       data-folder-id={id}
-      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 transition-all duration-200 hover:shadow-md ${
+      className={`group relative inline-flex h-42.5 w-full max-w-100 cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 transition-all duration-200 hover:shadow-md ${
         isDragOver
           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
           : `${cardStyle.border} ${cardStyle.bg}`
@@ -82,7 +82,7 @@ export function LibraryFolder({
           <Text
             variant="h5"
             data-testid="library-folder-name"
-            className="line-clamp-2 hyphens-auto break-words"
+            className="line-clamp-2 hyphens-auto wrap-break-word"
           >
             {name}
           </Text>
@@ -96,7 +96,7 @@ export function LibraryFolder({
         </div>
 
         {/* Right side - Custom folder icon */}
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <FolderIcon isOpen={isHovered} color={color} icon={icon} />
         </div>
       </div>

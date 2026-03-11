@@ -140,7 +140,7 @@ export const OutputHandler = ({
                 as="span"
                 className={cn(
                   colorClass,
-                  isBroken && "!text-red-500 line-through",
+                  isBroken && "text-red-500! line-through",
                 )}
               >
                 ({displayType})
@@ -180,7 +180,7 @@ export const OutputHandler = ({
       >
         <Text
           variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2 font-semibold! text-slate-700"
         >
           Output{" "}
           <CaretDownIcon

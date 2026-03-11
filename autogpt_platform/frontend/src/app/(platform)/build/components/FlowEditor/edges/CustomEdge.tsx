@@ -78,9 +78,9 @@ const CustomEdge = ({
         interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
-          isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
+          isStatic && "stroke-[1.5px]! [stroke-dasharray:6]",
           isBroken
-            ? "!stroke-red-500 !stroke-[2px] [stroke-dasharray:4]"
+            ? "stroke-red-500! stroke-[2px]! [stroke-dasharray:4]"
             : selected
               ? "stroke-zinc-800"
               : edgeColorClass

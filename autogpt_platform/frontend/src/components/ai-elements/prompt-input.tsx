@@ -329,7 +329,7 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
-        "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+        "size-10.5 rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
         className,
       )}
       disabled={isDisabled}

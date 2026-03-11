@@ -9,7 +9,7 @@ import { LinkProps } from "next/link";
 
 // Extended button variants based on our design system
 export const extendedButtonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 font-sans leading-snug border min-w-[7.7rem]",
+  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 font-sans leading-snug border min-w-[7.7rem]",
   {
     variants: {
       variant: {
@@ -23,7 +23,7 @@ export const extendedButtonVariants = cva(
           "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        icon: "bg-transparent text-black border border-zinc-300 hover:bg-zinc-100 hover:border-zinc-600 rounded-[96px] disabled:opacity-1 !min-w-0",
+        icon: "bg-transparent text-black border border-zinc-300 hover:bg-zinc-100 hover:border-zinc-600 rounded-[96px] disabled:opacity-1 min-w-0!",
         link: cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
@@ -32,9 +32,9 @@ export const extendedButtonVariants = cva(
         ),
       },
       size: {
-        small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem] min-w-[5.5rem]",
-        large: "px-4 py-3 text-sm gap-2 h-[3.25rem]",
-        icon: "p-3 !min-w-0",
+        small: "px-3 py-2 text-sm gap-1.5 h-9 min-w-22",
+        large: "px-4 py-3 text-sm gap-2 h-13",
+        icon: "p-3 min-w-0!",
       },
     },
     defaultVariants: {

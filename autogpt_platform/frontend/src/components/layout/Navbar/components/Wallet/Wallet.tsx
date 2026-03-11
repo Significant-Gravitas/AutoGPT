@@ -307,7 +307,7 @@ export function Wallet() {
               {completedCount !== null && completedCount < totalCount && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
               )}
-              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+              <div className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
                 <Text variant="body-medium">
                   {completedCount} of {totalCount} rewards claimed
                 </Text>
@@ -326,7 +326,7 @@ export function Wallet() {
         side="bottom"
         align="end"
         collisionPadding={16}
-        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-114 px-2.5 py-2")}
       >
         {/* Header */}
         <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">

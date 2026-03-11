@@ -13,12 +13,12 @@ export const BlockMenuSidebar = () => {
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">
-        <Skeleton className="h-12 w-[12.875rem]" />
-        <Skeleton className="h-12 w-[12.875rem]" />
-        <Skeleton className="h-12 w-[12.875rem]" />
-        <Skeleton className="h-12 w-[12.875rem]" />
-        <Skeleton className="h-12 w-[12.875rem]" />
-        <Skeleton className="h-12 w-[12.875rem]" />
+        <Skeleton className="h-12 w-51.5" />
+        <Skeleton className="h-12 w-51.5" />
+        <Skeleton className="h-12 w-51.5" />
+        <Skeleton className="h-12 w-51.5" />
+        <Skeleton className="h-12 w-51.5" />
+        <Skeleton className="h-12 w-51.5" />
       </div>
     );
   }
@@ -26,7 +26,7 @@ export const BlockMenuSidebar = () => {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">
         <ErrorCard
-          className="w-[12.875rem]"
+          className="w-51.5"
           isSuccess={false}
           responseError={error || undefined}
           context="block menu"
@@ -106,7 +106,7 @@ export const BlockMenuSidebar = () => {
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
       ))}
-      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]">
+      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-3">
         {subMenuItems.map((item) => (
           <MenuItem
             key={item.type}

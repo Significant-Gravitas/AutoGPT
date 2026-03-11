@@ -112,7 +112,7 @@ export function OAuthAppsSection() {
             </span>
             <div className="flex items-center gap-3">
               <Button
-                variant={app.is_active ? "outline" : "primary"}
+                variant={app.is_active ? "outline-solid" : "primary"}
                 size="small"
                 onClick={() => handleToggleStatus(app.id, app.is_active)}
                 loading={updatingAppId === app.id}

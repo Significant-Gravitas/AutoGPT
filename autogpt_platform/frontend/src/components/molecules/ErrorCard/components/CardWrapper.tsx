@@ -11,7 +11,7 @@ export function CardWrapper({ children, className = "" }: CardWrapperProps) {
     <div className={`relative my-6 overflow-hidden rounded-xl ${className}`}>
       {/* Purple gradient border */}
       <div
-        className="absolute inset-0 rounded-xl p-[1px]"
+        className="absolute inset-0 rounded-xl p-px"
         style={{
           background: `linear-gradient(135deg, ${colors.zinc[100]}, ${colors.zinc[200]}, ${colors.zinc[100]})`,
         }}

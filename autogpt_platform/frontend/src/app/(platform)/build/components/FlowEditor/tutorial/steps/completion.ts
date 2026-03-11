@@ -5,8 +5,8 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
     id: "congratulations",
     title: "Congratulations! 🎉",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">You have successfully created and run your first agent flow!</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">You have successfully created and run your first agent flow!</p>
         
         <div class="mt-3 p-3 bg-green-50 ring-1 ring-green-200 rounded-2xl">
           <p class="text-sm font-medium text-green-600 m-0">You learned how to:</p>
@@ -20,7 +20,7 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
           </ul>
         </div>
         
-        <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Happy building! 🚀</p>
+        <p class="text-sm font-medium leading-5.5 text-zinc-800 m-0" style="margin-top: 0.75rem;">Happy building! 🚀</p>
       </div>
     `,
     when: {

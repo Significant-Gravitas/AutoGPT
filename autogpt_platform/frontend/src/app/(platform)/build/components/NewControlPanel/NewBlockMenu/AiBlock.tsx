@@ -19,7 +19,7 @@ export const AiBlock: React.FC<Props> = ({
   return (
     <Button
       className={cn(
-        "group flex h-[5.625rem] w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
+        "group flex h-22.5 w-full min-w-30 items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
         "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
         className,
       )}
@@ -29,7 +29,7 @@ export const AiBlock: React.FC<Props> = ({
         <div className="space-y-0.5">
           <span
             className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-sm font-medium leading-5.5 text-zinc-700 group-disabled:text-zinc-400",
             )}
           >
             {title}
@@ -45,7 +45,7 @@ export const AiBlock: React.FC<Props> = ({
 
         <span
           className={cn(
-            "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
+            "rounded-[0.75rem] bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500",
           )}
         >
           Supports {ai_name}
@@ -53,7 +53,7 @@ export const AiBlock: React.FC<Props> = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-small bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
         <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />

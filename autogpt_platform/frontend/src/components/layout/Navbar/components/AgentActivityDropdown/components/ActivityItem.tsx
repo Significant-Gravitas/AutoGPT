@@ -115,7 +115,7 @@ export function ActivityItem({ execution }: Props) {
           <Text
             key={index}
             variant="small"
-            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+            className={index === 0 ? "text-zinc-600!" : "text-zinc-500!"}
           >
             {line}
           </Text>

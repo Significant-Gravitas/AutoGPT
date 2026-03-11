@@ -61,15 +61,15 @@ export function Select({
     "font-normal text-black w-full",
     "placeholder:font-normal !placeholder:text-zinc-400",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-zinc-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Size variants
     size === "small" && [
-      "h-[2.25rem]",
+      "h-9",
       "py-2",
       "text-sm leading-[22px]",
       "placeholder:text-sm placeholder:leading-[22px]",
     ],
-    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-sm"],
+    size === "medium" && ["h-11.5", "py-2.5", "text-sm"],
     // Error state
     error &&
       "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
@@ -125,7 +125,7 @@ export function Select({
         variant="small-medium"
         as="span"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute left-0 top-full mt-1 text-red-500! transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >

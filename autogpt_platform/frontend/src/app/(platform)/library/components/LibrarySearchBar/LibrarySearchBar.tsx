@@ -14,7 +14,7 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
   return (
     <div
       data-testid="search-bar"
-      className="relative z-[21] -mb-6 flex w-full items-center md:w-auto"
+      className="relative z-21 -mb-6 flex w-full items-center md:w-auto"
     >
       <MagnifyingGlassIcon
         width={18}
@@ -27,7 +27,7 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
         id="library-search-bar"
         hideLabel
         onChange={handleSearchInput}
-        className="min-w-[18rem] pl-12 lg:min-w-[30rem]"
+        className="min-w-[18rem] pl-12 lg:min-w-120"
         type="text"
         data-testid="library-textbox"
         placeholder="Search agents"

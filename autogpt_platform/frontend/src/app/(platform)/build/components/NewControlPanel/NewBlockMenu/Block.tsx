@@ -149,7 +149,7 @@ export const Block: BlockComponent = ({
         draggable={!isMCPBlock}
         data-id={blockDataId}
         className={cn(
-          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
+          "group flex h-16 w-full min-w-30 items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
           "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
           isMCPBlock && "hover:cursor-pointer",
           className,
@@ -162,7 +162,7 @@ export const Block: BlockComponent = ({
           {title && (
             <span
               className={cn(
-                "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+                "line-clamp-1 font-sans text-sm font-medium leading-5.5 text-zinc-800 group-disabled:text-zinc-400",
               )}
             >
               {highlightText(
@@ -183,7 +183,7 @@ export const Block: BlockComponent = ({
         </div>
         <div
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+            "flex h-7 w-7 items-center justify-center rounded-small bg-zinc-700 group-disabled:bg-zinc-400",
           )}
         >
           <PlusIcon className="h-5 w-5 text-zinc-50" />
@@ -202,12 +202,12 @@ export const Block: BlockComponent = ({
 
 const BlockSkeleton = () => {
   return (
-    <Skeleton className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]">
+    <Skeleton className="flex h-16 w-full min-w-30 animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-3.5 py-2.5">
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton className="h-5.5 w-24 rounded bg-zinc-200" />
         <Skeleton className="h-5 w-32 rounded bg-zinc-200" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-small bg-zinc-200" />
     </Skeleton>
   );
 };

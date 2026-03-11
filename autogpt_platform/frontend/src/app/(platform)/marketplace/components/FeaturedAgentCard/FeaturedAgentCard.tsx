@@ -39,7 +39,7 @@ export const FeaturedAgentCard = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-1 p-4">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
+        <div className="relative aspect-4/3 w-full overflow-hidden rounded-xl">
           <Image
             src={agent.agent_image || "/autogpt-logo-dark-bg.png"}
             alt={`${agent.agent_name} preview`}
@@ -54,7 +54,7 @@ export const FeaturedAgentCard = ({
               isHovered ? "opacity-100" : "opacity-0"
             }`}
           >
-            <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
+            <CardDescription className="line-clamp-6 text-xs sm:line-clamp-8 sm:text-sm">
               {agent.description}
             </CardDescription>
           </div>

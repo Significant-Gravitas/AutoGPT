@@ -96,7 +96,7 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      colorClass: "!text-indigo-500",
+      colorClass: "text-indigo-500!",
       hexColor: "#6366f1",
     };
   }
@@ -108,32 +108,32 @@ export const getTypeDisplayInfo = (schema: any) => {
     > = {
       file: {
         displayType: "file",
-        colorClass: "!text-green-500",
+        colorClass: "text-green-500!",
         hexColor: "#22c55e",
       },
       date: {
         displayType: "date",
-        colorClass: "!text-blue-500",
+        colorClass: "text-blue-500!",
         hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
-        colorClass: "!text-blue-500",
+        colorClass: "text-blue-500!",
         hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
-        colorClass: "!text-blue-500",
+        colorClass: "text-blue-500!",
         hexColor: "#3b82f6",
       },
       "long-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
+        colorClass: "text-green-500!",
         hexColor: "#22c55e",
       },
       "short-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
+        colorClass: "text-green-500!",
         hexColor: "#22c55e",
       },
     };
@@ -157,14 +157,14 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
-    string: "!text-green-500",
-    number: "!text-blue-500",
-    integer: "!text-blue-500",
-    boolean: "!text-yellow-500",
-    object: "!text-purple-500",
-    array: "!text-indigo-500",
-    null: "!text-gray-500",
-    any: "!text-gray-500",
+    string: "text-green-500!",
+    number: "text-blue-500!",
+    integer: "text-blue-500!",
+    boolean: "text-yellow-500!",
+    object: "text-purple-500!",
+    array: "text-indigo-500!",
+    null: "text-gray-500!",
+    any: "text-gray-500!",
   };
 
   const hexColorMap: Record<string, string> = {
@@ -178,7 +178,7 @@ export const getTypeDisplayInfo = (schema: any) => {
     any: "#6b7280",
   };
 
-  const colorClass = colorMap[schema?.type] || "!text-gray-500";
+  const colorClass = colorMap[schema?.type] || "text-gray-500!";
   const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
   return {
