@@ -41,6 +41,7 @@ import sys
 from pathlib import Path
 
 QUERIES_DIR = Path(__file__).parent / "queries"
+BACKEND_ENV = Path(__file__).parent.parent / "backend" / ".env"
 SCHEMA = "analytics"
 
 SETUP_SQL = """\
@@ -80,6 +81,30 @@ GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
   GRANT SELECT ON TABLES TO analytics_readonly;
 """
+
+
+def load_db_url_from_backend_env() -> str | None:
+    """Read DB_* vars from backend/.env and build a psycopg2 connection string."""
+    if not BACKEND_ENV.exists():
+        return None
+    env: dict[str, str] = {}
+    for line in BACKEND_ENV.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        # strip optional surrounding quotes
+        value = value.strip().strip('"').strip("'")
+        env[key] = value
+    host = env.get("DB_HOST", "localhost")
+    port = env.get("DB_PORT", "5432")
+    user = env.get("DB_USER", "postgres")
+    password = env.get("DB_PASS", "")
+    dbname = env.get("DB_NAME", "postgres")
+    if not password:
+        return None
+    return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 
 def view_name_from_file(path: Path) -> str:
@@ -179,11 +204,13 @@ def main() -> None:
             print(sql)
         return
 
-    db_url = args.db_url or os.environ.get("DATABASE_URL")
+    db_url = (
+        args.db_url or os.environ.get("DATABASE_URL") or load_db_url_from_backend_env()
+    )
     if not db_url:
         print(
-            "No database URL provided.\n"
-            "Use --db-url or set DATABASE_URL environment variable.\n"
+            "No database URL found.\n"
+            "Tried: --db-url, DATABASE_URL env var, and backend/.env (DB_* vars).\n"
             "Use --dry-run to just print the SQL.",
             file=sys.stderr,
         )
