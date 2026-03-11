@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@plugin 'tailwind-scrollbar';
 
 @source '../../node_modules/streamdown/dist/**/*.js';
 
