@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -5,18 +6,24 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
-import { parseSpecialMarkers } from "./helpers";
+import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import {
+  buildRenderSegments,
+  getTurnMessages,
+  type MessagePart,
+  type RenderSegment,
+  parseSpecialMarkers,
+  splitReasoningAndResponse,
+} from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { ReasoningCollapse } from "./components/ReasoningCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
-
-type MessagePart = UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -25,113 +32,6 @@ interface Props {
   isLoading: boolean;
   headerSlot?: React.ReactNode;
   sessionID?: string | null;
-}
-
-function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
-  return (
-    part.type.startsWith("tool-") &&
-    "state" in part &&
-    (part.state === "output-available" || part.state === "output-error")
-  );
-}
-
-type RenderSegment =
-  | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] };
-
-// Tool types that have custom renderers and should NOT be collapsed
-const CUSTOM_TOOL_TYPES = new Set([
-  "tool-find_block",
-  "tool-find_agent",
-  "tool-find_library_agent",
-  "tool-search_docs",
-  "tool-get_doc_page",
-  "tool-run_block",
-  "tool-run_mcp_tool",
-  "tool-run_agent",
-  "tool-schedule_agent",
-  "tool-create_agent",
-  "tool-edit_agent",
-  "tool-view_agent_output",
-  "tool-search_feature_requests",
-  "tool-create_feature_request",
-]);
-
-/**
- * Groups consecutive completed generic tool parts into collapsed segments.
- * Non-generic tools (those with custom renderers) and active/streaming tools
- * are left as individual parts.
- */
-function buildRenderSegments(
-  parts: MessagePart[],
-  baseIndex = 0,
-): RenderSegment[] {
-  const segments: RenderSegment[] = [];
-  let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
-
-  function flushGroup() {
-    if (!pendingGroup) return;
-    if (pendingGroup.length >= 2) {
-      segments.push({
-        kind: "collapsed-group",
-        parts: pendingGroup.map((p) => p.part),
-      });
-    } else {
-      for (const p of pendingGroup) {
-        segments.push({ kind: "part", part: p.part, index: p.index });
-      }
-    }
-    pendingGroup = null;
-  }
-
-  parts.forEach((part, i) => {
-    const absoluteIndex = baseIndex + i;
-    const isGenericCompletedTool =
-      isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
-
-    if (isGenericCompletedTool) {
-      if (!pendingGroup) pendingGroup = [];
-      pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
-    } else {
-      flushGroup();
-      segments.push({ kind: "part", part, index: absoluteIndex });
-    }
-  });
-
-  flushGroup();
-  return segments;
-}
-
-/**
- * For finalized assistant messages, split parts into "reasoning" (intermediate
- * text + tools before the final response) and "response" (final text after the
- * last tool). If there are no tools, everything is response.
- */
-function splitReasoningAndResponse(parts: MessagePart[]): {
-  reasoning: MessagePart[];
-  response: MessagePart[];
-} {
-  const lastToolIndex = parts.findLastIndex((p) => p.type.startsWith("tool-"));
-
-  // No tools → everything is response
-  if (lastToolIndex === -1) {
-    return { reasoning: [], response: parts };
-  }
-
-  // Check if there's any text after the last tool
-  const hasResponseAfterTools = parts
-    .slice(lastToolIndex + 1)
-    .some((p) => p.type === "text");
-
-  if (!hasResponseAfterTools) {
-    // No final text response → don't collapse anything
-    return { reasoning: [], response: parts };
-  }
-
-  return {
-    reasoning: parts.slice(0, lastToolIndex + 1),
-    response: parts.slice(lastToolIndex + 1),
-  };
 }
 
 function renderSegments(
@@ -153,21 +53,48 @@ function renderSegments(
   });
 }
 
-/** Collect all messages belonging to a turn: the user message + every
- *  assistant message up to (but not including) the next user message. */
-function getTurnMessages(
+/**
+ * Extract graph_exec_id from tool outputs that need review.
+ * Handles both:
+ * - run_block ReviewRequiredResponse (has graph_exec_id directly)
+ * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
+ */
+function extractGraphExecId(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-  lastAssistantIndex: number,
-): UIMessage<unknown, UIDataTypes, UITools>[] {
-  const userIndex = messages.findLastIndex(
-    (m, i) => i < lastAssistantIndex && m.role === "user",
-  );
-  const nextUserIndex = messages.findIndex(
-    (m, i) => i > lastAssistantIndex && m.role === "user",
-  );
-  const start = userIndex >= 0 ? userIndex : lastAssistantIndex;
-  const end = nextUserIndex >= 0 ? nextUserIndex : messages.length;
-  return messages.slice(start, end);
+): string | null {
+  // Scan backwards — the most recent review output has the ID
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    for (const part of msg.parts) {
+      if ("output" in part && part.output) {
+        const out =
+          typeof part.output === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(part.output);
+                } catch {
+                  return null;
+                }
+              })()
+            : part.output;
+        if (out && typeof out === "object") {
+          // run_block: ReviewRequiredResponse has graph_exec_id
+          if ("graph_exec_id" in out) {
+            return (out as { graph_exec_id: string }).graph_exec_id;
+          }
+          // run_agent: ExecutionStartedResponse with status "REVIEW"
+          if (
+            "execution_id" in out &&
+            "status" in out &&
+            (out as { status: string }).status === "REVIEW"
+          ) {
+            return (out as { execution_id: string }).execution_id;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 export function ChatMessagesContainer({
@@ -179,6 +106,7 @@ export function ChatMessagesContainer({
   sessionID,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
+  const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -258,6 +186,8 @@ export function ChatMessagesContainer({
             : { reasoning: [] as MessagePart[], response: message.parts };
           const hasReasoning = reasoning.length > 0;
 
+          // Note: when interactive tools are pinned from reasoning into response,
+          // this index approximates their position (used only for React keys).
           const responseStartIndex = message.parts.length - response.length;
           const responseSegments =
             message.role === "assistant"
@@ -322,6 +252,7 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         )}
+        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">

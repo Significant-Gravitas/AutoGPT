@@ -28,6 +28,7 @@ from backend.copilot.model import (
     update_session_title,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -265,12 +266,12 @@ async def delete_session(
         )
 
     # Best-effort cleanup of the E2B sandbox (if any).
-    config = ChatConfig()
-    if config.use_e2b_sandbox and config.e2b_api_key:
-        from backend.copilot.tools.e2b_sandbox import kill_sandbox
-
+    # sandbox_id is in Redis; kill_sandbox() fetches it from there.
+    e2b_cfg = ChatConfig()
+    if e2b_cfg.e2b_active:
+        assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
         try:
-            await kill_sandbox(session_id, config.e2b_api_key)
+            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
         except Exception:
             logger.warning(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]

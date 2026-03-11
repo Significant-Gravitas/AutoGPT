@@ -39,6 +39,10 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.block import (
+    get_blocks_needing_optimization,
+    update_block_optimized_description,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -75,7 +79,10 @@ from backend.data.graph import (
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_execution,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
 )
@@ -242,7 +249,10 @@ class DatabaseManager(AppService):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
+    get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -313,6 +323,10 @@ class DatabaseManager(AppService):
     get_business_understanding = _(get_business_understanding)
     upsert_business_understanding = _(upsert_business_understanding)
 
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = _(get_blocks_needing_optimization)
+    update_block_optimized_description = _(update_block_optimized_description)
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = _(chat_db.get_chat_session)
     create_chat_session = _(chat_db.create_chat_session)
@@ -379,6 +393,10 @@ class DatabaseManagerClient(AppServiceClient):
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
 
+    # Block Descriptions
+    get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
+    update_block_optimized_description = _(d.update_block_optimized_description)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -421,7 +439,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
+    get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -494,6 +515,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
     upsert_business_understanding = d.upsert_business_understanding
+
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = d.get_blocks_needing_optimization
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = d.get_chat_session
