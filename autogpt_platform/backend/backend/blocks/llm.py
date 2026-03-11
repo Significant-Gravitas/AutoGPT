@@ -143,7 +143,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro"
     GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"  # DEPRECATED: Shutdown March 9, 2026 - keep for backward compat
+    # GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"  # DEPRECATED: Shutdown March 9, 2026
     GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
@@ -375,9 +375,9 @@ MODEL_METADATA = {
         "Google",
         2,
     ),
-    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
-        "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
-    ),  # DEPRECATED: Shutdown March 9, 2026 - keep for backward compat
+    # LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
+    #     "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
+    # ),  # DEPRECATED: Shutdown March 9, 2026
     LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
         "open_router",
         1048576,
