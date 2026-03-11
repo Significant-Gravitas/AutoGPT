@@ -11,6 +11,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
+import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotStream } from "./useCopilotStream";
@@ -70,11 +71,10 @@ export function useCopilotPage() {
       initialHasMore: hasMoreMessages,
     });
 
-  // Combine older (paginated) messages with current page messages
-  const messages =
-    olderMessages.length > 0
-      ? [...olderMessages, ...currentMessages]
-      : currentMessages;
+  // Combine older (paginated) messages with current page messages,
+  // merging consecutive assistant UIMessages at the page boundary so
+  // reasoning + response parts stay in a single bubble.
+  const messages = concatWithAssistantMerge(olderMessages, currentMessages);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =

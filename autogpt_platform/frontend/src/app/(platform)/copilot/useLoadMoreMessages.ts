@@ -1,7 +1,10 @@
 import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef, useState } from "react";
-import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import {
+  concatWithAssistantMerge,
+  convertChatSessionMessagesToUiMessages,
+} from "./helpers/convertChatSessionToUiMessages";
 
 interface UseLoadMoreMessagesArgs {
   sessionId: string | null;
@@ -108,7 +111,7 @@ export function useLoadMoreMessages({
         { isComplete: true },
       );
 
-      setOlderMessages((prev) => [...newMessages, ...prev]);
+      setOlderMessages((prev) => concatWithAssistantMerge(newMessages, prev));
       setOldestSequence(response.data.oldest_sequence ?? null);
       setHasMore(!!response.data.has_more_messages);
     } catch (error) {

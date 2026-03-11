@@ -100,6 +100,32 @@ function toToolInput(rawArguments: unknown): unknown {
   return {};
 }
 
+/**
+ * Concatenate two UIMessage arrays, merging consecutive assistant messages
+ * at the join point so that reasoning + response parts stay in a single bubble.
+ *
+ * Within each page, `convertChatSessionMessagesToUiMessages` already merges
+ * consecutive assistant DB rows. This handles the boundary between pages
+ * (or between older-pages and the current/streaming page).
+ */
+export function concatWithAssistantMerge(
+  a: UIMessage<unknown, UIDataTypes, UITools>[],
+  b: UIMessage<unknown, UIDataTypes, UITools>[],
+): UIMessage<unknown, UIDataTypes, UITools>[] {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  const last = a[a.length - 1];
+  const first = b[0];
+  if (last.role === "assistant" && first.role === "assistant") {
+    return [
+      ...a.slice(0, -1),
+      { ...last, parts: [...last.parts, ...first.parts] },
+      ...b.slice(1),
+    ];
+  }
+  return [...a, ...b];
+}
+
 export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
