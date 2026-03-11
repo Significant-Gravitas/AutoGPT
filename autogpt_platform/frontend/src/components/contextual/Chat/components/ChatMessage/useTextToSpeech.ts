@@ -13,26 +13,77 @@ const PREFERRED_VOICES = [
   "Samantha",
   "Karen",
   "Daniel",
+  "Moira",
+  "Tessa",
   // Chrome / Android
   "Google UK English Female",
   "Google UK English Male",
   "Google US English",
-  // Edge / Windows
+  // Edge / Windows OneCore
   "Microsoft Zira",
   "Microsoft David",
+  "Microsoft Jenny",
+  "Microsoft Aria",
+  "Microsoft Guy",
 ];
 
-function pickBestVoice(): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
+/**
+ * Name fragments that indicate low-quality / robotic synthesis engines.
+ * Matching is case-insensitive on `voice.name`.
+ */
+const ROBOTIC_VOICE_INDICATORS = [
+  "espeak",
+  "festival",
+  "mbrola",
+  "flite",
+  "pico",
+];
+
+/** Returns true when a voice is likely low-quality / robotic. */
+function isLikelyRobotic(voice: SpeechSynthesisVoice): boolean {
+  const lower = voice.name.toLowerCase();
+  return ROBOTIC_VOICE_INDICATORS.some((ind) => lower.includes(ind));
+}
+
+/**
+ * Selects the best available voice using a 4-tier fallback:
+ * 1. Known high-quality voices by name (PREFERRED_VOICES)
+ * 2. Non-robotic remote/cloud voices
+ * 3. Non-robotic local English voices
+ * 4. Any remaining voice
+ */
+function pickBestVoice(
+  voices: SpeechSynthesisVoice[],
+): SpeechSynthesisVoice | undefined {
+  // 1. Try preferred voices first (known high-quality)
   for (const name of PREFERRED_VOICES) {
-    const match = voices.find((v) => v.name.includes(name));
-    if (match) return match;
+    const matches = voices.filter((v) => v.name.includes(name));
+    if (matches.length === 0) continue;
+
+    return (
+      matches.find((v) => !isLikelyRobotic(v) && !v.localService) ||
+      matches.find((v) => !isLikelyRobotic(v)) ||
+      matches.find((v) => !v.localService) ||
+      matches[0]
+    );
   }
-  // Fallback: prefer any voice flagged as default, or the first English voice
+
+  // 2. Filter out known robotic / low-quality voices
+  const nonRobotic = voices.filter((v) => !isLikelyRobotic(v));
+  const candidates = nonRobotic.length > 0 ? nonRobotic : voices;
+
+  // 3. Prefer remote / cloud-backed voices (usually higher quality)
+  const remote = candidates.filter((v) => !v.localService);
+  if (remote.length > 0) {
+    return remote.find((v) => v.lang.startsWith("en")) || remote[0];
+  }
+
+  // 4. Best remaining local voice: English default → English → default → first
   return (
-    voices.find((v) => v.default) ||
-    voices.find((v) => v.lang.startsWith("en")) ||
-    voices[0]
+    candidates.find((v) => v.default && v.lang.startsWith("en")) ||
+    candidates.find((v) => v.lang.startsWith("en")) ||
+    candidates.find((v) => v.default) ||
+    candidates[0]
   );
 }
 
@@ -40,9 +91,31 @@ export function useTextToSpeech(text: string) {
   const [status, setStatus] = useState<TTSStatus>("idle");
   const [isSupported, setIsSupported] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const cachedVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    setIsSupported("speechSynthesis" in window);
+    const supported = "speechSynthesis" in window;
+    setIsSupported(supported);
+
+    if (supported) {
+      // Populate cache immediately (may already be available)
+      cachedVoicesRef.current = window.speechSynthesis.getVoices();
+
+      // Listen for voiceschanged to populate cache when voices load async
+      function onVoicesChanged() {
+        cachedVoicesRef.current = window.speechSynthesis.getVoices();
+      }
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+
+      return () => {
+        window.speechSynthesis.removeEventListener(
+          "voiceschanged",
+          onVoicesChanged,
+        );
+        window.speechSynthesis.cancel();
+      };
+    }
+
     return () => {
       window.speechSynthesis?.cancel();
     };
@@ -69,7 +142,7 @@ export function useTextToSpeech(text: string) {
 
     const utterance = new SpeechSynthesisUtterance(text);
 
-    const voice = pickBestVoice();
+    const voice = pickBestVoice(cachedVoicesRef.current);
     if (voice) utterance.voice = voice;
 
     utteranceRef.current = utterance;
