@@ -1,7 +1,7 @@
 import pytest
 from aiohttp import web
 
-from backend.util.request import pin_url, validate_url
+from backend.util.request import pin_url, validate_url_host
 
 
 @pytest.mark.parametrize(
@@ -60,9 +60,9 @@ async def test_validate_url_no_dns_rebinding(
 ):
     if should_raise:
         with pytest.raises(ValueError):
-            await validate_url(raw_url, trusted_origins)
+            await validate_url_host(raw_url, trusted_origins)
     else:
-        validated_url, _, _ = await validate_url(raw_url, trusted_origins)
+        validated_url, _, _ = await validate_url_host(raw_url, trusted_origins)
         assert validated_url.geturl() == expected_value
 
 
@@ -101,10 +101,10 @@ async def test_dns_rebinding_fix(
     if expect_error:
         # If any IP is blocked, we expect a ValueError
         with pytest.raises(ValueError):
-            url, _, ip_addresses = await validate_url(hostname, [])
+            url, _, ip_addresses = await validate_url_host(hostname)
             pin_url(url, ip_addresses)
     else:
-        url, _, ip_addresses = await validate_url(hostname, [])
+        url, _, ip_addresses = await validate_url_host(hostname)
         pinned_url = pin_url(url, ip_addresses).geturl()
         # The pinned_url should contain the first valid IP
         assert pinned_url.startswith("http://") or pinned_url.startswith("https://")
