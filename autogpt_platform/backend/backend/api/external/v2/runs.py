@@ -1,7 +1,7 @@
 """
 V2 External API - Runs Endpoints
 
-Provides access to execution runs and human-in-the-loop reviews.
+Provides access to agent runs and human-in-the-loop reviews.
 """
 
 import logging
@@ -165,7 +165,7 @@ async def delete_run(
         require_permission(APIKeyPermission.WRITE_RUN)
     ),
 ) -> None:
-    """Delete an execution run."""
+    """Delete an agent run."""
     await execution_db.delete_graph_execution(
         graph_exec_id=run_id,
         user_id=auth.user_id,

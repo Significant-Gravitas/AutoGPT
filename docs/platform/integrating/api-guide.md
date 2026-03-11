@@ -73,7 +73,7 @@ When creating API keys or using OAuth, request only the scopes your application 
 | `WRITE_STORE` | Create, update, and delete marketplace submissions |
 | `READ_LIBRARY` | List library agents and their runs |
 | `RUN_AGENT` | Execute agents from your library |
-| `READ_RUN` | List and get execution run details |
+| `READ_RUN` | List and get agent run details |
 | `WRITE_RUN` | Stop and delete runs |
 | `READ_RUN_REVIEW` | List pending human-in-the-loop reviews |
 | `WRITE_RUN_REVIEW` | Submit human-in-the-loop review responses |

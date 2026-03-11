@@ -77,7 +77,7 @@ v2_app = FastAPI(
         {
             "name": "runs",
             "description": (
-                "Monitor, stop, delete, and share execution runs; "
+                "Monitor, stop, delete, and share agent runs; "
                 "manage human-in-the-loop reviews"
             ),
         },
