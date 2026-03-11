@@ -505,6 +505,11 @@ model AgentBlock {
   inputSchema  String
   outputSchema String
 
+  // Block description synced from Python block definitions.
+  description          String?
+  // LLM-optimized description for agent generation (concise, actionable).
+  optimizedDescription String?
+
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }
@@ -560,8 +565,6 @@ model AgentGraphExecution {
   isShared   Boolean   @default(false)
   shareToken String?   @unique
   sharedAt   DateTime?
-
-  PendingHumanReviews PendingHumanReview[]
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
@@ -659,8 +662,7 @@ model PendingHumanReview {
   updatedAt     DateTime?    @updatedAt
   reviewedAt    DateTime?
 
-  User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])

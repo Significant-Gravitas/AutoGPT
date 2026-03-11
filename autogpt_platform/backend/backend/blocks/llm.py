@@ -31,6 +31,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
 from backend.util.openai_responses import (
     convert_tools_to_responses_format,
@@ -41,8 +42,11 @@ from backend.util.openai_responses import (
     requires_chat_completions,
 )
 from backend.util.prompt import compress_context, estimate_token_count
+from backend.util.request import validate_url_host
+from backend.util.settings import Settings
 from backend.util.text import TextFormatter
 
+settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
@@ -868,6 +872,11 @@ async def llm_call(
         if tools:
             raise ValueError("Ollama does not support tools.")
 
+        # Validate user-provided Ollama host to prevent SSRF etc.
+        await validate_url_host(
+            ollama_host, trusted_hostnames=[settings.config.ollama_host]
+        )
+
         client = ollama.AsyncClient(host=ollama_host)
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
@@ -889,7 +898,7 @@ async def llm_call(
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
         )
 
