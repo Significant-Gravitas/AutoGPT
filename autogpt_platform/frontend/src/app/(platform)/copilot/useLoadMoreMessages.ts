@@ -26,6 +26,8 @@ export function useLoadMoreMessages({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isLoadingMoreRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
+  // Epoch counter to discard stale loadMore responses after a reset
+  const epochRef = useRef(0);
 
   // Track the sessionId and initial cursor to reset state on change
   const prevSessionIdRef = useRef(sessionId);
@@ -43,6 +45,7 @@ export function useLoadMoreMessages({
       setIsLoadingMore(false);
       isLoadingMoreRef.current = false;
       consecutiveErrorsRef.current = 0;
+      epochRef.current += 1;
     } else if (
       prevInitialOldestRef.current !== initialOldestSequence &&
       olderMessages.length > 0
@@ -56,6 +59,7 @@ export function useLoadMoreMessages({
       setIsLoadingMore(false);
       isLoadingMoreRef.current = false;
       consecutiveErrorsRef.current = 0;
+      epochRef.current += 1;
     } else {
       // Update from parent when initial data changes (e.g. refetch)
       prevInitialOldestRef.current = initialOldestSequence;
@@ -73,6 +77,7 @@ export function useLoadMoreMessages({
     )
       return;
 
+    const requestEpoch = epochRef.current;
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
@@ -80,6 +85,9 @@ export function useLoadMoreMessages({
         limit: 50,
         before_sequence: oldestSequence,
       });
+
+      // Discard response if session/pagination was reset while awaiting
+      if (epochRef.current !== requestEpoch) return;
 
       if (response.status !== 200) {
         consecutiveErrorsRef.current += 1;
@@ -104,14 +112,17 @@ export function useLoadMoreMessages({
       setOldestSequence(response.data.oldest_sequence ?? null);
       setHasMore(!!response.data.has_more_messages);
     } catch (error) {
+      if (epochRef.current !== requestEpoch) return;
       consecutiveErrorsRef.current += 1;
       console.warn("[loadMore] Network error:", error);
       if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
         setHasMore(false);
       }
     } finally {
-      isLoadingMoreRef.current = false;
-      setIsLoadingMore(false);
+      if (epochRef.current === requestEpoch) {
+        isLoadingMoreRef.current = false;
+        setIsLoadingMore(false);
+      }
     }
   }
 

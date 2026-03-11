@@ -115,14 +115,24 @@ function LoadMoreSentinel({
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
 
-  // IntersectionObserver to trigger load when sentinel is near viewport
+  // IntersectionObserver to trigger load when sentinel is near viewport.
+  // Only fires when the container is actually scrollable to prevent
+  // exhausting all pages when content fits without scrolling.
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || isLoading) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          onLoadMoreRef.current();
-        }
+        if (!entry.isIntersecting) return;
+        // Find the scroll container (role="log" is set by Conversation)
+        const scrollParent =
+          sentinelRef.current?.closest('[role="log"]') ??
+          sentinelRef.current?.parentElement;
+        if (
+          scrollParent &&
+          scrollParent.scrollHeight <= scrollParent.clientHeight
+        )
+          return;
+        onLoadMoreRef.current();
       },
       { rootMargin: "200px 0px 0px 0px" },
     );
