@@ -354,7 +354,7 @@ async def delete_submission(
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
-        submission_id=submission_id,
+        store_listing_version_id=submission_id,
     )
     return result
 

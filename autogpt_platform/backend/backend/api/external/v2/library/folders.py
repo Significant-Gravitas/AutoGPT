@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -23,12 +23,13 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
-folders_router = APIRouter()
+folders_router = APIRouter(tags=["library"])
 
 
 @folders_router.get(
     path="/folders",
-    summary="List folders",
+    summary="List folders in library",
+    operation_id="listLibraryFolders",
 )
 async def list_folders(
     parent_id: Optional[str] = Query(
@@ -51,7 +52,8 @@ async def list_folders(
 
 @folders_router.get(
     path="/folders/tree",
-    summary="Get folder tree",
+    summary="Get library folder tree",
+    operation_id="getLibraryFolderTree",
 )
 async def get_folder_tree(
     auth: APIAuthorizationInfo = Security(
@@ -68,7 +70,8 @@ async def get_folder_tree(
 
 @folders_router.get(
     path="/folders/{folder_id}",
-    summary="Get folder",
+    summary="Get folder in library",
+    operation_id="getLibraryFolder",
 )
 async def get_folder(
     folder_id: str,
@@ -77,23 +80,17 @@ async def get_folder(
     ),
 ) -> LibraryFolder:
     """Get details of a specific folder."""
-    try:
-        folder = await library_db.get_folder(
-            folder_id=folder_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Folder #{folder_id} not found",
-        )
-
+    folder = await library_db.get_folder(
+        folder_id=folder_id,
+        user_id=auth.user_id,
+    )
     return LibraryFolder.from_internal(folder)
 
 
 @folders_router.post(
     path="/folders",
-    summary="Create folder",
+    summary="Create folder in library",
+    operation_id="createLibraryFolder",
     status_code=status.HTTP_201_CREATED,
 )
 async def create_folder(
@@ -103,23 +100,20 @@ async def create_folder(
     ),
 ) -> LibraryFolder:
     """Create a new folder in the user's library."""
-    try:
-        folder = await library_db.create_folder(
-            user_id=auth.user_id,
-            name=request.name,
-            parent_id=request.parent_id,
-            icon=request.icon,
-            color=request.color,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    folder = await library_db.create_folder(
+        user_id=auth.user_id,
+        name=request.name,
+        parent_id=request.parent_id,
+        icon=request.icon,
+        color=request.color,
+    )
     return LibraryFolder.from_internal(folder)
 
 
 @folders_router.patch(
     path="/folders/{folder_id}",
-    summary="Update folder",
+    summary="Update folder in library",
+    operation_id="updateLibraryFolder",
 )
 async def update_folder(
     request: LibraryFolderUpdateRequest,
@@ -129,23 +123,20 @@ async def update_folder(
     ),
 ) -> LibraryFolder:
     """Update properties of a folder."""
-    try:
-        folder = await library_db.update_folder(
-            folder_id=folder_id,
-            user_id=auth.user_id,
-            name=request.name,
-            icon=request.icon,
-            color=request.color,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    folder = await library_db.update_folder(
+        folder_id=folder_id,
+        user_id=auth.user_id,
+        name=request.name,
+        icon=request.icon,
+        color=request.color,
+    )
     return LibraryFolder.from_internal(folder)
 
 
 @folders_router.post(
     path="/folders/{folder_id}/move",
-    summary="Move folder",
+    summary="Move folder in library",
+    operation_id="moveLibraryFolder",
 )
 async def move_folder(
     request: LibraryFolderMoveRequest,
@@ -155,21 +146,18 @@ async def move_folder(
     ),
 ) -> LibraryFolder:
     """Move a folder to a new parent. Set target_parent_id to null to move to root."""
-    try:
-        folder = await library_db.move_folder(
-            folder_id=folder_id,
-            user_id=auth.user_id,
-            target_parent_id=request.target_parent_id,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    folder = await library_db.move_folder(
+        folder_id=folder_id,
+        user_id=auth.user_id,
+        target_parent_id=request.target_parent_id,
+    )
     return LibraryFolder.from_internal(folder)
 
 
 @folders_router.delete(
     path="/folders/{folder_id}",
-    summary="Delete folder",
+    summary="Delete folder in library",
+    operation_id="deleteLibraryFolder",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_folder(
@@ -178,14 +166,10 @@ async def delete_folder(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> None:
-    """Delete a folder. Agents in the folder will be moved to root. Subfolders are also deleted."""
-    try:
-        await library_db.delete_folder(
-            folder_id=folder_id,
-            user_id=auth.user_id,
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Folder #{folder_id} not found",
-        )
+    """
+    Delete a folder and its subfolders. Agents in this folder will be moved to root.
+    """
+    await library_db.delete_folder(
+        folder_id=folder_id,
+        user_id=auth.user_id,
+    )

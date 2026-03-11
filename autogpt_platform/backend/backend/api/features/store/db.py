@@ -518,22 +518,22 @@ async def get_store_submissions(
 
 async def delete_store_submission(
     user_id: str,
-    submission_id: str,
+    store_listing_version_id: str,
 ) -> bool:
     """
     Delete a store submission version as the submitting user.
 
     Args:
         user_id: ID of the authenticated user
-        submission_id: StoreListingVersion ID to delete
+        store_listing_version_id: StoreListingVersion ID to delete
 
     Returns:
         bool: True if successfully deleted
     """
     try:
         # Find the submission version with ownership check
-        version = await prisma.models.StoreListingVersion.prisma().find_first(
-            where={"id": submission_id}, include={"StoreListing": True}
+        version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}, include={"StoreListing": True}
         )
 
         if (
@@ -546,7 +546,7 @@ async def delete_store_submission(
         # Prevent deletion of approved submissions
         if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
             raise store_exceptions.InvalidOperationError(
-                "Cannot delete approved submissions"
+                "Cannot delete approved store listings"
             )
 
         # Delete the version

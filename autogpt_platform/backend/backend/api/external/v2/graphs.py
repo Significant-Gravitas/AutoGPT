@@ -37,12 +37,13 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-graphs_router = APIRouter()
+graphs_router = APIRouter(tags=["graphs"])
 
 
 @graphs_router.get(
     path="",
     summary="List graphs",
+    operation_id="listGraphs",
 )
 async def list_graphs(
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
@@ -75,6 +76,7 @@ async def list_graphs(
 @graphs_router.get(
     path="/{graph_id}",
     summary="Get graph details",
+    operation_id="getGraphDetails",
 )
 async def get_graph(
     graph_id: str,
@@ -109,6 +111,7 @@ async def get_graph(
 @graphs_router.post(
     path="",
     summary="Create graph",
+    operation_id="createGraph",
 )
 async def create_graph(
     create_graph: GraphCreateRequest,
@@ -134,7 +137,8 @@ async def create_graph(
 
 @graphs_router.put(
     path="/{graph_id}",
-    summary="Update graph",
+    summary="Update graph by creating a new version",
+    operation_id="updateGraphCreateVersion",
 )
 async def update_graph(
     graph_id: str,
@@ -229,6 +233,7 @@ async def update_graph(
 @graphs_router.get(
     path="/{graph_id}/versions",
     summary="List graph versions",
+    operation_id="listGraphVersions",
 )
 async def list_graph_versions(
     graph_id: str,
@@ -249,6 +254,7 @@ async def list_graph_versions(
 @graphs_router.put(
     path="/{graph_id}/versions/active",
     summary="Set active graph version",
+    operation_id="updateGraphSetActiveVersion",
 )
 async def set_active_version(
     graph_id: str,
@@ -299,6 +305,7 @@ async def set_active_version(
 @graphs_router.patch(
     path="/{graph_id}/settings",
     summary="Update graph settings",
+    operation_id="updateGraphSettings",
 )
 async def update_graph_settings(
     graph_id: str,
@@ -332,6 +339,7 @@ async def update_graph_settings(
 @graphs_router.get(
     path="/{graph_id}/library-agent",
     summary="Get library agent for graph",
+    operation_id="getLibraryAgentForGraph",
 )
 async def get_library_agent_by_graph(
     graph_id: str,
@@ -354,7 +362,8 @@ async def get_library_agent_by_graph(
 
 @graphs_router.get(
     path="/{graph_id}/blocks",
-    summary="List graph blocks",
+    summary="List blocks used in a graph",
+    operation_id="listBlocksInGraph",
 )
 async def list_graph_blocks(
     graph_id: str,
@@ -395,6 +404,7 @@ async def list_graph_blocks(
 @graphs_router.get(
     path="/{graph_id}/credentials",
     summary="Get graph credentials",
+    operation_id="getCredentialRequirementsForGraph",
 )
 async def list_graph_credential_requirements(
     graph_id: str,

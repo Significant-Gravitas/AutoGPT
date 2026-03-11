@@ -1,7 +1,7 @@
 """
 V2 External API - Files Endpoints
 
-Provides file upload and download functionality.
+Provides file upload, download, listing, metadata, and deletion functionality.
 """
 
 import base64
@@ -16,24 +16,154 @@ from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.workspace import get_workspace, get_workspace_file
+from backend.data.workspace import (
+    count_workspace_files,
+    get_workspace,
+    get_workspace_file,
+    list_workspace_files,
+    soft_delete_workspace_file,
+)
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import get_workspace_storage
 
-from .models import UploadFileResponse
+from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .models import (
+    UploadWorkspaceFileResponse,
+    WorkspaceFileInfo,
+    WorkspaceFileListResponse,
+)
 from .rate_limit import file_upload_limiter
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-files_router = APIRouter()
+file_workspace_router = APIRouter(tags=["files"])
 
 
 # ============================================================================
 # Endpoints
 # ============================================================================
+
+
+@file_workspace_router.get(
+    path="",
+    summary="List workspace files",
+    operation_id="listWorkspaceFiles",
+)
+async def list_files(
+    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        default=DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description=f"Items per page (max {MAX_PAGE_SIZE})",
+    ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.DOWNLOAD_FILES)
+    ),
+) -> WorkspaceFileListResponse:
+    """List files in the user's workspace."""
+    workspace = await get_workspace(auth.user_id)
+    if workspace is None:
+        return WorkspaceFileListResponse(
+            files=[], page=page, page_size=page_size, total_count=0, total_pages=0
+        )
+
+    total_count = await count_workspace_files(workspace.id)
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+    offset = (page - 1) * page_size
+
+    files = await list_workspace_files(
+        workspace_id=workspace.id,
+        limit=page_size,
+        offset=offset,
+    )
+
+    return WorkspaceFileListResponse(
+        files=[
+            WorkspaceFileInfo(
+                id=f.id,
+                name=f.name,
+                path=f.path,
+                mime_type=f.mime_type,
+                size_bytes=f.size_bytes,
+                created_at=f.created_at,
+                updated_at=f.updated_at,
+            )
+            for f in files
+        ],
+        page=page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+    )
+
+
+@file_workspace_router.get(
+    path="/{file_id}",
+    summary="Get workspace file metadata",
+    operation_id="getWorkspaceFileInfo",
+)
+async def get_file(
+    file_id: str,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.DOWNLOAD_FILES)
+    ),
+) -> WorkspaceFileInfo:
+    """Get metadata for a specific file in the user's workspace."""
+    workspace = await get_workspace(auth.user_id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File #{file_id} not found",
+        )
+
+    return WorkspaceFileInfo(
+        id=file.id,
+        name=file.name,
+        path=file.path,
+        mime_type=file.mime_type,
+        size_bytes=file.size_bytes,
+        created_at=file.created_at,
+        updated_at=file.updated_at,
+    )
+
+
+@file_workspace_router.delete(
+    path="/{file_id}",
+    summary="Delete file from workspace",
+    operation_id="deleteWorkspaceFile",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_file(
+    file_id: str,
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.UPLOAD_FILES)
+    ),
+) -> None:
+    """Soft-delete a file from the user's workspace."""
+    workspace = await get_workspace(auth.user_id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+
+    result = await soft_delete_workspace_file(file_id, workspace.id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File #{file_id} not found",
+        )
 
 
 def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
@@ -47,9 +177,10 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     )
 
 
-@files_router.post(
+@file_workspace_router.post(
     path="/upload",
-    summary="Upload file",
+    summary="Upload file to workspace",
+    operation_id="uploadWorkspaceFile",
 )
 async def upload_file(
     file: UploadFile = File(...),
@@ -59,7 +190,7 @@ async def upload_file(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.UPLOAD_FILES)
     ),
-) -> UploadFileResponse:
+) -> UploadWorkspaceFileResponse:
     """
     Upload a file to cloud storage for use with agents.
 
@@ -98,7 +229,7 @@ async def upload_file(
         base64_content = base64.b64encode(content).decode("utf-8")
         data_uri = f"data:{content_type};base64,{base64_content}"
 
-        return UploadFileResponse(
+        return UploadWorkspaceFileResponse(
             file_uri=data_uri,
             file_name=file_name,
             size=content_size,
@@ -114,7 +245,7 @@ async def upload_file(
         user_id=auth.user_id,
     )
 
-    return UploadFileResponse(
+    return UploadWorkspaceFileResponse(
         file_uri=storage_path,
         file_name=file_name,
         size=content_size,
@@ -140,9 +271,10 @@ def _sanitize_filename_for_header(filename: str) -> str:
         return f"attachment; filename*=UTF-8''{encoded}"
 
 
-@files_router.get(
+@file_workspace_router.get(
     path="/{file_id}/download",
-    summary="Download file",
+    summary="Download file from workspace",
+    operation_id="getWorkspaceFileDownload",
 )
 async def download_file(
     file_id: str,

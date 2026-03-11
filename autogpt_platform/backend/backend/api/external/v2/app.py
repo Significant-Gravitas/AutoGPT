@@ -56,16 +56,30 @@ v2_app = FastAPI(
             "description": "Discover available building blocks",
         },
         {
+            "name": "search",
+            "description": "Cross-domain hybrid search across agents, blocks, and docs",
+        },
+        {
             "name": "marketplace",
             "description": "Browse agents and creators, manage submissions",
         },
         {
             "name": "library",
-            "description": "Access your agent library and execute agents",
+            "description": (
+                "Manage your agent library (agents and presets), "
+                "execute agents, organize with folders"
+            ),
+        },
+        {
+            "name": "presets",
+            "description": "Agent execution presets with webhook triggers",
         },
         {
             "name": "runs",
-            "description": "Monitor execution runs and human-in-the-loop reviews",
+            "description": (
+                "Monitor, stop, delete, and share execution runs; "
+                "manage human-in-the-loop reviews"
+            ),
         },
         {
             "name": "credits",
@@ -73,11 +87,11 @@ v2_app = FastAPI(
         },
         {
             "name": "integrations",
-            "description": "Manage OAuth credentials for external services",
+            "description": "List, create, and delete integration credentials",
         },
         {
             "name": "files",
-            "description": "Upload files for agent input",
+            "description": "Upload, list, download, and delete workspace files",
         },
     ],
 )

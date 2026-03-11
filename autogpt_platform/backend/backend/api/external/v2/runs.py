@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
 from pydantic import JsonValue
 from starlette import status
@@ -36,7 +36,7 @@ from .models import (
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-runs_router = APIRouter()
+runs_router = APIRouter(tags=["runs"])
 
 
 # ============================================================================
@@ -46,7 +46,8 @@ runs_router = APIRouter()
 
 @runs_router.get(
     path="",
-    summary="List runs",
+    summary="List agent runs",
+    operation_id="listAgentRuns",
 )
 async def list_runs(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
@@ -80,10 +81,11 @@ async def list_runs(
 
 @runs_router.get(
     path="/{run_id}",
-    summary="Get run details",
+    summary="Get agent run details",
+    operation_id="getAgentRunDetails",
 )
 async def get_run(
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN)
     ),
@@ -106,10 +108,11 @@ async def get_run(
 
 @runs_router.post(
     path="/{run_id}/stop",
-    summary="Stop run",
+    summary="Stop agent run",
+    operation_id="stopAgentRun",
 )
 async def stop_run(
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN)
     ),
@@ -153,10 +156,11 @@ async def stop_run(
 
 @runs_router.delete(
     path="/{run_id}",
-    summary="Delete run",
+    summary="Delete agent run",
+    operation_id="deleteAgentRun",
 )
 async def delete_run(
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN)
     ),
@@ -175,10 +179,11 @@ async def delete_run(
 
 @runs_router.post(
     path="/{run_id}/share",
-    summary="Enable run sharing",
+    summary="Enable sharing for an agent run",
+    operation_id="enableAgentRunShare",
 )
 async def enable_sharing(
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
     ),
@@ -212,11 +217,12 @@ async def enable_sharing(
 
 @runs_router.delete(
     path="/{run_id}/share",
-    summary="Disable run sharing",
+    summary="Disable sharing for an agent run",
+    operation_id="disableAgentRunShare",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def disable_sharing(
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.SHARE_RUN)
     ),
@@ -248,10 +254,13 @@ async def disable_sharing(
 
 @runs_router.get(
     path="/reviews",
-    summary="List run reviews",
+    summary="List agent run human-in-the-loop reviews",
+    operation_id="listAgentRunReviews",
 )
 async def list_reviews(
-    run_id: Optional[str] = Query(default=None, description="Filter by run ID"),
+    run_id: Optional[str] = Query(
+        default=None, description="Filter by graph execution ID"
+    ),
     status: Optional[ReviewStatus] = Query(
         description="Filter by review status",
     ),
@@ -269,7 +278,7 @@ async def list_reviews(
     """
     List human-in-the-loop reviews for agent runs.
 
-    Defaults to reviews with status WAITING if no status filter is given.
+    Returns reviews with status WAITING if no status filter is given.
     """
     reviews, pagination = await review_db.get_reviews(
         user_id=auth.user_id,
@@ -290,11 +299,12 @@ async def list_reviews(
 
 @runs_router.post(
     path="/{run_id}/reviews",
-    summary="Submit run reviews",
+    summary="Submit agent run human-in-the-loop reviews",
+    operation_id="submitAgentRunReviews",
 )
 async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
-    run_id: str,
+    run_id: str = Path(description="Graph Execution ID"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),

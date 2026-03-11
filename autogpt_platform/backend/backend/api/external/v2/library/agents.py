@@ -28,7 +28,7 @@ from ..rate_limit import execute_limiter
 
 logger = logging.getLogger(__name__)
 
-agents_router = APIRouter()
+agents_router = APIRouter(tags=["library"])
 
 
 # ============================================================================
@@ -39,6 +39,7 @@ agents_router = APIRouter()
 @agents_router.get(
     path="/agents",
     summary="List library agents",
+    operation_id="listLibraryAgents",
 )
 async def list_library_agents(
     published: Optional[bool] = Query(
@@ -81,6 +82,7 @@ async def list_library_agents(
 @agents_router.get(
     path="/agents/{agent_id}",
     summary="Get library agent",
+    operation_id="getLibraryAgent",
 )
 async def get_library_agent(
     agent_id: str,
@@ -99,6 +101,7 @@ async def get_library_agent(
 @agents_router.patch(
     path="/agents/{agent_id}",
     summary="Update library agent",
+    operation_id="updateLibraryAgent",
 )
 async def update_library_agent(
     request: LibraryAgentUpdateRequest,
@@ -123,6 +126,7 @@ async def update_library_agent(
 @agents_router.delete(
     path="/agents/{agent_id}",
     summary="Delete library agent",
+    operation_id="deleteLibraryAgent",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_library_agent(
@@ -141,6 +145,7 @@ async def delete_library_agent(
 @agents_router.post(
     path="/agents/{agent_id}/fork",
     summary="Fork library agent",
+    operation_id="forkLibraryAgent",
     status_code=status.HTTP_201_CREATED,
 )
 async def fork_library_agent(
@@ -149,7 +154,12 @@ async def fork_library_agent(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
-    """Fork (clone) a library agent."""
+    """Fork (clone) a library agent.
+
+    Creates a deep copy of the agent's underlying graph and all its nodes,
+    assigning new IDs. The cloned graph is added to the user's library as
+    an independent agent that can be modified without affecting the original.
+    """
     forked = await library_db.fork_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -160,6 +170,7 @@ async def fork_library_agent(
 @agents_router.post(
     path="/agents/{agent_id}/runs",
     summary="Execute library agent",
+    operation_id="executeLibraryAgent",
 )
 async def execute_agent(
     request: AgentRunRequest,
@@ -186,25 +197,20 @@ async def execute_agent(
         user_id=auth.user_id,
     )
 
-    try:
-        result = await execution_utils.add_graph_execution(
-            graph_id=library_agent.graph_id,
-            user_id=auth.user_id,
-            inputs=request.inputs,
-            graph_version=library_agent.graph_version,
-            graph_credentials_inputs=request.credentials_inputs,
-        )
-
-        return AgentGraphRun.from_internal(result)
-
-    except Exception as e:
-        logger.error(f"Failed to execute agent: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    result = await execution_utils.add_graph_execution(
+        graph_id=library_agent.graph_id,
+        user_id=auth.user_id,
+        inputs=request.inputs,
+        graph_version=library_agent.graph_version,
+        graph_credentials_inputs=request.credentials_inputs,
+    )
+    return AgentGraphRun.from_internal(result)
 
 
 @agents_router.get(
     path="/agents/{agent_id}/credentials",
-    summary="Get agent credentials",
+    summary="Get library agent credential requirements",
+    operation_id="getCredentialRequirementsForLibraryAgent",
 )
 async def list_agent_credential_requirements(
     agent_id: str,

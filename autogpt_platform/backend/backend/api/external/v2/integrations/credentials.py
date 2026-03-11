@@ -27,7 +27,8 @@ credentials_router = APIRouter()
 
 @credentials_router.get(
     path="/credentials",
-    summary="List credentials",
+    summary="List integration credentials",
+    operation_id="listIntegrationCredentials",
 )
 async def list_credentials(
     provider: Optional[str] = Query(
@@ -51,7 +52,8 @@ async def list_credentials(
 
 @credentials_router.post(
     path="/credentials",
-    summary="Create API key credential",
+    summary="Add integration API key credential",
+    operation_id="addIntegrationAPIKeyCredential",
     status_code=status.HTTP_201_CREATED,
 )
 async def create_credential(
@@ -61,7 +63,7 @@ async def create_credential(
     ),
 ) -> CredentialInfo:
     """
-    Create a new API key credential.
+    Create a new integration credential.
 
     Only API key credentials can be created via the external API.
     OAuth credentials must be set up through the web UI.
@@ -79,7 +81,8 @@ async def create_credential(
 
 @credentials_router.delete(
     path="/credentials/{credential_id}",
-    summary="Delete credential",
+    summary="Delete integration credential",
+    operation_id="deleteIntegrationCredential",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_credential(

@@ -35,12 +35,13 @@ from ..rate_limit import execute_limiter
 
 logger = logging.getLogger(__name__)
 
-presets_router = APIRouter()
+presets_router = APIRouter(tags=["library", "presets"])
 
 
 @presets_router.get(
     path="/presets",
-    summary="List presets",
+    summary="List agent execution presets",
+    operation_id="listAgentRunPresets",
 )
 async def list_presets(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
@@ -74,7 +75,8 @@ async def list_presets(
 
 @presets_router.get(
     path="/presets/{preset_id}",
-    summary="Get preset",
+    summary="Get agent execution preset",
+    operation_id="getAgentRunPreset",
 )
 async def get_preset(
     preset_id: str,
@@ -98,7 +100,8 @@ async def get_preset(
 
 @presets_router.post(
     path="/presets",
-    summary="Create preset",
+    summary="Create agent execution preset",
+    operation_id="createAgentRunPreset",
     status_code=status.HTTP_201_CREATED,
 )
 async def create_preset(
@@ -118,20 +121,17 @@ async def create_preset(
         is_active=request.is_active,
     )
 
-    try:
-        preset = await library_db.create_preset(
-            user_id=auth.user_id,
-            preset=creatable,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    preset = await library_db.create_preset(
+        user_id=auth.user_id,
+        preset=creatable,
+    )
     return AgentPreset.from_internal(preset)
 
 
 @presets_router.post(
     path="/presets/setup-trigger",
     summary="Setup triggered preset",
+    operation_id="setupAgentRunTrigger",
     status_code=status.HTTP_201_CREATED,
 )
 async def setup_trigger(
@@ -140,7 +140,14 @@ async def setup_trigger(
         require_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> AgentPreset:
-    """Create a preset with a webhook trigger for automatic execution."""
+    """
+    Create a preset with a webhook trigger for automatic execution.
+
+    The agent's `trigger_setup_info` describes the required trigger configuration
+    schema and credentials. Use it to populate `trigger_config` and
+    `agent_credentials`.
+    """
+    # Use internal trigger setup endpoint to avoid logic duplication:
     from backend.api.features.library.routes.presets import (
         setup_trigger as _internal_setup_trigger,
     )
@@ -154,22 +161,17 @@ async def setup_trigger(
         agent_credentials=request.agent_credentials,
     )
 
-    try:
-        preset = await _internal_setup_trigger(
-            params=internal_request,
-            user_id=auth.user_id,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    preset = await _internal_setup_trigger(
+        params=internal_request,
+        user_id=auth.user_id,
+    )
     return AgentPreset.from_internal(preset)
 
 
 @presets_router.patch(
     path="/presets/{preset_id}",
-    summary="Update preset",
+    operation_id="updateAgentRunPreset",
+    summary="Update agent execution preset",
 )
 async def update_preset(
     request: AgentPresetUpdateRequest,
@@ -179,25 +181,22 @@ async def update_preset(
     ),
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated."""
-    try:
-        preset = await library_db.update_preset(
-            user_id=auth.user_id,
-            preset_id=preset_id,
-            name=request.name,
-            description=request.description,
-            inputs=request.inputs,
-            credentials=request.credentials,
-            is_active=request.is_active,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    preset = await library_db.update_preset(
+        user_id=auth.user_id,
+        preset_id=preset_id,
+        name=request.name,
+        description=request.description,
+        inputs=request.inputs,
+        credentials=request.credentials,
+        is_active=request.is_active,
+    )
     return AgentPreset.from_internal(preset)
 
 
 @presets_router.delete(
     path="/presets/{preset_id}",
-    summary="Delete preset",
+    summary="Delete agent execution preset",
+    operation_id="deleteAgentRunPreset",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_preset(
@@ -215,7 +214,8 @@ async def delete_preset(
 
 @presets_router.post(
     path="/presets/{preset_id}/execute",
-    summary="Execute preset",
+    summary="Execute agent preset",
+    operation_id="executeAgentRunPreset",
 )
 async def execute_preset(
     preset_id: str,
@@ -251,16 +251,12 @@ async def execute_preset(
     merged_inputs = {**preset.inputs, **request.inputs}
     merged_credentials = {**preset.credentials, **request.credentials_inputs}
 
-    try:
-        result = await execution_utils.add_graph_execution(
-            graph_id=preset.graph_id,
-            user_id=auth.user_id,
-            inputs=merged_inputs,
-            graph_version=preset.graph_version,
-            graph_credentials_inputs=merged_credentials,
-            preset_id=preset_id,
-        )
-        return AgentGraphRun.from_internal(result)
-    except Exception as e:
-        logger.error(f"Failed to execute preset: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    result = await execution_utils.add_graph_execution(
+        graph_id=preset.graph_id,
+        user_id=auth.user_id,
+        inputs=merged_inputs,
+        graph_version=preset.graph_version,
+        graph_credentials_inputs=merged_credentials,
+        preset_id=preset_id,
+    )
+    return AgentGraphRun.from_internal(result)

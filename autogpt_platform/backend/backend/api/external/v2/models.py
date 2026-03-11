@@ -386,6 +386,26 @@ class AgentRunScheduleListResponse(PaginatedResponse):
 # ============================================================================
 
 
+class TriggerSetupInfo(BaseModel):
+    """
+    Trigger configuration requirements for agents that support webhook triggers.
+
+    Use `config_schema` and `credentials_input_name` to populate the
+    `trigger_config` and `agent_credentials` fields when calling
+    ``POST /library/presets/setup-trigger``.
+    """
+
+    provider: str = Field(description="Trigger provider (e.g. 'github')")
+    config_schema: dict[str, Any] = Field(
+        description="JSON Schema for the trigger block's input"
+    )
+    credentials_input_name: Optional[str] = Field(
+        description=(
+            "Name of the credentials input field, if the trigger requires credentials"
+        )
+    )
+
+
 class LibraryAgent(BaseModel):
     """An agent in the user's library."""
 
@@ -401,11 +421,24 @@ class LibraryAgent(BaseModel):
     creator_name: str
     input_schema: dict[str, Any] = Field(description="Input schema for the agent")
     output_schema: dict[str, Any] = Field(description="Output schema for the agent")
+    trigger_setup_info: Optional[TriggerSetupInfo] = Field(
+        default=None,
+        description="Trigger configuration requirements; "
+        "present if the agent has a webhook trigger input",
+    )
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def from_internal(cls, agent: _LibraryAgent) -> Self:
+        trigger_info = None
+        if agent.trigger_setup_info:
+            trigger_info = TriggerSetupInfo(
+                provider=agent.trigger_setup_info.provider,
+                config_schema=agent.trigger_setup_info.config_schema,
+                credentials_input_name=agent.trigger_setup_info.credentials_input_name,
+            )
+
         return cls(
             id=agent.id,
             graph_id=agent.graph_id,
@@ -419,6 +452,7 @@ class LibraryAgent(BaseModel):
             creator_name=agent.creator_name,
             input_schema=agent.input_schema,
             output_schema=agent.output_schema,
+            trigger_setup_info=trigger_info,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
         )
@@ -909,18 +943,36 @@ class CredentialRequirementsResponse(BaseModel):
 
 
 # ============================================================================
-# File Models
+# File Workspace Models
 # ============================================================================
 
 
-class UploadFileResponse(BaseModel):
-    """Response after uploading a file."""
+class UploadWorkspaceFileResponse(BaseModel):
+    """Response after uploading a file to the user's workspace."""
 
     file_uri: str = Field(description="URI to reference the uploaded file in agents")
     file_name: str
     size: int = Field(description="File size in bytes")
     content_type: str
     expires_in_hours: int
+
+
+class WorkspaceFileInfo(BaseModel):
+    """Metadata for a file in the user's workspace."""
+
+    id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int = Field(description="File size in bytes")
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceFileListResponse(PaginatedResponse):
+    """Response for listing workspace files."""
+
+    files: list[WorkspaceFileInfo]
 
 
 # ============================================================================

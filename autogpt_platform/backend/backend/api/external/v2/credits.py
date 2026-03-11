@@ -19,7 +19,7 @@ from .models import CreditBalance, CreditTransaction, CreditTransactionsResponse
 
 logger = logging.getLogger(__name__)
 
-credits_router = APIRouter()
+credits_router = APIRouter(tags=["credits"])
 
 
 # ============================================================================
@@ -30,6 +30,7 @@ credits_router = APIRouter()
 @credits_router.get(
     path="",
     summary="Get credit balance",
+    operation_id="getCreditBalance",
 )
 async def get_balance(
     auth: APIAuthorizationInfo = Security(
@@ -45,7 +46,8 @@ async def get_balance(
 
 @credits_router.get(
     path="/transactions",
-    summary="Get transaction history",
+    summary="Get credit transaction history",
+    operation_id="listCreditTransactions",
 )
 async def get_transactions(
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),

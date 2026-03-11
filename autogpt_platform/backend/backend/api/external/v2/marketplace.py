@@ -10,7 +10,6 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, File, HTTPException, Path, Query, Security, UploadFile
 from prisma.enums import APIKeyPermission
-from prisma.enums import ContentType as SearchContentType
 from starlette import status
 
 from backend.api.external.middleware import require_auth, require_permission
@@ -21,7 +20,6 @@ from backend.api.features.store.db import (
     StoreAgentsSortOptions,
     StoreCreatorsSortOptions,
 )
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.virus_scanner import scan_content_safe
 
@@ -38,16 +36,14 @@ from .models import (
     MarketplaceCreatorDetails,
     MarketplaceCreatorsResponse,
     MarketplaceMediaUploadResponse,
-    MarketplaceSearchResponse,
-    MarketplaceSearchResult,
     MarketplaceUserProfile,
     MarketplaceUserProfileUpdateRequest,
 )
-from .rate_limit import media_upload_limiter, search_limiter
+from .rate_limit import media_upload_limiter
 
 logger = logging.getLogger(__name__)
 
-marketplace_router = APIRouter()
+marketplace_router = APIRouter(tags=["marketplace"])
 
 
 # ============================================================================
@@ -57,7 +53,8 @@ marketplace_router = APIRouter()
 
 @marketplace_router.get(
     path="/agents",
-    summary="List marketplace agents",
+    summary="List or search marketplace agents",
+    operation_id="listMarketplaceAgents",
 )
 async def list_agents(
     featured: bool = Query(
@@ -100,7 +97,8 @@ async def list_agents(
 
 @marketplace_router.get(
     path="/agents/by-version/{version_id}",
-    summary="Get agent by version ID",
+    summary="Get marketplace agent by version ID",
+    operation_id="getMarketplaceAgentByListingVersion",
 )
 async def get_agent_by_version(
     version_id: str,
@@ -113,7 +111,8 @@ async def get_agent_by_version(
 
 @marketplace_router.get(
     path="/agents/{username}/{agent_name}",
-    summary="Get agent details",
+    summary="Get marketplace agent details",
+    operation_id="getMarketplaceAgent",
 )
 async def get_agent_details(
     username: str,
@@ -133,7 +132,8 @@ async def get_agent_details(
 
 @marketplace_router.post(
     path="/agents/{username}/{agent_name}/add-to-library",
-    summary="Add agent to library",
+    summary="Add marketplace agent to library",
+    operation_id="addMarketplaceAgentToLibrary",
     status_code=status.HTTP_201_CREATED,
 )
 async def add_agent_to_library(
@@ -162,63 +162,6 @@ async def add_agent_to_library(
 
 
 # ============================================================================
-# Search
-# ============================================================================
-
-
-@marketplace_router.get(
-    path="/search",
-    summary="Search marketplace",
-)
-async def search_marketplace(
-    query: str = Query(description="Search query"),
-    content_types: Optional[list[SearchContentType]] = Query(
-        default=None, description="Content types to filter by"
-    ),
-    category: Optional[str] = Query(default=None, description="Filter by category"),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=DEFAULT_PAGE_SIZE),
-    auth: APIAuthorizationInfo = Security(require_auth),
-) -> MarketplaceSearchResponse:
-    """
-    Search the marketplace using hybrid search (literal + semantic).
-
-    Searches across agents, blocks, and documentation. Results are ranked
-    by a combination of keyword matching and semantic similarity.
-    """
-    search_limiter.check(auth.user_id)
-
-    results, total_count = await unified_hybrid_search(
-        query=query,
-        content_types=content_types,
-        category=category,
-        page=page,
-        page_size=page_size,
-        user_id=auth.user_id,
-    )
-
-    total_pages = max(1, (total_count + page_size - 1) // page_size)
-
-    return MarketplaceSearchResponse(
-        results=[
-            MarketplaceSearchResult(
-                content_type=r.get("content_type", ""),
-                content_id=r.get("content_id", ""),
-                searchable_text=r.get("searchable_text", ""),
-                metadata=r.get("metadata"),
-                updated_at=r.get("updated_at"),
-                combined_score=r.get("combined_score"),
-            )
-            for r in results
-        ],
-        page=page,
-        page_size=page_size,
-        total_count=total_count,
-        total_pages=total_pages,
-    )
-
-
-# ============================================================================
 # Creators
 # ============================================================================
 
@@ -226,6 +169,7 @@ async def search_marketplace(
 @marketplace_router.get(
     path="/creators",
     summary="List marketplace creators",
+    operation_id="listMarketplaceCreators",
 )
 async def list_creators(
     featured: bool = Query(
@@ -261,13 +205,14 @@ async def list_creators(
 
 @marketplace_router.get(
     path="/creators/{username}",
-    summary="Get creator details",
+    summary="Get marketplace creator details",
+    operation_id="getMarketplaceCreator",
 )
 async def get_creator_details(
     username: str,
     auth: APIAuthorizationInfo = Security(require_auth),
 ) -> MarketplaceCreatorDetails:
-    """Get details on a marketplace creator."""
+    """Get a marketplace creator's profile w/ stats."""
     username = urllib.parse.unquote(username).lower()
     creator = await store_cache._get_cached_creator_details(username=username)
     return MarketplaceCreatorDetails.from_internal(creator)
@@ -280,14 +225,15 @@ async def get_creator_details(
 
 @marketplace_router.get(
     path="/profile",
-    summary="Get my profile",
+    summary="Get my marketplace profile",
+    operation_id="getMarketplaceMyProfile",
 )
 async def get_profile(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_STORE)
     ),
 ) -> MarketplaceCreatorDetails:
-    """Get the authenticated user's marketplace profile."""
+    """Get the authenticated user's marketplace profile w/ creator stats."""
     profile = await store_db.get_user_profile(auth.user_id)
     if not profile:
         raise HTTPException(
@@ -301,7 +247,8 @@ async def get_profile(
 
 @marketplace_router.patch(
     path="/profile",
-    summary="Update my profile",
+    summary="Update my marketplace profile",
+    operation_id="updateMarketplaceMyProfile",
 )
 async def update_profile(
     request: MarketplaceUserProfileUpdateRequest,
@@ -331,7 +278,8 @@ async def update_profile(
 
 @marketplace_router.get(
     path="/submissions",
-    summary="List my submissions",
+    summary="List my marketplace submissions",
+    operation_id="listMarketplaceSubmissions",
 )
 async def list_submissions(
     page: int = Query(ge=1, default=1),
@@ -360,7 +308,8 @@ async def list_submissions(
 
 @marketplace_router.post(
     path="/submissions",
-    summary="Create submission",
+    summary="Create marketplace submission",
+    operation_id="createMarketplaceSubmission",
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
@@ -391,7 +340,8 @@ async def create_submission(
 
 @marketplace_router.put(
     path="/submissions/{version_id}",
-    summary="Edit submission",
+    summary="Edit marketplace submission",
+    operation_id="updateMarketplaceSubmission",
 )
 async def edit_submission(
     request: MarketplaceAgentSubmissionEditRequest,
@@ -423,25 +373,26 @@ async def edit_submission(
 
 
 @marketplace_router.delete(
-    path="/submissions/{submission_id}",
-    summary="Delete submission",
+    path="/submissions/{version_id}",
+    summary="Delete marketplace submission",
+    operation_id="deleteMarketplaceSubmission",
 )
 async def delete_submission(
-    submission_id: str,
+    version_id: str,
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> None:
-    """Delete a marketplace listing submission."""
+    """Delete a marketplace listing submission. Approved listings can not be deleted."""
     success = await store_db.delete_store_submission(
         user_id=auth.user_id,
-        submission_id=submission_id,
+        store_listing_version_id=version_id,
     )
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Submission #{submission_id} not found",
+            detail=f"Submission #{version_id} not found",
         )
 
 
@@ -452,7 +403,8 @@ async def delete_submission(
 
 @marketplace_router.post(
     path="/submissions/media",
-    summary="Upload submission media",
+    summary="Upload marketplace submission media",
+    operation_id="uploadMarketplaceSubmissionMedia",
 )
 async def upload_submission_media(
     file: UploadFile = File(...),

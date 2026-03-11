@@ -19,7 +19,7 @@ from .models import BlockInfo
 
 logger = logging.getLogger(__name__)
 
-blocks_router = APIRouter()
+blocks_router = APIRouter(tags=["blocks"])
 
 
 # ============================================================================
@@ -56,9 +56,10 @@ async def _get_cached_blocks() -> list[BlockInfo]:
 
 @blocks_router.get(
     path="",
-    summary="List blocks",
+    summary="List available blocks",
+    operation_id="listAvailableBlocks",
 )
-async def list_blocks(
+async def list_available_blocks(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_BLOCK)
     ),

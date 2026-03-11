@@ -27,7 +27,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-schedules_router = APIRouter()
+schedules_router = APIRouter(tags=["graphs", "schedules"])
 
 
 # ============================================================================
@@ -37,7 +37,8 @@ schedules_router = APIRouter()
 
 @schedules_router.get(
     path="",
-    summary="List schedules",
+    summary="List run schedules",
+    operation_id="listGraphRunSchedules",
 )
 async def list_all_schedules(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
@@ -77,7 +78,8 @@ async def list_all_schedules(
 
 @schedules_router.delete(
     path="/{schedule_id}",
-    summary="Delete schedule",
+    summary="Delete run schedule",
+    operation_id="deleteGraphRunSchedule",
 )
 async def delete_schedule(
     schedule_id: str,
@@ -105,12 +107,13 @@ async def delete_schedule(
 # These are included in the graphs router via include_router
 # ============================================================================
 
-graph_schedules_router = APIRouter()
+graph_schedules_router = APIRouter(tags=["graphs"])
 
 
 @graph_schedules_router.post(
     path="/{graph_id}/schedules",
-    summary="Create graph schedule",
+    summary="Create run schedule",
+    operation_id="createGraphRunSchedule",
 )
 async def create_graph_schedule(
     request: AgentRunScheduleCreateRequest,
