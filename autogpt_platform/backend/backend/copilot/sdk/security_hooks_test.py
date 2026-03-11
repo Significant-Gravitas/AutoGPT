@@ -9,8 +9,9 @@ import os
 
 import pytest
 
+from backend.copilot.context import _current_project_dir
+
 from .security_hooks import _validate_tool_access, _validate_user_isolation
-from .service import _is_tool_error_or_denial
 
 SDK_CWD = "/tmp/copilot-abc123"
 
@@ -120,8 +121,6 @@ def test_read_no_cwd_denies_absolute():
 
 
 def test_read_tool_results_allowed():
-    from .tool_adapter import _current_project_dir
-
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/tool-results/12345.txt"
     # is_allowed_local_path requires the session's encoded cwd to be set
@@ -133,16 +132,14 @@ def test_read_tool_results_allowed():
         _current_project_dir.reset(token)
 
 
-def test_read_claude_projects_session_dir_allowed():
-    """Files within the current session's project dir are allowed."""
-    from .tool_adapter import _current_project_dir
-
+def test_read_claude_projects_settings_json_denied():
+    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/ is."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
         result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert not _is_denied(result)
+        assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 
@@ -357,76 +354,3 @@ async def test_task_slot_released_on_failure(_hooks):
         context={},
     )
     assert not _is_denied(result)
-
-
-# -- _is_tool_error_or_denial ------------------------------------------------
-
-
-class TestIsToolErrorOrDenial:
-    def test_none_content(self):
-        assert _is_tool_error_or_denial(None) is False
-
-    def test_empty_content(self):
-        assert _is_tool_error_or_denial("") is False
-
-    def test_benign_output(self):
-        assert _is_tool_error_or_denial("All good, no issues.") is False
-
-    def test_security_marker(self):
-        assert _is_tool_error_or_denial("[SECURITY] Tool access blocked") is True
-
-    def test_cannot_be_bypassed(self):
-        assert _is_tool_error_or_denial("This restriction cannot be bypassed.") is True
-
-    def test_not_allowed(self):
-        assert _is_tool_error_or_denial("Operation not allowed in sandbox") is True
-
-    def test_background_task_denial(self):
-        assert (
-            _is_tool_error_or_denial(
-                "Background task execution is not supported. "
-                "Run tasks in the foreground instead."
-            )
-            is True
-        )
-
-    def test_subtask_limit_denial(self):
-        assert (
-            _is_tool_error_or_denial(
-                "Maximum 2 concurrent sub-tasks. "
-                "Wait for running sub-tasks to finish, "
-                "or continue in the main conversation."
-            )
-            is True
-        )
-
-    def test_denied_marker(self):
-        assert (
-            _is_tool_error_or_denial("Access denied: insufficient privileges") is True
-        )
-
-    def test_blocked_marker(self):
-        assert _is_tool_error_or_denial("Request blocked by security policy") is True
-
-    def test_failed_marker(self):
-        assert _is_tool_error_or_denial("Failed to execute tool: timeout") is True
-
-    def test_mcp_iserror(self):
-        assert _is_tool_error_or_denial('{"isError": true, "content": []}') is True
-
-    def test_benign_error_in_value(self):
-        """Content like '0 errors found' should not trigger — 'error' was removed."""
-        assert _is_tool_error_or_denial("0 errors found") is False
-
-    def test_benign_permission_field(self):
-        """Schema descriptions mentioning 'permission' should not trigger."""
-        assert (
-            _is_tool_error_or_denial(
-                '{"fields": [{"name": "permission_level", "type": "int"}]}'
-            )
-            is False
-        )
-
-    def test_benign_not_found_in_listing(self):
-        """File listing containing 'not found' in filenames should not trigger."""
-        assert _is_tool_error_or_denial("readme.md\nfile-not-found-handler.py") is False

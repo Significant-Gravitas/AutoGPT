@@ -1,9 +1,12 @@
 """Configuration management for chat system."""
 
 import os
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+
+from backend.util.clients import OPENROUTER_BASE_URL
 
 
 class ChatConfig(BaseSettings):
@@ -19,7 +22,7 @@ class ChatConfig(BaseSettings):
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
-        default="https://openrouter.ai/api/v1",
+        default=OPENROUTER_BASE_URL,
         description="Base URL for API (e.g., for OpenRouter)",
     )
 
@@ -112,9 +115,37 @@ class ChatConfig(BaseSettings):
         description="E2B sandbox template to use for copilot sessions.",
     )
     e2b_sandbox_timeout: int = Field(
-        default=43200,  # 12 hours — same as session_ttl
-        description="E2B sandbox keepalive timeout in seconds.",
+        default=10800,  # 3 hours — wall-clock timeout, not idle; explicit pause is primary
+        description="E2B sandbox running-time timeout (seconds). "
+        "E2B timeout is wall-clock (not idle). Explicit per-turn pause is the primary "
+        "mechanism; this is the safety net.",
     )
+    e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
+        default="pause",
+        description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
+    )
+
+    @property
+    def e2b_active(self) -> bool:
+        """True when E2B is enabled and the API key is present.
+
+        Single source of truth for "should we use E2B right now?".
+        Prefer this over combining ``use_e2b_sandbox`` and ``e2b_api_key``
+        separately at call sites.
+        """
+        return self.use_e2b_sandbox and bool(self.e2b_api_key)
+
+    @property
+    def active_e2b_api_key(self) -> str | None:
+        """Return the E2B API key when E2B is enabled and configured, else None.
+
+        Combines the ``use_e2b_sandbox`` flag check and key presence into one.
+        Use in callers::
+
+            if api_key := config.active_e2b_api_key:
+                # E2B is active; api_key is narrowed to str
+        """
+        return self.e2b_api_key if self.e2b_active else None
 
     @field_validator("use_e2b_sandbox", mode="before")
     @classmethod
@@ -164,7 +195,7 @@ class ChatConfig(BaseSettings):
             if not v:
                 v = os.getenv("OPENAI_BASE_URL")
             if not v:
-                v = "https://openrouter.ai/api/v1"
+                v = OPENROUTER_BASE_URL
         return v
 
     @field_validator("use_claude_agent_sdk", mode="before")

@@ -8,7 +8,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 /** Block details returned on first run_block attempt (before input_data provided). */
 export interface BlockDetailsResponse {
@@ -26,6 +26,18 @@ export interface BlockDetailsResponse {
   user_authenticated: boolean;
 }
 
+/** Response when a block requires human review before execution. */
+export interface ReviewRequiredResponse {
+  type: typeof ResponseType.review_required;
+  message: string;
+  session_id?: string | null;
+  block_id: string;
+  block_name: string;
+  review_id: string;
+  graph_exec_id: string;
+  input_data: Record<string, unknown>;
+}
+
 export interface RunBlockInput {
   block_id?: string;
   block_name?: string;
@@ -36,12 +48,14 @@ export type RunBlockToolOutput =
   | SetupRequirementsResponse
   | BlockDetailsResponse
   | BlockOutputResponse
+  | ReviewRequiredResponse
   | ErrorResponse;
 
 const RUN_BLOCK_OUTPUT_TYPES = new Set<string>([
   ResponseType.setup_requirements,
   ResponseType.block_details,
   ResponseType.block_output,
+  ResponseType.review_required,
   ResponseType.error,
 ]);
 
@@ -66,7 +80,19 @@ export function isRunBlockDetailsOutput(
 export function isRunBlockBlockOutput(
   output: RunBlockToolOutput,
 ): output is BlockOutputResponse {
-  return output.type === ResponseType.block_output || "block_id" in output;
+  return (
+    output.type === ResponseType.block_output ||
+    ("block_id" in output && !("review_id" in output))
+  );
+}
+
+export function isRunBlockReviewRequiredOutput(
+  output: RunBlockToolOutput,
+): output is ReviewRequiredResponse {
+  return (
+    output.type === ResponseType.review_required ||
+    ("review_id" in output && "block_name" in output && "input_data" in output)
+  );
 }
 
 export function isRunBlockErrorOutput(
@@ -91,6 +117,7 @@ function parseOutput(output: unknown): RunBlockToolOutput | null {
     if (typeof type === "string" && RUN_BLOCK_OUTPUT_TYPES.has(type)) {
       return output as RunBlockToolOutput;
     }
+    if ("review_id" in output) return output as ReviewRequiredResponse;
     if ("block_id" in output) return output as BlockOutputResponse;
     if ("block" in output) return output as BlockDetailsResponse;
     if ("setup_info" in output) return output as SetupRequirementsResponse;
@@ -135,6 +162,9 @@ export function getAnimationText(part: {
       if (isRunBlockSetupRequirementsOutput(output)) {
         return `Setup needed for "${output.setup_info.agent_name}"`;
       }
+      if (isRunBlockReviewRequiredOutput(output)) {
+        return `Review needed for "${output.block_name}"`;
+      }
       return "Error running block";
     }
     case "output-error":
@@ -157,7 +187,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
@@ -224,6 +254,14 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
         missingCredsCount > 0
           ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
           : output.message,
+    };
+  }
+
+  if (isRunBlockReviewRequiredOutput(output)) {
+    return {
+      icon,
+      title: output.block_name,
+      description: "Sensitive action — awaiting review",
     };
   }
 

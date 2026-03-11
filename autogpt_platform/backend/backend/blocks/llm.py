@@ -31,10 +31,14 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
+from backend.util.request import validate_url_host
+from backend.util.settings import Settings
 from backend.util.text import TextFormatter
 
+settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
@@ -114,6 +118,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
@@ -266,6 +271,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
+    ),  # claude-sonnet-4-6
     LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-5-20251101
@@ -792,6 +800,11 @@ async def llm_call(
         if tools:
             raise ValueError("Ollama does not support tools.")
 
+        # Validate user-provided Ollama host to prevent SSRF etc.
+        await validate_url_host(
+            ollama_host, trusted_hostnames=[settings.config.ollama_host]
+        )
+
         client = ollama.AsyncClient(host=ollama_host)
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
@@ -813,7 +826,7 @@ async def llm_call(
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
         )
 
