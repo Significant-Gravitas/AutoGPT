@@ -9,7 +9,7 @@ Route files should import models from here rather than defining them locally.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
 
 from pydantic import BaseModel, Field, JsonValue
@@ -426,6 +426,7 @@ class LibraryAgent(BaseModel):
         description="Trigger configuration requirements; "
         "present if the agent has a webhook trigger input",
     )
+    recommended_schedule_cron: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -453,6 +454,7 @@ class LibraryAgent(BaseModel):
             input_schema=agent.input_schema,
             output_schema=agent.output_schema,
             trigger_setup_info=trigger_info,
+            recommended_schedule_cron=agent.recommended_schedule_cron,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
         )
@@ -687,6 +689,12 @@ class AgentGraphRun(BaseModel):
     cost: int = Field(description="Cost in cents ($)")
     duration: float = Field(description="Duration in seconds")
     node_exec_count: int = Field(description="Number of nodes executed")
+    correctness_score: float | None = Field(
+        description=(
+            "AI-generated score (0.0-1.0) indicating how well "
+            "the execution achieved its intended purpose"
+        ),
+    )
 
     @classmethod
     def from_internal(cls, exec: GraphExecutionMeta) -> Self:
@@ -701,6 +709,7 @@ class AgentGraphRun(BaseModel):
             cost=exec.stats.cost if exec.stats else 0,
             duration=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
+            correctness_score=exec.stats.correctness_score if exec.stats else None,
         )
 
 
@@ -729,6 +738,7 @@ class AgentGraphRunDetails(AgentGraphRun):
             cost=exec.stats.cost if exec.stats else 0,
             duration=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
+            correctness_score=exec.stats.correctness_score if exec.stats else None,
             node_executions=[
                 AgentNodeExecution(
                     node_id=node.node_id,
@@ -781,14 +791,19 @@ class AgentRunReview(BaseModel):
     """A human-in-the-loop review for an agent run."""
 
     node_exec_id: str  # primary key for reviews
-    run_id: str
+    run_id: str = Field(description="Graph Execution ID")
     graph_id: str
     graph_version: int
     payload: JsonValue = Field(description="Data to be reviewed")
     instructions: Optional[str] = Field(description="Instructions for the reviewer")
     editable: bool = Field(description="Whether the reviewer can edit the data")
     status: AgentRunReviewStatus
-    created_at: datetime
+    requested_at: datetime
+    reviewed_at: datetime | None
+    processed: bool = Field(
+        description="Whether the review has been consumed by the execution engine"
+    )
+    reviewer_comment: str | None
 
     @classmethod
     def from_internal(cls, review: PendingHumanReviewModel) -> Self:
@@ -801,7 +816,10 @@ class AgentRunReview(BaseModel):
             instructions=review.instructions,
             editable=review.editable,
             status=review.status.value,
-            created_at=review.created_at,
+            requested_at=review.created_at,
+            reviewed_at=review.reviewed_at,
+            processed=review.processed,
+            reviewer_comment=review.review_message,
         )
 
 
@@ -854,6 +872,17 @@ class CreditBalance(BaseModel):
 TransactionType: TypeAlias = Literal["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"]
 
 
+class CreditTransactionOrigin(BaseModel):
+    """Origin context for a credit transaction."""
+
+    graph_id: Optional[str] = Field(
+        description="ID of the graph that caused this transaction, if applicable"
+    )
+    run_id: Optional[str] = Field(
+        description="ID of the agent run that caused this transaction, if applicable"
+    )
+
+
 class CreditTransaction(BaseModel):
     """A credit transaction."""
 
@@ -863,9 +892,24 @@ class CreditTransaction(BaseModel):
     transaction_time: datetime
     running_balance: Optional[int] = Field(description="Balance after this transaction")
     description: Optional[str]
+    reason: Optional[str] = Field(
+        description=(
+            "Contextual explanation for this transaction "
+            "(e.g. admin grant reason, refund justification)"
+        ),
+    )
+    origin: Optional[CreditTransactionOrigin] = Field(
+        description="Origin context linking this transaction to a graph (execution)",
+    )
 
     @classmethod
     def from_internal(cls, t: UserTransaction) -> Self:
+        origin = None
+        if t.usage_graph_id or t.usage_execution_id:
+            origin = CreditTransactionOrigin(
+                graph_id=t.usage_graph_id,
+                run_id=t.usage_execution_id,
+            )
         return cls(
             transaction_key=t.transaction_key,
             amount=t.amount,
@@ -873,6 +917,8 @@ class CreditTransaction(BaseModel):
             transaction_time=t.transaction_time,
             running_balance=t.running_balance,
             description=t.description,
+            reason=t.reason,
+            origin=origin,
         )
 
 
@@ -887,26 +933,42 @@ class CreditTransactionsResponse(PaginatedResponse):
 # ============================================================================
 
 
+CredentialType: TypeAlias = Literal["api_key", "oauth2", "user_password", "host_scoped"]
+
+
 class CredentialInfo(BaseModel):
     """A user's credential for an integration."""
 
     id: str
+    type: CredentialType
     provider: str = Field(description="Integration provider name")
     title: Optional[str] = Field(description="User-assigned title for this credential")
-    scopes: list[str] = Field(description="Granted scopes")
+    scopes: list[str] = Field(
+        description="Permission scopes granted to this credential"
+    )
+    expires_at: Optional[datetime]
 
     @classmethod
     def from_internal(cls, cred: Credentials) -> Self:
-        from backend.data.model import OAuth2Credentials
-
         scopes: list[str] = []
-        if isinstance(cred, OAuth2Credentials):
-            scopes = cred.scopes or []
+        expires_at: int | None = None
+        if cred.type == "oauth2":
+            scopes = cred.scopes
+            expires_at = cred.refresh_token_expires_at
+        elif cred.type == "api_key":
+            expires_at = cred.expires_at
+
         return cls(
             id=cred.id,
+            type=cred.type,
             provider=cred.provider,
             title=cred.title,
             scopes=scopes,
+            expires_at=(
+                datetime.fromtimestamp(expires_at, tz=timezone.utc)
+                if expires_at
+                else None
+            ),
         )
 
 
@@ -1129,6 +1191,7 @@ SubmissionStatus: TypeAlias = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"
 class MarketplaceAgentSubmission(BaseModel):
     """A marketplace submission."""
 
+    listing_id: str
     listing_version_id: str
     listing_version: int
     graph_id: str
@@ -1142,16 +1205,26 @@ class MarketplaceAgentSubmission(BaseModel):
     image_urls: list[str]
     video_url: Optional[str]
     agent_output_demo_url: Optional[str]
+    changes_summary: Optional[str] = Field(
+        description="Summary of changes in this version"
+    )
+
     submitted_at: Optional[datetime]
-    status: SubmissionStatus
+    submission_status: SubmissionStatus
+    submission_reviewed_at: datetime | None
+    submission_review_comments: Optional[str] = Field(
+        description="Comments by the admin who reviewed the submission"
+    )
+
+    # Aggregated stats
     run_count: int
-    rating: float
-    review_comments: Optional[str]
-    reviewed_at: Optional[datetime]
+    user_review_count: int
+    user_review_avg_rating: float
 
     @classmethod
     def from_internal(cls, sub: StoreSubmission) -> Self:
         return cls(
+            listing_id=sub.listing_id,
             listing_version_id=sub.listing_version_id,
             listing_version=sub.listing_version,
             graph_id=sub.graph_id,
@@ -1165,12 +1238,14 @@ class MarketplaceAgentSubmission(BaseModel):
             image_urls=sub.image_urls,
             video_url=sub.video_url,
             agent_output_demo_url=sub.agent_output_demo_url,
+            changes_summary=sub.changes_summary,
             submitted_at=sub.submitted_at,
-            status=sub.status.value,
+            submission_status=sub.status.value,
+            submission_reviewed_at=sub.reviewed_at,
+            submission_review_comments=sub.review_comments,
             run_count=sub.run_count,
-            rating=sub.review_avg_rating,
-            review_comments=sub.review_comments,
-            reviewed_at=sub.reviewed_at,
+            user_review_count=sub.review_count,
+            user_review_avg_rating=sub.review_avg_rating,
         )
 
 
