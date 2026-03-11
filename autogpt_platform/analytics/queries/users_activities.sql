@@ -16,6 +16,12 @@
 --   platform.AgentGraphExecution     — Agent run history
 --   platform.AgentNodeExecution      — Individual block execution history
 --
+-- PERFORMANCE NOTE
+--   Each CTE aggregates its own table independently by userId.
+--   This avoids the fan-out that occurs when driving every join
+--   from user_logins across the two largest tables
+--   (AgentGraphExecution and AgentNodeExecution).
+--
 -- OUTPUT COLUMNS
 --   user_id                   TEXT         Supabase user UUID
 --   first_login_time          TIMESTAMPTZ  First ever session created_at
@@ -66,54 +72,60 @@ WITH user_logins AS (
   GROUP BY user_id
 ),
 user_agents AS (
+  -- Aggregate AgentGraph directly by userId (no fan-out from user_logins)
   SELECT
-    ul.user_id,
-    MAX(g."createdAt")  AS last_agent_save_time,
-    COUNT(g."id")       AS agent_count
-  FROM user_logins ul
-  LEFT JOIN platform."AgentGraph" g
-         ON ul.user_id = g."userId" AND g."isActive"
-  GROUP BY ul.user_id
+    "userId"::text                AS user_id,
+    MAX("createdAt")              AS last_agent_save_time,
+    COUNT("id")                   AS agent_count
+  FROM platform."AgentGraph"
+  WHERE "isActive"
+  GROUP BY "userId"
 ),
 user_graph_runs AS (
+  -- Aggregate AgentGraphExecution directly by userId
   SELECT
-    ul.user_id,
-    MIN(e."createdAt")                    AS first_agent_run_time,
-    MAX(e."createdAt")                    AS last_agent_run_time,
-    COUNT(DISTINCT e."agentGraphId")      AS unique_agent_runs,
-    COUNT(e."id")                         AS agent_runs
-  FROM user_logins ul
-  LEFT JOIN platform."AgentGraphExecution" e ON ul.user_id = e."userId"
-  GROUP BY ul.user_id
+    "userId"::text                        AS user_id,
+    MIN("createdAt")                      AS first_agent_run_time,
+    MAX("createdAt")                      AS last_agent_run_time,
+    COUNT(DISTINCT "agentGraphId")        AS unique_agent_runs,
+    COUNT("id")                           AS agent_runs
+  FROM platform."AgentGraphExecution"
+  GROUP BY "userId"
 ),
 user_node_runs AS (
+  -- Aggregate AgentNodeExecution directly; resolve userId via a
+  -- single join to AgentGraphExecution instead of fanning out from
+  -- user_logins through both large tables.
   SELECT
-    ul.user_id,
-    COUNT(*)                                                        AS node_execution_count,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'FAILED')          AS node_execution_failed,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'COMPLETED')       AS node_execution_completed,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'TERMINATED')      AS node_execution_terminated,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'QUEUED')          AS node_execution_queued,
-    COUNT(*) FILTER (WHERE n."executionStatus" = 'RUNNING')         AS node_execution_running
-  FROM user_logins ul
-  LEFT JOIN platform."AgentGraphExecution" g  ON ul.user_id = g."userId"
-  LEFT JOIN platform."AgentNodeExecution"  n  ON g."id" = n."agentGraphExecutionId"
-  GROUP BY ul.user_id
+    g."userId"::text                                                   AS user_id,
+    COUNT(*)                                                           AS node_execution_count,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'FAILED')             AS node_execution_failed,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'COMPLETED')          AS node_execution_completed,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'TERMINATED')         AS node_execution_terminated,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'QUEUED')             AS node_execution_queued,
+    COUNT(*) FILTER (WHERE n."executionStatus" = 'RUNNING')            AS node_execution_running
+  FROM platform."AgentNodeExecution" n
+  JOIN platform."AgentGraphExecution" g
+    ON g."id" = n."agentGraphExecutionId"
+  GROUP BY g."userId"
 )
 SELECT
-  ul.*,
+  ul.user_id,
+  ul.first_login_time,
+  ul.last_login_time,
+  ul.last_visit_time,
   ua.last_agent_save_time,
   ua.agent_count,
   gr.first_agent_run_time,
   gr.last_agent_run_time,
   gr.unique_agent_runs,
   gr.agent_runs,
-  nr.node_execution_count,
-  nr.node_execution_failed,
-  nr.node_execution_completed,
-  nr.node_execution_terminated,
-  nr.node_execution_queued,
-  nr.node_execution_running,
+  COALESCE(nr.node_execution_count, 0)      AS node_execution_count,
+  COALESCE(nr.node_execution_failed, 0)     AS node_execution_failed,
+  COALESCE(nr.node_execution_completed, 0)  AS node_execution_completed,
+  COALESCE(nr.node_execution_terminated, 0) AS node_execution_terminated,
+  COALESCE(nr.node_execution_queued, 0)     AS node_execution_queued,
+  COALESCE(nr.node_execution_running, 0)    AS node_execution_running,
   CASE
     WHEN ul.first_login_time < NOW() - INTERVAL '7 days'
      AND ul.last_visit_time  >= ul.first_login_time + INTERVAL '7 days' THEN 1
