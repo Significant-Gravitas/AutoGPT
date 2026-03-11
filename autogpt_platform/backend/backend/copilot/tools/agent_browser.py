@@ -33,7 +33,7 @@ import tempfile
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.util.request import validate_url
+from backend.util.request import validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -235,7 +235,7 @@ async def _restore_browser_state(
         if url:
             # Validate the saved URL to prevent SSRF via stored redirect targets.
             try:
-                await validate_url(url, trusted_origins=[])
+                await validate_url_host(url)
             except ValueError:
                 logger.warning(
                     "[browser] State restore: blocked SSRF URL %s", url[:200]
@@ -473,7 +473,7 @@ class BrowserNavigateTool(BaseTool):
             )
 
         try:
-            await validate_url(url, trusted_origins=[])
+            await validate_url_host(url)
         except ValueError as e:
             return ErrorResponse(
                 message=str(e),

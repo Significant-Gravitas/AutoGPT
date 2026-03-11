@@ -21,6 +21,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[Perplexity-Block]")
@@ -136,7 +137,7 @@ class PerplexityBlock(Block):
     ) -> dict[str, Any]:
         """Call Perplexity via OpenRouter and extract annotations."""
         client = openai.AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
         )
 

@@ -564,6 +564,18 @@ webencodings = "*"
 css = ["tinycss2 (>=1.1.0,<1.5)"]
 
 [[package]]
+name = "bracex"
+version = "2.6"
+description = "Bash style brace expander."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "bracex-2.6-py3-none-any.whl", hash = "sha256:0b0049264e7340b3ec782b5cb99beb325f36c3782a32e36e876452fd49a09952"},
+    {file = "bracex-2.6.tar.gz", hash = "sha256:98f1347cd77e22ee8d967a30ad4e310b233f7754dbf31ff3fceb76145ba47dc7"},
+]
+
+[[package]]
 name = "browserbase"
 version = "1.4.0"
 description = "The official Python library for the Browserbase API"
@@ -1173,6 +1185,18 @@ trio = ["trio (>=0.30)"]
 wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
 
 [[package]]
+name = "dockerfile-parse"
+version = "2.0.1"
+description = "Python library for Dockerfile manipulation"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "dockerfile-parse-2.0.1.tar.gz", hash = "sha256:3184ccdc513221983e503ac00e1aa504a2aa8f84e5de673c46b0b6eee99ec7bc"},
+    {file = "dockerfile_parse-2.0.1-py2.py3-none-any.whl", hash = "sha256:bdffd126d2eb26acf1066acb54cb2e336682e1d72b974a40894fac76a4df17f6"},
+]
+
+[[package]]
 name = "docstring-parser"
 version = "0.17.0"
 description = "Parse Python docstrings in reST, Google and Numpydoc format"
@@ -1258,40 +1282,43 @@ pgp = ["gpg"]
 
 [[package]]
 name = "e2b"
-version = "1.11.1"
+version = "2.15.1"
 description = "E2B SDK that give agents cloud environments"
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "e2b-1.11.1-py3-none-any.whl", hash = "sha256:1ecb123873788472731c101939a494ab852cbcce0f913df6f7ecb194ae932130"},
-    {file = "e2b-1.11.1.tar.gz", hash = "sha256:7f7b6f238208d0a23353bb0da01f91a924321b57c61b176506862cbc1493ce8c"},
+    {file = "e2b-2.15.1-py3-none-any.whl", hash = "sha256:a3bc4e004eab51fb05bae44e9ee4fe821e4637260f4ce3064c8f7c6ed7f5a2a0"},
+    {file = "e2b-2.15.1.tar.gz", hash = "sha256:a4f1bbc8b5180a8a1098079257fcb73e42503ed546098f676f722f11f0d68c09"},
 ]
 
 [package.dependencies]
 attrs = ">=23.2.0"
+dockerfile-parse = ">=2.0.1,<3.0.0"
 httpcore = ">=1.0.5,<2.0.0"
 httpx = ">=0.27.0,<1.0.0"
 packaging = ">=24.1"
 protobuf = ">=4.21.0"
 python-dateutil = ">=2.8.2"
+rich = ">=14.0.0"
 typing-extensions = ">=4.1.0"
+wcmatch = ">=10.1,<11.0"
 
 [[package]]
 name = "e2b-code-interpreter"
-version = "1.5.2"
+version = "2.4.1"
 description = "E2B Code Interpreter - Stateful code execution"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "e2b_code_interpreter-1.5.2-py3-none-any.whl", hash = "sha256:5c3188d8f25226b28fef4b255447cc6a4c36afb748bdd5180b45be486d5169f3"},
-    {file = "e2b_code_interpreter-1.5.2.tar.gz", hash = "sha256:3bd6ea70596290e85aaf0a2f19f28bf37a5e73d13086f5e6a0080bb591c5a547"},
+    {file = "e2b_code_interpreter-2.4.1-py3-none-any.whl", hash = "sha256:15d35f025b4a15033e119f2e12e7ac65657ad2b5a013fa9149e74581fbee778a"},
+    {file = "e2b_code_interpreter-2.4.1.tar.gz", hash = "sha256:4b15014ee0d0dfcdc3072e1f409cbb87ca48f48d53d75629b7257e5513b9e7dd"},
 ]
 
 [package.dependencies]
 attrs = ">=21.3.0"
-e2b = ">=1.5.4,<2.0.0"
+e2b = ">=2.7.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
 
 [[package]]
@@ -8092,6 +8119,21 @@ files = [
 anyio = ">=3.0.0"
 
 [[package]]
+name = "wcmatch"
+version = "10.1"
+description = "Wildcard/glob file name matcher."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "wcmatch-10.1-py3-none-any.whl", hash = "sha256:5848ace7dbb0476e5e55ab63c6bbd529745089343427caa5537f230cc01beb8a"},
+    {file = "wcmatch-10.1.tar.gz", hash = "sha256:f11f94208c8c8484a16f4f48638a85d771d9513f4ab3f37595978801cb9465af"},
+]
+
+[package.dependencies]
+bracex = ">=2.1.1"
+
+[[package]]
 name = "webencodings"
 version = "0.5.1"
 description = "Character encoding aliases for legacy web content"
@@ -8840,4 +8882,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "7189c9725ca42dfe6672632fe801c61248d87d3dd1259747b0ed9579b19fe088"
+content-hash = "618d61b0586ab82fec1e28d1feb549a198e0b5c9d152e808862e55efc00a65b9"

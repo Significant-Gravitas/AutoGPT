@@ -89,6 +89,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    ollama_host: str = Field(
+        default="localhost:11434",
+        description="Default Ollama host; exempted from SSRF checks.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -361,23 +365,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     clamav_mark_failed_scans_as_clean: bool = Field(
         default=False,
         description="Whether to mark failed scans as clean or not",
-    )
-
-    agentgenerator_host: str = Field(
-        default="",
-        description="The host for the Agent Generator service (empty to use built-in)",
-    )
-    agentgenerator_port: int = Field(
-        default=8000,
-        description="The port for the Agent Generator service",
-    )
-    agentgenerator_timeout: int = Field(
-        default=1800,
-        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
-    )
-    agentgenerator_use_dummy: bool = Field(
-        default=False,
-        description="Use dummy agent generator responses for testing (bypasses external service)",
     )
 
     enable_example_blocks: bool = Field(

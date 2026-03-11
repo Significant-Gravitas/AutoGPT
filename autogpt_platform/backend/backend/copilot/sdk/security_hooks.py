@@ -10,12 +10,13 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
+from backend.copilot.context import is_allowed_local_path
+
 from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
-    is_allowed_local_path,
     stash_pending_tool_output,
 )
 

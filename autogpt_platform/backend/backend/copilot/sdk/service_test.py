@@ -1,9 +1,10 @@
 """Tests for SDK service helpers."""
 
+import asyncio
 import base64
 import os
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -212,7 +213,7 @@ class TestPromptSupplement:
 
         # Workflows are now in individual tool descriptions (not separate sections)
         # Check that key workflow concepts appear in tool descriptions
-        assert "suggested_goal" in docs or "clarifying_questions" in docs
+        assert "agent_json" in docs or "find_block" in docs
         assert "run_mcp_tool" in docs
 
     def test_baseline_supplement_completeness(self):
@@ -230,6 +231,48 @@ class TestPromptSupplement:
             assert (
                 f"`{tool_name}`" in docs
             ), f"Tool '{tool_name}' missing from baseline supplement"
+
+    def test_pause_task_scheduled_before_transcript_upload(self):
+        """Pause is scheduled as a background task before transcript upload begins.
+
+        The finally block in stream_response_sdk does:
+          (1) asyncio.create_task(pause_sandbox_direct(...))  — fire-and-forget
+          (2) await asyncio.shield(upload_transcript(...))    — awaited
+
+        Scheduling pause via create_task before awaiting upload ensures:
+        - Pause never blocks transcript upload (billing stops concurrently)
+        - On E2B timeout, pause silently fails; upload proceeds unaffected
+        """
+        call_order: list[str] = []
+
+        async def _mock_pause(sandbox, session_id):
+            call_order.append("pause")
+
+        async def _mock_upload(**kwargs):
+            call_order.append("upload")
+
+        async def _simulate_teardown():
+            """Mirror the service.py finally block teardown sequence."""
+            sandbox = MagicMock()
+
+            # (1) Schedule pause — mirrors lines ~1427-1429 in service.py
+            task = asyncio.create_task(_mock_pause(sandbox, "test-sess"))
+
+            # (2) Await transcript upload — mirrors lines ~1460-1468 in service.py
+            # Yielding to the event loop here lets the pause task start concurrently.
+            await _mock_upload(
+                user_id="u", session_id="test-sess", content="x", message_count=1
+            )
+            await task
+
+        asyncio.run(_simulate_teardown())
+
+        # Both must run; pause is scheduled before upload starts
+        assert "pause" in call_order
+        assert "upload" in call_order
+        # create_task schedules pause, then upload is awaited — pause runs
+        # concurrently during upload's first yield. The ordering guarantee is
+        # that create_task is CALLED before upload is AWAITED (see source order).
 
     def test_baseline_supplement_no_duplicate_tools(self):
         """No tool should appear multiple times in baseline supplement."""

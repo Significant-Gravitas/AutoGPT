@@ -202,14 +202,16 @@ export function ChatSidebar() {
             >
               <div className="flex flex-col items-center gap-2">
                 <SidebarTrigger />
-                <Button
-                  variant="ghost"
-                  onClick={handleNewChat}
-                  style={{ minWidth: "auto", width: "auto" }}
-                >
-                  <PlusCircleIcon className="!size-5" />
-                  <span className="sr-only">New Chat</span>
-                </Button>
+                {sessionId ? (
+                  <Button
+                    variant="ghost"
+                    onClick={handleNewChat}
+                    style={{ minWidth: "auto", width: "auto" }}
+                  >
+                    <PlusCircleIcon className="!size-5" />
+                    <span className="sr-only">New Chat</span>
+                  </Button>
+                ) : null}
               </div>
             </motion.div>
           </SidebarHeader>
@@ -230,15 +232,17 @@ export function ChatSidebar() {
                   <SidebarTrigger />
                 </div>
               </div>
-              <Button
-                variant="primary"
-                size="small"
-                onClick={handleNewChat}
-                className="w-full"
-                leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
-              >
-                New Chat
-              </Button>
+              {sessionId ? (
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleNewChat}
+                  className="w-full"
+                  leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+                >
+                  New Chat
+                </Button>
+              ) : null}
             </motion.div>
           </SidebarHeader>
         )}
