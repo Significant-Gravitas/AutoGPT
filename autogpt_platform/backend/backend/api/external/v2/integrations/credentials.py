@@ -5,17 +5,21 @@ Provides endpoints for managing integration credentials.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Body, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.model import APIKeyCredentials
+from backend.data.model import (
+    APIKeyCredentials,
+    HostScopedCredentials,
+    UserPasswordCredentials,
+)
 
 from ..models import CredentialCreateRequest, CredentialInfo, CredentialListResponse
 from .helpers import creds_manager
@@ -52,12 +56,12 @@ async def list_credentials(
 
 @credentials_router.post(
     path="/credentials",
-    summary="Add integration API key credential",
-    operation_id="addIntegrationAPIKeyCredential",
+    summary="Create integration credential",
+    operation_id="createIntegrationCredential",
     status_code=status.HTTP_201_CREATED,
 )
 async def create_credential(
-    request: CredentialCreateRequest,
+    request: Annotated[CredentialCreateRequest, Body(discriminator="type")],
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
@@ -65,15 +69,34 @@ async def create_credential(
     """
     Create a new integration credential.
 
-    Only API key credentials can be created via the external API.
+    Supports `api_key`, `user_password`, and `host_scoped` credential types.
     OAuth credentials must be set up through the web UI.
     """
-    credentials = APIKeyCredentials(
-        id=str(uuid4()),
-        provider=request.provider,
-        title=request.title,
-        api_key=SecretStr(request.api_key),
-    )
+    cred_id = str(uuid4())
+
+    if request.type == "api_key":
+        credentials = APIKeyCredentials(
+            id=cred_id,
+            provider=request.provider,
+            title=request.title,
+            api_key=SecretStr(request.api_key),
+        )
+    elif request.type == "user_password":
+        credentials = UserPasswordCredentials(
+            id=cred_id,
+            provider=request.provider,
+            title=request.title,
+            username=SecretStr(request.username),
+            password=SecretStr(request.password),
+        )
+    else:
+        credentials = HostScopedCredentials(
+            id=cred_id,
+            provider=request.provider,
+            title=request.title,
+            host=request.host,
+            headers={k: SecretStr(v) for k, v in request.headers.items()},
+        )
 
     await creds_manager.create(auth.user_id, credentials)
     return CredentialInfo.from_internal(credentials)
