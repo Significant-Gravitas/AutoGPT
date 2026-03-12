@@ -15,6 +15,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeSessionRef = useRef(activeSessionID);
   activeSessionRef.current = activeSessionID;
+  const windowFocusedRef = useRef(true);
 
   // Pre-load audio element
   useEffect(() => {
@@ -38,8 +39,12 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Skip all notifications if disabled
       if (!state.isNotificationsEnabled) return;
 
-      // Only notify for background sessions
-      if (sessionID === activeSessionRef.current) return;
+      const isActiveSession = sessionID === activeSessionRef.current;
+      const isUserAway =
+        document.visibilityState === "hidden" || !windowFocusedRef.current;
+
+      // Skip if viewing the active session and it's in focus
+      if (isActiveSession && !isUserAway) return;
 
       // Skip if we already notified for this session (e.g. WS replay)
       if (state.completedSessionIDs.has(sessionID)) return;
@@ -56,11 +61,11 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       const count = useCopilotUIStore.getState().completedSessionIDs.size;
       document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
 
-      // Send browser notification if permitted
+      // Send browser notification when user is away
       if (
         typeof Notification !== "undefined" &&
         Notification.permission === "granted" &&
-        document.visibilityState === "hidden"
+        isUserAway
       ) {
         const n = new Notification("Otto is ready", {
           body: "A response is waiting for you.",
@@ -68,7 +73,10 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         });
         n.onclick = () => {
           window.focus();
-          window.location.href = `/copilot?sessionId=${sessionID}`;
+          const url = new URL(window.location.href);
+          url.searchParams.set("sessionId", sessionID);
+          window.history.pushState({}, "", url.toString());
+          window.dispatchEvent(new PopStateEvent("popstate"));
           n.close();
         };
       }
@@ -80,8 +88,17 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     };
   }, [api]);
 
-  // Reset document title when tab gains focus
+  // Track window focus for browser notifications when app is in background
   useEffect(() => {
+    function handleFocus() {
+      windowFocusedRef.current = true;
+      if (useCopilotUIStore.getState().completedSessionIDs.size === 0) {
+        document.title = ORIGINAL_TITLE;
+      }
+    }
+    function handleBlur() {
+      windowFocusedRef.current = false;
+    }
     function handleVisibilityChange() {
       if (
         document.visibilityState === "visible" &&
@@ -91,8 +108,12 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       }
     }
 
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
