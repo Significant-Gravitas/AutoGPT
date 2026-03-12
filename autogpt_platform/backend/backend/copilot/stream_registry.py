@@ -23,6 +23,11 @@ from typing import Any, Literal
 
 import orjson
 
+from backend.api.model import CopilotCompletionPayload
+from backend.data.notification_bus import (
+    AsyncRedisNotificationEventBus,
+    NotificationEvent,
+)
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
@@ -751,12 +756,6 @@ async def mark_session_completed(
         parsed = _parse_session_meta(meta, session_id)
         if parsed.user_id:
             try:
-                from backend.api.model import CopilotCompletionPayload
-                from backend.data.notification_bus import (
-                    AsyncRedisNotificationEventBus,
-                    NotificationEvent,
-                )
-
                 bus = AsyncRedisNotificationEventBus()
                 await bus.publish(
                     NotificationEvent(

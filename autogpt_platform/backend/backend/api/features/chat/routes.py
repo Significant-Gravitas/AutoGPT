@@ -53,6 +53,7 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
@@ -189,14 +190,11 @@ async def list_sessions(
     # Batch-check Redis for active stream status on each session
     processing_set: set[str] = set()
     if sessions:
-        from backend.data.redis_client import get_redis_async
-
         redis = await get_redis_async()
-        chat_config = ChatConfig()
-        pipe = redis.pipeline()
+        pipe = redis.pipeline(transaction=False)
         for session in sessions:
             pipe.hget(
-                f"{chat_config.session_meta_prefix}{session.session_id}",
+                f"{config.session_meta_prefix}{session.session_id}",
                 "status",
             )
         statuses = await pipe.execute()

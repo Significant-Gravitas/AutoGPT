@@ -52,9 +52,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
       state.addCompletedSession(sessionID);
 
-      // Update document title to show count
-      const nextCount = state.completedSessionIDs.size + 1;
-      document.title = `(${nextCount}) Otto is ready - ${ORIGINAL_TITLE}`;
+      // Update document title to show count (read fresh state after add)
+      const count = useCopilotUIStore.getState().completedSessionIDs.size;
+      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
 
       // Send browser notification if permitted
       if (
@@ -83,7 +83,10 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   // Reset document title when tab gains focus
   useEffect(() => {
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState === "visible" &&
+        useCopilotUIStore.getState().completedSessionIDs.size === 0
+      ) {
         document.title = ORIGINAL_TITLE;
       }
     }

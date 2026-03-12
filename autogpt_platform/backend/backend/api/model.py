@@ -98,4 +98,4 @@ class OnboardingNotificationPayload(NotificationPayload):
 
 class CopilotCompletionPayload(NotificationPayload):
     session_id: str
-    status: str
+    status: Literal["completed", "failed"]
