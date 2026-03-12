@@ -1,14 +1,17 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
+import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
+import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api";
 import { FieldProps, getUiOptions } from "@rjsf/utils";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
+
+const CREDENTIAL_KEY = "credentials";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -36,27 +39,25 @@ export const CredentialsField = (props: FieldProps) => {
     return typeof value === "boolean" ? value : false;
   }, [node?.data?.metadata?.credentials_optional]);
 
-  const handleChange = (newValue: any) => {
-    onChange(newValue, fieldPathId?.path);
-  };
+  // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
+  // In run dialogs (no nodeId): show star based on schema's required array
+  const isRequired = nodeId ? !credentialsOptional : required;
 
-  const handleSelectCredentials = (credentialsMeta?: CredentialsMetaInput) => {
-    if (credentialsMeta) {
-      handleChange({
-        id: credentialsMeta.id,
-        provider: credentialsMeta.provider,
-        title: credentialsMeta.title,
-        type: credentialsMeta.type,
-      });
-    } else {
-      handleChange(undefined);
-    }
-  };
+  // Convert single schema to CredentialField[] for CredentialsGroupedView
+  const credentialFields: CredentialField[] = useMemo(
+    () => [[CREDENTIAL_KEY, schema as BlockIOCredentialsSubSchema]],
+    [schema],
+  );
 
-  // Convert formData to CredentialsMetaInput format
-  const selectedCredentials: CredentialsMetaInput | undefined = useMemo(
-    () =>
-      formData?.id
+  const requiredCredentials = useMemo(
+    () => (isRequired ? new Set([CREDENTIAL_KEY]) : new Set<string>()),
+    [isRequired],
+  );
+
+  // Convert formData to inputCredentials map for CredentialsGroupedView
+  const inputCredentials = useMemo(
+    () => ({
+      [CREDENTIAL_KEY]: formData?.id
         ? {
             id: formData.id,
             provider: formData.provider,
@@ -64,12 +65,28 @@ export const CredentialsField = (props: FieldProps) => {
             type: formData.type,
           }
         : undefined,
+    }),
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
-  // In run dialogs (no nodeId): show star based on schema's required array
-  const isRequired = nodeId ? !credentialsOptional : required;
+  const handleCredentialChange = useCallback(
+    (_key: string, value?: CredentialsMetaInput) => {
+      if (value) {
+        onChange(
+          {
+            id: value.id,
+            provider: value.provider,
+            title: value.title,
+            type: value.type,
+          },
+          fieldPathId?.path,
+        );
+      } else {
+        onChange(undefined, fieldPathId?.path);
+      }
+    },
+    [onChange, fieldPathId?.path],
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -80,15 +97,13 @@ export const CredentialsField = (props: FieldProps) => {
         schema={schema}
         required={isRequired}
       />
-      <CredentialsInput
-        schema={schema as BlockIOCredentialsSubSchema}
-        selectedCredentials={selectedCredentials}
-        onSelectCredentials={handleSelectCredentials}
-        siblingInputs={hardcodedValues}
+      <CredentialsGroupedView
+        credentialFields={credentialFields}
+        requiredCredentials={requiredCredentials}
+        inputCredentials={inputCredentials}
+        inputValues={hardcodedValues}
+        onCredentialChange={handleCredentialChange}
         showTitle={false}
-        readOnly={formContext?.readOnly}
-        isOptional={!isRequired}
-        className="w-full"
         variant="node"
       />
 

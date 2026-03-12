@@ -26,6 +26,10 @@ type Props = {
   inputCredentials: Record<string, CredentialsMetaInput | undefined>;
   inputValues: Record<string, any>;
   onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
+  /** Display variant passed through to each CredentialsInput */
+  variant?: "default" | "node";
+  /** Whether individual CredentialsInput components show their own title */
+  showTitle?: boolean;
 };
 
 export function CredentialsGroupedView({
@@ -34,6 +38,8 @@ export function CredentialsGroupedView({
   inputCredentials,
   inputValues,
   onCredentialChange,
+  variant = "default",
+  showTitle,
 }: Props) {
   const allProviders = useContext(CredentialsProvidersContext);
 
@@ -131,6 +137,8 @@ export function CredentialsGroupedView({
                   }}
                   siblingInputs={inputValues}
                   isOptional={!requiredCredentials.has(key)}
+                  variant={variant}
+                  showTitle={showTitle}
                 />
               );
             },
@@ -172,6 +180,8 @@ export function CredentialsGroupedView({
                         }}
                         siblingInputs={inputValues}
                         isOptional={!requiredCredentials.has(key)}
+                        variant={variant}
+                        showTitle={showTitle}
                       />
                     );
                   },
