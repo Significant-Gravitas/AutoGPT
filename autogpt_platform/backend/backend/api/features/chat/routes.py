@@ -128,7 +128,7 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
-    is_processing: bool = False
+    is_processing: bool
 
 
 class ListSessionsResponse(BaseModel):

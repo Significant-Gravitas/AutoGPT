@@ -36,9 +36,6 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
       const state = useCopilotUIStore.getState();
 
-      // Skip all notifications if disabled
-      if (!state.isNotificationsEnabled) return;
-
       const isActiveSession = sessionID === activeSessionRef.current;
       const isUserAway =
         document.visibilityState === "hidden" || !windowFocusedRef.current;
@@ -49,17 +46,18 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Skip if we already notified for this session (e.g. WS replay)
       if (state.completedSessionIDs.has(sessionID)) return;
 
-      // Play sound if enabled
+      // Always update UI state (checkmark + title) regardless of notification setting
+      state.addCompletedSession(sessionID);
+      const count = useCopilotUIStore.getState().completedSessionIDs.size;
+      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
+
+      // Sound and browser notifications are gated by the user setting
+      if (!state.isNotificationsEnabled) return;
+
       if (state.isSoundEnabled && audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(() => {});
       }
-
-      state.addCompletedSession(sessionID);
-
-      // Update document title to show count (read fresh state after add)
-      const count = useCopilotUIStore.getState().completedSessionIDs.size;
-      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
 
       // Send browser notification when user is away
       if (
