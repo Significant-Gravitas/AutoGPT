@@ -160,6 +160,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -473,6 +474,15 @@ MODEL_METADATA = {
     ),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata(
         "open_router", 200000, 8000, "Sonar Pro", "OpenRouter", "Perplexity", 2
+    ),
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: ModelMetadata(
+        "open_router",
+        128000,
+        8000,
+        "Sonar Reasoning Pro",
+        "OpenRouter",
+        "Perplexity",
+        2,
     ),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
