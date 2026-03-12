@@ -68,17 +68,18 @@ def _run_result(rc: int = 0, stdout: str = "", stderr: str = "") -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# SSRF protection via shared validate_url (backend.util.request)
+# SSRF protection via shared validate_url_host (backend.util.request)
 # ---------------------------------------------------------------------------
 
-# Patch target: validate_url is imported directly into agent_browser's module scope.
-_VALIDATE_URL = "backend.copilot.tools.agent_browser.validate_url"
+# Patch target: validate_url_host is imported directly into agent_browser's
+# module scope.
+_VALIDATE_URL = "backend.copilot.tools.agent_browser.validate_url_host"
 
 
 class TestSsrfViaValidateUrl:
-    """Verify that browser_navigate uses validate_url for SSRF protection.
+    """Verify that browser_navigate uses validate_url_host for SSRF protection.
 
-    We mock validate_url itself (not the low-level socket) so these tests
+    We mock validate_url_host itself (not the low-level socket) so these tests
     exercise the integration point, not the internals of request.py
     (which has its own thorough test suite in request_test.py).
     """
@@ -89,7 +90,7 @@ class TestSsrfViaValidateUrl:
 
     @pytest.mark.asyncio
     async def test_blocked_ip_returns_blocked_url_error(self):
-        """validate_url raises ValueError → tool returns blocked_url ErrorResponse."""
+        """validate_url_host raises ValueError → tool returns blocked_url ErrorResponse."""
         with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
             mock_validate.side_effect = ValueError(
                 "Access to blocked IP 10.0.0.1 is not allowed."
@@ -124,8 +125,8 @@ class TestSsrfViaValidateUrl:
         assert result.error == "blocked_url"
 
     @pytest.mark.asyncio
-    async def test_validate_url_called_with_empty_trusted_origins(self):
-        """Confirms no trusted-origins bypass is granted — all URLs are validated."""
+    async def test_validate_url_host_called_without_trusted_hostnames(self):
+        """Confirms no trusted-hostnames bypass is granted — all URLs are validated."""
         with patch(_VALIDATE_URL, new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = (object(), False, ["1.2.3.4"])
             with patch(
@@ -143,7 +144,7 @@ class TestSsrfViaValidateUrl:
                         session=self.session,
                         url="https://example.com",
                     )
-        mock_validate.assert_called_once_with("https://example.com", trusted_origins=[])
+        mock_validate.assert_called_once_with("https://example.com")
 
 
 # ---------------------------------------------------------------------------

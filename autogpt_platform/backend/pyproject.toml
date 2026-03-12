@@ -20,7 +20,8 @@ claude-agent-sdk = "0.1.45"  # see copilot/sdk/sdk_compat_test.py for capability
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
-e2b-code-interpreter = "^1.5.2"
+e2b = "^2.0"
+e2b-code-interpreter = "^2.0"
 elevenlabs = "^1.50.0"
 fastapi = "^0.128.6"
 feedparser = "^6.0.11"
@@ -154,3 +155,4 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
+

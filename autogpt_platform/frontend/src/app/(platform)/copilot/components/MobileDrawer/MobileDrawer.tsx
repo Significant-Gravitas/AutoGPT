@@ -104,17 +104,19 @@ export function MobileDrawer({
                 </Button>
               </div>
             </div>
-            <div className="mt-2">
-              <Button
-                variant="primary"
-                size="small"
-                onClick={onNewChat}
-                className="w-full"
-                leftIcon={<PlusIcon width="1rem" height="1rem" />}
-              >
-                New Chat
-              </Button>
-            </div>
+            {currentSessionId ? (
+              <div className="mt-2">
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={onNewChat}
+                  className="w-full"
+                  leftIcon={<PlusIcon width="1rem" height="1rem" />}
+                >
+                  New Chat
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div
             className={cn(

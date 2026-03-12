@@ -7175,6 +7175,26 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id"
           },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "input_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "JSON Schema for the agent's inputs (for AgentExecutorBlock)"
+          },
+          "output_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Output Schema",
+            "description": "JSON Schema for the agent's outputs (for AgentExecutorBlock)"
+          },
           "inputs": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -7241,7 +7261,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_preview"
+            "default": "agent_builder_preview"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7277,7 +7297,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_saved"
+            "default": "agent_builder_saved"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7732,6 +7752,12 @@
             "title": "Output Schema",
             "description": "Full JSON schema for block outputs"
           },
+          "static_output": {
+            "type": "boolean",
+            "title": "Static Output",
+            "description": "Whether the block produces output without needing input",
+            "default": false
+          },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
@@ -8107,7 +8133,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "clarification_needed"
+            "default": "agent_builder_clarification_needed"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -11511,21 +11537,30 @@
       "ResponseType": {
         "type": "string",
         "enum": [
+          "error",
+          "no_results",
+          "need_login",
           "agents_found",
           "agent_details",
           "setup_requirements",
+          "input_validation_error",
           "execution_started",
-          "need_login",
-          "error",
-          "no_results",
           "agent_output",
           "understanding_updated",
-          "agent_preview",
-          "agent_saved",
-          "clarification_needed",
+          "suggested_goal",
+          "agent_builder_guide",
+          "agent_builder_preview",
+          "agent_builder_saved",
+          "agent_builder_clarification_needed",
+          "agent_builder_validation_result",
+          "agent_builder_fix_result",
           "block_list",
           "block_details",
           "block_output",
+          "review_required",
+          "mcp_guide",
+          "mcp_tools_discovered",
+          "mcp_tool_output",
           "doc_search_results",
           "doc_page",
           "workspace_file_list",
@@ -11533,24 +11568,19 @@
           "workspace_file_metadata",
           "workspace_file_written",
           "workspace_file_deleted",
-          "operation_in_progress",
-          "input_validation_error",
-          "web_fetch",
-          "browser_navigate",
-          "browser_act",
-          "browser_screenshot",
-          "bash_exec",
-          "feature_request_search",
-          "feature_request_created",
-          "suggested_goal",
-          "mcp_tools_discovered",
-          "mcp_tool_output",
           "folder_created",
           "folder_list",
           "folder_updated",
           "folder_moved",
           "folder_deleted",
-          "agents_moved_to_folder"
+          "agents_moved_to_folder",
+          "browser_navigate",
+          "browser_act",
+          "browser_screenshot",
+          "bash_exec",
+          "web_fetch",
+          "feature_request_search",
+          "feature_request_created"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
