@@ -310,11 +310,9 @@ async def expand_file_refs_in_args(
                     raise FileRefExpansionError(str(exc)) from exc
 
                 # Guard against oversized content before parsing.
-                content_size = (
-                    len(content.encode("utf-8"))
-                    if isinstance(content, str)
-                    else len(content)
-                )
+                # For strings, len() returns character count which is a lower
+                # bound on UTF-8 byte size — sufficient for a safety guard.
+                content_size = len(content)
                 if content_size > _MAX_BARE_REF_BYTES:
                     raise FileRefExpansionError(
                         f"File too large for structured parsing "

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.sdk.file_ref import (
+    _MAX_BARE_REF_BYTES,
     _MAX_EXPAND_CHARS,
     FileRef,
     FileRefExpansionError,
@@ -329,6 +330,127 @@ async def test_expand_args_raises_on_file_ref_error():
                 session=_make_session(),
             )
     assert "path does not exist" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Bare-ref structured parsing (infer_format + parse_file_content)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_json_returns_parsed():
+    """Bare ref to a .json file returns parsed dict, not a string."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return '{"key": "value"}'
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///report.json"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == {"key": "value"}
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_csv_returns_rows():
+    """Bare ref to a .csv file returns list[list[str]]."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return "Name,Score\nAlice,90\nBob,85"
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_unknown_extension_falls_back_to_string():
+    """Bare ref with unknown extension returns plain string."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return "plain text content"
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///readme.txt"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == "plain text content"
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_invalid_json_falls_back_to_string():
+    """Bare ref to .json file with invalid content falls back to string."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return "not valid json"
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///bad.json"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == "not valid json"
+
+
+@pytest.mark.asyncio
+async def test_embedded_ref_stays_string_even_for_json():
+    """Embedded ref (mixed with text) always returns plain string."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return '{"key": "value"}'
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "See: @@agptfile:workspace:///report.json"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    # Embedded ref → inline expansion → plain string with content substituted
+    assert isinstance(result["data"], str)
+    assert '{"key": "value"}' in result["data"]
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_oversized_raises_error():
+    """Bare ref exceeding _MAX_BARE_REF_BYTES raises FileRefExpansionError."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return "x" * (_MAX_BARE_REF_BYTES + 1)
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        with pytest.raises(FileRefExpansionError, match="too large"):
+            await expand_file_refs_in_args(
+                {"data": "@@agptfile:workspace:///huge.json"},
+                user_id="u1",
+                session=_make_session(),
+            )
 
 
 # ---------------------------------------------------------------------------
