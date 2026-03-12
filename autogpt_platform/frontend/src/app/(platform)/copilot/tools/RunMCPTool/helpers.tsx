@@ -125,15 +125,9 @@ export function serverHost(url: string): string {
   }
 }
 
-/**
- * Extract a human-readable service name from an MCP hostname.
- * E.g., 'mcp.sentry.dev' → 'Sentry', 'mcp.notion.com' → 'Notion'
- */
+/** Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev' */
 export function serviceNameFromHost(host: string): string {
-  let h = host;
-  if (h.startsWith("mcp.")) h = h.slice(4);
-  const name = h.split(".")[0];
-  return name.charAt(0).toUpperCase() + name.slice(1);
+  return host.startsWith("mcp.") ? host.slice(4) : host;
 }
 
 /**

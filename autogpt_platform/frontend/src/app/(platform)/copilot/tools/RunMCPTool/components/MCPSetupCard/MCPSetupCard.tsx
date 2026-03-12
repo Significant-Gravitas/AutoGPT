@@ -12,8 +12,6 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { useContext, useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
-import { serverHost, serviceNameFromHost } from "../../helpers";
-
 interface Props {
   output: SetupRequirementsResponse;
   /**
@@ -38,8 +36,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   // setup_info.agent_id is set to the server_url in the backend
   const serverUrl = output.setup_info.agent_id;
-  const host = serverHost(serverUrl);
-  const service = serviceNameFromHost(host);
+  // agent_name is computed by the backend as the display name for the service
+  const service = output.setup_info.agent_name;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

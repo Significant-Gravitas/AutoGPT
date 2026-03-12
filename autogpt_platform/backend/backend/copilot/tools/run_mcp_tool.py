@@ -35,15 +35,8 @@ _AUTH_STATUS_CODES = {401, 403}
 
 
 def _service_name(host: str) -> str:
-    """Extract a human-readable service name from an MCP hostname.
-
-    E.g., 'mcp.sentry.dev' → 'Sentry', 'mcp.notion.com' → 'Notion'
-    """
-    h = host
-    if h.startswith("mcp."):
-        h = h[4:]
-    name = h.split(".")[0]
-    return name.capitalize()
+    """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
+    return host[4:] if host.startswith("mcp.") else host
 
 
 class RunMCPToolTool(BaseTool):
