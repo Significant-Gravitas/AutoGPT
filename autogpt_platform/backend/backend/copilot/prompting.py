@@ -52,6 +52,14 @@ Examples:
 You can embed a reference inside any string argument, or use it as the entire
 value.  Multiple references in one argument are all expanded.
 
+**Structured data**: When the **entire** argument value is a single file
+reference (no surrounding text), the platform automatically parses the file
+content as JSON or CSV.  This means you can pass a workspace CSV or JSON file
+directly to a tool parameter that expects an array or object — e.g. pass
+`@@agptfile:workspace://<id>` as the `values` argument of a Google Sheets
+write block and the CSV rows will be parsed into `list[list[str]]`
+automatically.
+
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.

@@ -31,7 +31,10 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
+import csv
+import io
 import itertools
+import json
 import logging
 import os
 import re
@@ -249,6 +252,37 @@ async def expand_file_refs_in_string(
     return "".join(result)
 
 
+def _try_parse_structured(content: str) -> Any:
+    """Try to parse *content* as JSON or CSV, returning the parsed structure.
+
+    Returns the original string unchanged if the content is neither valid JSON
+    nor parseable CSV.  This allows bare ``@@agptfile:`` references to produce
+    structured values (lists, dicts) so they can satisfy tool parameters that
+    expect non-string types (e.g. ``list[list[str]]``).
+    """
+    # 1) Try JSON first — handles arrays, objects, and scalars.
+    stripped = content.strip()
+    if stripped and stripped[0] in ("{", "[", '"'):
+        try:
+            return json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 2) Try CSV — must have at least two rows (header + data) and at least
+    #    one delimiter to distinguish from plain text.
+    if "," in content or "\t" in content:
+        try:
+            dialect = csv.Sniffer().sniff(content[:8192])
+            reader = csv.reader(io.StringIO(content), dialect)
+            rows = [row for row in reader if row]
+            if len(rows) >= 2 and all(len(row) > 1 for row in rows[:3]):
+                return rows
+        except csv.Error:
+            pass
+
+    return content
+
+
 async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
@@ -258,6 +292,11 @@ async def expand_file_refs_in_args(
 
     String values are expanded in-place.  Nested dicts and lists are
     traversed.  Non-string scalars are returned unchanged.
+
+    When the entire string value is a single bare ``@@agptfile:`` reference
+    (no surrounding text), the resolved content is additionally parsed as
+    JSON or CSV so that structured data (arrays, objects) can be passed
+    directly to tool parameters that expect non-string types.
 
     Raises :class:`FileRefExpansionError` if any reference fails to resolve,
     so the tool is *not* executed with an error string as its input.  The
@@ -269,6 +308,19 @@ async def expand_file_refs_in_args(
 
     async def _expand(value: Any) -> Any:
         if isinstance(value, str):
+            # Fast path: check if the value is a bare file reference.
+            # If so, resolve it and try to parse as structured data.
+            ref = parse_file_ref(value)
+            if ref is not None:
+                try:
+                    content = await resolve_file_ref(ref, user_id, session)
+                except ValueError as exc:
+                    raise FileRefExpansionError(str(exc)) from exc
+                if len(content) > _MAX_EXPAND_CHARS:
+                    content = content[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
+                return _try_parse_structured(content)
+
+            # Embedded refs in a larger string — always returns a string.
             return await expand_file_refs_in_string(
                 value, user_id, session, raise_on_error=True
             )
