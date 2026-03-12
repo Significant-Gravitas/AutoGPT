@@ -1350,28 +1350,16 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
-        # Emit token usage and update session for persistence
+        # Emit token usage to the client (must be in try to reach SSE stream).
+        # Session persistence of usage is in finally to stay consistent with
+        # rate-limit recording even if an exception interrupts between here
+        # and the finally block.
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
             total_tokens = turn_prompt_tokens + turn_completion_tokens
             yield StreamUsage(
                 promptTokens=turn_prompt_tokens,
                 completionTokens=turn_completion_tokens,
                 totalTokens=total_tokens,
-            )
-            session.usage.append(
-                Usage(
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    total_tokens=total_tokens,
-                )
-            )
-            logger.info(
-                "%s Turn usage: prompt=%d, completion=%d, total=%d, cost_usd=%s",
-                log_prefix,
-                turn_prompt_tokens,
-                turn_completion_tokens,
-                total_tokens,
-                turn_cost_usd,
             )
 
         # Transcript upload is handled exclusively in the finally block
@@ -1438,9 +1426,27 @@ async def stream_chat_completion_sdk(
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
 
-        # --- Record token usage for rate limiting ---
-        # Must run in finally to ensure tokens are always recorded, even when
-        # exceptions interrupt the stream (prevents rate limit bypass).
+        # --- Persist token usage to session + rate-limit counters ---
+        # Both must live in finally so they stay consistent even when an
+        # exception interrupts the try block after StreamUsage was yielded.
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            if session is not None:
+                session.usage.append(
+                    Usage(
+                        prompt_tokens=turn_prompt_tokens,
+                        completion_tokens=turn_completion_tokens,
+                        total_tokens=total_tokens,
+                    )
+                )
+            logger.info(
+                "%s Turn usage: prompt=%d, completion=%d, total=%d, cost_usd=%s",
+                log_prefix,
+                turn_prompt_tokens,
+                turn_completion_tokens,
+                total_tokens,
+                turn_cost_usd,
+            )
         if user_id and (turn_prompt_tokens > 0 or turn_completion_tokens > 0):
             try:
                 await record_token_usage(
