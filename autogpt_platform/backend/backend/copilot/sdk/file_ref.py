@@ -322,12 +322,24 @@ async def expand_file_refs_in_args(
                     )
 
                 if fmt is not None:
-                    return parse_file_content(content, fmt)
-                return (
+                    parsed = parse_file_content(content, fmt)
+                    # Normalize bytes fallback to str so tools never
+                    # receive raw bytes when parsing fails.
+                    if isinstance(parsed, bytes):
+                        parsed = parsed.decode("utf-8", errors="replace")
+                    return parsed
+
+                # Unknown format — return as plain string, but apply
+                # the same per-ref character limit used by inline refs
+                # to prevent injecting unexpectedly large content.
+                text = (
                     content
                     if isinstance(content, str)
                     else content.decode("utf-8", errors="replace")
                 )
+                if len(text) > _MAX_EXPAND_CHARS:
+                    text = text[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
+                return text
 
             # Not a bare ref — do normal inline expansion.
             return await expand_file_refs_in_string(
