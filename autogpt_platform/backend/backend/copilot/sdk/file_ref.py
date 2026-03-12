@@ -321,6 +321,16 @@ async def expand_file_refs_in_args(
 
                 if fmt is not None:
                     parsed = parse_file_content(content, fmt)
+                    # If a binary format's parser failed, parse_file_content
+                    # returns the raw bytes unchanged.  Decoding those as
+                    # UTF-8 produces garbled text — raise a clear error
+                    # instead so the model knows the file can't be parsed.
+                    if parsed is content and fmt in BINARY_FORMATS:
+                        raise FileRefExpansionError(
+                            f"Failed to parse {fmt} file — the required "
+                            f"library may not be installed (parquet needs "
+                            f"pyarrow, xlsx needs openpyxl)."
+                        )
                     # Normalize bytes fallback to str so tools never
                     # receive raw bytes when parsing fails.
                     if isinstance(parsed, bytes):
