@@ -15,7 +15,8 @@ Supported formats:
 - **YAML** (``.yaml``, ``.yml``) — parsed via PyYAML; containers only
 - **TOML** (``.toml``) — parsed via stdlib ``tomllib``
 - **Parquet** (``.parquet``) — via pandas/pyarrow → ``list[list[Any]]`` with header row
-- **Excel** (``.xlsx``, ``.xls``) — via pandas → ``list[list[Any]]`` with header row
+- **Excel** (``.xlsx``) — via pandas/openpyxl → ``list[list[Any]]`` with header row
+  (legacy ``.xls`` is **not** supported — only the modern OOXML format)
 
 All parsers follow the **fallback contract**: if parsing fails for *any* reason,
 the original content is returned unchanged (string for text formats, bytes for
@@ -27,8 +28,15 @@ import io
 import json
 import logging
 import tomllib
+from collections.abc import Callable
+
+# posixpath.splitext handles forward-slash URI paths correctly on all platforms,
+# unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
 from typing import Any
+
+import pandas as pd
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +55,6 @@ _EXT_TO_FORMAT: dict[str, str] = {
     ".toml": "toml",
     ".parquet": "parquet",
     ".xlsx": "xlsx",
-    ".xls": "xlsx",
 }
 
 _MIME_TO_FORMAT: dict[str, str] = {
@@ -61,7 +68,6 @@ _MIME_TO_FORMAT: dict[str, str] = {
     "application/toml": "toml",
     "application/vnd.apache.parquet": "parquet",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.ms-excel": "xlsx",
 }
 
 # Formats that require raw bytes rather than decoded text.
@@ -83,7 +89,7 @@ def infer_format(uri: str) -> str | None:
 
     # 2. Check file extension from the path portion.
     #    Strip the fragment first so ".json#mime" doesn't confuse splitext.
-    path = uri.split("#")[0]
+    path = uri.split("#")[0].split("?")[0]
     _, ext = splitext(path)
     return _EXT_TO_FORMAT.get(ext.lower())
 
@@ -126,8 +132,6 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
 
 
 def _parse_yaml(content: str) -> Any:
-    import yaml
-
     parsed = yaml.safe_load(content)
     if isinstance(parsed, (list, dict)):
         return parsed
@@ -136,11 +140,11 @@ def _parse_yaml(content: str) -> Any:
 
 def _parse_toml(content: str) -> Any:
     parsed = tomllib.loads(content)
-    # tomllib.loads always returns a dict.
-    return parsed if parsed else content
+    # tomllib.loads always returns a dict — return it even if empty.
+    return parsed
 
 
-_TEXT_PARSERS: dict[str, Any] = {
+_TEXT_PARSERS: dict[str, Callable[[str], Any]] = {
     "json": _parse_json,
     "jsonl": _parse_jsonl,
     "csv": _parse_csv,
@@ -154,26 +158,28 @@ _TEXT_PARSERS: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
-def _parse_parquet(content: bytes) -> Any:
-    import pandas as pd
+def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
+    """Convert a DataFrame to ``list[list[Any]]`` with a header row.
 
-    df = pd.read_parquet(io.BytesIO(content))
-    # Return as list[list[Any]] with the first row being the header.
+    NaN values are replaced with ``None`` so the result is JSON-serializable.
+    """
+    df = df.where(df.notna(), None)
     header = df.columns.tolist()
     rows = df.values.tolist()
     return [header] + rows
+
+
+def _parse_parquet(content: bytes) -> Any:
+    df = pd.read_parquet(io.BytesIO(content))
+    return _df_to_rows(df)
 
 
 def _parse_xlsx(content: bytes) -> Any:
-    import pandas as pd
-
     df = pd.read_excel(io.BytesIO(content))
-    header = df.columns.tolist()
-    rows = df.values.tolist()
-    return [header] + rows
+    return _df_to_rows(df)
 
 
-_BINARY_PARSERS: dict[str, Any] = {
+_BINARY_PARSERS: dict[str, Callable[[bytes], Any]] = {
     "parquet": _parse_parquet,
     "xlsx": _parse_xlsx,
 }

@@ -55,10 +55,11 @@ value.  Multiple references in one argument are all expanded.
 **Structured data**: When the **entire** argument value is a single file
 reference (no surrounding text), the platform automatically parses the file
 content based on its extension or MIME type.  Supported formats: JSON, JSONL,
-CSV, TSV, YAML, TOML, Parquet, and Excel (.xlsx).  For example, pass
-`@@agptfile:workspace://<id>` where the file is a `.csv` and the rows will be
-parsed into `list[list[str]]` automatically.  If the format is unrecognised or
-parsing fails, the content is returned as a plain string.
+CSV, TSV, YAML, TOML, Parquet, and Excel (.xlsx — first sheet only).
+For example, pass `@@agptfile:workspace://<id>` where the file is a `.csv` and
+the rows will be parsed into `list[list[str]]` automatically.  If the format is
+unrecognised or parsing fails, the content is returned as a plain string.
+Legacy `.xls` files are **not** supported — only the modern `.xlsx` format.
 
 **Type coercion**: The platform also coerces expanded values to match the
 block's expected input types.  For example, if a block expects `list[list[str]]`

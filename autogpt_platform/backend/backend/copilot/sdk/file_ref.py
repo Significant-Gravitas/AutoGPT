@@ -47,6 +47,11 @@ from backend.copilot.context import (
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
+from backend.util.file_content_parser import (
+    BINARY_FORMATS,
+    infer_format,
+    parse_file_content,
+)
 
 
 class FileRefExpansionError(Exception):
@@ -74,6 +79,8 @@ _FILE_REF_RE = re.compile(
 _MAX_EXPAND_CHARS = 200_000
 # Maximum total characters across all @@agptfile: expansions in one string.
 _MAX_TOTAL_EXPAND_CHARS = 1_000_000
+# Maximum raw byte size for bare ref structured parsing (10 MB).
+_MAX_BARE_REF_BYTES = 10_000_000
 
 
 @dataclass
@@ -276,12 +283,6 @@ async def expand_file_refs_in_args(
     caller (the MCP tool wrapper) should convert this into an MCP error
     response that lets the model correct the reference before retrying.
     """
-    from backend.util.file_content_parser import (
-        BINARY_FORMATS,
-        infer_format,
-        parse_file_content,
-    )
-
     if not args:
         return args
 
@@ -294,20 +295,32 @@ async def expand_file_refs_in_args(
                 try:
                     if fmt is not None and fmt in BINARY_FORMATS:
                         # Binary formats need raw bytes, not UTF-8 text.
+                        # Line ranges are meaningless for binary formats
+                        # (parquet/xlsx) — ignore them and parse full bytes.
                         raw = await read_file_bytes(ref.uri, user_id, session)
-                        content: str | bytes = (
-                            _apply_line_range(
-                                raw.decode("utf-8", errors="replace"),
-                                ref.start_line,
-                                ref.end_line,
+                        if len(raw) > _MAX_BARE_REF_BYTES:
+                            raise FileRefExpansionError(
+                                f"File too large for structured parsing "
+                                f"({len(raw)} bytes, limit {_MAX_BARE_REF_BYTES})"
                             )
-                            if ref.start_line or ref.end_line
-                            else raw
-                        )
+                        content: str | bytes = raw
                     else:
                         content = await resolve_file_ref(ref, user_id, session)
                 except ValueError as exc:
                     raise FileRefExpansionError(str(exc)) from exc
+
+                # Guard against oversized content before parsing.
+                content_size = (
+                    len(content.encode("utf-8"))
+                    if isinstance(content, str)
+                    else len(content)
+                )
+                if content_size > _MAX_BARE_REF_BYTES:
+                    raise FileRefExpansionError(
+                        f"File too large for structured parsing "
+                        f"({content_size} bytes, limit {_MAX_BARE_REF_BYTES})"
+                    )
+
                 if fmt is not None:
                     return parse_file_content(content, fmt)
                 return (

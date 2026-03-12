@@ -49,8 +49,9 @@ class TestInferFormat:
     def test_xlsx_extension(self):
         assert infer_format("/data/spreadsheet.xlsx") == "xlsx"
 
-    def test_xls_extension(self):
-        assert infer_format("/data/old_spreadsheet.xls") == "xlsx"
+    def test_xls_extension_not_supported(self):
+        # Legacy .xls requires xlrd which we don't bundle.
+        assert infer_format("/data/old_spreadsheet.xls") is None
 
     def test_case_insensitive(self):
         assert infer_format("/data/FILE.JSON") == "json"
@@ -280,9 +281,9 @@ class TestParseToml:
         result = parse_file_content(content, "toml")
         assert result == {"name": "test", "count": 42}
 
-    def test_empty_table_fallback(self):
+    def test_empty_string_returns_empty_dict(self):
         result = parse_file_content("", "toml")
-        assert result == ""
+        assert result == {}
 
     def test_invalid_toml_fallback(self):
         result = parse_file_content("not = [valid toml", "toml")
