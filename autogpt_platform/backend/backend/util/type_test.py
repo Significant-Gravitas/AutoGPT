@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -168,6 +168,11 @@ class TestValueSatisfiesType:
     def test_union_list_with_wrong_inner_falls_through(self):
         # [1, 2] doesn't satisfy list[str] (inner mismatch), and not str either
         assert _value_satisfies_type([1, 2], str | list[str]) is False
+
+    # --- Literal (non-runtime origin) ---
+    def test_literal_does_not_crash(self):
+        """Literal origins are not runtime types — should return False, not crash."""
+        assert _value_satisfies_type("active", Literal["active", "inactive"]) is False
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +363,16 @@ class TestCoerceInputsToSchema:
         # dict stays as dict — convert() doesn't construct Pydantic models
         assert data["inner"] == {"x": 1}
         assert isinstance(data["inner"], dict)
+
+    def test_literal_field_passes_through(self):
+        """Literal-typed fields should not crash coercion."""
+
+        class LiteralSchema(BaseModel):
+            status: Literal["active", "inactive"]
+
+        data: dict[str, Any] = {"status": "active"}
+        coerce_inputs_to_schema(data, LiteralSchema)
+        assert data["status"] == "active"
 
     def test_list_of_pydantic_model_field(self):
         """list[dict] for list[PydanticModel] passes through unchanged."""

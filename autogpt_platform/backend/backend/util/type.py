@@ -269,13 +269,16 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
 
     # Generic container type (e.g. list[str], dict[str, int])
     if origin is not None:
+        # Guard: origin may not be a runtime type (e.g. Literal)
+        if not isinstance(origin, type):
+            return False
         if not isinstance(value, origin):
             return False
         args = get_args(target)
         if not args:
             return True
         # Check inner elements satisfy the type args
-        if _is_type_or_subclass(origin, list) and args:
+        if _is_type_or_subclass(origin, list):
             return all(_value_satisfies_type(v, args[0]) for v in value)
         if _is_type_or_subclass(origin, dict) and len(args) >= 2:
             return all(
@@ -286,7 +289,7 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
             _is_type_or_subclass(origin, set) or _is_type_or_subclass(origin, frozenset)
         ) and args:
             return all(_value_satisfies_type(v, args[0]) for v in value)
-        if _is_type_or_subclass(origin, tuple) and args:
+        if _is_type_or_subclass(origin, tuple):
             # Homogeneous tuple[T, ...] — single type + Ellipsis
             if len(args) == 2 and args[1] is Ellipsis:
                 return all(_value_satisfies_type(v, args[0]) for v in value)
@@ -294,7 +297,8 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
             if len(value) != len(args):
                 return False
             return all(_value_satisfies_type(v, t) for v, t in zip(value, args))
-        return True
+        # Unhandled generic origin — fall through to convert()
+        return False
 
     # Simple type (e.g. str, int)
     if isinstance(target, type):
