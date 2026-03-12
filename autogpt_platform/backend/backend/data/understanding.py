@@ -86,6 +86,11 @@ class BusinessUnderstandingInput(pydantic.BaseModel):
         None, description="Any additional context"
     )
 
+    # Suggested prompts (UI-only, not included in system prompt)
+    suggested_prompts: Optional[list[str]] = pydantic.Field(
+        None, description="LLM-generated suggested prompts based on business context"
+    )
+
 
 class BusinessUnderstanding(pydantic.BaseModel):
     """Full business understanding model returned from database."""
@@ -122,6 +127,9 @@ class BusinessUnderstanding(pydantic.BaseModel):
     # Additional context
     additional_notes: Optional[str] = None
 
+    # Suggested prompts (UI-only, not included in system prompt)
+    suggested_prompts: list[str] = pydantic.Field(default_factory=list)
+
     @classmethod
     def from_db(cls, db_record: CoPilotUnderstanding) -> "BusinessUnderstanding":
         """Convert database record to Pydantic model."""
@@ -149,6 +157,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
             current_software=_json_to_list(business.get("current_software")),
             existing_automation=_json_to_list(business.get("existing_automation")),
             additional_notes=business.get("additional_notes"),
+            suggested_prompts=_json_to_list(data.get("suggested_prompts")),
         )
 
 
@@ -212,6 +221,12 @@ def merge_business_understanding_data(
 
     merged_business["version"] = 1
     merged_data["business"] = merged_business
+
+    # suggested_prompts lives at the top level (not under `business`) because
+    # it's a UI-only artifact consumed by the frontend, not business understanding
+    # data. The `business` sub-dict feeds the system prompt.
+    if input_data.suggested_prompts is not None:
+        merged_data["suggested_prompts"] = input_data.suggested_prompts
 
     return merged_data
 

@@ -10,15 +10,18 @@ from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,
     _build_email_index,
+    _call_llm_for_prompts,
     _format_answer,
     _make_tally_client,
     _refresh_cache,
     extract_business_understanding,
     find_submission_by_email,
     format_submission_for_llm,
+    generate_suggested_prompts,
     mask_email,
     populate_understanding_from_tally,
 )
+from backend.data.understanding import BusinessUnderstandingInput
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -303,6 +306,11 @@ async def test_populate_understanding_full_flow():
             return_value=mock_input,
         ) as mock_extract,
         patch(
+            "backend.data.tally.generate_suggested_prompts",
+            new_callable=AsyncMock,
+            return_value=["Prompt 1", "Prompt 2", "Prompt 3"],
+        ),
+        patch(
             "backend.data.tally.upsert_business_understanding",
             new_callable=AsyncMock,
         ) as mock_upsert,
@@ -310,6 +318,8 @@ async def test_populate_understanding_full_flow():
         await populate_understanding_from_tally("user-1", "alice@example.com")
 
     mock_extract.assert_awaited_once()
+    # Verify suggested prompts were assigned to the input before upserting
+    assert mock_input.suggested_prompts == ["Prompt 1", "Prompt 2", "Prompt 3"]
     mock_upsert.assert_awaited_once_with("user-1", mock_input)
 
 
@@ -587,3 +597,164 @@ async def test_fetch_tally_page_uses_provided_client():
     assert "form123" in call_url
     assert "page=1" in call_url
     assert result == {"submissions": [], "questions": []}
+
+
+# ── _call_llm_for_prompts ────────────────────────────────────────────────────
+
+
+def _make_llm_response(content: str) -> MagicMock:
+    """Build a mock OpenAI chat completion response."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = content
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_call_llm_for_prompts_happy_path():
+    """Valid JSON with 5 short prompts returns all 5."""
+    prompts = [f"Prompt {i}" for i in range(5)]
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = _make_llm_response(
+        json.dumps({"prompts": prompts})
+    )
+
+    result = await _call_llm_for_prompts(mock_client, "Industry: Tech")
+    assert result == prompts
+
+
+@pytest.mark.asyncio
+async def test_call_llm_for_prompts_filters_long_prompts():
+    """Prompts exceeding 20 words are excluded."""
+    short = "Automate your invoices"
+    long = " ".join(["word"] * 21)
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = _make_llm_response(
+        json.dumps({"prompts": [short, long]})
+    )
+
+    result = await _call_llm_for_prompts(mock_client, "context")
+    assert result == [short]
+
+
+@pytest.mark.asyncio
+async def test_call_llm_for_prompts_invalid_json():
+    """Invalid JSON returns empty list."""
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = _make_llm_response(
+        "not valid json {"
+    )
+
+    result = await _call_llm_for_prompts(mock_client, "context")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_call_llm_for_prompts_missing_key():
+    """JSON without 'prompts' key returns empty list."""
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = _make_llm_response(
+        json.dumps({"suggestions": ["a", "b"]})
+    )
+
+    result = await _call_llm_for_prompts(mock_client, "context")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_call_llm_for_prompts_propagates_timeout():
+    """Timeout errors propagate to the caller."""
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
+
+    with pytest.raises(asyncio.TimeoutError):
+        await _call_llm_for_prompts(mock_client, "context")
+
+
+# ── generate_suggested_prompts ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_generate_suggested_prompts_happy_path():
+    """Returns top 3 from 5 generated prompts."""
+    five_prompts = [f"Prompt {i}" for i in range(5)]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = _make_llm_response(
+        json.dumps({"prompts": five_prompts})
+    )
+
+    understanding = BusinessUnderstandingInput(  # type: ignore[call-arg]
+        user_name="Alice",
+        industry="Tech",
+        pain_points=["manual reporting"],
+    )
+
+    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+        result = await generate_suggested_prompts(understanding)
+
+    assert result == five_prompts[:3]
+
+
+@pytest.mark.asyncio
+async def test_generate_suggested_prompts_empty_context():
+    """Returns empty list when no context fields are populated."""
+    understanding = BusinessUnderstandingInput()  # type: ignore[call-arg]
+
+    result = await generate_suggested_prompts(understanding)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_generate_suggested_prompts_retries_on_api_error():
+    """Retries on API error and returns best attempt."""
+    from openai import APIConnectionError
+
+    three_prompts = ["Prompt A", "Prompt B", "Prompt C"]
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = [
+        APIConnectionError(request=MagicMock()),
+        _make_llm_response(json.dumps({"prompts": three_prompts})),
+    ]
+
+    understanding = BusinessUnderstandingInput(industry="Finance")  # type: ignore[call-arg]
+
+    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+        result = await generate_suggested_prompts(understanding)
+
+    assert result == three_prompts
+
+
+@pytest.mark.asyncio
+async def test_generate_suggested_prompts_all_attempts_fail():
+    """Returns empty list when all attempts fail."""
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
+
+    understanding = BusinessUnderstandingInput(industry="Retail")  # type: ignore[call-arg]
+
+    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+        result = await generate_suggested_prompts(understanding)
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_generate_suggested_prompts_keeps_best_attempt():
+    """When first attempt returns 2 valid and second returns 4, keeps second (sliced to 3)."""
+    two_prompts = ["Short one", "Short two"]
+    four_prompts = ["A prompt", "B prompt", "C prompt", "D prompt"]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = [
+        _make_llm_response(json.dumps({"prompts": two_prompts})),
+        _make_llm_response(json.dumps({"prompts": four_prompts})),
+    ]
+
+    understanding = BusinessUnderstandingInput(industry="Health")  # type: ignore[call-arg]
+
+    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+        result = await generate_suggested_prompts(understanding)
+
+    assert result == four_prompts[:3]

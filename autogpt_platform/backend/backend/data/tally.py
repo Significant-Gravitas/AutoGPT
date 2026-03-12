@@ -6,7 +6,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
@@ -39,6 +45,10 @@ _MAX_PAGES = 100
 
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
+
+# Prompt generation retry settings
+_PROMPT_GENERATION_MAX_ATTEMPTS = 2
+_MIN_DESIRED_PROMPTS = 3
 
 
 def mask_email(email: str) -> str:
@@ -337,6 +347,22 @@ Form data:
 
 _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
+_PROMPT_GENERATION_PROMPT = """\
+You are a productivity assistant. Based on the following business context about a user, \
+generate exactly 5 short action prompts (each under 20 words) that would help this person \
+get started with automating their work.
+
+The prompts should be:
+- Specific to their industry, role, and pain points
+- Actionable and conversational in tone
+- Focused on automation opportunities
+
+Business context:
+{context}
+
+Return a JSON object with a single key "prompts" containing an array of exactly 5 strings.
+"""
+
 
 async def extract_business_understanding(
     formatted_text: str,
@@ -351,7 +377,7 @@ async def extract_business_understanding(
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="openai/gpt-4o-mini",
+                model=_settings.config.autopilot_suggestions_llm_model,
                 messages=[
                     {
                         "role": "user",
@@ -379,6 +405,115 @@ async def extract_business_understanding(
     return BusinessUnderstandingInput(**cleaned)
 
 
+async def _call_llm_for_prompts(client: AsyncOpenAI, context: str) -> list[str]:
+    """Make a single LLM call to generate prompts and return validated results.
+
+    Returns a list of 0–5 valid prompt strings. Lets API and timeout errors
+    propagate to the caller for retry handling.
+    """
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=_settings.config.autopilot_suggestions_llm_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _PROMPT_GENERATION_PROMPT.format(context=context),
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        ),
+        timeout=_LLM_TIMEOUT,
+    )
+
+    raw = response.choices[0].message.content or "{}"
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Tally: prompt generation returned invalid JSON")
+        return []
+
+    prompts = data.get("prompts", [])
+    if not isinstance(prompts, list):
+        return []
+
+    return [
+        str(p).strip()
+        for p in prompts
+        if isinstance(p, str) and len(p.strip().split()) <= 20
+    ]
+
+
+async def generate_suggested_prompts(
+    understanding: BusinessUnderstandingInput,
+) -> list[str]:
+    """Generate suggested prompts based on extracted business understanding.
+
+    Requests 5 prompts per attempt (over-generates for filtering headroom),
+    validates each prompt is <=20 words, keeps the best attempt, and returns
+    the top 3. Retries up to ``_PROMPT_GENERATION_MAX_ATTEMPTS`` times if
+    word-count validation leaves fewer than ``_MIN_DESIRED_PROMPTS``.
+
+    Returns an empty list on complete failure so the caller can proceed without
+    prompts.
+    """
+    api_key = _settings.secrets.open_router_api_key
+    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+
+    context_parts: list[str] = []
+    if understanding.user_name:
+        context_parts.append(f"Name: {understanding.user_name}")
+    if understanding.job_title:
+        context_parts.append(f"Role: {understanding.job_title}")
+    if understanding.business_name:
+        context_parts.append(f"Company: {understanding.business_name}")
+    if understanding.industry:
+        context_parts.append(f"Industry: {understanding.industry}")
+    if understanding.pain_points:
+        context_parts.append(f"Pain points: {', '.join(understanding.pain_points)}")
+    if understanding.manual_tasks:
+        context_parts.append(f"Manual tasks: {', '.join(understanding.manual_tasks)}")
+    if understanding.automation_goals:
+        context_parts.append(
+            f"Automation goals: {', '.join(understanding.automation_goals)}"
+        )
+    if understanding.key_workflows:
+        context_parts.append(f"Key workflows: {', '.join(understanding.key_workflows)}")
+
+    if not context_parts:
+        logger.debug("Tally: no context for prompt generation, skipping")
+        return []
+
+    context = "\n".join(context_parts)
+
+    best: list[str] = []
+    for attempt in range(1, _PROMPT_GENERATION_MAX_ATTEMPTS + 1):
+        try:
+            valid_prompts = await _call_llm_for_prompts(client, context)
+        except (
+            asyncio.TimeoutError,
+            APITimeoutError,
+            APIConnectionError,
+            RateLimitError,
+            APIError,
+        ):
+            logger.warning(
+                "Tally: prompt generation LLM call failed (attempt %d/%d)",
+                attempt,
+                _PROMPT_GENERATION_MAX_ATTEMPTS,
+                exc_info=True,
+            )
+            continue
+
+        if len(valid_prompts) > len(best):
+            best = valid_prompts
+
+        if len(best) >= _MIN_DESIRED_PROMPTS:
+            break
+
+    return best[:3]
+
+
 async def get_business_understanding_input_from_tally(
     email: str,
     *,
@@ -404,7 +539,14 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    return await extract_business_understanding(formatted)
+    understanding_input = await extract_business_understanding(formatted)
+
+    # Generate suggested prompts based on the extracted understanding
+    prompts = await generate_suggested_prompts(understanding_input)
+    if prompts:
+        understanding_input.suggested_prompts = prompts
+
+    return understanding_input
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
