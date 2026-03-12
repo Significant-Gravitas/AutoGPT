@@ -384,7 +384,7 @@ async def extract_business_understanding(
     raw_prompts = cleaned.get("suggested_prompts", [])
     if isinstance(raw_prompts, list):
         valid = [
-            str(p).strip()
+            p.strip()
             for p in raw_prompts
             if isinstance(p, str) and len(p.strip().split()) <= 20
         ]
@@ -420,9 +420,7 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    understanding_input = await extract_business_understanding(formatted)
-
-    return understanding_input
+    return await extract_business_understanding(formatted)
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
