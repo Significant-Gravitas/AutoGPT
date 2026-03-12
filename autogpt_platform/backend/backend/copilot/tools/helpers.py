@@ -15,6 +15,7 @@ from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.type import coerce_inputs_to_schema
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
@@ -112,6 +113,9 @@ async def execute_block(
                     message=f"Failed to retrieve credentials for {field_name}",
                     session_id=session_id,
                 )
+
+        # Coerce non-matching data types to the expected input schema.
+        coerce_inputs_to_schema(input_data, block.input_schema)
 
         # Pre-execution credit check
         cost, cost_filter = block_usage_cost(block, input_data)
