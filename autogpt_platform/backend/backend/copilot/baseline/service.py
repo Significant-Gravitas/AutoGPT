@@ -249,10 +249,11 @@ async def stream_chat_completion_baseline(
             tool_calls_by_index: dict[int, dict[str, str]] = {}
 
             async for chunk in response:
-                # Capture token usage from the final chunk.
-                # Use += to sum all rounds: each API call bills
-                # independently for its prompt tokens, so the total
-                # billed amount is the sum across all rounds.
+                # Capture token usage from the streaming chunk.
+                # OpenRouter normalises all providers into OpenAI format
+                # where prompt_tokens already includes cached tokens
+                # (unlike Anthropic's native API). Use += to sum all
+                # tool-call rounds since each API call is independent.
                 if chunk.usage:
                     turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     turn_completion_tokens += chunk.usage.completion_tokens or 0

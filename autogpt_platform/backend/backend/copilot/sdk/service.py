@@ -1138,17 +1138,27 @@ async def stream_chat_completion_sdk(
                             )
 
                         # Capture token usage from ResultMessage.
-                        # Use += to sum all rounds: each SDK invocation
-                        # bills independently for its input tokens.
+                        # Anthropic reports cached tokens separately:
+                        #   input_tokens = uncached only
+                        #   cache_read_input_tokens = served from cache
+                        #   cache_creation_input_tokens = written to cache
+                        # Total input = sum of all three.
                         if sdk_msg.usage:
-                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                            turn_prompt_tokens += (
+                                sdk_msg.usage.get("input_tokens", 0)
+                                + sdk_msg.usage.get("cache_read_input_tokens", 0)
+                                + sdk_msg.usage.get("cache_creation_input_tokens", 0)
+                            )
                             turn_completion_tokens += sdk_msg.usage.get(
                                 "output_tokens", 0
                             )
                             logger.info(
-                                "%s Token usage: input=%d, output=%d",
+                                "%s Token usage: input=%d (uncached=%d, cache_read=%d, cache_create=%d), output=%d",
                                 log_prefix,
                                 turn_prompt_tokens,
+                                sdk_msg.usage.get("input_tokens", 0),
+                                sdk_msg.usage.get("cache_read_input_tokens", 0),
+                                sdk_msg.usage.get("cache_creation_input_tokens", 0),
                                 turn_completion_tokens,
                             )
                         if sdk_msg.total_cost_usd is not None:
