@@ -52,6 +52,11 @@ Examples:
 You can embed a reference inside any string argument, or use it as the entire
 value.  Multiple references in one argument are all expanded.
 
+**Type coercion**: The platform automatically coerces expanded string values
+to match the block's expected input types.  For example, if a block expects
+`list[list[str]]` and you pass a string containing a JSON array (e.g. from
+an @@agptfile: expansion), the string will be parsed into the correct type.
+
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.

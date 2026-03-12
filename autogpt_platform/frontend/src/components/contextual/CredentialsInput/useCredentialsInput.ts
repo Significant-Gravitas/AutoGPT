@@ -10,8 +10,10 @@ import { openOAuthPopup } from "@/lib/oauth-popup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
+  countSupportedTypes,
   filterSystemCredentials,
   getActionButtonText,
+  getSupportedTypes,
   getSystemCredentials,
 } from "./helpers";
 
@@ -43,6 +45,8 @@ export function useCredentialsInput({
     setUserPasswordCredentialsModalOpen,
   ] = useState(false);
   const [isHostScopedCredentialsModalOpen, setHostScopedCredentialsModalOpen] =
+    useState(false);
+  const [isCredentialTypeSelectorOpen, setCredentialTypeSelectorOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupController, setOAuthPopupController] =
@@ -263,7 +267,27 @@ export function useCredentialsInput({
     }
   }
 
+  const hasMultipleCredentialTypes =
+    countSupportedTypes(
+      supportsOAuth2,
+      supportsApiKey,
+      supportsUserPassword,
+      supportsHostScoped,
+    ) > 1;
+
+  const supportedTypes = getSupportedTypes(
+    supportsOAuth2,
+    supportsApiKey,
+    supportsUserPassword,
+    supportsHostScoped,
+  );
+
   function handleActionButtonClick() {
+    if (hasMultipleCredentialTypes) {
+      setCredentialTypeSelectorOpen(true);
+      return;
+    }
+
     if (supportsOAuth2) {
       handleOAuthLogin();
     } else if (supportsApiKey) {
@@ -308,6 +332,8 @@ export function useCredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
+    hasMultipleCredentialTypes,
+    supportedTypes,
     isSystemProvider,
     userCredentials,
     systemCredentials,
@@ -317,6 +343,7 @@ export function useCredentialsInput({
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
     oAuthPopupController,
     credentialToDelete,
@@ -331,6 +358,7 @@ export function useCredentialsInput({
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setCredentialTypeSelectorOpen,
     setCredentialToDelete,
     handleActionButtonClick,
     handleCredentialSelect,
