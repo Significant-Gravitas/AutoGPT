@@ -259,16 +259,64 @@ async def expand_file_refs_in_args(
     String values are expanded in-place.  Nested dicts and lists are
     traversed.  Non-string scalars are returned unchanged.
 
+    **Bare references** (the entire argument value is a single
+    ``@@agptfile:...`` token with no surrounding text) are resolved and then
+    parsed according to the file's extension or MIME type.  See
+    :mod:`backend.util.file_content_parser` for the full list of supported
+    formats (JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel).
+
+    If the format is unrecognised or parsing fails, the content is returned as
+    a plain string (the fallback).
+
+    **Embedded references** (``@@agptfile:`` mixed with other text) always
+    produce a plain string — structured parsing only applies to bare refs.
+
     Raises :class:`FileRefExpansionError` if any reference fails to resolve,
     so the tool is *not* executed with an error string as its input.  The
     caller (the MCP tool wrapper) should convert this into an MCP error
     response that lets the model correct the reference before retrying.
     """
+    from backend.util.file_content_parser import (
+        BINARY_FORMATS,
+        infer_format,
+        parse_file_content,
+    )
+
     if not args:
         return args
 
     async def _expand(value: Any) -> Any:
         if isinstance(value, str):
+            # Check for a bare file reference first — enables structured parsing.
+            ref = parse_file_ref(value)
+            if ref is not None:
+                fmt = infer_format(ref.uri)
+                try:
+                    if fmt is not None and fmt in BINARY_FORMATS:
+                        # Binary formats need raw bytes, not UTF-8 text.
+                        raw = await read_file_bytes(ref.uri, user_id, session)
+                        content: str | bytes = (
+                            _apply_line_range(
+                                raw.decode("utf-8", errors="replace"),
+                                ref.start_line,
+                                ref.end_line,
+                            )
+                            if ref.start_line or ref.end_line
+                            else raw
+                        )
+                    else:
+                        content = await resolve_file_ref(ref, user_id, session)
+                except ValueError as exc:
+                    raise FileRefExpansionError(str(exc)) from exc
+                if fmt is not None:
+                    return parse_file_content(content, fmt)
+                return (
+                    content
+                    if isinstance(content, str)
+                    else content.decode("utf-8", errors="replace")
+                )
+
+            # Not a bare ref — do normal inline expansion.
             return await expand_file_refs_in_string(
                 value, user_id, session, raise_on_error=True
             )

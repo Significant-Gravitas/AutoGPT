@@ -52,10 +52,17 @@ Examples:
 You can embed a reference inside any string argument, or use it as the entire
 value.  Multiple references in one argument are all expanded.
 
-**Type coercion**: The platform automatically coerces expanded string values
-to match the block's expected input types.  For example, if a block expects
-`list[list[str]]` and you pass a string containing a JSON array (e.g. from
-an @@agptfile: expansion), the string will be parsed into the correct type.
+**Structured data**: When the **entire** argument value is a single file
+reference (no surrounding text), the platform automatically parses the file
+content based on its extension or MIME type.  Supported formats: JSON, JSONL,
+CSV, TSV, YAML, TOML, Parquet, and Excel (.xlsx).  For example, pass
+`@@agptfile:workspace://<id>` where the file is a `.csv` and the rows will be
+parsed into `list[list[str]]` automatically.  If the format is unrecognised or
+parsing fails, the content is returned as a plain string.
+
+**Type coercion**: The platform also coerces expanded values to match the
+block's expected input types.  For example, if a block expects `list[list[str]]`
+and the expanded value is a JSON string, it will be parsed into the correct type.
 
 
 ### Sub-agent tasks

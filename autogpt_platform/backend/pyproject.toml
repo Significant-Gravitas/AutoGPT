@@ -92,6 +92,7 @@ gravitas-md2gdocs = "^0.1.0"
 posthog = "^7.6.0"
 fpdf2 = "^2.8.6"
 langsmith = "^0.7.7"
+openpyxl = "^3.1.5"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
