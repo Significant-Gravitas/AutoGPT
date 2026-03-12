@@ -16,7 +16,8 @@ export const convertBlockInfoIntoCustomNodeData = (
 ) => {
   const customNodeData: CustomNodeData = {
     hardcodedValues: hardcodedValues,
-    title: (hardcodedValues.agent_name as string) || block.name,
+    title: block.name,
+    agentName: (hardcodedValues.agent_name as string) || undefined,
     description: block.description,
     inputSchema: block.inputSchema,
     outputSchema: block.outputSchema,

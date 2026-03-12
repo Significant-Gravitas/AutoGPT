@@ -22,7 +22,12 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
-from .model import ChatSessionInfo, get_chat_session, upsert_chat_session
+from .model import (
+    ChatSessionInfo,
+    _get_session_lock,
+    get_chat_session,
+    upsert_chat_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,16 +199,25 @@ async def assign_user_to_session(
 ) -> ChatSessionInfo:
     """
     Assign a user to a chat session.
+
+    The ownership check is performed under the session lock to prevent a
+    TOCTOU race where two concurrent callers both read an unowned session
+    and then both attempt to claim it.
     """
-    session = await get_chat_session(session_id, None)
-    if not session:
-        raise NotFoundError(f"Session {session_id} not found")
-    if session.user_id is not None and session.user_id != user_id:
-        logger.warning(
-            f"[SECURITY] Attempt to claim session {session_id} by user {user_id}, "
-            f"but it already belongs to user {session.user_id}"
-        )
-        raise NotAuthorizedError(f"Not authorized to claim session {session_id}")
-    session.user_id = user_id
-    session = await upsert_chat_session(session)
+    lock = await _get_session_lock(session_id)
+
+    async with lock:
+        session = await get_chat_session(session_id, None)
+        if not session:
+            raise NotFoundError(f"Session {session_id} not found")
+        if session.user_id is not None and session.user_id != user_id:
+            logger.warning(
+                f"[SECURITY] Attempt to claim session {session_id} by user {user_id}, "
+                f"but it already belongs to user {session.user_id}"
+            )
+            raise NotAuthorizedError(
+                f"Not authorized to claim session {session_id}"
+            )
+        session.user_id = user_id
+        session = await upsert_chat_session(session)
     return session
