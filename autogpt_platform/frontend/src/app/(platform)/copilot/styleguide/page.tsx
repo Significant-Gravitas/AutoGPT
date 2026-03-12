@@ -706,8 +706,8 @@ export default function StyleguidePage() {
                     input: { block_id: "weather-block-123" },
                     output: {
                       type: ResponseType.error,
-                      message: "Failed to run the block.",
-                      error: "Block execution timed out after 30 seconds.",
+                      message: "Something went wrong while running this step.",
+                      error: "Execution timed out after 30 seconds.",
                       details: {
                         block_id: "weather-block-123",
                         timeout_ms: 30000,

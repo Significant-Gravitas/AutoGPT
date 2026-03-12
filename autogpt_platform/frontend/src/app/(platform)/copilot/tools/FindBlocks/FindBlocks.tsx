@@ -77,7 +77,7 @@ export function FindBlocksTool({ part }: Props) {
       {hasBlocks && parsed && (
         <ToolAccordion
           icon={<AccordionIcon />}
-          title="Block results"
+          title="Results"
           description={accordionDescription}
         >
           <HorizontalScroll dependencyList={[parsed.blocks.length]}>
