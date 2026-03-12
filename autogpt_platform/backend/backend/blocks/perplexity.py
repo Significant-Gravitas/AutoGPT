@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -90,6 +91,24 @@ class PerplexityBlock(Block):
                     f"falling back to {PerplexityModel.SONAR.value}"
                 )
                 return PerplexityModel.SONAR
+
+        @classmethod
+        def validate_data(cls, data: BlockInput) -> str | None:
+            """Sanitize the model field before JSON schema validation so that
+            invalid values (e.g. OpenAI model IDs injected by the agent
+            generator) are replaced with the default instead of raising a
+            BlockInputError."""
+            model_value = data.get("model")
+            if model_value is not None:
+                try:
+                    PerplexityModel(model_value)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid PerplexityModel '{model_value}' in input "
+                        f"data, replacing with {PerplexityModel.SONAR.value}"
+                    )
+                    data["model"] = PerplexityModel.SONAR.value
+            return super().validate_data(data)
 
         system_prompt: str = SchemaField(
             title="System Prompt",
