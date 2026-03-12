@@ -8,11 +8,13 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.exceptions import BlockError
+from backend.util.exceptions import BlockError, InsufficientBalanceError
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
@@ -111,6 +113,20 @@ async def execute_block(
                     session_id=session_id,
                 )
 
+        # Pre-execution credit check
+        cost, cost_filter = block_usage_cost(block, input_data)
+        if cost > 0:
+            credit_model = await get_user_credit_model(user_id)
+            balance = await credit_model.get_credits(user_id)
+            if balance <= 0:
+                return ErrorResponse(
+                    message=(
+                        f"Insufficient credits to run '{block.name}'. "
+                        "Please top up your credits to continue."
+                    ),
+                    session_id=session_id,
+                )
+
         # Execute the block and collect outputs
         outputs: dict[str, list[Any]] = defaultdict(list)
         async for output_name, output_data in block.execute(
@@ -118,6 +134,32 @@ async def execute_block(
             **exec_kwargs,
         ):
             outputs[output_name].append(output_data)
+
+        # Charge credits for block execution
+        if cost > 0:
+            try:
+                credit_model = await get_user_credit_model(user_id)
+                await credit_model.spend_credits(
+                    user_id=user_id,
+                    cost=cost,
+                    metadata=UsageTransactionMetadata(
+                        graph_exec_id=synthetic_graph_id,
+                        graph_id=synthetic_graph_id,
+                        node_id=synthetic_node_id,
+                        node_exec_id=node_exec_id,
+                        block_id=block_id,
+                        block=block.name,
+                        input=cost_filter,
+                        reason="copilot_block_execution",
+                    ),
+                )
+            except InsufficientBalanceError:
+                # Block already executed — log warning but still return output
+                logger.warning(
+                    "Insufficient credits to charge for block %s (user=%s)",
+                    block.name,
+                    user_id,
+                )
 
         return BlockOutputResponse(
             message=f"Block '{block.name}' executed successfully",

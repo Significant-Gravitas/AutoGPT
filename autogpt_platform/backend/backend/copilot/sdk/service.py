@@ -40,11 +40,13 @@ from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
+    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
 )
 from ..prompting import get_sdk_supplement
+from ..rate_limit import record_token_usage
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -54,6 +56,7 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from ..service import (
     _build_system_prompt,
@@ -735,6 +738,11 @@ async def stream_chat_completion_sdk(
     _otel_ctx: Any = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
+    # Token usage accumulators — populated from ResultMessage at end of turn
+    turn_prompt_tokens = 0
+    turn_completion_tokens = 0
+    turn_cost_usd: float | None = None
+
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
         # Pre-compute the cwd here so the exact working directory path can be
@@ -1110,7 +1118,7 @@ async def stream_chat_completion_sdk(
                                 - len(adapter.resolved_tool_calls),
                             )
 
-                    # Log ResultMessage details for debugging
+                    # Log ResultMessage details and capture token usage
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
                             "%s Received: ResultMessage %s "
@@ -1128,6 +1136,21 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                                 sdk_msg.result or "(no error message provided)",
                             )
+
+                        # Capture token usage from ResultMessage
+                        if sdk_msg.usage:
+                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                            turn_completion_tokens += sdk_msg.usage.get(
+                                "output_tokens", 0
+                            )
+                            logger.info(
+                                "%s Token usage: input=%d, output=%d",
+                                log_prefix,
+                                turn_prompt_tokens,
+                                turn_completion_tokens,
+                            )
+                        if sdk_msg.total_cost_usd is not None:
+                            turn_cost_usd = sdk_msg.total_cost_usd
 
                     # Emit compaction end if SDK finished compacting
                     for ev in await compaction.emit_end_if_ready(session):
@@ -1324,6 +1347,37 @@ async def stream_chat_completion_sdk(
                 assistant_response.content or assistant_response.tool_calls
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
+
+        # Emit token usage and update session for persistence
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            yield StreamUsage(
+                promptTokens=turn_prompt_tokens,
+                completionTokens=turn_completion_tokens,
+                totalTokens=total_tokens,
+            )
+            session.usage.append(
+                Usage(
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                    total_tokens=total_tokens,
+                )
+            )
+            logger.info(
+                "%s Turn usage: prompt=%d, completion=%d, total=%d, cost_usd=%s",
+                log_prefix,
+                turn_prompt_tokens,
+                turn_completion_tokens,
+                total_tokens,
+                turn_cost_usd,
+            )
+            # Record for rate limiting counters
+            await record_token_usage(
+                user_id=user_id or "",
+                session_id=session_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+            )
 
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the

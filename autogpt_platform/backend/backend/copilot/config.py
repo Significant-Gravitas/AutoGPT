@@ -70,6 +70,16 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
+    # Rate limiting — token-based limits per session and per week
+    session_token_limit: int = Field(
+        default=0,
+        description="Max tokens per session (0 = unlimited)",
+    )
+    weekly_token_limit: int = Field(
+        default=0,
+        description="Max tokens per week (0 = unlimited)",
+    )
+
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,

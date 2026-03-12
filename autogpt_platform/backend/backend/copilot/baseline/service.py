@@ -18,11 +18,13 @@ from langfuse import propagate_attributes
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
 )
 from backend.copilot.prompting import get_baseline_supplement
+from backend.copilot.rate_limit import record_token_usage
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -36,6 +38,7 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from backend.copilot.service import (
     _build_system_prompt,
@@ -221,6 +224,9 @@ async def stream_chat_completion_baseline(
     text_block_id = str(uuid.uuid4())
     text_started = False
     step_open = False
+    # Token usage accumulators — populated from streaming chunks
+    turn_prompt_tokens = 0
+    turn_completion_tokens = 0
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
             # Open a new step for each LLM round
@@ -232,6 +238,7 @@ async def stream_chat_completion_baseline(
                 model=config.model,
                 messages=openai_messages,
                 stream=True,
+                stream_options={"include_usage": True},
             )
             if tools:
                 create_kwargs["tools"] = tools
@@ -242,6 +249,11 @@ async def stream_chat_completion_baseline(
             tool_calls_by_index: dict[int, dict[str, str]] = {}
 
             async for chunk in response:
+                # Capture token usage from the final chunk
+                if chunk.usage:
+                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    turn_completion_tokens += chunk.usage.completion_tokens or 0
+
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
@@ -411,6 +423,30 @@ async def stream_chat_completion_baseline(
             except Exception:
                 logger.warning("[Baseline] Langfuse trace context teardown failed")
 
+        # Emit token usage and update session for persistence
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            session.usage.append(
+                Usage(
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                    total_tokens=total_tokens,
+                )
+            )
+            logger.info(
+                "[Baseline] Turn usage: prompt=%d, completion=%d, total=%d",
+                turn_prompt_tokens,
+                turn_completion_tokens,
+                total_tokens,
+            )
+            # Record for rate limiting counters
+            await record_token_usage(
+                user_id=user_id or "",
+                session_id=session_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+            )
+
         # Persist assistant response
         if assistant_text:
             session.messages.append(
@@ -420,5 +456,13 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+    # Yield usage after finally so it reaches the client before StreamFinish
+    if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+        yield StreamUsage(
+            promptTokens=turn_prompt_tokens,
+            completionTokens=turn_completion_tokens,
+            totalTokens=turn_prompt_tokens + turn_completion_tokens,
+        )
 
     yield StreamFinish()
