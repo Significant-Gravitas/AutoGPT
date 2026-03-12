@@ -1,19 +1,19 @@
+import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { ChartBar } from "@phosphor-icons/react";
-import { type CoPilotUsageStatus, useUsageLimits } from "./useUsageLimits";
+import { useUsageLimits } from "./useUsageLimits";
 
 interface Props {
   sessionID: string | null;
 }
 
-function formatResetTime(resetsAt: string): string {
+function formatResetTime(resetsAt: Date): string {
   const now = new Date();
-  const reset = new Date(resetsAt);
-  const diffMs = reset.getTime() - now.getTime();
+  const diffMs = resetsAt.getTime() - now.getTime();
   if (diffMs <= 0) return "now";
 
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -31,7 +31,7 @@ function UsageBar({
   label: string;
   used: number;
   limit: number;
-  resetsAt: string;
+  resetsAt: Date;
 }) {
   if (limit <= 0) return null;
 

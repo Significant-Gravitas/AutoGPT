@@ -1373,14 +1373,6 @@ async def stream_chat_completion_sdk(
                 total_tokens,
                 turn_cost_usd,
             )
-            # Record for rate limiting counters
-            if user_id:
-                await record_token_usage(
-                    user_id=user_id,
-                    session_id=session_id,
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                )
 
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
@@ -1445,6 +1437,24 @@ async def stream_chat_completion_sdk(
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
+
+        # --- Record token usage for rate limiting ---
+        # Must run in finally to ensure tokens are always recorded, even when
+        # exceptions interrupt the stream (prevents rate limit bypass).
+        if user_id and (turn_prompt_tokens > 0 or turn_completion_tokens > 0):
+            try:
+                await record_token_usage(
+                    user_id=user_id,
+                    session_id=session_id,
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                )
+            except Exception as usage_err:
+                logger.warning(
+                    "%s Failed to record token usage: %s",
+                    log_prefix,
+                    usage_err,
+                )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

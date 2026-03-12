@@ -66,16 +66,17 @@ def _session_key(user_id: str, session_id: str) -> str:
     return f"{_PREFIX}:session:{user_id}:{session_id}"
 
 
-def _weekly_key(user_id: str) -> str:
-    now = datetime.now(UTC)
-    # ISO week number
+def _weekly_key(user_id: str, now: datetime | None = None) -> str:
+    if now is None:
+        now = datetime.now(UTC)
     year, week, _ = now.isocalendar()
     return f"{_PREFIX}:weekly:{user_id}:{year}-W{week:02d}"
 
 
-def _weekly_reset_time() -> datetime:
+def _weekly_reset_time(now: datetime | None = None) -> datetime:
     """Calculate when the current weekly window resets (next Monday 00:00 UTC)."""
-    now = datetime.now(UTC)
+    if now is None:
+        now = datetime.now(UTC)
     days_until_monday = (7 - now.weekday()) % 7 or 7
     return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
         days=days_until_monday
@@ -101,7 +102,7 @@ async def _session_reset_from_ttl(
 
 async def get_usage_status(
     user_id: str,
-    session_id: str,
+    session_id: str | None,
     session_token_limit: int,
     weekly_token_limit: int,
 ) -> CoPilotUsageStatus:
@@ -109,32 +110,37 @@ async def get_usage_status(
 
     Args:
         user_id: The user's ID.
-        session_id: The current session ID.
+        session_id: The current session ID. When None, session usage is 0.
         session_token_limit: Max tokens per session (0 = unlimited).
         weekly_token_limit: Max tokens per week (0 = unlimited).
 
     Returns:
         CoPilotUsageStatus with current usage and limits.
     """
-    session_resets_at = datetime.now(UTC) + timedelta(seconds=_SESSION_TTL_SECONDS)
+    now = datetime.now(UTC)
+    session_resets_at = now + timedelta(seconds=_SESSION_TTL_SECONDS)
+    session_used = 0
+    weekly_used = 0
     try:
         redis = await get_redis_async()
-        session_raw, weekly_raw, session_ttl = await asyncio.gather(
-            redis.get(_session_key(user_id, session_id)),
-            redis.get(_weekly_key(user_id)),
-            redis.ttl(_session_key(user_id, session_id)),
-        )
-        session_used = int(session_raw or 0)
-        weekly_used = int(weekly_raw or 0)
-        session_resets_at = (
-            datetime.now(UTC) + timedelta(seconds=session_ttl)
-            if session_ttl > 0
-            else datetime.now(UTC) + timedelta(seconds=_SESSION_TTL_SECONDS)
-        )
+        if session_id:
+            session_raw, weekly_raw, session_ttl = await asyncio.gather(
+                redis.get(_session_key(user_id, session_id)),
+                redis.get(_weekly_key(user_id, now=now)),
+                redis.ttl(_session_key(user_id, session_id)),
+            )
+            session_used = int(session_raw or 0)
+            weekly_used = int(weekly_raw or 0)
+            session_resets_at = (
+                now + timedelta(seconds=session_ttl)
+                if session_ttl > 0
+                else now + timedelta(seconds=_SESSION_TTL_SECONDS)
+            )
+        else:
+            weekly_raw = await redis.get(_weekly_key(user_id, now=now))
+            weekly_used = int(weekly_raw or 0)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for usage status, returning zeros")
-        session_used = 0
-        weekly_used = 0
 
     return CoPilotUsageStatus(
         session=UsageWindow(
@@ -145,7 +151,7 @@ async def get_usage_status(
         weekly=UsageWindow(
             used=weekly_used,
             limit=weekly_token_limit,
-            resets_at=_weekly_reset_time(),
+            resets_at=_weekly_reset_time(now=now),
         ),
     )
 
@@ -166,11 +172,12 @@ async def check_rate_limit(
 
     Fails open: if Redis is unavailable, allows the request.
     """
+    now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
         session_raw, weekly_raw = await asyncio.gather(
             redis.get(_session_key(user_id, session_id)),
-            redis.get(_weekly_key(user_id)),
+            redis.get(_weekly_key(user_id, now=now)),
         )
         session_used = int(session_raw or 0)
         weekly_used = int(weekly_raw or 0)
@@ -183,7 +190,7 @@ async def check_rate_limit(
         raise RateLimitExceeded("session", resets_at)
 
     if weekly_token_limit > 0 and weekly_used >= weekly_token_limit:
-        raise RateLimitExceeded("weekly", _weekly_reset_time())
+        raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
 
 
 async def record_token_usage(
@@ -204,6 +211,7 @@ async def record_token_usage(
     if total <= 0:
         return
 
+    now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
         pipe = redis.pipeline(transaction=False)
@@ -214,11 +222,9 @@ async def record_token_usage(
         pipe.expire(s_key, _SESSION_TTL_SECONDS)
 
         # Weekly counter (expires end of week)
-        w_key = _weekly_key(user_id)
+        w_key = _weekly_key(user_id, now=now)
         pipe.incrby(w_key, total)
-        seconds_until_reset = int(
-            (_weekly_reset_time() - datetime.now(UTC)).total_seconds()
-        )
+        seconds_until_reset = int((_weekly_reset_time(now=now) - now).total_seconds())
         pipe.expire(w_key, max(seconds_until_reset, 1))
 
         await pipe.execute()

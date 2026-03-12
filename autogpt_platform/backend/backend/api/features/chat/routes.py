@@ -403,7 +403,7 @@ async def get_copilot_usage(
 
     return await get_usage_status(
         user_id=user_id,
-        session_id=session_id or "",
+        session_id=session_id,
         session_token_limit=config.session_token_limit,
         weekly_token_limit=config.weekly_token_limit,
     )

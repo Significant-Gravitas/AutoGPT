@@ -142,6 +142,59 @@ class TestGetUsageStatus:
         assert status.session.used == 0
         assert status.weekly.used == 0
 
+    @pytest.mark.asyncio
+    async def test_partial_none_session_counter(self):
+        """Session counter is None (new session), weekly has usage."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=[None, "3000"])
+        mock_redis.ttl = AsyncMock(return_value=-2)
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            status = await get_usage_status(
+                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+            )
+
+        assert status.session.used == 0
+        assert status.weekly.used == 3000
+
+    @pytest.mark.asyncio
+    async def test_partial_none_weekly_counter(self):
+        """Weekly counter is None (start of week), session has usage."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["500", None])
+        mock_redis.ttl = AsyncMock(return_value=7200)
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            status = await get_usage_status(
+                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+            )
+
+        assert status.session.used == 500
+        assert status.weekly.used == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_weekly_only_when_no_session_id(self):
+        """When session_id is None, session usage should be 0."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="4000")
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            status = await get_usage_status(
+                _USER, None, session_token_limit=10000, weekly_token_limit=50000
+            )
+
+        assert status.session.used == 0
+        assert status.weekly.used == 4000
+
 
 # ---------------------------------------------------------------------------
 # check_rate_limit
