@@ -70,13 +70,15 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
-    # Rate limiting — token-based limits per session and per week
+    # Rate limiting — token-based limits per session and per week.
+    # Defaults based on observed CoPilot usage (P90 session ~550K tokens,
+    # heaviest weekly user ~600K tokens) with generous headroom.
     session_token_limit: int = Field(
-        default=0,
+        default=500_000,
         description="Max tokens per session (0 = unlimited)",
     )
     weekly_token_limit: int = Field(
-        default=0,
+        default=5_000_000,
         description="Max tokens per week (0 = unlimited)",
     )
 
