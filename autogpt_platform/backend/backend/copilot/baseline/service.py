@@ -430,7 +430,7 @@ async def stream_chat_completion_baseline(
         # does not honour stream_options={"include_usage": True}.
         # Rough estimate: 1 token ≈ 4 characters.
         if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
-            prompt_chars = sum(len(m.get("content", "")) for m in openai_messages)
+            prompt_chars = sum(len(m.get("content") or "") for m in openai_messages)
             turn_prompt_tokens = max(prompt_chars // 4, 1)
             turn_completion_tokens = max(len(assistant_text) // 4, 1)
             logger.info(
