@@ -1,8 +1,10 @@
 """Configuration for the ABN Consulting AI Co-Navigator."""
 import os
 
+from autogpt.singleton import Singleton
 
-class CoachingConfig:
+
+class CoachingConfig(metaclass=Singleton):
     """Reads coaching-specific settings from environment variables."""
 
     def __init__(self):
@@ -29,4 +31,5 @@ class CoachingConfig:
             )
 
 
+# Module-level singleton instance
 coaching_config = CoachingConfig()
