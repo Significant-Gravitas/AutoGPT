@@ -158,6 +158,15 @@ _TEXT_PARSERS: dict[str, Callable[[str], Any]] = {
 # ---------------------------------------------------------------------------
 
 
+def _is_nan(cell: Any) -> bool:
+    """Check if a cell value is NaN, handling non-scalar types (lists, dicts).
+
+    ``pd.isna()`` on a list/dict returns a boolean array which raises
+    ``ValueError`` in a boolean context.  Guard with a scalar check first.
+    """
+    return bool(pd.api.types.is_scalar(cell) and pd.isna(cell))
+
+
 def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
     """Convert a DataFrame to ``list[list[Any]]`` with a header row.
 
@@ -167,7 +176,7 @@ def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
     """
     header = df.columns.tolist()
     rows = [
-        [None if pd.isna(cell) else cell for cell in row] for row in df.values.tolist()
+        [None if _is_nan(cell) else cell for cell in row] for row in df.values.tolist()
     ]
     return [header] + rows
 
