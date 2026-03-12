@@ -89,9 +89,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
-    autopilot_suggestions_llm_model: str = Field(
+    tally_extraction_llm_model: str = Field(
         default="openai/gpt-4o-mini",
-        description="OpenRouter model ID used for Tally extraction and prompt generation",
+        description="OpenRouter model ID used for extracting business understanding from Tally form data",
     )
     ollama_host: str = Field(
         default="localhost:11434",

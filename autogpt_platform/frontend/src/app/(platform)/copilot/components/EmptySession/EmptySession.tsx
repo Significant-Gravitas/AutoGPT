@@ -51,8 +51,13 @@ export function EmptySession({
   );
 
   useEffect(() => {
-    setInputPlaceholder(getInputPlaceholder(window.innerWidth));
-  }, [window.innerWidth]);
+    function handleResize() {
+      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   async function handleQuickActionClick(action: string) {
     if (isCreatingSession || loadingAction) return;
