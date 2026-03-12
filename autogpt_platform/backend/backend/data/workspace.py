@@ -189,6 +189,7 @@ async def get_workspace_file(
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,
+    include_deleted: bool = False,
 ) -> Optional[WorkspaceFile]:
     """
     Get a workspace file by its virtual path.
@@ -196,6 +197,8 @@ async def get_workspace_file_by_path(
     Args:
         workspace_id: The workspace ID
         path: Virtual path
+        include_deleted: If True, also match soft-deleted records that still
+                         occupy the path in the unique constraint.
 
     Returns:
         WorkspaceFile instance or None
@@ -204,13 +207,14 @@ async def get_workspace_file_by_path(
     if not path.startswith("/"):
         path = f"/{path}"
 
-    file = await UserWorkspaceFile.prisma().find_first(
-        where={
-            "workspaceId": workspace_id,
-            "path": path,
-            "isDeleted": False,
-        }
-    )
+    where_clause: UserWorkspaceFileWhereInput = {
+        "workspaceId": workspace_id,
+        "path": path,
+    }
+    if not include_deleted:
+        where_clause["isDeleted"] = False
+
+    file = await UserWorkspaceFile.prisma().find_first(where=where_clause)
     return WorkspaceFile.from_db(file) if file else None
 
 
@@ -321,6 +325,40 @@ async def soft_delete_workspace_file(
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return WorkspaceFile.from_db(updated) if updated else None
+
+
+async def free_deleted_path(file_id: str, workspace_id: str) -> bool:
+    """
+    Rename a soft-deleted file's path to free the unique constraint slot.
+
+    This handles "ghost rows" — records that are already soft-deleted but whose
+    path was never renamed, so they still block the ``@@unique([workspaceId, path])``
+    constraint for new files.
+
+    Args:
+        file_id: The file ID
+        workspace_id: Workspace ID for scoping
+
+    Returns:
+        True if the path was freed, False if the file was not found
+    """
+    deleted_at = datetime.now(timezone.utc)
+    try:
+        await UserWorkspaceFile.prisma().update_many(
+            where={
+                "id": file_id,
+                "workspaceId": workspace_id,
+                "isDeleted": True,
+            },
+            data={
+                "path": f"__freed__{file_id}__{int(deleted_at.timestamp())}",
+            },
+        )
+        logger.info(f"Freed path for soft-deleted ghost row {file_id}")
+        return True
+    except Exception:
+        logger.warning(f"Failed to free path for ghost row {file_id}")
+        return False
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:

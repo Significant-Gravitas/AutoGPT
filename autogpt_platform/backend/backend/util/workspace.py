@@ -248,12 +248,20 @@ class WorkspaceManager:
                 )
             except UniqueViolationError:
                 if retries > 0:
-                    # Delete conflicting file and retry
+                    # Delete conflicting file and retry.
                     existing = await db.get_workspace_file_by_path(
                         self.workspace_id, path
                     )
                     if existing:
                         await self.delete_file(existing.id)
+                    else:
+                        # Check for soft-deleted "ghost rows" that still
+                        # occupy the unique constraint slot.
+                        ghost = await db.get_workspace_file_by_path(
+                            self.workspace_id, path, include_deleted=True
+                        )
+                        if ghost:
+                            await db.free_deleted_path(ghost.id, self.workspace_id)
                     return await _persist_db_record(retries=retries - 1)
                 if overwrite:
                     raise ValueError(
