@@ -14256,7 +14256,11 @@
       "UsageWindow": {
         "properties": {
           "used": { "type": "integer", "title": "Used" },
-          "limit": { "type": "integer", "title": "Limit" },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+          },
           "resets_at": {
             "type": "string",
             "format": "date-time",

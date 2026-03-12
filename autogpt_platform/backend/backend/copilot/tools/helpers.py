@@ -118,7 +118,7 @@ async def execute_block(
         if cost > 0:
             credit_model = await get_user_credit_model(user_id)
             balance = await credit_model.get_credits(user_id)
-            if balance <= 0:
+            if balance < cost:
                 return ErrorResponse(
                     message=(
                         f"Insufficient credits to run '{block.name}'. "

@@ -54,6 +54,7 @@ class TestGetUsageStatus:
     async def test_returns_redis_values(self):
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["500", "2000"])
+        mock_redis.ttl = AsyncMock(return_value=7200)  # 2 hours remaining
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -107,6 +108,7 @@ class TestCheckRateLimit:
     async def test_raises_when_session_limit_exceeded(self):
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["10000", "200"])
+        mock_redis.ttl = AsyncMock(return_value=3600)  # 1 hour remaining
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",

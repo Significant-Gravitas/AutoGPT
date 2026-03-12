@@ -81,10 +81,10 @@ class TestExecuteBlockCreditCharging:
         assert call_kwargs["metadata"].reason == "copilot_block_execution"
 
     async def test_returns_error_when_insufficient_credits_before_exec(self):
-        """Pre-execution check should return ErrorResponse when balance <= 0."""
+        """Pre-execution check should return ErrorResponse when balance < cost."""
         block = _make_block()
         mock_credit = AsyncMock()
-        mock_credit.get_credits = AsyncMock(return_value=0)
+        mock_credit.get_credits = AsyncMock(return_value=5)  # balance < cost (10)
 
         with (
             _patch_workspace(),
@@ -145,10 +145,10 @@ class TestExecuteBlockCreditCharging:
 
         block = _make_block()
         mock_credit = AsyncMock()
-        mock_credit.get_credits = AsyncMock(return_value=5)
+        mock_credit.get_credits = AsyncMock(return_value=15)  # passes pre-check
         mock_credit.spend_credits = AsyncMock(
             side_effect=InsufficientBalanceError("Low balance", _USER, 5, 10)
-        )
+        )  # fails during actual charge (race with concurrent spend)
 
         with (
             _patch_workspace(),
