@@ -1,0 +1,20 @@
+-- Fix PerplexityBlock nodes that have invalid model values (e.g. gpt-4o,
+-- gpt-5.2-2025-12-11) set by the agent generator. Defaults them to the
+-- standard "perplexity/sonar" model.
+--
+-- PerplexityBlock ID: c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f
+-- Valid models: perplexity/sonar, perplexity/sonar-pro, perplexity/sonar-deep-research
+
+UPDATE "AgentNode"
+SET "constantInput" = JSONB_SET(
+    "constantInput"::jsonb,
+    '{model}',
+    '"perplexity/sonar"'::jsonb
+)
+WHERE "AgentBlock_id" = 'c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f'
+  AND "constantInput"::jsonb ? 'model'
+  AND "constantInput"::jsonb->>'model' NOT IN (
+      'perplexity/sonar',
+      'perplexity/sonar-pro',
+      'perplexity/sonar-deep-research'
+  );
