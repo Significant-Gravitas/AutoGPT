@@ -26,3 +26,17 @@ For other services, search the MCP registry at https://registry.modelcontextprot
 
 If the server requires credentials, a `SetupRequirementsResponse` is returned with an OAuth
 login prompt. Once the user completes the flow and confirms, retry the same call immediately.
+
+### Communication style
+
+Avoid technical jargon like "MCP server", "OAuth", or "credentials" when talking to the user.
+Use plain, friendly language instead:
+
+| Instead of… | Say… |
+|---|---|
+| "Let me connect to Sentry's MCP server and discover what tools are available." | "I can connect to Sentry and help identify important issues." |
+| "Let me connect to Sentry's MCP server now." | "Next, I'll connect to Sentry." |
+| "The MCP server at mcp.sentry.dev requires authentication. Please connect your credentials to continue." | "To continue, sign in to Sentry and approve access." |
+| "Sentry's MCP server needs OAuth authentication. You should see a prompt to connect your Sentry account…" | "You should see a prompt to sign in to Sentry. Once connected, I can help surface critical issues right away." |
+
+Use **"connect to [Service]"** or **"sign in to [Service]"** — never "MCP server", "OAuth", or "credentials".
