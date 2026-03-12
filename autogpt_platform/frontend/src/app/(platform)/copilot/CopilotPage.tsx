@@ -9,59 +9,17 @@ import {
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { DotsThree, UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useRef, useState } from "react";
+
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
+import { useCopilotFileDrop } from "./useCopilotFileDrop";
 import { useCopilotPage } from "./useCopilotPage";
 
 export function CopilotPage() {
-  const [isDragging, setIsDragging] = useState(false);
-  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
-  const dragCounter = useRef(0);
-
-  const handleDroppedFilesConsumed = useCallback(() => {
-    setDroppedFiles([]);
-  }, []);
-
-  function handleDragEnter(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current += 1;
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDragging(true);
-    }
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current -= 1;
-    if (dragCounter.current === 0) {
-      setIsDragging(false);
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current = 0;
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      setDroppedFiles(files);
-    }
-  }
-
   const {
     sessionId,
     messages,
@@ -94,6 +52,16 @@ export function CopilotPage() {
     handleConfirmDelete,
     handleCancelDelete,
   } = useCopilotPage();
+
+  const {
+    isDragging,
+    droppedFiles,
+    handleDroppedFilesConsumed,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useCopilotFileDrop();
 
   if (isUserLoading || !isLoggedIn) {
     return (

@@ -1,10 +1,10 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { Button } from "@/components/atoms/Button/Button";
+
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { SpinnerGapIcon } from "@phosphor-icons/react";
+import { Sparkle, SpinnerGapIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
@@ -90,28 +90,29 @@ export function EmptySession({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mx-auto flex flex-col items-center divide-y divide-zinc-100 px-2">
           {quickActions.map((action) => (
-            <Button
+            <button
               key={action}
               type="button"
-              variant="outline"
-              size="small"
               onClick={() => void handleQuickActionClick(action)}
               disabled={isCreatingSession || loadingAction !== null}
               aria-busy={loadingAction === action}
-              leftIcon={
-                loadingAction === action ? (
-                  <SpinnerGapIcon
-                    className="h-4 w-4 animate-spin"
-                    weight="bold"
-                  />
-                ) : null
-              }
-              className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
+              className="flex items-center gap-2.5 px-1 py-3 text-[.9rem] text-zinc-600 transition-colors hover:text-zinc-900 disabled:opacity-50"
             >
+              {loadingAction === action ? (
+                <SpinnerGapIcon
+                  className="h-4 w-4 shrink-0 animate-spin text-amber-400"
+                  weight="bold"
+                />
+              ) : (
+                <Sparkle
+                  className="h-4 w-4 shrink-0 text-amber-400"
+                  weight="fill"
+                />
+              )}
               {action}
-            </Button>
+            </button>
           ))}
         </div>
       </motion.div>

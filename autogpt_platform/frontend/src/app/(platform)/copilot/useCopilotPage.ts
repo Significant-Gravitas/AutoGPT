@@ -27,6 +27,7 @@ interface UploadedFile {
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
