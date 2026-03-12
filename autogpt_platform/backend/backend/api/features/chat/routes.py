@@ -190,19 +190,24 @@ async def list_sessions(
     # Batch-check Redis for active stream status on each session
     processing_set: set[str] = set()
     if sessions:
-        redis = await get_redis_async()
-        pipe = redis.pipeline(transaction=False)
-        for session in sessions:
-            pipe.hget(
-                f"{config.session_meta_prefix}{session.session_id}",
-                "status",
+        try:
+            redis = await get_redis_async()
+            pipe = redis.pipeline(transaction=False)
+            for session in sessions:
+                pipe.hget(
+                    f"{config.session_meta_prefix}{session.session_id}",
+                    "status",
+                )
+            statuses = await pipe.execute()
+            processing_set = {
+                session.session_id
+                for session, st in zip(sessions, statuses)
+                if st == "running"
+            }
+        except Exception:
+            logger.warning(
+                "Failed to fetch processing status from Redis; " "defaulting to empty"
             )
-        statuses = await pipe.execute()
-        processing_set = {
-            session.session_id
-            for session, st in zip(sessions, statuses)
-            if st == "running"
-        }
 
     return ListSessionsResponse(
         sessions=[

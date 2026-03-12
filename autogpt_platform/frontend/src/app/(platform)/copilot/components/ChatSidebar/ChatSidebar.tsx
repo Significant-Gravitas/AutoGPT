@@ -151,6 +151,15 @@ export function ChatSidebar() {
     }
   }, [editingSessionId]);
 
+  // Clear completed indicator when navigating to a session (works for all paths)
+  useEffect(() => {
+    if (!sessionId || !completedSessionIDs.has(sessionId)) return;
+    clearCompletedSession(sessionId);
+    const remaining = completedSessionIDs.size - 1;
+    document.title =
+      remaining > 0 ? `(${remaining}) Otto is ready - AutoGPT` : "AutoGPT";
+  }, [sessionId, completedSessionIDs, clearCompletedSession]);
+
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
@@ -413,17 +422,7 @@ export function ChatSidebar() {
                       </div>
                     ) : (
                       <button
-                        onClick={() => {
-                          handleSelectSession(session.id);
-                          if (completedSessionIDs.has(session.id)) {
-                            clearCompletedSession(session.id);
-                            const remaining = completedSessionIDs.size - 1;
-                            document.title =
-                              remaining > 0
-                                ? `(${remaining}) Otto is ready - AutoGPT`
-                                : "AutoGPT";
-                          }
-                        }}
+                        onClick={() => handleSelectSession(session.id)}
                         className="w-full px-3 py-2.5 pr-10 text-left"
                       >
                         <div className="flex min-w-0 max-w-full items-center gap-2">
