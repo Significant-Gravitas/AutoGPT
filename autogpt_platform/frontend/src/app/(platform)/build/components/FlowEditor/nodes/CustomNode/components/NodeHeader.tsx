@@ -21,7 +21,8 @@ type Props = {
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
-  const title = (data.metadata?.customized_name as string) || data.title;
+  const title =
+    (data.metadata?.customized_name as string) || data.agentName || data.title;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);

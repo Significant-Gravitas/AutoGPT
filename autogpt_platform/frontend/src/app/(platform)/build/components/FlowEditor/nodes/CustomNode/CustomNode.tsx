@@ -34,6 +34,7 @@ export type CustomNodeData = {
     [key: string]: any;
   };
   title: string;
+  agentName?: string;
   description: string;
   inputSchema: RJSFSchema;
   outputSchema: RJSFSchema;
