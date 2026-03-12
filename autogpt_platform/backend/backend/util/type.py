@@ -249,6 +249,53 @@ def convert(value: Any, target_type: Any) -> Any:
         raise ConversionError(f"Failed to convert {value} to {target_type}") from e
 
 
+def _value_satisfies_type(value: Any, target: Any) -> bool:
+    """Check whether *value* already satisfies *target* (shallow).
+
+    For union types this checks each member; for generic types it checks
+    against the origin (``list`` for ``list[str]``).  Returns ``False`` when
+    uncertain so the caller falls through to :func:`convert`.
+    """
+    origin = get_origin(target)
+
+    if origin is Union or origin is types.UnionType:
+        non_none = [a for a in get_args(target) if a is not type(None)]
+        return any(_value_satisfies_type(value, member) for member in non_none)
+
+    # Generic type (e.g. list[str]) → check isinstance against origin (list)
+    if origin is not None:
+        return isinstance(value, origin)
+
+    # Simple type (e.g. str, int)
+    if isinstance(target, type):
+        return isinstance(value, target)
+
+    return False
+
+
+def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
+    """Coerce *data* values in-place to match *schema*'s field types.
+
+    Uses ``model_fields`` (not ``__annotations__``) so inherited fields are
+    included.  Skips coercion when the value already satisfies the target
+    type — in particular for union-typed fields where the value matches one
+    member but differs from the annotation object itself.
+
+    This is the single authoritative coercion step shared by the executor
+    (``validate_exec``) and the CoPilot (``execute_block``).
+    """
+    for name, field_info in schema.model_fields.items():
+        value = data.get(name)
+        if value is None:
+            continue
+        target = field_info.annotation
+        if target is None:
+            continue
+        if _value_satisfies_type(value, target):
+            continue
+        data[name] = convert(value, target)
+
+
 class FormattedStringType(str):
     string_format: str
 

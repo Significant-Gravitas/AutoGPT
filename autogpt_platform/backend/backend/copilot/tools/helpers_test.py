@@ -15,17 +15,23 @@ from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse
 
 
-def _make_block_schema(annotations: dict[str, type]) -> MagicMock:
-    """Create a mock input_schema with the given __annotations__."""
+def _make_block_schema(annotations: dict[str, Any]) -> MagicMock:
+    """Create a mock input_schema with model_fields matching the given annotations."""
     schema = MagicMock()
-    schema.__annotations__ = annotations
+    # coerce_inputs_to_schema uses model_fields (Pydantic v2 API)
+    model_fields = {}
+    for name, ann in annotations.items():
+        field = MagicMock()
+        field.annotation = ann
+        model_fields[name] = field
+    schema.model_fields = model_fields
     return schema
 
 
 def _make_block(
     block_id: str,
     name: str,
-    annotations: dict[str, type],
+    annotations: dict[str, Any],
     outputs: dict[str, list[Any]] | None = None,
 ) -> MagicMock:
     """Create a mock block with typed annotations and a simple execute method."""
@@ -256,3 +262,37 @@ async def test_coerce_skips_none_values():
     assert isinstance(response, BlockOutputResponse)
     # 'data' was not provided, so it should not appear in captured inputs
     assert "data" not in block._captured_inputs
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_coerce_union_type_preserves_valid_member():
+    """Union-typed fields should not be coerced when the value matches a member."""
+    block = _make_block(
+        "union-block",
+        "Union Block",
+        {"content": str | list[str]},
+    )
+
+    mock_workspace_db = MagicMock()
+    mock_workspace_db.get_or_create_workspace = AsyncMock(
+        return_value=MagicMock(id="ws-1")
+    )
+
+    with patch(
+        "backend.copilot.tools.helpers.workspace_db",
+        return_value=mock_workspace_db,
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="union-block",
+            input_data={"content": ["a", "b"]},
+            user_id=_TEST_USER_ID,
+            session_id=_TEST_SESSION_ID,
+            node_exec_id="exec-7",
+            matched_credentials={},
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    # list[str] should NOT be stringified to '["a", "b"]'
+    assert block._captured_inputs["content"] == ["a", "b"]
+    assert isinstance(block._captured_inputs["content"], list)
