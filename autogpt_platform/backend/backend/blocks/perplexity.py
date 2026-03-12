@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Literal
 
 import openai
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 
 from backend.blocks._base import (
     Block,
@@ -73,6 +73,24 @@ class PerplexityBlock(Block):
             advanced=False,
         )
         credentials: PerplexityCredentials = PerplexityCredentialsField()
+
+        @field_validator("model", mode="before")
+        @classmethod
+        def fallback_invalid_model(cls, v: Any) -> PerplexityModel:
+            """Fall back to SONAR if the model value is not a valid
+            PerplexityModel (e.g. an OpenAI model ID set by the agent
+            generator)."""
+            if isinstance(v, PerplexityModel):
+                return v
+            try:
+                return PerplexityModel(v)
+            except ValueError:
+                logger.warning(
+                    f"Invalid PerplexityModel '{v}', "
+                    f"falling back to {PerplexityModel.SONAR.value}"
+                )
+                return PerplexityModel.SONAR
+
         system_prompt: str = SchemaField(
             title="System Prompt",
             default="",
