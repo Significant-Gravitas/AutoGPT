@@ -156,6 +156,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
+    COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
+    COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
+    COHERE_COMMAND_A_REASONING_08_2025 = "cohere/command-a-reasoning-08-2025"
+    COHERE_COMMAND_A_VISION_07_2025 = "cohere/command-a-vision-07-2025"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
@@ -168,6 +172,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
+    MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
@@ -463,6 +468,36 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R Plus 08.2024", "OpenRouter", "Cohere", 2
     ),
+    LlmModel.COHERE_COMMAND_A_03_2025: ModelMetadata(
+        "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
+    ),
+    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: ModelMetadata(
+        "open_router",
+        128000,
+        8192,
+        "Command A Translate 08.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
+    ),
+    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: ModelMetadata(
+        "open_router",
+        256000,
+        32768,
+        "Command A Reasoning 08.2025",
+        "OpenRouter",
+        "Cohere",
+        3,
+    ),
+    LlmModel.COHERE_COMMAND_A_VISION_07_2025: ModelMetadata(
+        "open_router",
+        128000,
+        8192,
+        "Command A Vision 07.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
+    ),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata(
         "open_router", 64000, 2048, "DeepSeek Chat", "OpenRouter", "DeepSeek", 1
     ),
@@ -528,6 +563,9 @@ MODEL_METADATA = {
     ),
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
         "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
+    ),
+    LlmModel.MICROSOFT_PHI_4: ModelMetadata(
+        "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
     ),
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata(
         "open_router", 4096, 4096, "MythoMax L2 13B", "OpenRouter", "Gryphe", 1
