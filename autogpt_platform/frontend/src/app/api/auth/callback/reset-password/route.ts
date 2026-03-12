@@ -15,27 +15,17 @@ export async function GET(request: NextRequest) {
     const errorCode = searchParams.get("error_code");
     const errorDescription = searchParams.get("error_description");
 
-    if (error || errorCode) {
-      const isExpiredOrUsed =
-        error === "access_denied" ||
-        errorCode === "otp_expired" ||
-        errorDescription?.toLowerCase().includes("expired") ||
-        errorDescription?.toLowerCase().includes("already") ||
-        errorDescription?.toLowerCase().includes("used");
+    if (error || errorCode || errorDescription) {
+      // Forward raw Supabase error params to the reset-password page,
+      // which already handles classification (expired vs other errors)
+      const params = new URLSearchParams();
+      if (error) params.set("error", error);
+      if (errorCode) params.set("error_code", errorCode);
+      if (errorDescription) params.set("error_description", errorDescription);
 
-      const errorParam = isExpiredOrUsed
-        ? "link_expired"
-        : encodeURIComponent(
-            errorDescription || error || "Missing verification code",
-          );
-
-      const redirectUrl = new URL(`${origin}/reset-password`);
-      redirectUrl.searchParams.set("error", errorParam);
-      if (errorCode) redirectUrl.searchParams.set("error_code", errorCode);
-      if (errorDescription)
-        redirectUrl.searchParams.set("error_description", errorDescription);
-
-      return NextResponse.redirect(redirectUrl.toString());
+      return NextResponse.redirect(
+        `${origin}/reset-password?${params.toString()}`,
+      );
     }
 
     return NextResponse.redirect(
