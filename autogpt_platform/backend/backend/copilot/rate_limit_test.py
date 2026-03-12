@@ -173,7 +173,7 @@ class TestRecordTokenUsage:
         mock_pipe = AsyncMock()
         mock_pipe.execute = AsyncMock(return_value=[])
         mock_redis = AsyncMock()
-        mock_redis.pipeline = lambda: mock_pipe
+        mock_redis.pipeline = lambda **_kwargs: mock_pipe
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",

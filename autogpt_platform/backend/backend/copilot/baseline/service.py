@@ -249,9 +249,12 @@ async def stream_chat_completion_baseline(
             tool_calls_by_index: dict[int, dict[str, str]] = {}
 
             async for chunk in response:
-                # Capture token usage from the final chunk
+                # Capture token usage from the final chunk.
+                # Use = (not +=) for prompt tokens: each API call's
+                # prompt_tokens includes the full conversation history,
+                # so the last round already covers all prior context.
                 if chunk.usage:
-                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    turn_prompt_tokens = chunk.usage.prompt_tokens or 0
                     turn_completion_tokens += chunk.usage.completion_tokens or 0
 
                 delta = chunk.choices[0].delta if chunk.choices else None

@@ -1362,7 +1362,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for session and weekly windows.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for session and weekly windows.\nWhen ``session_id`` is omitted, session usage will be reported as 0\n(no session context to query).",
         "operationId": "getV2GetCopilotUsage",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

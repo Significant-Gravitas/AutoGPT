@@ -395,6 +395,8 @@ async def get_copilot_usage(
     """Get CoPilot usage status for the authenticated user.
 
     Returns current token usage vs limits for session and weekly windows.
+    When ``session_id`` is omitted, session usage will be reported as 0
+    (no session context to query).
     """
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
