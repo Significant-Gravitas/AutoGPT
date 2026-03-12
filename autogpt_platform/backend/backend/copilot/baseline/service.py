@@ -480,12 +480,13 @@ async def stream_chat_completion_baseline(
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
-    # Yield usage after finally so it reaches the client before StreamFinish
-    if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-        yield StreamUsage(
-            promptTokens=turn_prompt_tokens,
-            completionTokens=turn_completion_tokens,
-            totalTokens=turn_prompt_tokens + turn_completion_tokens,
-        )
+        # Yield usage and finish inside finally so they are attempted even
+        # when GeneratorExit (client disconnect) terminates the generator.
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            yield StreamUsage(
+                promptTokens=turn_prompt_tokens,
+                completionTokens=turn_completion_tokens,
+                totalTokens=turn_prompt_tokens + turn_completion_tokens,
+            )
 
-    yield StreamFinish()
+        yield StreamFinish()
