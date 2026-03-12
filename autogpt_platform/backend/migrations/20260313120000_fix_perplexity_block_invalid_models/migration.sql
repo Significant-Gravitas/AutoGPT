@@ -11,7 +11,7 @@ SET "constantInput" = JSONB_SET(
     '{model}',
     '"perplexity/sonar"'::jsonb
 )
-WHERE "AgentBlock_id" = 'c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f'
+WHERE "agentBlockId" = 'c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f'
   AND "constantInput"::jsonb ? 'model'
   AND "constantInput"::jsonb->>'model' NOT IN (
       'perplexity/sonar',
