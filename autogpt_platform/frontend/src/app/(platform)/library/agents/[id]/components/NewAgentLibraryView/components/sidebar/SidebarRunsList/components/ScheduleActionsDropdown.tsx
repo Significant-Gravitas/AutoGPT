@@ -39,15 +39,15 @@ export function ScheduleActionsDropdown({ agent, schedule, onDeleted }: Props) {
       await deleteSchedule({ scheduleId: schedule.id });
 
       toast({ title: "Schedule deleted" });
+      setShowDeleteDialog(false);
+
+      onDeleted?.();
 
       queryClient.invalidateQueries({
         queryKey: getGetV1ListExecutionSchedulesForAGraphQueryOptions(
           agent.graph_id,
         ).queryKey,
       });
-
-      setShowDeleteDialog(false);
-      onDeleted?.();
     } catch (error: unknown) {
       toast({
         title: "Failed to delete schedule",
