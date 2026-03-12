@@ -677,6 +677,7 @@ async def llm_call(
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls,
+            timeout=60.0,  # Add 60s timeout to prevent hanging requests
         )
 
         tool_calls = extract_openai_tool_calls(response)
@@ -786,6 +787,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
+            timeout=60.0,  # Add 60s timeout to prevent hanging requests
         )
         return LLMResponse(
             raw_response=response.choices[0].message,
