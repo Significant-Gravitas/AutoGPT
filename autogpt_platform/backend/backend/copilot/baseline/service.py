@@ -227,6 +227,9 @@ async def stream_chat_completion_baseline(
     # Token usage accumulators — populated from streaming chunks
     turn_prompt_tokens = 0
     turn_completion_tokens = 0
+    # Track message count before the tool loop so the fallback estimator
+    # only counts messages added during *this* turn, not the full history.
+    _msgs_before_turn = len(openai_messages)
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
             # Open a new step for each LLM round
@@ -429,9 +432,12 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens from text length when the provider
         # does not honour stream_options={"include_usage": True}.
+        # Only count messages added during *this* turn (user message +
+        # tool rounds), not the full conversation history.
         # Rough estimate: 1 token ≈ 4 characters.
         if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
-            prompt_chars = sum(len(m.get("content") or "") for m in openai_messages)
+            turn_messages = openai_messages[_msgs_before_turn - 1 :]
+            prompt_chars = sum(len(m.get("content") or "") for m in turn_messages)
             turn_prompt_tokens = max(prompt_chars // 4, 1)
             turn_completion_tokens = max(len(assistant_text) // 4, 1)
             logger.info(
