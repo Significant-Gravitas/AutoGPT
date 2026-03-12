@@ -250,11 +250,11 @@ async def stream_chat_completion_baseline(
 
             async for chunk in response:
                 # Capture token usage from the final chunk.
-                # Use = (not +=) for prompt tokens: each API call's
-                # prompt_tokens includes the full conversation history,
-                # so the last round already covers all prior context.
+                # Use += to sum all rounds: each API call bills
+                # independently for its prompt tokens, so the total
+                # billed amount is the sum across all rounds.
                 if chunk.usage:
-                    turn_prompt_tokens = chunk.usage.prompt_tokens or 0
+                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     turn_completion_tokens += chunk.usage.completion_tokens or 0
 
                 delta = chunk.choices[0].delta if chunk.choices else None

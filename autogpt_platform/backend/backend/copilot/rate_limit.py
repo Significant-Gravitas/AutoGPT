@@ -50,9 +50,13 @@ class RateLimitExceeded(Exception):
         self.window = window
         self.resets_at = resets_at
         delta = resets_at - datetime.now(UTC)
-        hours = int(delta.total_seconds() // 3600)
-        minutes = int((delta.total_seconds() % 3600) // 60)
-        time_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        total_secs = delta.total_seconds()
+        if total_secs <= 0:
+            time_str = "now"
+        else:
+            hours = int(total_secs // 3600)
+            minutes = int((total_secs % 3600) // 60)
+            time_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
         super().__init__(
             f"You've reached your {window} usage limit. Resets in {time_str}."
         )

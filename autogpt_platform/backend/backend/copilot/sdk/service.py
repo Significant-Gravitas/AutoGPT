@@ -1138,12 +1138,10 @@ async def stream_chat_completion_sdk(
                             )
 
                         # Capture token usage from ResultMessage.
-                        # Use = (not +=) for input tokens: each SDK
-                        # invocation's input_tokens includes the full
-                        # conversation history, so the last round already
-                        # covers all prior context.
+                        # Use += to sum all rounds: each SDK invocation
+                        # bills independently for its input tokens.
                         if sdk_msg.usage:
-                            turn_prompt_tokens = sdk_msg.usage.get("input_tokens", 0)
+                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
                             turn_completion_tokens += sdk_msg.usage.get(
                                 "output_tokens", 0
                             )
