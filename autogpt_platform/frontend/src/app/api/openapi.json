@@ -11830,14 +11830,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "is_processing": {
-            "type": "boolean",
-            "title": "Is Processing",
-            "default": false
-          }
+          "is_processing": { "type": "boolean", "title": "Is Processing" }
         },
         "type": "object",
-        "required": ["id", "created_at", "updated_at"],
+        "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },
