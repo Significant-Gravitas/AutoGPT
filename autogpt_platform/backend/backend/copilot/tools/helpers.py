@@ -173,16 +173,16 @@ async def execute_block(
         )
 
     except BlockError as e:
-        logger.warning(f"Block execution failed: {e}")
+        logger.warning("Block execution failed: %s", e)
         return ErrorResponse(
             message=f"Block execution failed: {e}",
             error=str(e),
             session_id=session_id,
         )
     except Exception as e:
-        logger.error(f"Unexpected error executing block: {e}", exc_info=True)
+        logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
-            message=f"Failed to execute block: {str(e)}",
+            message=f"Failed to execute block: {e}",
             error=str(e),
             session_id=session_id,
         )

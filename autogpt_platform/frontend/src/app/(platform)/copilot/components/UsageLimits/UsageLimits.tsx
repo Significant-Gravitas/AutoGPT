@@ -41,15 +41,17 @@ function UsageBar({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-medium text-neutral-700">{label}</span>
-        <span className="text-[11px] tabular-nums text-neutral-500">
+        <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+          {label}
+        </span>
+        <span className="text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
           {percent}% used
         </span>
       </div>
-      <div className="text-[10px] text-neutral-400">
+      <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
         Resets in {formatResetTime(resetsAt)}
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
@@ -67,13 +69,15 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
 
   if (!hasSessionLimit && !hasWeeklyLimit) {
     return (
-      <div className="text-xs text-neutral-500">No usage limits configured</div>
+      <div className="text-xs text-neutral-500 dark:text-neutral-400">
+        No usage limits configured
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs font-semibold text-neutral-800">
+      <div className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
         Plan usage limits
       </div>
       {hasSessionLimit && (
@@ -94,7 +98,7 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
       )}
       <a
         href="/profile/credits"
-        className="text-[11px] text-blue-600 hover:underline"
+        className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
       >
         Learn more about usage limits
       </a>
@@ -113,10 +117,10 @@ export function UsageLimits({ sessionID }: Props) {
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="rounded p-1.5 hover:bg-neutral-100"
+          className="rounded p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           aria-label="Usage limits"
         >
-          <ChartBar className="h-4 w-4 text-neutral-500" />
+          <ChartBar className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-4">

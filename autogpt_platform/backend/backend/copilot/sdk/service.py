@@ -1374,12 +1374,13 @@ async def stream_chat_completion_sdk(
                 turn_cost_usd,
             )
             # Record for rate limiting counters
-            await record_token_usage(
-                user_id=user_id or "",
-                session_id=session_id,
-                prompt_tokens=turn_prompt_tokens,
-                completion_tokens=turn_completion_tokens,
-            )
+            if user_id:
+                await record_token_usage(
+                    user_id=user_id,
+                    session_id=session_id,
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                )
 
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the

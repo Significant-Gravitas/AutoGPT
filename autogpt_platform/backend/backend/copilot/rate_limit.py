@@ -119,13 +119,18 @@ async def get_usage_status(
     session_resets_at = datetime.now(UTC) + timedelta(seconds=_SESSION_TTL_SECONDS)
     try:
         redis = await get_redis_async()
-        session_raw, weekly_raw = await asyncio.gather(
+        session_raw, weekly_raw, session_ttl = await asyncio.gather(
             redis.get(_session_key(user_id, session_id)),
             redis.get(_weekly_key(user_id)),
+            redis.ttl(_session_key(user_id, session_id)),
         )
         session_used = int(session_raw or 0)
         weekly_used = int(weekly_raw or 0)
-        session_resets_at = await _session_reset_from_ttl(redis, user_id, session_id)
+        session_resets_at = (
+            datetime.now(UTC) + timedelta(seconds=session_ttl)
+            if session_ttl > 0
+            else datetime.now(UTC) + timedelta(seconds=_SESSION_TTL_SECONDS)
+        )
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for usage status, returning zeros")
         session_used = 0
