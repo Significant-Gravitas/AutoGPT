@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 
@@ -77,6 +78,8 @@ export function useCopilotPage() {
   // merging consecutive assistant UIMessages at the page boundary so
   // reasoning + response parts stay in a single bubble.
   const messages = concatWithAssistantMerge(olderMessages, currentMessages);
+
+  useCopilotNotifications(sessionId);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =

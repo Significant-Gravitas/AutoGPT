@@ -15,6 +15,8 @@ import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
+import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -121,6 +123,7 @@ export function CopilotPage() {
         onDrop={handleDrop}
       >
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+        <NotificationBanner />
         {/* Drop overlay */}
         <div
           className={cn(
@@ -208,6 +211,7 @@ export function CopilotPage() {
           onCancel={handleCancelDelete}
         />
       )}
+      <NotificationDialog />
     </SidebarProvider>
   );
 }
