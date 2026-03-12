@@ -296,7 +296,7 @@ class TestParseToml:
 
 
 try:
-    import pyarrow as _pa  # noqa: F401
+    import pyarrow as _pa  # noqa: F401  # pyright: ignore[reportMissingImports]
 
     _has_pyarrow = True
 except ImportError:
@@ -363,7 +363,7 @@ class TestParseExcel:
 
         df = pd.DataFrame({"A": [1.0, float("nan"), 3.0], "B": ["x", "y", None]})
         buf = io.BytesIO()
-        df.to_excel(buf, index=False)
+        df.to_excel(buf, index=False)  # type: ignore[arg-type]
         result = parse_file_content(buf.getvalue(), "xlsx")
         # Row with NaN in float col → None, not float('nan')
         assert result[2][0] is None  # float NaN → None
