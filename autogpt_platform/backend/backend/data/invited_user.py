@@ -2,7 +2,9 @@ import asyncio
 import csv
 import io
 import logging
+import os
 import re
+import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
@@ -16,11 +18,14 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.db import transaction
 from backend.data.model import User
+from backend.data.redis_client import get_redis_async
 from backend.data.tally import get_business_understanding_input_from_tally, mask_email
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     merge_business_understanding_data,
 )
+from backend.data.user import get_user_by_email, get_user_by_id
+from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
@@ -32,9 +37,8 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 _settings = Settings()
 
-# Process-local dedup for Tally seed tasks.  Does not deduplicate across
-# multiple workers; that is acceptable because the underlying operation is
-# idempotent and the staleness check below handles stuck entries on restart.
+_WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
+
 _tally_seed_tasks: dict[str, asyncio.Task] = {}
 _TALLY_STALE_SECONDS = 300
 _MAX_TALLY_ERROR_LENGTH = 200
@@ -323,7 +327,7 @@ def _parse_bulk_invite_csv(text: str) -> list[_ParsedInviteRow]:
     header = [cell.lower() for cell in indexed_rows[0][1]]
     has_header = "email" in header
     email_index = header.index("email") if has_header else 0
-    name_index: int | None = (
+    name_index: Optional[int] = (
         header.index("name")
         if has_header and "name" in header
         else (1 if not has_header else None)
@@ -497,6 +501,32 @@ async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
     if invited_user.status == prisma.enums.InvitedUserStatus.REVOKED:
         return
 
+    try:
+        r = await get_redis_async()
+    except Exception:
+        r = None
+
+    lock: AsyncClusterLock | None = None
+
+    if r is not None:
+        lock = AsyncClusterLock(
+            redis=r,
+            key=f"tally_seed:{invited_user_id}",
+            owner_id=_WORKER_ID,
+            timeout=_TALLY_STALE_SECONDS,
+        )
+        current_owner = await lock.try_acquire()
+
+        if current_owner is None:
+            logger.warn("Redis unvailable for tally lock - skipping tally enrichement")
+            return
+        elif current_owner != _WORKER_ID:
+            logger.debug(
+                "Tally seed for %s already locked by %s, skipping",
+                invited_user_id,
+                current_owner,
+            )
+            return
     if (
         invited_user.tallyStatus == prisma.enums.TallyComputationStatus.RUNNING
         and invited_user.updatedAt is not None
@@ -606,6 +636,7 @@ async def _open_signup_create_user(
     return User.from_db(user)
 
 
+# TODO: We need to change this functions logic before going live
 async def get_or_activate_user(user_data: dict) -> User:
     auth_user_id = user_data.get("sub")
     if not auth_user_id:
@@ -621,13 +652,12 @@ async def get_or_activate_user(user_data: dict) -> User:
         user_metadata.get("name") if isinstance(user_metadata, dict) else None
     )
 
-    existing_user = await prisma.models.User.prisma().find_unique(
-        where={"id": auth_user_id}
-    )
-    if existing_user is not None:
-        return User.from_db(existing_user)
+    existing_user = await get_user_by_id(auth_user_id)
 
-    if not _settings.config.enable_invite_gate:
+    if existing_user is not None:
+        return existing_user
+
+    if not _settings.config.enable_invite_gate or normalized_email.endswith("@agpt.co"):
         return await _open_signup_create_user(
             auth_user_id, normalized_email, metadata_name
         )
@@ -698,8 +728,6 @@ async def get_or_activate_user(user_data: dict) -> User:
         raise RuntimeError(
             f"UniqueViolationError during activation but user {auth_user_id} not found"
         )
-
-    from backend.data.user import get_user_by_email, get_user_by_id
 
     get_user_by_id.cache_delete(auth_user_id)
     get_user_by_email.cache_delete(normalized_email)
