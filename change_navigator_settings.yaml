@@ -1,0 +1,15 @@
+# Change Navigator — default session configuration
+# Edit these values before each new coachee or week.
+# -------------------------------------------------------
+
+coachee_name: "Executive Name"    # Full name of the coachee
+week_number: 1                    # Current week in the coaching programme
+coach_name: "Adi Ben-Nesher"      # Lead coach (appears in messages)
+language: "auto"                  # "auto" | "en" | "he"
+
+# LLM settings
+llm_model: "gpt-4"                # Model used for transcript extraction
+api_budget: 0.50                  # Max USD spend per check-in session
+
+# Output
+output_dir: "change_navigator_output"   # Directory for saved JSON journals
