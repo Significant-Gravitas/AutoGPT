@@ -140,13 +140,20 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
+    GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_2_5_PRO = "google/gemini-2.5-pro"
+    GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
+    GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
+    GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
+    MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
@@ -340,23 +347,56 @@ MODEL_METADATA = {
         "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
     ),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+    LlmModel.GEMINI_2_5_PRO_PREVIEW: ModelMetadata(
         "open_router",
-        1050000,
-        8192,
+        1048576,
+        65536,
         "Gemini 2.5 Pro Preview 03.25",
         "OpenRouter",
         "Google",
         2,
     ),
-    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
-        "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
+    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 2.5 Pro",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3.1 Pro Preview",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3 Flash Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata(
         "open_router", 1048576, 65535, "Gemini 2.5 Flash", "OpenRouter", "Google", 1
     ),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata(
         "open_router", 1048576, 8192, "Gemini 2.0 Flash 001", "OpenRouter", "Google", 1
+    ),
+    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3.1 Flash Lite Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
         "open_router",
@@ -378,6 +418,42 @@ MODEL_METADATA = {
     ),
     LlmModel.MISTRAL_NEMO: ModelMetadata(
         "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
+    ),
+    LlmModel.MISTRAL_LARGE_3: ModelMetadata(
+        "open_router",
+        262144,
+        None,
+        "Mistral Large 3 2512",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_MEDIUM_3_1: ModelMetadata(
+        "open_router",
+        131072,
+        None,
+        "Mistral Medium 3.1",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_SMALL_3_2: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Mistral Small 3.2 24B",
+        "OpenRouter",
+        "Mistral AI",
+        1,
+    ),
+    LlmModel.CODESTRAL: ModelMetadata(
+        "open_router",
+        256000,
+        None,
+        "Codestral 2508",
+        "OpenRouter",
+        "Mistral AI",
+        1,
     ),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
