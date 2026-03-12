@@ -161,13 +161,18 @@ async def test_retry_invited_user_tally_resets_state_and_schedules(
 async def test_get_or_activate_user_requires_invite(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    user_repo = Mock()
-    user_repo.find_unique = AsyncMock(return_value=None)
     invited_user_repo = Mock()
     invited_user_repo.find_unique = AsyncMock(return_value=None)
 
+    mock_get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
+    mock_get_user_by_id.cache_delete = Mock()
     mocker.patch(
-        "backend.data.invited_user.prisma.models.User.prisma", return_value=user_repo
+        "backend.data.invited_user.get_user_by_id",
+        mock_get_user_by_id,
+    )
+    mocker.patch(
+        "backend.data.invited_user._settings.config.enable_invite_gate",
+        True,
     )
     mocker.patch(
         "backend.data.invited_user.prisma.models.InvitedUser.prisma",
