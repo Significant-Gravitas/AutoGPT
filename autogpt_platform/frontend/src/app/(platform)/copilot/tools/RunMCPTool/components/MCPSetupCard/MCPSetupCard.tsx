@@ -12,7 +12,7 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { useContext, useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
-import { serverHost } from "../../helpers";
+import { serverHost, serviceNameFromHost } from "../../helpers";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -39,6 +39,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // setup_info.agent_id is set to the server_url in the backend
   const serverUrl = output.setup_info.agent_id;
   const host = serverHost(serverUrl);
+  const service = serviceNameFromHost(host);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,10 +96,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       }
 
       setConnected(true);
-      onSend(
-        retryInstruction ??
-          "I've connected the MCP server credentials. Please retry.",
-      );
+      onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
       const err = e as Record<string, unknown>;
       if (err?.status === 400) {
@@ -137,10 +135,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
       setConnected(true);
-      onSend(
-        retryInstruction ??
-          "I've connected the MCP server credentials. Please retry.",
-      );
+      onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
       const err = e as Record<string, unknown>;
       setError(
@@ -155,7 +150,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   if (connected) {
     return (
       <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-        Connected to {host}!
+        Connected to {service}!
       </div>
     );
   }
@@ -171,7 +166,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           onClick={handleConnect}
           disabled={loading}
         >
-          {loading ? "Connecting…" : `Connect to ${host}`}
+          {loading ? "Connecting…" : `Connect ${service}`}
         </Button>
 
         {error && (
@@ -184,7 +179,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div className="mt-3 flex gap-2">
             <input
               type="password"
-              aria-label={`API token for ${host}`}
+              aria-label={`API token for ${service}`}
               placeholder="Paste API token"
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
