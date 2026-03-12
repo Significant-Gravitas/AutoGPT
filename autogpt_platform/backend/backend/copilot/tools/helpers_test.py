@@ -296,3 +296,38 @@ async def test_coerce_union_type_preserves_valid_member():
     # list[str] should NOT be stringified to '["a", "b"]'
     assert block._captured_inputs["content"] == ["a", "b"]
     assert isinstance(block._captured_inputs["content"], list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_coerce_inner_elements_of_generic():
+    """Inner elements of generic containers are recursively coerced."""
+    block = _make_block(
+        "inner-coerce",
+        "Inner Coerce",
+        {"values": list[str]},
+    )
+
+    mock_workspace_db = MagicMock()
+    mock_workspace_db.get_or_create_workspace = AsyncMock(
+        return_value=MagicMock(id="ws-1")
+    )
+
+    with patch(
+        "backend.copilot.tools.helpers.workspace_db",
+        return_value=mock_workspace_db,
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="inner-coerce",
+            # Inner elements are ints, but target is list[str]
+            input_data={"values": [1, 2, 3]},
+            user_id=_TEST_USER_ID,
+            session_id=_TEST_SESSION_ID,
+            node_exec_id="exec-8",
+            matched_credentials={},
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    # Inner elements should be coerced from int to str
+    assert block._captured_inputs["values"] == ["1", "2", "3"]
+    assert all(isinstance(v, str) for v in block._captured_inputs["values"])
