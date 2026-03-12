@@ -426,6 +426,20 @@ async def stream_chat_completion_baseline(
             except Exception:
                 logger.warning("[Baseline] Langfuse trace context teardown failed")
 
+        # Fallback: estimate tokens from text length when the provider
+        # does not honour stream_options={"include_usage": True}.
+        # Rough estimate: 1 token ≈ 4 characters.
+        if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
+            prompt_chars = sum(len(m.get("content", "")) for m in openai_messages)
+            turn_prompt_tokens = max(prompt_chars // 4, 1)
+            turn_completion_tokens = max(len(assistant_text) // 4, 1)
+            logger.info(
+                "[Baseline] No streaming usage reported; estimated tokens: "
+                "prompt=%d, completion=%d",
+                turn_prompt_tokens,
+                turn_completion_tokens,
+            )
+
         # Emit token usage and update session for persistence
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
             total_tokens = turn_prompt_tokens + turn_completion_tokens

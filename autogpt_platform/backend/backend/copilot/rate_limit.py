@@ -83,7 +83,7 @@ def _weekly_reset_time() -> datetime:
 
 
 async def _session_reset_from_ttl(
-    redis: AsyncRedis, user_id: str, session_id: str  # type: ignore[type-arg]
+    redis: AsyncRedis, user_id: str, session_id: str
 ) -> datetime:
     """Derive session reset time from the Redis key's actual TTL.
 
