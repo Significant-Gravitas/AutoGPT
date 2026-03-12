@@ -652,14 +652,13 @@ async def get_or_activate_user(user_data: dict) -> User:
         user_metadata.get("name") if isinstance(user_metadata, dict) else None
     )
 
+    existing_user = None
     try:
         existing_user = await get_user_by_id(auth_user_id)
     except ValueError:
         existing_user = None
     except Exception:
         logger.exception("Error on get user by id during tally enrichment process")
-    finally:
-        existing_user = None
 
     if existing_user is not None:
         return existing_user
