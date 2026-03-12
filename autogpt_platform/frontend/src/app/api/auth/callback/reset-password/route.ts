@@ -29,9 +29,13 @@ export async function GET(request: NextRequest) {
             errorDescription || error || "Missing verification code",
           );
 
-      return NextResponse.redirect(
-        `${origin}/reset-password?error=${errorParam}`,
-      );
+      const redirectUrl = new URL(`${origin}/reset-password`);
+      redirectUrl.searchParams.set("error", errorParam);
+      if (errorCode) redirectUrl.searchParams.set("error_code", errorCode);
+      if (errorDescription)
+        redirectUrl.searchParams.set("error_description", errorDescription);
+
+      return NextResponse.redirect(redirectUrl.toString());
     }
 
     return NextResponse.redirect(
