@@ -256,6 +256,10 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
     against the origin (``list`` for ``list[str]``).  Returns ``False`` when
     uncertain so the caller falls through to :func:`convert`.
     """
+    # typing.Any cannot be used with isinstance(); treat as always satisfied.
+    if target is Any:
+        return True
+
     origin = get_origin(target)
 
     if origin is Union or origin is types.UnionType:
