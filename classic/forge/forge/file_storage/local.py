@@ -77,7 +77,10 @@ class LocalFileStorage(FileStorage):
         full_path = self.get_path(path)
         if any(m in mode for m in ("w", "a", "x")):
             full_path.parent.mkdir(parents=True, exist_ok=True)
-        return open(full_path, mode)  # type: ignore
+        
+        # Ensure utf-8 encoding for text files to maintain cross-platform compatibility
+        encoding = None if "b" in mode else "utf-8"
+        return open(full_path, mode, encoding=encoding)  # type: ignore
 
     @overload
     def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
