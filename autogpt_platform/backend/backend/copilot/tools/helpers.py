@@ -13,6 +13,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.type import convert
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
@@ -110,6 +111,15 @@ async def execute_block(
                     message=f"Failed to retrieve credentials for {field_name}",
                     session_id=session_id,
                 )
+
+        # Convert non-matching data types to the expected input schema.
+        # This mirrors the executor's validate_exec() logic (executor/utils.py)
+        # and allows string values (e.g. from @@agptfile: expansion) to be
+        # coerced into the block's expected types (e.g. list[list[str]]).
+        for name, data_type in block.input_schema.__annotations__.items():
+            value = input_data.get(name)
+            if (value is not None) and (type(value) is not data_type):
+                input_data[name] = convert(value, data_type)
 
         # Execute the block and collect outputs
         outputs: dict[str, list[Any]] = defaultdict(list)
