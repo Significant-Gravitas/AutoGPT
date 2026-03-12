@@ -191,7 +191,9 @@ async def test_get_or_activate_user_creates_user_from_invite(
     created_user = _user_db_record()
 
     outside_user_repo = Mock()
-    outside_user_repo.find_unique = AsyncMock(side_effect=[None, created_user])
+    # Only called once at post-transaction verification (line 741);
+    # get_user_by_id (line 657) uses prisma.user.find_unique, not this mock.
+    outside_user_repo.find_unique = AsyncMock(return_value=created_user)
 
     inside_user_repo = Mock()
     inside_user_repo.find_unique = AsyncMock(return_value=None)
@@ -214,6 +216,20 @@ async def test_get_or_activate_user_creates_user_from_invite(
     async def fake_transaction():
         yield tx
 
+    # Mock get_user_by_id since it uses prisma.user.find_unique (global client),
+    # not prisma.models.User.prisma().find_unique which we mock above.
+    mock_get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
+    mock_get_user_by_id.cache_delete = Mock()
+    mocker.patch(
+        "backend.data.invited_user.get_user_by_id",
+        mock_get_user_by_id,
+    )
+    mock_get_user_by_email = AsyncMock()
+    mock_get_user_by_email.cache_delete = Mock()
+    mocker.patch(
+        "backend.data.invited_user.get_user_by_email",
+        mock_get_user_by_email,
+    )
     ensure_profile = mocker.patch(
         "backend.data.invited_user._ensure_default_profile",
         AsyncMock(),
@@ -234,8 +250,6 @@ async def test_get_or_activate_user_creates_user_from_invite(
         "backend.data.invited_user.prisma.models.InvitedUser.prisma",
         side_effect=invited_user_prisma,
     )
-    mocker.patch("backend.data.user.get_user_by_id.cache_delete", Mock())
-    mocker.patch("backend.data.user.get_user_by_email.cache_delete", Mock())
 
     user = await get_or_activate_user(
         {
