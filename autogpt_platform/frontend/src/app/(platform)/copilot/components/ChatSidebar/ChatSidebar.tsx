@@ -59,8 +59,6 @@ export function ChatSidebar() {
     setNotificationsEnabled,
     isSoundEnabled,
     toggleSound,
-    setShowNotificationDialog,
-    clearCopilotLocalData,
   } = useCopilotUIStore();
 
   async function handleToggleNotifications() {
@@ -331,19 +329,6 @@ export function ChatSidebar() {
                             disabled={!isNotificationsEnabled}
                           />
                         </label>
-                        <hr className="border-zinc-200" />
-                        <button
-                          onClick={() => setShowNotificationDialog(true)}
-                          className="rounded px-1 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100"
-                        >
-                          Show notification popup
-                        </button>
-                        <button
-                          onClick={clearCopilotLocalData}
-                          className="rounded px-1 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
-                        >
-                          Clear local data
-                        </button>
                       </div>
                     </PopoverContent>
                   </Popover>
