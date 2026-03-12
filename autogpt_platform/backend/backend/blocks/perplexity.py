@@ -36,6 +36,20 @@ class PerplexityModel(str, Enum):
     SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
 
 
+def _sanitize_perplexity_model(value: Any) -> PerplexityModel:
+    """Return a valid PerplexityModel, falling back to SONAR for invalid values."""
+    if isinstance(value, PerplexityModel):
+        return value
+    try:
+        return PerplexityModel(value)
+    except ValueError:
+        logger.warning(
+            f"Invalid PerplexityModel '{value}', "
+            f"falling back to {PerplexityModel.SONAR.value}"
+        )
+        return PerplexityModel.SONAR
+
+
 PerplexityCredentials = CredentialsMetaInput[
     Literal[ProviderName.OPEN_ROUTER], Literal["api_key"]
 ]
@@ -81,33 +95,16 @@ class PerplexityBlock(Block):
             """Fall back to SONAR if the model value is not a valid
             PerplexityModel (e.g. an OpenAI model ID set by the agent
             generator)."""
-            if isinstance(v, PerplexityModel):
-                return v
-            try:
-                return PerplexityModel(v)
-            except ValueError:
-                logger.warning(
-                    f"Invalid PerplexityModel '{v}', "
-                    f"falling back to {PerplexityModel.SONAR.value}"
-                )
-                return PerplexityModel.SONAR
+            return _sanitize_perplexity_model(v)
 
         @classmethod
         def validate_data(cls, data: BlockInput) -> str | None:
             """Sanitize the model field before JSON schema validation so that
-            invalid values (e.g. OpenAI model IDs injected by the agent
-            generator) are replaced with the default instead of raising a
+            invalid values are replaced with the default instead of raising a
             BlockInputError."""
             model_value = data.get("model")
             if model_value is not None:
-                try:
-                    PerplexityModel(model_value)
-                except ValueError:
-                    logger.warning(
-                        f"Invalid PerplexityModel '{model_value}' in input "
-                        f"data, replacing with {PerplexityModel.SONAR.value}"
-                    )
-                    data["model"] = PerplexityModel.SONAR.value
+                data["model"] = _sanitize_perplexity_model(model_value).value
             return super().validate_data(data)
 
         system_prompt: str = SchemaField(
