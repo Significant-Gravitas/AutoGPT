@@ -14,6 +14,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -180,8 +181,22 @@ function APIKeyTabContent({
     onSubmit,
   } = useAPIKeyCredentialsModal({ schema, siblingInputs, onCredentialsCreate });
 
-  if (isLoading || !supportsApiKey) {
+  if (!supportsApiKey && !isLoading) {
     return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-4 w-3/4" />
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-68" />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -241,23 +256,7 @@ function APIKeyTabContent({
                 type="datetime-local"
                 placeholder="Select expiration date..."
                 value={field.value}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value) {
-                    const dateTime = new Date(value);
-                    dateTime.setHours(0, 0, 0, 0);
-                    const year = dateTime.getFullYear();
-                    const month = String(dateTime.getMonth() + 1).padStart(
-                      2,
-                      "0",
-                    );
-                    const day = String(dateTime.getDate()).padStart(2, "0");
-                    const normalizedValue = `${year}-${month}-${day}T00:00`;
-                    field.onChange(normalizedValue);
-                  } else {
-                    field.onChange(value);
-                  }
-                }}
+                onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
                 name={field.name}
               />
