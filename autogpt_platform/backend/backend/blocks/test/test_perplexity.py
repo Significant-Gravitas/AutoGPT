@@ -77,3 +77,5 @@ class TestPerplexityValidateData:
         data = _make_input()  # no model key
         error = PerplexityBlock.Input.validate_data(data)
         assert error is None
+        inp = PerplexityBlock.Input(**data)
+        assert inp.model == PerplexityModel.SONAR
