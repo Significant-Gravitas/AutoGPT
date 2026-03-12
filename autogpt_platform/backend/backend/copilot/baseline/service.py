@@ -430,16 +430,23 @@ async def stream_chat_completion_baseline(
             except Exception:
                 logger.warning("[Baseline] Langfuse trace context teardown failed")
 
-        # Fallback: estimate tokens from text length when the provider
-        # does not honour stream_options={"include_usage": True}.
+        # Fallback: estimate tokens via tiktoken when the provider does
+        # not honour stream_options={"include_usage": True}.
         # Only count messages added during *this* turn (user message +
         # tool rounds), not the full conversation history.
-        # Rough estimate: 1 token ≈ 4 characters.
         if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
+            from backend.util.prompt import (
+                estimate_token_count,
+                estimate_token_count_str,
+            )
+
             turn_messages = openai_messages[_msgs_before_turn - 1 :]
-            prompt_chars = sum(len(m.get("content") or "") for m in turn_messages)
-            turn_prompt_tokens = max(prompt_chars // 4, 1)
-            turn_completion_tokens = max(len(assistant_text) // 4, 1)
+            turn_prompt_tokens = max(
+                estimate_token_count(turn_messages, model=config.model), 1
+            )
+            turn_completion_tokens = max(
+                estimate_token_count_str(assistant_text, model=config.model), 1
+            )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
                 "prompt=%d, completion=%d",
