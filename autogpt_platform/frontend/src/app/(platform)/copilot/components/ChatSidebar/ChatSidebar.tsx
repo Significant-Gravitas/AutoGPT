@@ -24,15 +24,6 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/molecules/Popover/Popover";
-import { Switch } from "@/components/atoms/Switch/Switch";
-import {
-  Bell,
-  BellRinging,
-  BellSlash,
   CheckCircle,
   DotsThree,
   PlusCircleIcon,
@@ -43,6 +34,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { PulseLoader } from "../PulseLoader/PulseLoader";
 
@@ -55,37 +47,7 @@ export function ChatSidebar() {
     setSessionToDelete,
     completedSessionIDs,
     clearCompletedSession,
-    isNotificationsEnabled,
-    setNotificationsEnabled,
-    isSoundEnabled,
-    toggleSound,
   } = useCopilotUIStore();
-
-  async function handleToggleNotifications() {
-    if (isNotificationsEnabled) {
-      setNotificationsEnabled(false);
-      return;
-    }
-    if (typeof Notification === "undefined") {
-      toast({
-        title: "Notifications not supported",
-        description: "Your browser does not support notifications.",
-        variant: "destructive",
-      });
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      setNotificationsEnabled(true);
-    } else {
-      toast({
-        title: "Notifications blocked",
-        description:
-          "Please allow notifications in your browser settings to enable this feature.",
-        variant: "destructive",
-      });
-    }
-  }
 
   const queryClient = useQueryClient();
 
@@ -148,6 +110,13 @@ export function ChatSidebar() {
       renameInputRef.current.select();
     }
   }, [editingSessionId]);
+
+  // Refetch session list when active session changes
+  useEffect(() => {
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey(),
+    });
+  }, [sessionId, queryClient]);
 
   // Clear completed indicator when navigating to a session (works for all paths)
   useEffect(() => {
@@ -287,52 +256,9 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center gap-1">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        className="rounded p-1 text-zinc-600 transition-colors hover:text-zinc-800"
-                        aria-label="Notification settings"
-                      >
-                        {!isNotificationsEnabled ? (
-                          <BellSlash className="!size-5" />
-                        ) : isSoundEnabled ? (
-                          <BellRinging className="!size-5" />
-                        ) : (
-                          <Bell className="!size-5" />
-                        )}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-56 p-3">
-                      <div className="flex flex-col gap-3">
-                        <label className="flex items-center justify-between">
-                          <span className="text-sm text-zinc-700">
-                            Notifications
-                          </span>
-                          <Switch
-                            checked={isNotificationsEnabled}
-                            onCheckedChange={handleToggleNotifications}
-                          />
-                        </label>
-                        <label className="flex items-center justify-between">
-                          <span
-                            className={cn(
-                              "text-sm text-zinc-700",
-                              !isNotificationsEnabled && "opacity-50",
-                            )}
-                          >
-                            Sound
-                          </span>
-                          <Switch
-                            checked={isSoundEnabled && isNotificationsEnabled}
-                            onCheckedChange={toggleSound}
-                            disabled={!isNotificationsEnabled}
-                          />
-                        </label>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  <div className="relative left-6">
+                <div className="relative left-5 flex items-center gap-1">
+                  <NotificationToggle />
+                  <div className="relative left-1">
                     <SidebarTrigger />
                   </div>
                 </div>
