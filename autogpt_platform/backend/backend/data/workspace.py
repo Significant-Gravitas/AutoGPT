@@ -344,7 +344,7 @@ async def free_deleted_path(file_id: str, workspace_id: str) -> bool:
     """
     deleted_at = datetime.now(timezone.utc)
     try:
-        await UserWorkspaceFile.prisma().update_many(
+        count = await UserWorkspaceFile.prisma().update_many(
             where={
                 "id": file_id,
                 "workspaceId": workspace_id,
@@ -354,8 +354,10 @@ async def free_deleted_path(file_id: str, workspace_id: str) -> bool:
                 "path": f"__freed__{file_id}__{int(deleted_at.timestamp())}",
             },
         )
-        logger.info(f"Freed path for soft-deleted ghost row {file_id}")
-        return True
+        if count > 0:
+            logger.info(f"Freed path for soft-deleted ghost row {file_id}")
+            return True
+        return False
     except Exception:
         logger.warning(f"Failed to free path for ghost row {file_id}")
         return False
