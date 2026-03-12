@@ -355,6 +355,25 @@ class TestParseExcel:
         result = parse_file_content(b"not xlsx bytes", "xlsx")
         assert result == b"not xlsx bytes"
 
+    def test_nan_replaced_with_none(self):
+        """NaN values in float columns must become None for JSON serializability."""
+        import math
+
+        import pandas as pd
+
+        df = pd.DataFrame({"A": [1.0, float("nan"), 3.0], "B": ["x", "y", None]})
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        result = parse_file_content(buf.getvalue(), "xlsx")
+        # Row with NaN in float col → None, not float('nan')
+        assert result[2][0] is None  # float NaN → None
+        assert result[3][1] is None  # str None → None
+        # Ensure no NaN leaks
+        for row in result[1:]:  # skip header
+            for cell in row:
+                if isinstance(cell, float):
+                    assert not math.isnan(cell), f"NaN leaked: {row}"
+
 
 # ---------------------------------------------------------------------------
 # parse_file_content — unknown format / fallback

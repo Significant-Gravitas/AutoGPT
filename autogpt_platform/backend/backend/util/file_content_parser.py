@@ -162,10 +162,13 @@ def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
     """Convert a DataFrame to ``list[list[Any]]`` with a header row.
 
     NaN values are replaced with ``None`` so the result is JSON-serializable.
+    Uses explicit cell-level checking because ``df.where(df.notna(), None)``
+    silently converts ``None`` back to ``NaN`` in float64 columns.
     """
-    df = df.where(df.notna(), None)
     header = df.columns.tolist()
-    rows = df.values.tolist()
+    rows = [
+        [None if pd.isna(cell) else cell for cell in row] for row in df.values.tolist()
+    ]
     return [header] + rows
 
 
