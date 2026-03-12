@@ -170,6 +170,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
@@ -526,6 +527,15 @@ MODEL_METADATA = {
     ),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata(
         "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
+    ),
+    LlmModel.GROK_3: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3",
+        "OpenRouter",
+        "xAI",
+        2,
     ),
     LlmModel.GROK_4: ModelMetadata(
         "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
