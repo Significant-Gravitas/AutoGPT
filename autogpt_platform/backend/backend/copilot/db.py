@@ -66,8 +66,7 @@ async def get_chat_messages_paginated(
     )
 
     has_more = len(results) > limit
-    if has_more:
-        results = results[:limit]
+    results = results[:limit]
 
     # Reverse to ascending order
     results.reverse()
