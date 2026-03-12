@@ -41,7 +41,7 @@ services:
 
   redis:
     <<: *agpt-services
-    image: redis:latest
+    image: redis:7.4
     command: redis-server --requirepass password
     ports:
       - "6379:6379"
@@ -67,7 +67,7 @@ services:
     ports:
       - "5672:5672"
   clamav:
-    image: clamav/clamav-debian:latest
+    image: clamav/clamav-debian:1.4
     ports:
       - "3310:3310"
     volumes:

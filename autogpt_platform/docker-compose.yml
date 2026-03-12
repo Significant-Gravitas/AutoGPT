@@ -85,7 +85,7 @@ services:
 
   clamav:
     <<: *agpt-services
-    image: clamav/clamav-debian:latest
+    image: clamav/clamav-debian:1.4
     ports:
       - "3310:3310"
     volumes:
