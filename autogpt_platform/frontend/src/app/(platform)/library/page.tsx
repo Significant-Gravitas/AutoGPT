@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { HeartIcon, ListIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { Tab } from "./components/LibraryTabs/LibraryTabs";
@@ -37,7 +37,7 @@ export default function LibraryPage() {
     <FavoriteAnimationProvider
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
-      <main className="container min-h-screen space-y-4 pt-16 pt-160 pb-20 sm:px-8 md:px-12">
+      <main className="container min-h-screen space-y-4 pt-16 pb-20 sm:px-8 md:px-12">
         <LibraryActionHeader setSearchTerm={setSearchTerm} />
         <LibraryAgentList
           searchTerm={searchTerm}
