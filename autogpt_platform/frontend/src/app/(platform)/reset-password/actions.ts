@@ -47,7 +47,7 @@ export async function changePassword(password: string) {
       }
 
       await supabase.auth.signOut({ scope: "global" });
-      redirect("/login");
+      return undefined;
     },
   );
 }

@@ -129,8 +129,8 @@ function ResetPasswordContent() {
       }
 
       const error = await changePassword(data.password);
-      setIsLoading(false);
       if (error) {
+        setIsLoading(false);
         toast({
           title: "Error",
           description: error,
@@ -143,8 +143,9 @@ function ResetPasswordContent() {
         description: "Password changed successfully. Redirecting to login.",
         variant: "default",
       });
+      router.push("/login");
     },
-    [changePasswordForm, toast],
+    [changePasswordForm, toast, router],
   );
 
   if (isUserLoading) {
