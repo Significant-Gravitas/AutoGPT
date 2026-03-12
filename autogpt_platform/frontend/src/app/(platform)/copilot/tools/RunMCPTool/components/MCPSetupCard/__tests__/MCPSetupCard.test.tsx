@@ -32,11 +32,11 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 function makeSetupOutput(serverUrl = "https://mcp.example.com/mcp") {
   return {
     type: "setup_requirements" as const,
-    message: "The MCP server at mcp.example.com requires authentication.",
+    message: "To continue, sign in to example.com and approve access.",
     session_id: "test-session",
     setup_info: {
       agent_id: serverUrl,
-      agent_name: "MCP: mcp.example.com",
+      agent_name: "example.com",
       user_readiness: {
         has_all_credentials: false,
         missing_credentials: {},
@@ -58,9 +58,9 @@ describe("MCPSetupCard", () => {
 
   it("renders setup message and connect button", () => {
     render(<MCPSetupCard output={makeSetupOutput()} />);
-    expect(screen.getByText(/requires authentication/)).toBeDefined();
+    expect(screen.getByText(/sign in to example\.com/i)).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /connect to mcp.example.com/i }),
+      screen.getByRole("button", { name: /connect example\.com/i }),
     ).toBeDefined();
   });
 
@@ -76,7 +76,7 @@ describe("MCPSetupCard", () => {
 
     render(<MCPSetupCard output={makeSetupOutput()} />);
     fireEvent.click(
-      screen.getByRole("button", { name: /connect to mcp.example.com/i }),
+      screen.getByRole("button", { name: /connect example\.com/i }),
     );
 
     await waitFor(() => {
@@ -100,7 +100,7 @@ describe("MCPSetupCard", () => {
 
     render(<MCPSetupCard output={makeSetupOutput()} />);
     fireEvent.click(
-      screen.getByRole("button", { name: /connect to mcp.example.com/i }),
+      screen.getByRole("button", { name: /connect example\.com/i }),
     );
 
     await waitFor(() => {
@@ -127,7 +127,7 @@ describe("MCPSetupCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/connected to mcp.example.com/i)).toBeDefined();
+      expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     });
   });
 });
