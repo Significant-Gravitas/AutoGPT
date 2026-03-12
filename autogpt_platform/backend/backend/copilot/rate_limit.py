@@ -9,6 +9,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
+from redis.exceptions import RedisError
 
 from backend.data.redis_client import get_redis_async
 
@@ -89,7 +90,7 @@ async def _session_reset_from_ttl(
         ttl: int = await redis.ttl(_session_key(user_id, session_id))  # type: ignore[union-attr]
         if ttl > 0:
             return datetime.now(UTC) + timedelta(seconds=ttl)
-    except Exception:
+    except (RedisError, ConnectionError, OSError):
         pass
     # Key doesn't exist or has no TTL — use the configured TTL
     return datetime.now(UTC) + timedelta(seconds=_SESSION_TTL_SECONDS)
@@ -118,7 +119,7 @@ async def get_usage_status(
         session_used = int(await redis.get(_session_key(user_id, session_id)) or 0)
         weekly_used = int(await redis.get(_weekly_key(user_id)) or 0)
         session_resets_at = await _session_reset_from_ttl(redis, user_id, session_id)
-    except Exception:
+    except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for usage status, returning zeros")
         session_used = 0
         weekly_used = 0
@@ -157,7 +158,7 @@ async def check_rate_limit(
         redis = await get_redis_async()
         session_used = int(await redis.get(_session_key(user_id, session_id)) or 0)
         weekly_used = int(await redis.get(_weekly_key(user_id)) or 0)
-    except Exception:
+    except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for rate limit check, allowing request")
         return
 
@@ -205,9 +206,8 @@ async def record_token_usage(
         pipe.expire(w_key, max(seconds_until_reset, 1))
 
         await pipe.execute()
-    except Exception:
+    except (RedisError, ConnectionError, OSError):
         logger.warning(
-            "Redis unavailable for recording token usage (user=%s, tokens=%d)",
-            user_id,
+            "Redis unavailable for recording token usage (tokens=%d)",
             total,
         )

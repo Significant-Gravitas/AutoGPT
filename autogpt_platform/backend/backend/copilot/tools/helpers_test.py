@@ -139,8 +139,8 @@ class TestExecuteBlockCreditCharging:
         # get_user_credit_model should not be called at all for zero-cost blocks
         mock_get_credit.assert_not_awaited()
 
-    async def test_still_returns_output_on_post_exec_insufficient_balance(self):
-        """If charging fails after execution, block output is still returned."""
+    async def test_returns_error_on_post_exec_insufficient_balance(self):
+        """If charging fails after execution (concurrent spend race), return error."""
         from backend.util.exceptions import InsufficientBalanceError
 
         block = _make_block()
@@ -171,6 +171,6 @@ class TestExecuteBlockCreditCharging:
                 matched_credentials={},
             )
 
-        # Output should still be returned even though charging failed
-        assert isinstance(result, BlockOutputResponse)
-        assert result.success is True
+        # Post-exec charge failure is treated as fatal (matches executor behavior)
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message

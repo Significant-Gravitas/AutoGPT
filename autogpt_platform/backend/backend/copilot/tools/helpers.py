@@ -115,6 +115,7 @@ async def execute_block(
 
         # Pre-execution credit check
         cost, cost_filter = block_usage_cost(block, input_data)
+        credit_model = None
         if cost > 0:
             credit_model = await get_user_credit_model(user_id)
             balance = await credit_model.get_credits(user_id)
@@ -136,9 +137,8 @@ async def execute_block(
             outputs[output_name].append(output_data)
 
         # Charge credits for block execution
-        if cost > 0:
+        if cost > 0 and credit_model:
             try:
-                credit_model = await get_user_credit_model(user_id)
                 await credit_model.spend_credits(
                     user_id=user_id,
                     cost=cost,
@@ -154,11 +154,14 @@ async def execute_block(
                     ),
                 )
             except InsufficientBalanceError:
-                # Block already executed — log warning but still return output
-                logger.warning(
-                    "Insufficient credits to charge for block %s (user=%s)",
-                    block.name,
-                    user_id,
+                # Concurrent spend drained balance after our pre-check passed.
+                # Treat as fatal to avoid unpaid execution (matches executor behavior).
+                return ErrorResponse(
+                    message=(
+                        f"Insufficient credits to charge for '{block.name}'. "
+                        "Please top up your credits to continue."
+                    ),
+                    session_id=session_id,
                 )
 
         return BlockOutputResponse(
