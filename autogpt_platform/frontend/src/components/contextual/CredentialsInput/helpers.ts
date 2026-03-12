@@ -8,6 +8,7 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
+import { CredentialsType } from "@/lib/autogpt-server-api/types";
 
 export const fallbackIcon = KeyIcon;
 
@@ -68,6 +69,45 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
     }
 );
 
+export function countSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): number {
+  return [
+    supportsOAuth2,
+    supportsApiKey,
+    supportsUserPassword,
+    supportsHostScoped,
+  ].filter(Boolean).length;
+}
+
+export function getSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): CredentialsType[] {
+  const types: CredentialsType[] = [];
+  if (supportsOAuth2) types.push("oauth2");
+  if (supportsApiKey) types.push("api_key");
+  if (supportsUserPassword) types.push("user_password");
+  if (supportsHostScoped) types.push("host_scoped");
+  return types;
+}
+
+const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
+  oauth2: "OAuth",
+  api_key: "API Key",
+  user_password: "Password",
+  host_scoped: "Headers",
+};
+
+export function getCredentialTypeLabel(type: CredentialsType): string {
+  return CREDENTIAL_TYPE_LABELS[type] ?? type;
+}
+
 export function getActionButtonText(
   supportsOAuth2: boolean,
   supportsApiKey: boolean,
@@ -75,6 +115,18 @@ export function getActionButtonText(
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
 ): string {
+  const multipleTypes =
+    countSupportedTypes(
+      supportsOAuth2,
+      supportsApiKey,
+      supportsUserPassword,
+      supportsHostScoped,
+    ) > 1;
+
+  if (multipleTypes) {
+    return hasExistingCredentials ? "Add another credential" : "Add credential";
+  }
+
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
