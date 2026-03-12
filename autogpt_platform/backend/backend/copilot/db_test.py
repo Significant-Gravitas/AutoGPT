@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,7 +16,7 @@ def _make_msg(
     sequence: int,
     role: str = "assistant",
     content: str | None = "hello",
-    tool_calls: object | None = None,
+    tool_calls: Any = None,
 ) -> PrismaChatMessage:
     """Build a minimal PrismaChatMessage for testing."""
     return PrismaChatMessage(
