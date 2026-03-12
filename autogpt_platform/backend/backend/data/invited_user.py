@@ -659,6 +659,7 @@ async def get_or_activate_user(user_data: dict) -> User:
         existing_user = None
     except Exception:
         logger.exception("Error on get user by id during tally enrichment process")
+        raise
 
     if existing_user is not None:
         return existing_user
