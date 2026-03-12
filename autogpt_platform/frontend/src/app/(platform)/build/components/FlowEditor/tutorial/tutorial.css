@@ -1,3 +1,14 @@
+.new-builder-tutorial-disable {
+  opacity: 0.3 !important;
+  pointer-events: none !important;
+  filter: grayscale(100%) !important;
+}
+
+.new-builder-tutorial-highlight {
+  position: relative;
+  z-index: 10;
+}
+
 .new-builder-tutorial-highlight * {
   opacity: 1 !important;
   filter: none !important;

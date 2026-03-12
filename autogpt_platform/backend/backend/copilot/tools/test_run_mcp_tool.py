@@ -756,4 +756,4 @@ async def test_build_setup_requirements_returns_setup_response():
     )
     assert isinstance(result, SetupRequirementsResponse)
     assert result.setup_info.agent_id == _SERVER_URL
-    assert "authentication" in result.message.lower()
+    assert "sign in" in result.message.lower()

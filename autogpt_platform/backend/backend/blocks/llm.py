@@ -164,6 +164,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -171,9 +172,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
+    MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
@@ -507,6 +510,15 @@ MODEL_METADATA = {
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata(
         "open_router", 200000, 8000, "Sonar Pro", "OpenRouter", "Perplexity", 2
     ),
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: ModelMetadata(
+        "open_router",
+        128000,
+        8000,
+        "Sonar Reasoning Pro",
+        "OpenRouter",
+        "Perplexity",
+        2,
+    ),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
         128000,
@@ -552,6 +564,9 @@ MODEL_METADATA = {
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
         "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
     ),
+    LlmModel.MICROSOFT_PHI_4: ModelMetadata(
+        "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
+    ),
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata(
         "open_router", 4096, 4096, "MythoMax L2 13B", "OpenRouter", "Gryphe", 1
     ),
@@ -560,6 +575,15 @@ MODEL_METADATA = {
     ),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata(
         "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
+    ),
+    LlmModel.GROK_3: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3",
+        "OpenRouter",
+        "xAI",
+        2,
     ),
     LlmModel.GROK_4: ModelMetadata(
         "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
