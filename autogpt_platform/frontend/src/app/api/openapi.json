@@ -9711,7 +9711,6 @@
           "id": { "type": "string", "title": "Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
-          "owner_user_id": { "type": "string", "title": "Owner User Id" },
           "image_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Image Url"
@@ -9799,7 +9798,8 @@
           },
           "can_access_graph": {
             "type": "boolean",
-            "title": "Can Access Graph"
+            "title": "Can Access Graph",
+            "description": "Indicates whether the same user owns the corresponding graph"
           },
           "is_latest_version": {
             "type": "boolean",
@@ -9831,7 +9831,6 @@
           "id",
           "graph_id",
           "graph_version",
-          "owner_user_id",
           "image_url",
           "creator_name",
           "creator_image_url",
