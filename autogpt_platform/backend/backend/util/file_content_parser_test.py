@@ -295,6 +295,15 @@ class TestParseToml:
 # ---------------------------------------------------------------------------
 
 
+try:
+    import pyarrow as _pa  # noqa: F401
+
+    _has_pyarrow = True
+except ImportError:
+    _has_pyarrow = False
+
+
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 class TestParseParquet:
     @pytest.fixture
     def parquet_bytes(self) -> bytes:
