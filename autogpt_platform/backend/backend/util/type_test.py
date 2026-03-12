@@ -142,8 +142,20 @@ class TestValueSatisfiesType:
     def test_set_mismatch(self):
         assert _value_satisfies_type({"a", "b"}, set[int]) is False
 
-    def test_tuple_match(self):
-        assert _value_satisfies_type((1, 2, 3), tuple[int]) is True
+    def test_tuple_homogeneous_match(self):
+        assert _value_satisfies_type((1, 2, 3), tuple[int, ...]) is True
+
+    def test_tuple_homogeneous_mismatch(self):
+        assert _value_satisfies_type((1, "2", 3), tuple[int, ...]) is False
+
+    def test_tuple_heterogeneous_match(self):
+        assert _value_satisfies_type(("a", 1, True), tuple[str, int, bool]) is True
+
+    def test_tuple_heterogeneous_mismatch(self):
+        assert _value_satisfies_type(("a", "b", True), tuple[str, int, bool]) is False
+
+    def test_tuple_heterogeneous_wrong_length(self):
+        assert _value_satisfies_type(("a", 1), tuple[str, int, bool]) is False
 
     # --- bare generics (no args) ---
     def test_bare_list(self):
@@ -310,3 +322,54 @@ class TestCoerceInputsToSchema:
         assert data["as_str"] == "123"
         assert data["as_list"] == [1, 2, 3]
         assert data["as_dict"] == {"a": "b"}
+
+    def test_inherited_fields_are_coerced(self):
+        """model_fields includes inherited fields; __annotations__ does not.
+        This verifies that fields from a parent schema are still coerced."""
+
+        class ParentSchema(BaseModel):
+            base_count: int
+
+        class ChildSchema(ParentSchema):
+            name: str
+
+        # base_count is inherited — __annotations__ wouldn't include it
+        assert "base_count" not in ChildSchema.__annotations__
+        assert "base_count" in ChildSchema.model_fields
+
+        data: dict[str, Any] = {"base_count": "42", "name": "test"}
+        coerce_inputs_to_schema(data, ChildSchema)
+        assert data["base_count"] == 42
+        assert isinstance(data["base_count"], int)
+
+    def test_nested_pydantic_model_field(self):
+        """dict input for a Pydantic model-typed field passes through.
+        convert() doesn't construct Pydantic models — Pydantic validation
+        handles that downstream. This test documents the behavior."""
+
+        class InnerModel(BaseModel):
+            x: int
+
+        class OuterModel(BaseModel):
+            inner: InnerModel
+
+        data: dict[str, Any] = {"inner": {"x": 1}}
+        coerce_inputs_to_schema(data, OuterModel)
+        # dict stays as dict — convert() doesn't construct Pydantic models
+        assert data["inner"] == {"x": 1}
+        assert isinstance(data["inner"], dict)
+
+    def test_list_of_pydantic_model_field(self):
+        """list[dict] for list[PydanticModel] passes through unchanged."""
+
+        class ItemModel(BaseModel):
+            name: str
+
+        class ContainerModel(BaseModel):
+            items: list[ItemModel]
+
+        data: dict[str, Any] = {"items": [{"name": "a"}, {"name": "b"}]}
+        coerce_inputs_to_schema(data, ContainerModel)
+        # Dicts stay as dicts — Pydantic validation handles construction
+        assert data["items"] == [{"name": "a"}, {"name": "b"}]
+        assert isinstance(data["items"][0], dict)

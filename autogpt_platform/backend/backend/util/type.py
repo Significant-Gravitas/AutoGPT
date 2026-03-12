@@ -283,11 +283,17 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
                 for k, v in value.items()
             )
         if (
-            _is_type_or_subclass(origin, set)
-            or _is_type_or_subclass(origin, frozenset)
-            or _is_type_or_subclass(origin, tuple)
+            _is_type_or_subclass(origin, set) or _is_type_or_subclass(origin, frozenset)
         ) and args:
             return all(_value_satisfies_type(v, args[0]) for v in value)
+        if _is_type_or_subclass(origin, tuple) and args:
+            # Homogeneous tuple[T, ...] — single type + Ellipsis
+            if len(args) == 2 and args[1] is Ellipsis:
+                return all(_value_satisfies_type(v, args[0]) for v in value)
+            # Heterogeneous tuple[T1, T2, ...] — positional types
+            if len(value) != len(args):
+                return False
+            return all(_value_satisfies_type(v, t) for v, t in zip(value, args))
         return True
 
     # Simple type (e.g. str, int)
