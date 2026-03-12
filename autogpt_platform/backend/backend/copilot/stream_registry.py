@@ -43,6 +43,7 @@ from .response_model import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+_notification_bus = AsyncRedisNotificationEventBus()
 
 # Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
 _local_sessions: dict[str, asyncio.Task] = {}
@@ -756,8 +757,7 @@ async def mark_session_completed(
         parsed = _parse_session_meta(meta, session_id)
         if parsed.user_id:
             try:
-                bus = AsyncRedisNotificationEventBus()
-                await bus.publish(
+                await _notification_bus.publish(
                     NotificationEvent(
                         user_id=parsed.user_id,
                         payload=CopilotCompletionPayload(
