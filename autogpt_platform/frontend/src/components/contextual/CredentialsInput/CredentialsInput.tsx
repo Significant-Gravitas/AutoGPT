@@ -127,6 +127,7 @@ export function CredentialsInput({
               schema={schema}
               open={isCredentialTypeSelectorOpen}
               onClose={() => setCredentialTypeSelectorOpen(false)}
+              provider={provider}
               providerName={providerName}
               supportedTypes={supportedTypes}
               onCredentialsCreate={(creds) => {

@@ -1,4 +1,4 @@
-import { KeyIcon } from "@phosphor-icons/react";
+import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,
@@ -106,6 +106,23 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
 
 export function getCredentialTypeLabel(type: CredentialsType): string {
   return CREDENTIAL_TYPE_LABELS[type] ?? type;
+}
+
+type CredentialIcon = React.FC<{ className?: string; size?: string | number }>;
+
+export function getCredentialTypeIcon(
+  type: CredentialsType,
+  provider?: string,
+): CredentialIcon {
+  if (type === "oauth2" && provider) {
+    const icon = providerIcons[provider];
+    if (icon) return icon as CredentialIcon;
+    return GlobeSimple as CredentialIcon;
+  }
+  if (type === "api_key") return KeyIcon as CredentialIcon;
+  if (type === "user_password") return Password as CredentialIcon;
+  if (type === "host_scoped") return Lock as CredentialIcon;
+  return KeyIcon as CredentialIcon;
 }
 
 export function getActionButtonText(

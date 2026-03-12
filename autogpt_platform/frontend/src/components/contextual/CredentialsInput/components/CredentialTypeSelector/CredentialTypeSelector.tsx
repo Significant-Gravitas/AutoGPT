@@ -20,12 +20,13 @@ import {
   CredentialsType,
 } from "@/lib/autogpt-server-api/types";
 import { useAPIKeyCredentialsModal } from "../APIKeyCredentialsModal/useAPIKeyCredentialsModal";
-import { getCredentialTypeLabel } from "../../helpers";
+import { getCredentialTypeIcon, getCredentialTypeLabel } from "../../helpers";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
+  provider: string;
   providerName: string;
   supportedTypes: CredentialsType[];
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
@@ -39,6 +40,7 @@ export function CredentialTypeSelector({
   schema,
   open,
   onClose,
+  provider,
   providerName,
   supportedTypes,
   onCredentialsCreate,
@@ -64,11 +66,19 @@ export function CredentialTypeSelector({
       <Dialog.Content>
         <TabsLine defaultValue={defaultTab}>
           <TabsLineList>
-            {supportedTypes.map((type) => (
-              <TabsLineTrigger key={type} value={type}>
-                {getCredentialTypeLabel(type)}
-              </TabsLineTrigger>
-            ))}
+            {supportedTypes.map((type) => {
+              const Icon = getCredentialTypeIcon(type, provider);
+              return (
+                <TabsLineTrigger
+                  key={type}
+                  value={type}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  <Icon size={16} />
+                  {getCredentialTypeLabel(type)}
+                </TabsLineTrigger>
+              );
+            })}
           </TabsLineList>
 
           {supportedTypes.includes("oauth2") && (
