@@ -1,58 +1,67 @@
-import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
+"use client";
+
+import { useControlPanelStore } from "@/app/(platform)/build/stores/controlPanelStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import React from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { MagnifyingGlass } from "@phosphor-icons/react";
+import { useReactFlow } from "@xyflow/react";
+import { useShallow } from "zustand/react/shallow";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { useGraphMenu } from "./useGraphMenu";
 
-interface GraphSearchMenuProps {
-  nodes: CustomNode[];
-  blockMenuSelected: "save" | "block" | "search" | "";
-  setBlockMenuSelected: React.Dispatch<
-    React.SetStateAction<"" | "save" | "block" | "search">
-  >;
-  onNodeSelect: (nodeId: string) => void;
-  onNodeHover?: (nodeId: string | null) => void;
-}
+export function GraphSearchMenu() {
+  const nodes = useNodeStore(useShallow((state) => state.nodes));
+  const { graphSearchOpen, setGraphSearchOpen } = useControlPanelStore();
+  const reactFlow = useReactFlow();
 
-export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
-  nodes,
-  blockMenuSelected,
-  setBlockMenuSelected,
-  onNodeSelect,
-  onNodeHover,
-}) => {
-  const {
-    open,
-    searchQuery,
-    setSearchQuery,
-    filteredNodes,
-    handleNodeSelect,
-    handleOpenChange,
-  } = useGraphMenu({
-    nodes,
-    blockMenuSelected,
-    setBlockMenuSelected,
-    onNodeSelect,
-  });
+  const { searchQuery, setSearchQuery, filteredNodes, handleNodeSelect } =
+    useGraphMenu({
+      nodes,
+      onNodeSelect(nodeID) {
+        reactFlow.fitView({
+          nodes: [{ id: nodeID }],
+          duration: 600,
+          maxZoom: 1.5,
+          padding: 0.5,
+        });
+      },
+    });
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger className="hover:cursor-pointer">
-        <ControlPanelButton
-          data-id="graph-search-control-popover-trigger"
-          data-testid="graph-search-control-button"
-          selected={blockMenuSelected === "search"}
-          className="rounded-none"
-        >
-          <MagnifyingGlassIcon className="size-5" strokeWidth={2} />
-        </ControlPanelButton>
-      </PopoverTrigger>
+    <Popover
+      open={graphSearchOpen}
+      onOpenChange={(open) => {
+        setGraphSearchOpen(open);
+        if (!open) {
+          setSearchQuery("");
+        }
+      }}
+    >
+      <Tooltip delayDuration={100}>
+        <TooltipTrigger asChild>
+          <PopoverTrigger className="hover:cursor-pointer">
+            <ControlPanelButton
+              data-id="graph-search-control-popover-trigger"
+              data-testid="graph-search-control-button"
+              selected={graphSearchOpen}
+              className="rounded-none"
+            >
+              <MagnifyingGlass className="size-5" />
+            </ControlPanelButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="right">Search Graph (Cmd+F)</TooltipContent>
+      </Tooltip>
 
       <PopoverContent
         side="right"
@@ -66,9 +75,8 @@ export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
           onSearchChange={setSearchQuery}
           filteredNodes={filteredNodes}
           onNodeSelect={handleNodeSelect}
-          onNodeHover={onNodeHover}
         />
       </PopoverContent>
     </Popover>
   );
-};
+}

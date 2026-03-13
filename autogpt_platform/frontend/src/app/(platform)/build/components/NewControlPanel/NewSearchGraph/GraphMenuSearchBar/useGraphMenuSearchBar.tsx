@@ -1,4 +1,4 @@
-import { useState, useMemo, useDeferredValue } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import jaro from "jaro-winkler";
@@ -8,8 +8,7 @@ export type SearchableNode = CustomNode & {
   matchedFields?: string[];
 };
 
-export const useGraphSearch = (nodes: CustomNode[]) => {
-  const [open, setOpen] = useState(false);
+export function useGraphSearch(nodes: CustomNode[]) {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -42,13 +41,11 @@ export const useGraphSearch = (nodes: CustomNode[]) => {
   }, [nodes, deferredSearchQuery]);
 
   return {
-    open,
-    setOpen,
     searchQuery,
     setSearchQuery,
     filteredNodes,
   };
-};
+}
 
 function calculateNodeScore(
   node: CustomNode,
