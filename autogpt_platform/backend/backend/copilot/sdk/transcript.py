@@ -15,6 +15,8 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from uuid import uuid4
 
 from backend.util import json
 
@@ -156,8 +158,6 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
     conversation.  Reading this file lets ``TranscriptBuilder`` replace its
     uncompacted entries with the CLI's compacted version.
     """
-    from pathlib import Path
-
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir or not os.path.isdir(project_dir):
         return None
@@ -518,8 +518,6 @@ def _transcript_to_messages(content: str) -> list[dict]:
 
 def _messages_to_transcript(messages: list[dict]) -> str:
     """Convert compressed message dicts back to JSONL transcript format."""
-    from uuid import uuid4
-
     lines: list[str] = []
     last_uuid: str | None = None
     for msg in messages:

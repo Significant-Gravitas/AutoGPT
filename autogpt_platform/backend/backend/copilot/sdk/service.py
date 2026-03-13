@@ -854,13 +854,12 @@ async def stream_chat_completion_sdk(
                     )
                     if compacted:
                         transcript_content = compacted
-                        # Recount after compaction so gap-fill uses
-                        # the correct watermark on subsequent turns.
-                        dl.message_count = sum(
-                            1
-                            for line in transcript_content.splitlines()
-                            if line.strip()
-                        )
+                        # Keep the original message_count: it reflects the
+                        # number of session.messages covered by this transcript,
+                        # which the gap-fill logic uses as a slice index.
+                        # Counting JSONL lines would give a smaller number
+                        # (compacted messages != session message count) and
+                        # cause already-covered messages to be re-injected.
                         # Best-effort upload of compacted version
                         try:
                             await upload_transcript(

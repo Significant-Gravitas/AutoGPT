@@ -25,6 +25,7 @@ import {
 
 function CoPilotUsageSection() {
   const { data: usage, isLoading } = useUsageLimits();
+  const router = useRouter();
 
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
@@ -35,10 +36,7 @@ function CoPilotUsageSection() {
       <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
         <UsagePanelContent usage={usage} showBillingLink={false} />
       </div>
-      <Button
-        className="w-full"
-        onClick={() => (window.location.href = "/copilot")}
-      >
+      <Button className="w-full" onClick={() => router.push("/copilot")}>
         Open CoPilot
       </Button>
     </div>
