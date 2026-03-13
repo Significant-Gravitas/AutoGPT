@@ -670,28 +670,6 @@ async def create_store_submission(
                     for slv in existing_listing.Versions
                 )
 
-            # Reject if this exact graph version already has an active submission
-            existing_for_version = await prisma.models.StoreListingVersion.prisma(
-                tx
-            ).find_first(
-                where={
-                    "agentGraphId": graph_id,
-                    "agentGraphVersion": graph_version,
-                    "isDeleted": False,
-                    "submissionStatus": {
-                        "in": [
-                            prisma.enums.SubmissionStatus.PENDING,
-                            prisma.enums.SubmissionStatus.APPROVED,
-                        ]
-                    },
-                },
-            )
-            if existing_for_version:
-                raise store_exceptions.ListingExistsError(
-                    f"Agent v{graph_version} already has an active submission. "
-                    "Please update your agent before resubmitting."
-                )
-
             # Delete any currently PENDING submissions for the same graph
             # in favor of the new submission
             if graph_has_pending_submissions:
