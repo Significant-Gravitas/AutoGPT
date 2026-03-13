@@ -980,7 +980,11 @@ async def stream_chat_completion_sdk(
                     compacted = await compact_transcript(
                         transcript_content, log_prefix=log_prefix
                     )
-                    if compacted and validate_transcript(compacted):
+                    if (
+                        compacted
+                        and compacted != transcript_content
+                        and validate_transcript(compacted)
+                    ):
                         logger.info(
                             "%s Using compacted transcript for retry",
                             log_prefix,
@@ -1003,6 +1007,7 @@ async def stream_chat_completion_sdk(
                         use_resume = False
                         resume_file = None
                         transcript_msg_count = 0
+                        transcript_caused_error = True
                 else:
                     logger.warning(
                         "%s No transcript to compact, using DB fallback",
@@ -1012,6 +1017,7 @@ async def stream_chat_completion_sdk(
                     use_resume = False
                     resume_file = None
                     transcript_msg_count = 0
+                    transcript_caused_error = True
 
                 # Rebuild SDK options with updated resume state
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
@@ -1019,7 +1025,7 @@ async def stream_chat_completion_sdk(
                     sdk_options_kwargs_retry["resume"] = resume_file
                 elif "resume" in sdk_options_kwargs_retry:
                     del sdk_options_kwargs_retry["resume"]
-                options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]
+                options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
 
                 # Rebuild query with updated resume/transcript state
                 query_message, was_compacted = await _build_query_message(
@@ -1454,8 +1460,10 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
-                if not _prompt_too_long:
-                    break
+                # If we reach here, the stream completed normally (no
+                # prompt-too-long).  The _prompt_too_long case is handled
+                # by the `continue` after the inner finally block.
+                break
 
             if _prompt_too_long:
                 transcript_caused_error = True

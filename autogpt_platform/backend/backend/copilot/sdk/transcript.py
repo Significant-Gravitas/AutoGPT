@@ -702,6 +702,8 @@ async def _run_compression(
     log_prefix: str,
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback."""
+    # Local imports: openai is a heavy optional dependency (not needed by most
+    # callers of this module), and compress_context pulls in tiktoken.
     import openai
 
     from backend.util.prompt import compress_context
@@ -727,6 +729,9 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
+    # Local import: ChatConfig is in TYPE_CHECKING for annotations but
+    # needs a runtime import here.  Top-level would create a circular
+    # dependency (config → … → transcript).
     from backend.copilot.config import ChatConfig
 
     cfg = ChatConfig()
