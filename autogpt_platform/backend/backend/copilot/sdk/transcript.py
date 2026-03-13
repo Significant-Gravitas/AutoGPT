@@ -500,7 +500,7 @@ def _transcript_to_messages(content: str) -> list[dict]:
                     if isinstance(inner, list):
                         for sub in inner:
                             if isinstance(sub, dict):
-                                str_parts.append(str(sub.get("text", "")))
+                                str_parts.append(str(sub.get("text", json.dumps(sub))))
                             else:
                                 str_parts.append(str(sub))
                     else:
