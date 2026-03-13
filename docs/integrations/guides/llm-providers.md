@@ -14,3 +14,14 @@ Try the Llama API provider by selecting any of the following LLM Model names fro
 * Llama-4-Maverick-17B-128E-Instruct-FP8
 * Llama-3.3-8B-Instruct
 * Llama-3-70B-Instruct
+
+## MiniMax
+
+[MiniMax](https://www.minimaxi.com/) is an AI technology company that offers powerful foundation models. MiniMax provides an OpenAI-compatible API, making it easy to integrate their models into AutoGPT.
+
+Get your API key from the [MiniMax Platform](https://platform.minimaxi.com/).
+
+Try the MiniMax provider by selecting any of the following LLM Model names from the AI blocks:
+
+* MiniMax-M2.5
+* MiniMax-M2.5-highspeed

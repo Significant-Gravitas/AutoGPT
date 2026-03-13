@@ -46,6 +46,7 @@ LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
+    ProviderName.MINIMAX,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
@@ -193,6 +194,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
+    # MiniMax models
+    MINIMAX_M2_5 = "MiniMax-M2.5"
+    MINIMAX_M2_5_HIGHSPEED = "MiniMax-M2.5-highspeed"
 
     @classmethod
     def __get_pydantic_json_schema__(cls, schema, handler):
@@ -641,6 +645,13 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000, "v0 1.5 LG", "V0", "V0", 1),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
+    # https://platform.minimaxi.com/document/Models
+    LlmModel.MINIMAX_M2_5: ModelMetadata(
+        "minimax", 204000, 64000, "MiniMax M2.5", "MiniMax", "MiniMax", 2
+    ),
+    LlmModel.MINIMAX_M2_5_HIGHSPEED: ModelMetadata(
+        "minimax", 204000, 64000, "MiniMax M2.5 Highspeed", "MiniMax", "MiniMax", 1
+    ),
 }
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
@@ -834,7 +845,6 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "anthropic":
-
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
 
         system_messages = [p["content"] for p in prompt if p["role"] == "system"]
@@ -1100,6 +1110,48 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
+        )
+    elif provider == "minimax":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url="https://api.minimax.io/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response_format = None
+        if force_json_output:
+            response_format = {"type": "json_object"}
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
+        )
+
+        if not response.choices:
+            if response:
+                raise ValueError(f"MiniMax API error: {response}")
+            else:
+                raise ValueError("No response from MiniMax API.")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
