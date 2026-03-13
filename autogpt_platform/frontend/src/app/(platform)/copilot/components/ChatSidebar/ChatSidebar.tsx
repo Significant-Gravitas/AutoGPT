@@ -257,12 +257,10 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="relative left-5 flex items-center gap-1">
+                <div className="flex items-center">
                   <UsageLimits />
                   <NotificationToggle />
-                  <div className="relative left-1">
-                    <SidebarTrigger />
-                  </div>
+                  <SidebarTrigger />
                 </div>
               </div>
               {sessionId ? (

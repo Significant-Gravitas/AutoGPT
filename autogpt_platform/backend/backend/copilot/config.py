@@ -72,13 +72,13 @@ class ChatConfig(BaseSettings):
 
     # Rate limiting — token-based limits per day and per week.
     # Each CoPilot turn consumes ~10-15K tokens (system prompt + tool schemas + response),
-    # so 5M daily allows ~350-500 turns/day which is generous for normal use.
+    # so 2.5M daily allows ~170-250 turns/day which is reasonable for normal use.
     daily_token_limit: int = Field(
-        default=5_000_000,
+        default=2_500_000,
         description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
     )
     weekly_token_limit: int = Field(
-        default=25_000_000,
+        default=12_500_000,
         description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
     )
 
