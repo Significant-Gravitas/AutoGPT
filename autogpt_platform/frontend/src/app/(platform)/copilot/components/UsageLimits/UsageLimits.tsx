@@ -68,7 +68,9 @@ function UsageBar({
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
+            isHigh
+              ? "bg-orange-500 dark:bg-orange-400"
+              : "bg-blue-500 dark:bg-blue-400"
           }`}
           style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
         />
