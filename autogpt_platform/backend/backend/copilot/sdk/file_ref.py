@@ -341,7 +341,7 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
 
     # Tabular list → object: convert to a column-dict
     # {"col1": [val1, val2, ...], "col2": [...]} for meaningful dict lookups.
-    if target_type == "object" and _is_tabular(parsed):
+    if isinstance(parsed, list) and target_type == "object" and _is_tabular(parsed):
         return _tabular_to_column_dict(parsed)
 
     # Tabular list → Any (no type): convert to list of dicts.
@@ -349,7 +349,7 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     # a schema with no "type" key.  Tabular [[header],[rows]] is unusable
     # for key lookup, but [{col: val}, ...] works with FindInDict's
     # list-of-dicts branch (line 195-199 in data_manipulation.py).
-    if target_type is None and _is_tabular(parsed):
+    if isinstance(parsed, list) and target_type is None and _is_tabular(parsed):
         return _tabular_to_list_of_dicts(parsed)
 
     return parsed
