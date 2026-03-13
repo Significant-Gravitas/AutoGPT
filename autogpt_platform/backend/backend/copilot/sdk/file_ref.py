@@ -286,7 +286,7 @@ async def _infer_format_from_workspace(
         if fmt:
             return fmt
         return infer_format(info.name)
-    except Exception:
+    except (ValueError, FileNotFoundError, OSError, PermissionError):
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
         return None
 
@@ -447,9 +447,14 @@ async def expand_file_refs_in_args(
                     raise FileRefExpansionError(str(exc)) from exc
 
                 # Guard against oversized content before parsing.
-                # For strings, len() returns character count which is a lower
-                # bound on UTF-8 byte size — sufficient for a safety guard.
-                content_size = len(content)
+                if isinstance(content, bytes):
+                    content_size = len(content)
+                else:
+                    # len() on str returns character count, but multi-byte
+                    # UTF-8 chars (e.g. emoji) mean byte size can be up to
+                    # 4x the character count.  Use the actual encoded byte
+                    # length for an accurate guard.
+                    content_size = len(content.encode("utf-8"))
                 if content_size > _MAX_BARE_REF_BYTES:
                     raise FileRefExpansionError(
                         f"File too large for structured parsing "

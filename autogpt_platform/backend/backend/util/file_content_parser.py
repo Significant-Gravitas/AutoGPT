@@ -244,7 +244,17 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
             content = content.decode("utf-8", errors="replace")
         return parser(content)
 
-    except Exception:
+    except (
+        json.JSONDecodeError,
+        csv.Error,
+        yaml.YAMLError,
+        tomllib.TOMLDecodeError,
+        ValueError,
+        UnicodeDecodeError,
+        pd.errors.ParserError,
+        ImportError,
+        OSError,
+    ):
         if strict:
             raise
         logger.debug("Structured parsing failed for format=%s, falling back", fmt)
