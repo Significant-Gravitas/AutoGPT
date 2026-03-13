@@ -11,7 +11,6 @@ persistence, and the ``CompactionTracker`` state machine.
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
 
 from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from ..model import ChatMessage, ChatSession
@@ -177,11 +176,22 @@ class CompactionTracker:
         self._start_emitted = False
         self._done = False
         self._tool_call_id = ""
+        self._transcript_path: str = ""
 
     @property
-    def on_compact(self) -> Callable[[], None]:
-        """Callback for the PreCompact hook."""
-        return self._compact_start.set
+    def transcript_path(self) -> str:
+        """Path to the CLI session file, captured from PreCompact hook."""
+        return self._transcript_path
+
+    @property
+    def compaction_just_ended(self) -> bool:
+        """True after emit_end_if_ready() has completed a compaction cycle."""
+        return self._done
+
+    def on_compact(self, transcript_path: str = "") -> None:
+        """Callback for the PreCompact hook. Stores transcript_path."""
+        self._transcript_path = transcript_path
+        self._compact_start.set()
 
     # ------------------------------------------------------------------
     # Pre-query compaction

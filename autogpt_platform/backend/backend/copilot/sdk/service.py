@@ -77,7 +77,7 @@ from .tool_adapter import (
 from .transcript import (
     cleanup_cli_project_dir,
     download_transcript,
-    read_cli_session_file,
+    read_compacted_entries,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -1131,9 +1131,18 @@ async def stream_chat_completion_sdk(
                                 sdk_msg.result or "(no error message provided)",
                             )
 
-                    # Emit compaction end if SDK finished compacting
+                    # Emit compaction end if SDK finished compacting.
+                    # When compaction ends, sync TranscriptBuilder with the
+                    # CLI's active context so they stay identical.
+                    compaction_was_done = compaction.compaction_just_ended
                     for ev in await compaction.emit_end_if_ready(session):
                         yield ev
+                    if not compaction_was_done and compaction.compaction_just_ended:
+                        compacted = read_compacted_entries(compaction.transcript_path)
+                        if compacted is not None:
+                            transcript_builder.replace_entries(
+                                compacted, log_prefix=log_prefix
+                            )
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
@@ -1424,51 +1433,13 @@ async def stream_chat_completion_sdk(
             task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
-        # This MUST run in finally so the transcript is uploaded even when
-        # the streaming loop raises an exception.
-        # The transcript represents the COMPLETE active context (atomic).
+        # TranscriptBuilder is the single source of truth.  It mirrors the
+        # CLI's active context: on compaction, replace_entries() syncs it
+        # with the compacted session file.  No CLI file read needed here.
         if config.claude_agent_use_resume and user_id and session is not None:
             try:
-                # Prefer the CLI's own session file — it reflects any
-                # mid-stream compaction the CLI performed.  Fall back to
-                # TranscriptBuilder output when the CLI file isn't available
-                # (e.g. the process was killed before writing it).
-                cli_transcript = read_cli_session_file(sdk_cwd) if sdk_cwd else None
-                if cli_transcript and validate_transcript(cli_transcript):
-                    transcript_content = cli_transcript
-                    logger.info(
-                        "%s Using CLI session file for transcript upload (%d bytes)",
-                        log_prefix,
-                        len(cli_transcript),
-                    )
-                else:
-                    if cli_transcript:
-                        # CLI file exists but is invalid (partially flushed).
-                        logger.warning(
-                            "%s CLI session file found but invalid "
-                            "(%d bytes), falling back to TranscriptBuilder",
-                            log_prefix,
-                            len(cli_transcript),
-                        )
-                    else:
-                        logger.info(
-                            "%s CLI session file not available, using "
-                            "TranscriptBuilder",
-                            log_prefix,
-                        )
-                    cli_transcript = None
-                    transcript_content = transcript_builder.to_jsonl()
-                    logger.info(
-                        "%s TranscriptBuilder output: %d bytes",
-                        log_prefix,
-                        len(transcript_content) if transcript_content else 0,
-                    )
-
-                entry_count = (
-                    len(transcript_content.strip().splitlines())
-                    if cli_transcript
-                    else transcript_builder.entry_count
-                )
+                transcript_content = transcript_builder.to_jsonl()
+                entry_count = transcript_builder.entry_count
 
                 if not transcript_content:
                     logger.warning(
@@ -1482,14 +1453,11 @@ async def stream_chat_completion_sdk(
                     )
                 else:
                     logger.info(
-                        "%s Uploading complete transcript (entries=%d, bytes=%d)",
+                        "%s Uploading transcript (entries=%d, bytes=%d)",
                         log_prefix,
                         entry_count,
                         len(transcript_content),
                     )
-                    # Shield upload from cancellation - let it complete even if
-                    # the finally block is interrupted. No timeout to avoid race
-                    # conditions where backgrounded uploads overwrite newer transcripts.
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

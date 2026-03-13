@@ -162,6 +162,39 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
+    def replace_entries(
+        self, compacted_entries: list[dict], log_prefix: str = "[Transcript]"
+    ) -> None:
+        """Replace all entries with compacted entries from the CLI session file.
+
+        Called after mid-stream compaction so TranscriptBuilder mirrors the
+        CLI's active context (compaction summary + post-compaction entries).
+        """
+        old_count = len(self._entries)
+        self._entries.clear()
+        self._last_uuid = None
+
+        for data in compacted_entries:
+            entry_type = data.get("type", "")
+            if entry_type in STRIPPABLE_TYPES:
+                continue
+
+            entry = TranscriptEntry(
+                type=entry_type,
+                uuid=data.get("uuid") or str(uuid4()),
+                parentUuid=data.get("parentUuid"),
+                message=data.get("message", {}),
+            )
+            self._entries.append(entry)
+            self._last_uuid = entry.uuid
+
+        logger.info(
+            "%s TranscriptBuilder compacted: %d entries -> %d entries",
+            log_prefix,
+            old_count,
+            len(self._entries),
+        )
+
     def to_jsonl(self) -> str:
         """Export complete context as JSONL.
 
