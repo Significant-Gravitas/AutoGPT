@@ -5,6 +5,7 @@ import {
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
@@ -33,6 +34,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import {
+  getSessionListParams,
+  getSessionStartTypeLabel,
+  isNonManualSessionStartType,
+} from "../../helpers";
 import { useCopilotUIStore } from "../../store";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
@@ -42,6 +48,12 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [showAutopilot, setShowAutopilot] = useQueryState(
+    "showAutopilot",
+    parseAsString,
+  );
+  const showAutopilotHistory = showAutopilot === "1";
+  const listSessionsParams = getSessionListParams(showAutopilotHistory);
   const {
     sessionToDelete,
     setSessionToDelete,
@@ -52,7 +64,9 @@ export function ChatSidebar() {
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
+    useGetV2ListSessions(listSessionsParams, {
+      query: { refetchInterval: 10_000 },
+    });
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
@@ -136,6 +150,10 @@ export function ChatSidebar() {
 
   function handleSelectSession(id: string) {
     setSessionId(id);
+  }
+
+  function handleToggleAutopilotHistory() {
+    setShowAutopilot(showAutopilotHistory ? null : "1");
   }
 
   function handleRenameClick(
@@ -263,6 +281,19 @@ export function ChatSidebar() {
                   </div>
                 </div>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <Text variant="small" className="text-neutral-400">
+                  Inspect autopilot sessions
+                </Text>
+                <Button
+                  variant={showAutopilotHistory ? "primary" : "secondary"}
+                  size="small"
+                  onClick={handleToggleAutopilotHistory}
+                  className="min-w-0 px-3 text-xs"
+                >
+                  {showAutopilotHistory ? "Hide" : "Show"}
+                </Button>
+              </div>
               {sessionId ? (
                 <Button
                   variant="primary"
@@ -360,6 +391,13 @@ export function ChatSidebar() {
                                 </motion.span>
                               </AnimatePresence>
                             </Text>
+                            {isNonManualSessionStartType(session.start_type) ? (
+                              <div className="mt-1">
+                                <Badge variant="info" size="small">
+                                  {getSessionStartTypeLabel(session.start_type)}
+                                </Badge>
+                              </div>
+                            ) : null}
                             <Text variant="small" className="text-neutral-400">
                               {formatDate(session.updated_at)}
                             </Text>

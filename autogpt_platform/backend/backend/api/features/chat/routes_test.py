@@ -1,5 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, and suggested prompts."""
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -8,6 +10,8 @@ import pytest
 import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.session_types import ChatSessionStartType
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -113,6 +117,177 @@ def test_update_title_not_found(
     )
 
     assert response.status_code == 404
+
+
+def test_list_sessions_defaults_to_manual_only(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    started_at = datetime.now(timezone.utc)
+    mock_get_user_sessions = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=(
+            [
+                SimpleNamespace(
+                    session_id="sess-1",
+                    started_at=started_at,
+                    updated_at=started_at,
+                    title="Nightly check-in",
+                    start_type=chat_routes.ChatSessionStartType.AUTOPILOT_NIGHTLY,
+                    execution_tag="autopilot-nightly:2026-03-13",
+                )
+            ],
+            1,
+        ),
+    )
+
+    pipe = MagicMock()
+    pipe.hget = MagicMock()
+    pipe.execute = AsyncMock(return_value=["running"])
+    redis = MagicMock()
+    redis.pipeline = MagicMock(return_value=pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "sessions": [
+            {
+                "id": "sess-1",
+                "created_at": started_at.isoformat(),
+                "updated_at": started_at.isoformat(),
+                "title": "Nightly check-in",
+                "start_type": "AUTOPILOT_NIGHTLY",
+                "execution_tag": "autopilot-nightly:2026-03-13",
+                "is_processing": True,
+            }
+        ],
+        "total": 1,
+    }
+    mock_get_user_sessions.assert_awaited_once_with(
+        test_user_id,
+        50,
+        0,
+        with_auto=False,
+    )
+
+
+def test_list_sessions_can_include_auto_sessions(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_user_sessions = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([], 0),
+    )
+
+    response = client.get("/sessions?with_auto=true")
+
+    assert response.status_code == 200
+    assert response.json() == {"sessions": [], "total": 0}
+    mock_get_user_sessions.assert_awaited_once_with(
+        test_user_id,
+        50,
+        0,
+        with_auto=True,
+    )
+
+
+def test_consume_callback_token_route_returns_session_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_consume = mocker.patch(
+        "backend.api.features.chat.routes.consume_callback_token",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(session_id="sess-2"),
+    )
+
+    response = client.post(
+        "/sessions/callback-token/consume",
+        json={"token": "token-123"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"session_id": "sess-2"}
+    mock_consume.assert_awaited_once_with("token-123", TEST_USER_ID)
+
+
+def test_consume_callback_token_route_returns_404_on_invalid_token(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.consume_callback_token",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Callback token not found"),
+    )
+
+    response = client.post(
+        "/sessions/callback-token/consume",
+        json={"token": "token-123"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Callback token not found"}
+
+
+def test_get_session_hides_internal_only_messages_and_strips_internal_content(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        TEST_USER_ID,
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+        execution_tag="autopilot-nightly:2026-03-13",
+    )
+    session.messages = [
+        ChatMessage(role="user", content="<internal>hidden</internal>"),
+        ChatMessage(
+            role="user",
+            content="Visible<internal>hidden</internal> text",
+        ),
+        ChatMessage(role="assistant", content="Public response"),
+    ]
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get(f"/sessions/{session.session_id}")
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == [
+        {
+            "role": "user",
+            "content": "Visible text",
+            "name": None,
+            "tool_call_id": None,
+            "refusal": None,
+            "tool_calls": None,
+            "function_call": None,
+        },
+        {
+            "role": "assistant",
+            "content": "Public response",
+            "name": None,
+            "tool_call_id": None,
+            "refusal": None,
+            "tool_calls": None,
+            "function_call": None,
+        },
+    ]
 
 
 # ─── file_ids Pydantic validation ─────────────────────────────────────

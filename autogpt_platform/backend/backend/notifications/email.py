@@ -1,5 +1,6 @@
 import logging
 import pathlib
+from typing import Any
 
 from postmarker.core import PostmarkClient
 from postmarker.models.emails import EmailManager
@@ -45,6 +46,39 @@ class EmailSender:
         self.formatter = TextFormatter()
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
+
+    def send_template(
+        self,
+        *,
+        user_email: str,
+        subject: str,
+        template_name: str,
+        data: dict[str, Any] | None = None,
+        user_unsubscribe_link: str | None = None,
+    ) -> None:
+        if not self.postmark:
+            logger.warning("Postmark client not initialized, email not sent")
+            return
+
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
+        unsubscribe_link = user_unsubscribe_link or f"{base_url}/profile/settings"
+
+        _, full_message = self.formatter.format_email(
+            subject_template="{{ subject }}",
+            base_template=self._read_template("templates/base.html.jinja2"),
+            content_template=self._read_template(f"templates/{template_name}"),
+            data={"subject": subject, **(data or {})},
+            unsubscribe_link=unsubscribe_link,
+        )
+
+        self._send_email(
+            user_email=user_email,
+            subject=subject,
+            body=full_message,
+            user_unsubscribe_link=user_unsubscribe_link,
+        )
 
     def send_templated(
         self,
@@ -123,16 +157,17 @@ class EmailSender:
         logger.debug(
             f"Template full path: {pathlib.Path(__file__).parent / template_path}"
         )
-        base_template_path = "templates/base.html.jinja2"
-        with open(pathlib.Path(__file__).parent / base_template_path, "r") as file:
-            base_template = file.read()
-        with open(pathlib.Path(__file__).parent / template_path, "r") as file:
-            template = file.read()
+        base_template = self._read_template("templates/base.html.jinja2")
+        template = self._read_template(template_path)
         return Template(
             subject_template=notification_type_override.subject,
             body_template=template,
             base_template=base_template,
         )
+
+    def _read_template(self, template_path: str) -> str:
+        with open(pathlib.Path(__file__).parent / template_path, "r") as file:
+            return file.read()
 
     def _send_email(
         self,
@@ -158,4 +193,18 @@ class EmailSender:
                 if user_unsubscribe_link
                 else None
             ),
+        )
+
+    def send_html(
+        self,
+        user_email: str,
+        subject: str,
+        body: str,
+        user_unsubscribe_link: str | None = None,
+    ) -> None:
+        self._send_email(
+            user_email=user_email,
+            subject=subject,
+            body=body,
+            user_unsubscribe_link=user_unsubscribe_link,
         )

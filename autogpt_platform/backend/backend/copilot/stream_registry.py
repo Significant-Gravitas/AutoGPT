@@ -774,6 +774,18 @@ async def mark_session_completed(
                     f"for session {session_id}: {e}"
                 )
 
+    try:
+        from backend.copilot.autopilot import handle_non_manual_session_completion
+
+        await handle_non_manual_session_completion(session_id)
+    except Exception as e:
+        logger.warning(
+            "Failed to process non-manual completion for session %s: %s",
+            session_id,
+            e,
+            exc_info=True,
+        )
+
     return True
 
 

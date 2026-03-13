@@ -1,4 +1,5 @@
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
@@ -12,14 +13,20 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
+import {
+  getSessionStartTypeLabel,
+  isNonManualSessionStartType,
+} from "../../helpers";
 import { useCopilotUIStore } from "../../store";
 import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 interface Props {
   isOpen: boolean;
+  showAutopilotHistory: boolean;
   sessions: SessionSummaryResponse[];
   currentSessionId: string | null;
   isLoading: boolean;
+  onToggleAutopilotHistory: () => void;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onClose: () => void;
@@ -53,9 +60,11 @@ function formatDate(dateString: string) {
 
 export function MobileDrawer({
   isOpen,
+  showAutopilotHistory,
   sessions,
   currentSessionId,
   isLoading,
+  onToggleAutopilotHistory,
   onSelectSession,
   onNewChat,
   onClose,
@@ -103,6 +112,19 @@ export function MobileDrawer({
                   <X width="1rem" height="1rem" />
                 </Button>
               </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <Text variant="small" className="text-neutral-400">
+                Inspect autopilot sessions
+              </Text>
+              <Button
+                variant={showAutopilotHistory ? "primary" : "secondary"}
+                size="small"
+                onClick={onToggleAutopilotHistory}
+                className="min-w-0 px-3 text-xs"
+              >
+                {showAutopilotHistory ? "Hide" : "Show"}
+              </Button>
             </div>
             {currentSessionId ? (
               <div className="mt-2">
@@ -175,6 +197,13 @@ export function MobileDrawer({
                           />
                         )}
                     </div>
+                    {isNonManualSessionStartType(session.start_type) ? (
+                      <div className="mt-1">
+                        <Badge variant="info" size="small">
+                          {getSessionStartTypeLabel(session.start_type)}
+                        </Badge>
+                      </div>
+                    ) : null}
                     <Text variant="small" className="text-neutral-400">
                       {formatDate(session.updated_at)}
                     </Text>

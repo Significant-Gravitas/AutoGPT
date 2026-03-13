@@ -38,8 +38,8 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.service import (
-    _build_system_prompt,
     _generate_session_title,
+    _resolve_system_prompt,
     client,
     config,
 )
@@ -160,7 +160,7 @@ async def stream_chat_completion_baseline(
     session = await upsert_chat_session(session)
 
     # Generate title for new sessions
-    if is_user_message and not session.title:
+    if is_user_message and session.is_manual and not session.title:
         user_messages = [m for m in session.messages if m.role == "user"]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
@@ -177,16 +177,20 @@ async def stream_chat_completion_baseline(
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
     if is_first_turn:
-        base_system_prompt, _ = await _build_system_prompt(
-            user_id, has_conversation_history=False
+        base_system_prompt, _ = await _resolve_system_prompt(
+            session,
+            user_id,
+            has_conversation_history=False,
         )
     else:
-        base_system_prompt, _ = await _build_system_prompt(
-            user_id=None, has_conversation_history=True
+        base_system_prompt, _ = await _resolve_system_prompt(
+            session,
+            user_id=None,
+            has_conversation_history=True,
         )
 
     # Append tool documentation and technical notes
-    system_prompt = base_system_prompt + get_baseline_supplement()
+    system_prompt = base_system_prompt + get_baseline_supplement(session)
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
@@ -199,7 +203,7 @@ async def stream_chat_completion_baseline(
         if msg.role in ("user", "assistant") and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
-    tools = get_available_tools()
+    tools = get_available_tools(session)
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 

@@ -24,6 +24,12 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.autopilot import (
+    dispatch_nightly_copilot as dispatch_nightly_copilot_async,
+)
+from backend.copilot.autopilot import (
+    send_nightly_copilot_emails as send_nightly_copilot_emails_async,
+)
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -256,6 +262,16 @@ def cleanup_oauth_tokens():
         return await db.cleanup_expired_oauth_tokens()
 
     run_async(_cleanup())
+
+
+def dispatch_nightly_copilot():
+    """Dispatch proactive nightly copilot sessions."""
+    return run_async(dispatch_nightly_copilot_async())
+
+
+def send_nightly_copilot_emails():
+    """Send emails for completed non-manual copilot sessions."""
+    return run_async(send_nightly_copilot_emails_async())
 
 
 def execution_accuracy_alerts():
@@ -618,6 +634,24 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            self.scheduler.add_job(
+                dispatch_nightly_copilot,
+                id="dispatch_nightly_copilot",
+                trigger=CronTrigger(minute="0,30", timezone=ZoneInfo("UTC")),
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            self.scheduler.add_job(
+                send_nightly_copilot_emails,
+                id="send_nightly_copilot_emails",
+                trigger=CronTrigger(minute="15,45", timezone=ZoneInfo("UTC")),
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -791,6 +825,14 @@ class Scheduler(AppService):
     def execute_ensure_embeddings_coverage(self):
         """Manually trigger embedding backfill for approved store agents."""
         return ensure_embeddings_coverage()
+
+    @expose
+    def execute_dispatch_nightly_copilot(self):
+        return dispatch_nightly_copilot()
+
+    @expose
+    def execute_send_nightly_copilot_emails(self):
+        return send_nightly_copilot_emails()
 
 
 class SchedulerClient(AppServiceClient):

@@ -32,7 +32,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import iter_available_tools
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -338,7 +338,11 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
     )
 
 
-def create_copilot_mcp_server(*, use_e2b: bool = False):
+def create_copilot_mcp_server(
+    session: ChatSession,
+    *,
+    use_e2b: bool = False,
+):
     """Create an in-process MCP server configuration for CoPilot tools.
 
     When *use_e2b* is True, five additional MCP file tools are registered
@@ -387,7 +391,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     sdk_tools = []
 
-    for tool_name, base_tool in TOOL_REGISTRY.items():
+    for tool_name, base_tool in iter_available_tools(session):
         handler = create_tool_handler(base_tool)
         decorated = tool(
             tool_name,
@@ -475,25 +479,30 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
-# Static tool name list for the non-E2B case (backward compatibility).
-COPILOT_TOOL_NAMES = [
-    *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
-    f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-    *_SDK_BUILTIN_TOOLS,
-]
 
-
-def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
+def get_copilot_tool_names(
+    session: ChatSession,
+    *,
+    use_e2b: bool = False,
+) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
     When *use_e2b* is True the SDK built-in file tools are replaced by MCP
     equivalents that route to the E2B sandbox.
     """
+    tool_names = [
+        f"{MCP_TOOL_PREFIX}{name}" for name, _ in iter_available_tools(session)
+    ]
+
     if not use_e2b:
-        return list(COPILOT_TOOL_NAMES)
+        return [
+            *tool_names,
+            f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
+            *_SDK_BUILTIN_TOOLS,
+        ]
 
     return [
-        *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+        *tool_names,
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
         *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
         *_SDK_BUILTIN_ALWAYS,

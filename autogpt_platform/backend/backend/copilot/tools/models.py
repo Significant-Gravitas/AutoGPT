@@ -16,6 +16,7 @@ class ResponseType(str, Enum):
     ERROR = "error"
     NO_RESULTS = "no_results"
     NEED_LOGIN = "need_login"
+    COMPLETION_REPORT_SAVED = "completion_report_saved"
 
     # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
@@ -246,6 +247,14 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+class CompletionReportSavedResponse(ToolResponseBase):
+    """Response for completion_report."""
+
+    type: ResponseType = ResponseType.COMPLETION_REPORT_SAVED
+    has_pending_approvals: bool = False
+    pending_approval_count: int = 0
 
 
 class InputValidationErrorResponse(ToolResponseBase):

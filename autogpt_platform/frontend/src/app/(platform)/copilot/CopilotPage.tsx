@@ -82,8 +82,10 @@ export function CopilotPage() {
     // Mobile drawer
     isMobile,
     isDrawerOpen,
+    showAutopilotHistory,
     sessions,
     isLoadingSessions,
+    handleToggleAutopilotHistory,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,
@@ -186,9 +188,11 @@ export function CopilotPage() {
       {isMobile && (
         <MobileDrawer
           isOpen={isDrawerOpen}
+          showAutopilotHistory={showAutopilotHistory}
           sessions={sessions}
           currentSessionId={sessionId}
           isLoading={isLoadingSessions}
+          onToggleAutopilotHistory={handleToggleAutopilotHistory}
           onSelectSession={handleSelectSession}
           onNewChat={handleNewChat}
           onClose={handleCloseDrawer}

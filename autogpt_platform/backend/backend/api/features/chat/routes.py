@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.autopilot import consume_callback_token, strip_internal_content
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
@@ -28,6 +29,7 @@ from backend.copilot.model import (
     update_session_title,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.session_types import ChatSessionStartType
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -118,6 +120,8 @@ class SessionDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     user_id: str | None
+    start_type: ChatSessionStartType
+    execution_tag: str | None = None
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
 
@@ -129,6 +133,8 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    start_type: ChatSessionStartType
+    execution_tag: str | None = None
     is_processing: bool
 
 
@@ -160,6 +166,14 @@ class UpdateSessionTitleRequest(BaseModel):
         return stripped
 
 
+class ConsumeCallbackTokenRequest(BaseModel):
+    token: str
+
+
+class ConsumeCallbackTokenResponse(BaseModel):
+    session_id: str
+
+
 # ========== Routes ==========
 
 
@@ -171,6 +185,7 @@ async def list_sessions(
     user_id: Annotated[str, Security(auth.get_user_id)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    with_auto: bool = Query(default=False),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -186,7 +201,12 @@ async def list_sessions(
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
-    sessions, total_count = await get_user_sessions(user_id, limit, offset)
+    sessions, total_count = await get_user_sessions(
+        user_id,
+        limit,
+        offset,
+        with_auto=with_auto,
+    )
 
     # Batch-check Redis for active stream status on each session
     processing_set: set[str] = set()
@@ -217,6 +237,8 @@ async def list_sessions(
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
                 title=session.title,
+                start_type=session.start_type,
+                execution_tag=session.execution_tag,
                 is_processing=session.session_id in processing_set,
             )
             for session in sessions
@@ -368,7 +390,15 @@ async def get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
 
-    messages = [message.model_dump() for message in session.messages]
+    messages = []
+    for message in session.messages:
+        payload = message.model_dump()
+        if message.role == "user":
+            visible_content = strip_internal_content(message.content)
+            if visible_content is None:
+                continue
+            payload["content"] = visible_content
+        messages.append(payload)
 
     # Check if there's an active stream for this session
     active_stream_info = None
@@ -394,9 +424,26 @@ async def get_session(
         created_at=session.started_at.isoformat(),
         updated_at=session.updated_at.isoformat(),
         user_id=session.user_id or None,
+        start_type=session.start_type,
+        execution_tag=session.execution_tag,
         messages=messages,
         active_stream=active_stream_info,
     )
+
+
+@router.post(
+    "/sessions/callback-token/consume",
+    dependencies=[Security(auth.requires_user)],
+)
+async def consume_callback_token_route(
+    request: ConsumeCallbackTokenRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ConsumeCallbackTokenResponse:
+    try:
+        result = await consume_callback_token(request.token, user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ConsumeCallbackTokenResponse(session_id=result.session_id)
 
 
 @router.post(

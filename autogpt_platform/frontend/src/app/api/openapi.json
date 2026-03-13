@@ -1030,6 +1030,16 @@
               "default": 0,
               "title": "Offset"
             }
+          },
+          {
+            "name": "with_auto",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "With Auto"
+            }
           }
         ],
         "responses": {
@@ -1077,6 +1087,47 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
+      }
+    },
+    "/api/chat/sessions/callback-token/consume": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Consume Callback Token Route",
+        "operationId": "postV2ConsumeCallbackTokenRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumeCallbackTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsumeCallbackTokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -8419,6 +8470,16 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "ChatSessionStartType": {
+        "type": "string",
+        "enum": [
+          "MANUAL",
+          "AUTOPILOT_NIGHTLY",
+          "AUTOPILOT_CALLBACK",
+          "AUTOPILOT_INVITE_CTA"
+        ],
+        "title": "ChatSessionStartType"
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -8454,6 +8515,20 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "ConsumeCallbackTokenRequest": {
+        "properties": { "token": { "type": "string", "title": "Token" } },
+        "type": "object",
+        "required": ["token"],
+        "title": "ConsumeCallbackTokenRequest"
+      },
+      "ConsumeCallbackTokenResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "ConsumeCallbackTokenResponse"
       },
       "ContentType": {
         "type": "string",
@@ -11915,6 +11990,7 @@
           "error",
           "no_results",
           "need_login",
+          "completion_report_saved",
           "agents_found",
           "agent_details",
           "setup_requirements",
@@ -12180,6 +12256,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
           },
+          "start_type": { "$ref": "#/components/schemas/ChatSessionStartType" },
+          "execution_tag": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Tag"
+          },
           "messages": {
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
@@ -12193,7 +12274,14 @@
           }
         },
         "type": "object",
-        "required": ["id", "created_at", "updated_at", "user_id", "messages"],
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "user_id",
+          "start_type",
+          "messages"
+        ],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
       },
@@ -12206,10 +12294,21 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "start_type": { "$ref": "#/components/schemas/ChatSessionStartType" },
+          "execution_tag": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Tag"
+          },
           "is_processing": { "type": "boolean", "title": "Is Processing" }
         },
         "type": "object",
-        "required": ["id", "created_at", "updated_at", "is_processing"],
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "start_type",
+          "is_processing"
+        ],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },

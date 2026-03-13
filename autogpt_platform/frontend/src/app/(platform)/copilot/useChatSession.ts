@@ -4,6 +4,7 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { ChatSessionStartType } from "@/app/api/__generated__/models/chatSessionStartType";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -70,6 +71,14 @@ export function useChatSession() {
     );
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
+  const sessionStartType = useMemo<ChatSessionStartType | null>(() => {
+    if (sessionQuery.data?.status !== 200) {
+      return null;
+    }
+
+    return sessionQuery.data.data.start_type;
+  }, [sessionQuery.data]);
+
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession({
       mutation: {
@@ -121,6 +130,7 @@ export function useChatSession() {
   return {
     sessionId,
     setSessionId,
+    sessionStartType,
     hydratedMessages,
     hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,

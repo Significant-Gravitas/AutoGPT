@@ -56,9 +56,9 @@ from ..response_model import (
     StreamToolOutputAvailable,
 )
 from ..service import (
-    _build_system_prompt,
     _generate_session_title,
     _is_langfuse_configured,
+    _resolve_system_prompt,
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
@@ -689,7 +689,7 @@ async def stream_chat_completion_sdk(
     session = await upsert_chat_session(session)
 
     # Generate title for new sessions (first user message)
-    if is_user_message and not session.title:
+    if is_user_message and session.is_manual and not session.title:
         user_messages = [m for m in session.messages if m.role == "user"]
         if len(user_messages) == 1:
             first_message = user_messages[0].content or message or ""
@@ -804,7 +804,11 @@ async def stream_chat_completion_sdk(
 
         e2b_sandbox, (base_system_prompt, _), dl = await asyncio.gather(
             _setup_e2b(),
-            _build_system_prompt(user_id, has_conversation_history=has_history),
+            _resolve_system_prompt(
+                session,
+                user_id,
+                has_conversation_history=has_history,
+            ),
             _fetch_transcript(),
         )
 
@@ -861,7 +865,7 @@ async def stream_chat_completion_sdk(
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
+        mcp_server = create_copilot_mcp_server(session, use_e2b=use_e2b)
 
         sdk_model = _resolve_sdk_model()
 
@@ -875,7 +879,7 @@ async def stream_chat_completion_sdk(
             on_compact=compaction.on_compact,
         )
 
-        allowed = get_copilot_tool_names(use_e2b=use_e2b)
+        allowed = get_copilot_tool_names(session, use_e2b=use_e2b)
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
         def _on_stderr(line: str) -> None:

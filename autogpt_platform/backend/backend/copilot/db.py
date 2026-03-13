@@ -19,8 +19,10 @@ from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
 from .model import ChatMessage, ChatSession, ChatSessionInfo
+from .session_types import ChatSessionStartType
 
 logger = logging.getLogger(__name__)
+_UNSET = object()
 
 
 async def get_chat_session(session_id: str) -> ChatSession | None:
@@ -35,6 +37,9 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
 async def create_chat_session(
     session_id: str,
     user_id: str,
+    start_type: ChatSessionStartType = ChatSessionStartType.MANUAL,
+    execution_tag: str | None = None,
+    session_config: dict[str, Any] | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -43,6 +48,9 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
+        startType=start_type.value,
+        executionTag=execution_tag,
+        sessionConfig=SafeJson(session_config or {}),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
     return ChatSessionInfo.from_db(prisma_session)
@@ -56,6 +64,15 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
+    start_type: ChatSessionStartType | None = None,
+    execution_tag: str | None | object = _UNSET,
+    session_config: dict[str, Any] | None = None,
+    completion_report: dict[str, Any] | None | object = _UNSET,
+    completion_report_repair_count: int | None = None,
+    completion_report_repair_queued_at: datetime | None | object = _UNSET,
+    completed_at: datetime | None | object = _UNSET,
+    notification_email_sent_at: datetime | None | object = _UNSET,
+    notification_email_skipped_at: datetime | None | object = _UNSET,
 ) -> ChatSession | None:
     """Update a chat session's metadata."""
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
@@ -72,6 +89,26 @@ async def update_chat_session(
         data["totalCompletionTokens"] = total_completion_tokens
     if title is not None:
         data["title"] = title
+    if start_type is not None:
+        data["startType"] = start_type.value
+    if execution_tag is not _UNSET:
+        data["executionTag"] = execution_tag
+    if session_config is not None:
+        data["sessionConfig"] = SafeJson(session_config)
+    if completion_report is not _UNSET:
+        data["completionReport"] = (
+            SafeJson(completion_report) if completion_report is not None else None
+        )
+    if completion_report_repair_count is not None:
+        data["completionReportRepairCount"] = completion_report_repair_count
+    if completion_report_repair_queued_at is not _UNSET:
+        data["completionReportRepairQueuedAt"] = completion_report_repair_queued_at
+    if completed_at is not _UNSET:
+        data["completedAt"] = completed_at
+    if notification_email_sent_at is not _UNSET:
+        data["notificationEmailSentAt"] = notification_email_sent_at
+    if notification_email_skipped_at is not _UNSET:
+        data["notificationEmailSkippedAt"] = notification_email_skipped_at
 
     session = await PrismaChatSession.prisma().update(
         where={"id": session_id},
@@ -256,10 +293,14 @@ async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    with_auto: bool = False,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent."""
     prisma_sessions = await PrismaChatSession.prisma().find_many(
-        where={"userId": user_id},
+        where={
+            "userId": user_id,
+            **({} if with_auto else {"startType": ChatSessionStartType.MANUAL.value}),
+        },
         order={"updatedAt": "desc"},
         take=limit,
         skip=offset,
@@ -267,9 +308,17 @@ async def get_user_chat_sessions(
     return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
 
 
-async def get_user_session_count(user_id: str) -> int:
+async def get_user_session_count(
+    user_id: str,
+    with_auto: bool = False,
+) -> int:
     """Get the total number of chat sessions for a user."""
-    return await PrismaChatSession.prisma().count(where={"userId": user_id})
+    return await PrismaChatSession.prisma().count(
+        where={
+            "userId": user_id,
+            **({} if with_auto else {"startType": ChatSessionStartType.MANUAL.value}),
+        }
+    )
 
 
 async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:

@@ -1,0 +1,37 @@
+<div style="font-family: 'Poppins', sans-serif; color: #070629;">
+  <h2 style="font-size: 24px; line-height: 125%; margin-top: 0; margin-bottom: 12px;">
+    Your Autopilot beta access is waiting
+  </h2>
+
+  <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 16px;">
+    You applied to try Autopilot. Here is a tailored example of how it can help once you jump back in.
+  </p>
+
+  {% for paragraph in email_body_paragraphs %}
+  <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 16px;">
+    {{ paragraph }}
+  </p>
+  {% endfor %}
+
+  {% if approval_summary_paragraphs %}
+  <div
+    style="margin-top: 16px; padding: 16px; border-radius: 12px; background: #fff7ed; border: 1px solid #fdba74;">
+    <h3 style="margin: 0 0 8px;">Approval needed</h3>
+    {% for paragraph in approval_summary_paragraphs %}
+    <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 12px;">
+      {{ paragraph }}
+    </p>
+    {% endfor %}
+    <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 0;">
+      I thought this was a good idea. If you want it to happen, please hit approve.
+    </p>
+  </div>
+  {% endif %}
+
+  <div style="margin-top: 24px;">
+    <a href="{{ cta_url }}"
+      style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #111827; color: #ffffff; text-decoration: none; font-weight: 600;">
+      {{ cta_label }}
+    </a>
+  </div>
+</div>

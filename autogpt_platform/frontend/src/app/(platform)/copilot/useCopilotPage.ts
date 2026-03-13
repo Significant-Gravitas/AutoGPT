@@ -1,4 +1,5 @@
 import {
+  usePostV2ConsumeCallbackTokenRoute,
   getGetV2ListSessionsQueryKey,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
@@ -11,6 +12,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
+import { parseAsString, useQueryState } from "nuqs";
+import { getSessionListParams, isNonManualSessionStartType } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
@@ -29,7 +32,18 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [callbackToken, setCallbackToken] = useQueryState(
+    "callbackToken",
+    parseAsString,
+  );
+  const [showAutopilot, setShowAutopilot] = useQueryState(
+    "showAutopilot",
+    parseAsString,
+  );
   const queryClient = useQueryClient();
+  const showAutopilotHistory = showAutopilot === "1";
+  const listSessionsParams = getSessionListParams(showAutopilotHistory);
+  const consumedCallbackTokenRef = useRef<string | null>(null);
 
   const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
     useCopilotUIStore();
@@ -37,9 +51,10 @@ export function useCopilotPage() {
   const {
     sessionId,
     setSessionId,
+    sessionStartType,
     hydratedMessages,
     hasActiveStream,
-    isLoadingSession,
+    isLoadingSession: isLoadingCurrentSession,
     isSessionError,
     createSession,
     isCreatingSession,
@@ -62,6 +77,11 @@ export function useCopilotPage() {
   });
 
   useCopilotNotifications(sessionId);
+
+  const {
+    mutateAsync: consumeCallbackToken,
+    isPending: isConsumingCallbackToken,
+  } = usePostV2ConsumeCallbackTokenRoute();
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -126,6 +146,61 @@ export function useCopilotPage() {
       sendMessage({ text: msg });
     }
   }, [sessionId, pendingMessage, sendMessage]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !callbackToken) {
+      return;
+    }
+    if (consumedCallbackTokenRef.current === callbackToken) {
+      return;
+    }
+
+    consumedCallbackTokenRef.current = callbackToken;
+
+    void consumeCallbackToken({ data: { token: callbackToken } })
+      .then((response) => {
+        if (response.status !== 200 || !response.data?.session_id) {
+          throw new Error("Failed to open callback session");
+        }
+
+        setSessionId(response.data.session_id);
+        setShowAutopilot(null);
+        setCallbackToken(null);
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListSessionsQueryKey(),
+        });
+      })
+      .catch((error) => {
+        consumedCallbackTokenRef.current = null;
+        setCallbackToken(null);
+        toast({
+          title: "Unable to open callback session",
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
+      });
+  }, [
+    callbackToken,
+    consumeCallbackToken,
+    isLoggedIn,
+    queryClient,
+    setCallbackToken,
+    setSessionId,
+    setShowAutopilot,
+  ]);
+
+  useEffect(() => {
+    if (
+      !sessionId ||
+      showAutopilot !== null ||
+      !isNonManualSessionStartType(sessionStartType)
+    ) {
+      return;
+    }
+
+    setShowAutopilot("1");
+  }, [sessionId, sessionStartType, setShowAutopilot, showAutopilot]);
 
   async function uploadFiles(
     files: File[],
@@ -232,10 +307,9 @@ export function useCopilotPage() {
 
   // --- Session list (for mobile drawer & sidebar) ---
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions(
-      { limit: 50 },
-      { query: { enabled: !isUserLoading && isLoggedIn } },
-    );
+    useGetV2ListSessions(listSessionsParams, {
+      query: { enabled: !isUserLoading && isLoggedIn },
+    });
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
@@ -252,16 +326,18 @@ export function useCopilotPage() {
     const isNowReady = status === "ready";
 
     if (!wasActive || !isNowReady || !sessionId || isReconnecting) return;
+    const currentListSessionsParams =
+      getSessionListParams(showAutopilotHistory);
 
     queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+      queryKey: getGetV2ListSessionsQueryKey(currentListSessionsParams),
     });
     const sid = sessionId;
     let attempts = 0;
     clearInterval(titlePollRef.current);
     titlePollRef.current = setInterval(() => {
       const data = queryClient.getQueryData<getV2ListSessionsResponse>(
-        getGetV2ListSessionsQueryKey({ limit: 50 }),
+        getGetV2ListSessionsQueryKey(currentListSessionsParams),
       );
       const hasTitle =
         data?.status === 200 &&
@@ -273,10 +349,10 @@ export function useCopilotPage() {
       }
       attempts += 1;
       queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+        queryKey: getGetV2ListSessionsQueryKey(currentListSessionsParams),
       });
     }, TITLE_POLL_INTERVAL_MS);
-  }, [status, sessionId, isReconnecting, queryClient]);
+  }, [status, sessionId, isReconnecting, queryClient, showAutopilotHistory]);
 
   // Clean up polling on session change or unmount
   useEffect(() => {
@@ -309,6 +385,10 @@ export function useCopilotPage() {
     if (isMobile) setDrawerOpen(false);
   }
 
+  function handleToggleAutopilotHistory() {
+    setShowAutopilot(showAutopilotHistory ? null : "1");
+  }
+
   // --- Delete handlers ---
   function handleDeleteClick(id: string, title: string | null | undefined) {
     if (isDeleting) return;
@@ -334,7 +414,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
-    isLoadingSession,
+    isLoadingSession: isLoadingCurrentSession || isConsumingCallbackToken,
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
@@ -345,8 +425,10 @@ export function useCopilotPage() {
     // Mobile drawer
     isMobile,
     isDrawerOpen,
+    showAutopilotHistory,
     sessions,
     isLoadingSessions,
+    handleToggleAutopilotHistory,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,

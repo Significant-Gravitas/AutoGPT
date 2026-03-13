@@ -22,7 +22,7 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
-from .model import ChatSessionInfo, get_chat_session, upsert_chat_session
+from .model import ChatSession, ChatSessionInfo, get_chat_session, upsert_chat_session
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,21 @@ async def _build_system_prompt(
 
     compiled = await _get_system_prompt_template(context)
     return compiled, understanding
+
+
+async def _resolve_system_prompt(
+    session: ChatSession,
+    user_id: str | None,
+    *,
+    has_conversation_history: bool = False,
+) -> tuple[str, Any]:
+    override = session.session_config.system_prompt_override
+    if override:
+        return override, None
+    return await _build_system_prompt(
+        user_id,
+        has_conversation_history=has_conversation_history,
+    )
 
 
 async def _generate_session_title(

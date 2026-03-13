@@ -1,4 +1,41 @@
+import type { GetV2ListSessionsParams } from "@/app/api/__generated__/models/getV2ListSessionsParams";
+import {
+  ChatSessionStartType,
+  type ChatSessionStartType as ChatSessionStartTypeValue,
+} from "@/app/api/__generated__/models/chatSessionStartType";
 import type { UIMessage } from "ai";
+
+export const COPILOT_SESSION_LIST_LIMIT = 50;
+
+export function getSessionListParams(
+  includeNonManual: boolean,
+): GetV2ListSessionsParams {
+  return {
+    limit: COPILOT_SESSION_LIST_LIMIT,
+    with_auto: includeNonManual,
+  };
+}
+
+export function isNonManualSessionStartType(
+  startType: ChatSessionStartTypeValue | null | undefined,
+): boolean {
+  return startType != null && startType !== ChatSessionStartType.MANUAL;
+}
+
+export function getSessionStartTypeLabel(
+  startType: ChatSessionStartTypeValue,
+): string | null {
+  switch (startType) {
+    case ChatSessionStartType.AUTOPILOT_NIGHTLY:
+      return "Nightly";
+    case ChatSessionStartType.AUTOPILOT_CALLBACK:
+      return "Callback";
+    case ChatSessionStartType.AUTOPILOT_INVITE_CTA:
+      return "Invite CTA";
+    default:
+      return null;
+  }
+}
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(

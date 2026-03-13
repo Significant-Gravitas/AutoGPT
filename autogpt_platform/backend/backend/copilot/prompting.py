@@ -6,7 +6,7 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import iter_available_tools
 
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = """\
@@ -161,7 +161,7 @@ def _get_cloud_sandbox_supplement() -> str:
     )
 
 
-def _generate_tool_documentation() -> str:
+def _generate_tool_documentation(session=None) -> str:
     """Auto-generate tool documentation from TOOL_REGISTRY.
 
     NOTE: This is ONLY used in baseline mode (direct OpenAI API).
@@ -177,11 +177,7 @@ def _generate_tool_documentation() -> str:
     docs = "\n## AVAILABLE TOOLS\n\n"
 
     # Sort tools alphabetically for consistent output
-    # Filter by is_available to match get_available_tools() behavior
-    for name in sorted(TOOL_REGISTRY.keys()):
-        tool = TOOL_REGISTRY[name]
-        if not tool.is_available:
-            continue
+    for name, tool in sorted(iter_available_tools(session), key=lambda item: item[0]):
         schema = tool.as_openai_tool()
         desc = schema["function"].get("description", "No description available")
         # Format as bullet list with tool name in code style
@@ -209,7 +205,7 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
     return _get_local_storage_supplement(cwd)
 
 
-def get_baseline_supplement() -> str:
+def get_baseline_supplement(session=None) -> str:
     """Get the supplement for baseline mode (direct OpenAI API).
 
     Baseline mode INCLUDES auto-generated tool documentation because the
@@ -219,5 +215,5 @@ def get_baseline_supplement() -> str:
     Returns:
         The supplement string to append to the system prompt
     """
-    tool_docs = _generate_tool_documentation()
+    tool_docs = _generate_tool_documentation(session)
     return tool_docs + _SHARED_TOOL_NOTES

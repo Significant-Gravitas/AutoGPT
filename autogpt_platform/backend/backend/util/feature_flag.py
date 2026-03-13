@@ -39,6 +39,7 @@ class Flag(str, Enum):
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
     COPILOT_SDK = "copilot-sdk"
+    NIGHTLY_COPILOT = "nightly-copilot"
 
 
 def is_configured() -> bool:

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from datetime import date
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
@@ -124,6 +125,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_invite_gate: bool = Field(
         default=True,
         description="If the invite-only signup gate is enforced",
+    )
+    nightly_copilot_callback_start_date: date = Field(
+        default=date(2026, 2, 8),
+        description="Users with sessions since this date are eligible for the one-off autopilot callback cohort.",
+    )
+    nightly_copilot_invite_cta_start_date: date = Field(
+        default=date(2026, 3, 13),
+        description="Invite CTA cohort does not run before this date.",
+    )
+    nightly_copilot_invite_cta_delay_hours: int = Field(
+        default=48,
+        description="Delay after invite creation before the invite CTA can run.",
+    )
+    nightly_copilot_callback_token_ttl_hours: int = Field(
+        default=24 * 14,
+        description="TTL for nightly copilot callback tokens.",
     )
     enable_credit: bool = Field(
         default=False,

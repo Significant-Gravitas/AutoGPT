@@ -3,11 +3,14 @@
 import pytest
 
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.model import ChatSession
+from backend.copilot.session_types import ChatSessionConfig, ChatSessionStartType
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _text_from_mcp_result,
+    get_copilot_tool_names,
     pop_pending_tool_output,
     set_execution_context,
     stash_pending_tool_output,
@@ -168,3 +171,20 @@ class TestTruncationAndStashIntegration:
         text = _text_from_mcp_result(truncated)
         assert len(text) < len(big_text)
         assert len(str(truncated)) <= _MCP_MAX_CHARS
+
+
+class TestSessionToolFiltering:
+    def test_disabled_tools_are_removed_from_sdk_allowed_tools(self):
+        session = ChatSession.new(
+            "user-1",
+            start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+            session_config=ChatSessionConfig(
+                extra_tools=["completion_report"],
+                disabled_tools=["edit_agent"],
+            ),
+        )
+
+        tool_names = get_copilot_tool_names(session)
+
+        assert "mcp__copilot__completion_report" in tool_names
+        assert "mcp__copilot__edit_agent" not in tool_names

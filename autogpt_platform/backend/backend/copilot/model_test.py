@@ -19,6 +19,7 @@ from .model import (
     get_chat_session,
     upsert_chat_session,
 )
+from .session_types import ChatSessionConfig, ChatSessionStartType
 
 messages = [
     ChatMessage(content="Hello, how are you?", role="user"),
@@ -46,7 +47,15 @@ messages = [
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_serialization_deserialization():
-    s = ChatSession.new(user_id="abc123")
+    s = ChatSession.new(
+        user_id="abc123",
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+        execution_tag="autopilot-nightly:2026-03-13",
+        session_config=ChatSessionConfig(
+            extra_tools=["completion_report"],
+            disabled_tools=["edit_agent"],
+        ),
+    )
     s.messages = messages
     s.usage = [Usage(prompt_tokens=100, completion_tokens=200, total_tokens=300)]
     serialized = s.model_dump_json()

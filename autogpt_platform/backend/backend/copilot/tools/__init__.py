@@ -12,6 +12,7 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .completion_report import CompletionReportTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
@@ -50,10 +51,12 @@ if TYPE_CHECKING:
     from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)
+SESSION_SCOPED_TOOL_NAMES = {"completion_report"}
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "completion_report": CompletionReportTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),
@@ -103,16 +106,38 @@ find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
 
-def get_available_tools() -> list[ChatCompletionToolParam]:
+def is_tool_enabled(tool_name: str, session: "ChatSession | None" = None) -> bool:
+    if tool_name not in TOOL_REGISTRY:
+        return False
+    if session is not None and session.disables_tool(tool_name):
+        return False
+    if tool_name not in SESSION_SCOPED_TOOL_NAMES:
+        return True
+    if session is None:
+        return False
+    return session.allows_tool(tool_name)
+
+
+def iter_available_tools(
+    session: "ChatSession | None" = None,
+) -> list[tuple[str, BaseTool]]:
+    return [
+        (tool_name, tool)
+        for tool_name, tool in TOOL_REGISTRY.items()
+        if tool.is_available and is_tool_enabled(tool_name, session)
+    ]
+
+
+def get_available_tools(
+    session: "ChatSession | None" = None,
+) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
     Called per-request so that env-var or binary availability is evaluated
     fresh each time (e.g. browser_* tools are excluded when agent-browser
     CLI is not installed).
     """
-    return [
-        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
-    ]
+    return [tool.as_openai_tool() for _, tool in iter_available_tools(session)]
 
 
 def get_tool(tool_name: str) -> BaseTool | None:
@@ -128,6 +153,9 @@ async def execute_tool(
     tool_call_id: str,
 ) -> "StreamToolOutputAvailable":
     """Execute a tool by name."""
+    if not is_tool_enabled(tool_name, session):
+        raise ValueError(f"Tool {tool_name} is not enabled for this session")
+
     tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")

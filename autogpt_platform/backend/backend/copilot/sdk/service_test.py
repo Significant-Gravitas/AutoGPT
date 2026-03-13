@@ -205,6 +205,29 @@ class TestPromptSupplement:
         ):
             assert "`browser_navigate`" in docs
 
+    def test_baseline_supplement_respects_session_disabled_tools(self):
+        """Session-specific docs should hide disabled tools and include added session tools."""
+        from backend.copilot.model import ChatSession
+        from backend.copilot.prompting import get_baseline_supplement
+        from backend.copilot.session_types import (
+            ChatSessionConfig,
+            ChatSessionStartType,
+        )
+
+        session = ChatSession.new(
+            "user-1",
+            start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+            session_config=ChatSessionConfig(
+                extra_tools=["completion_report"],
+                disabled_tools=["edit_agent"],
+            ),
+        )
+
+        docs = get_baseline_supplement(session)
+
+        assert "`completion_report`" in docs
+        assert "`edit_agent`" not in docs
+
     def test_baseline_supplement_includes_workflows(self):
         """Baseline supplement should include workflow guidance in tool descriptions."""
         from backend.copilot.prompting import get_baseline_supplement
@@ -219,15 +242,13 @@ class TestPromptSupplement:
     def test_baseline_supplement_completeness(self):
         """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
         from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
+        from backend.copilot.tools import iter_available_tools
 
         docs = get_baseline_supplement()
 
         # Verify each available registered tool is documented
-        # (matches _generate_tool_documentation which filters by is_available)
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
+        # (matches _generate_tool_documentation which filters with iter_available_tools)
+        for tool_name, _ in iter_available_tools():
             assert (
                 f"`{tool_name}`" in docs
             ), f"Tool '{tool_name}' missing from baseline supplement"
@@ -277,14 +298,12 @@ class TestPromptSupplement:
     def test_baseline_supplement_no_duplicate_tools(self):
         """No tool should appear multiple times in baseline supplement."""
         from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
+        from backend.copilot.tools import iter_available_tools
 
         docs = get_baseline_supplement()
 
         # Count occurrences of each available tool in the entire supplement
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
+        for tool_name, _ in iter_available_tools():
             # Count how many times this tool appears as a bullet point
             count = docs.count(f"- **`{tool_name}`**")
             assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"

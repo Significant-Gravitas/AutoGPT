@@ -21,7 +21,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -29,6 +29,11 @@ from backend.util import json
 from backend.util.exceptions import DatabaseError, RedisError
 
 from .config import ChatConfig
+from .session_types import (
+    ChatSessionConfig,
+    ChatSessionStartType,
+    StoredCompletionReport,
+)
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -80,11 +85,20 @@ class ChatSessionInfo(BaseModel):
     user_id: str
     title: str | None = None
     usage: list[Usage]
-    credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
+    credentials: dict[str, dict] = Field(default_factory=dict)
     started_at: datetime
     updated_at: datetime
-    successful_agent_runs: dict[str, int] = {}
-    successful_agent_schedules: dict[str, int] = {}
+    successful_agent_runs: dict[str, int] = Field(default_factory=dict)
+    successful_agent_schedules: dict[str, int] = Field(default_factory=dict)
+    start_type: ChatSessionStartType = ChatSessionStartType.MANUAL
+    execution_tag: str | None = None
+    session_config: ChatSessionConfig = Field(default_factory=ChatSessionConfig)
+    completion_report: StoredCompletionReport | None = None
+    completion_report_repair_count: int = 0
+    completion_report_repair_queued_at: datetime | None = None
+    completed_at: datetime | None = None
+    notification_email_sent_at: datetime | None = None
+    notification_email_skipped_at: datetime | None = None
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -97,6 +111,8 @@ class ChatSessionInfo(BaseModel):
         successful_agent_schedules = _parse_json_field(
             prisma_session.successfulAgentSchedules, default={}
         )
+        session_config = _parse_json_field(prisma_session.sessionConfig, default={})
+        completion_report = _parse_json_field(prisma_session.completionReport)
 
         # Calculate usage from token counts
         usage = []
@@ -110,6 +126,20 @@ class ChatSessionInfo(BaseModel):
                 )
             )
 
+        parsed_session_config = ChatSessionConfig.model_validate(session_config or {})
+        parsed_completion_report = None
+        if isinstance(completion_report, dict):
+            try:
+                parsed_completion_report = StoredCompletionReport.model_validate(
+                    completion_report
+                )
+            except Exception:
+                logger.warning(
+                    "Invalid completionReport payload on session %s",
+                    prisma_session.id,
+                    exc_info=True,
+                )
+
         return cls(
             session_id=prisma_session.id,
             user_id=prisma_session.userId,
@@ -120,6 +150,15 @@ class ChatSessionInfo(BaseModel):
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
+            start_type=ChatSessionStartType(str(prisma_session.startType)),
+            execution_tag=prisma_session.executionTag,
+            session_config=parsed_session_config,
+            completion_report=parsed_completion_report,
+            completion_report_repair_count=prisma_session.completionReportRepairCount,
+            completion_report_repair_queued_at=prisma_session.completionReportRepairQueuedAt,
+            completed_at=prisma_session.completedAt,
+            notification_email_sent_at=prisma_session.notificationEmailSentAt,
+            notification_email_skipped_at=prisma_session.notificationEmailSkippedAt,
         )
 
 
@@ -127,7 +166,14 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str) -> Self:
+    def new(
+        cls,
+        user_id: str,
+        *,
+        start_type: ChatSessionStartType = ChatSessionStartType.MANUAL,
+        execution_tag: str | None = None,
+        session_config: ChatSessionConfig | None = None,
+    ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -137,6 +183,9 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            start_type=start_type,
+            execution_tag=execution_tag,
+            session_config=session_config or ChatSessionConfig(),
         )
 
     @classmethod
@@ -151,6 +200,16 @@ class ChatSession(ChatSessionInfo):
             **ChatSessionInfo.from_db(prisma_session).model_dump(),
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
+
+    @property
+    def is_manual(self) -> bool:
+        return self.start_type == ChatSessionStartType.MANUAL
+
+    def allows_tool(self, tool_name: str) -> bool:
+        return self.session_config.allows_tool(tool_name)
+
+    def disables_tool(self, tool_name: str) -> bool:
+        return self.session_config.disables_tool(tool_name)
 
     def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
         """Attach a tool_call to the current turn's assistant message.
@@ -524,6 +583,9 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                start_type=session.start_type,
+                execution_tag=session.execution_tag,
+                session_config=session.session_config.model_dump(mode="json"),
             )
             existing_message_count = 0
 
@@ -539,6 +601,19 @@ async def _save_session_to_db(
         successful_agent_schedules=session.successful_agent_schedules,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
+        start_type=session.start_type,
+        execution_tag=session.execution_tag,
+        session_config=session.session_config.model_dump(mode="json"),
+        completion_report=(
+            session.completion_report.model_dump(mode="json")
+            if session.completion_report
+            else None
+        ),
+        completion_report_repair_count=session.completion_report_repair_count,
+        completion_report_repair_queued_at=session.completion_report_repair_queued_at,
+        completed_at=session.completed_at,
+        notification_email_sent_at=session.notification_email_sent_at,
+        notification_email_skipped_at=session.notification_email_skipped_at,
     )
 
     # Add new messages (only those after existing count)
@@ -601,7 +676,14 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
         return session
 
 
-async def create_chat_session(user_id: str) -> ChatSession:
+async def create_chat_session(
+    user_id: str,
+    *,
+    start_type: ChatSessionStartType = ChatSessionStartType.MANUAL,
+    execution_tag: str | None = None,
+    session_config: ChatSessionConfig | None = None,
+    initial_messages: list[ChatMessage] | None = None,
+) -> ChatSession:
     """Create a new chat session and persist it.
 
     Raises:
@@ -609,14 +691,30 @@ async def create_chat_session(user_id: str) -> ChatSession:
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id)
+    session = ChatSession.new(
+        user_id,
+        start_type=start_type,
+        execution_tag=execution_tag,
+        session_config=session_config,
+    )
+    if initial_messages:
+        session.messages.extend(initial_messages)
 
     # Create in database first - fail fast if this fails
     try:
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            start_type=session.start_type,
+            execution_tag=session.execution_tag,
+            session_config=session.session_config.model_dump(mode="json"),
         )
+        if session.messages:
+            await _save_session_to_db(
+                session,
+                0,
+                skip_existence_check=True,
+            )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(
@@ -636,6 +734,7 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    with_auto: bool = False,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -644,8 +743,16 @@ async def get_user_sessions(
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
-    total_count = await db.get_user_session_count(user_id)
+    sessions = await db.get_user_chat_sessions(
+        user_id,
+        limit,
+        offset,
+        with_auto=with_auto,
+    )
+    total_count = await db.get_user_session_count(
+        user_id,
+        with_auto=with_auto,
+    )
 
     return sessions, total_count
 
