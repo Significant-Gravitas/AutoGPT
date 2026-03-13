@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
-function formatResetTime(resetsAt: Date): string {
+function formatResetTime(resetsAt: Date | string): string {
+  const resetDate =
+    typeof resetsAt === "string" ? new Date(resetsAt) : resetsAt;
   const now = new Date();
-  const diffMs = resetsAt.getTime() - now.getTime();
+  const diffMs = resetDate.getTime() - now.getTime();
   if (diffMs <= 0) return "now";
 
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -23,7 +25,7 @@ function formatResetTime(resetsAt: Date): string {
   }
 
   // Over 24h: show day and time in local timezone ("Mon 12:00 AM PST")
-  return resetsAt.toLocaleString(undefined, {
+  return resetDate.toLocaleString(undefined, {
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
@@ -40,7 +42,7 @@ function UsageBar({
   label: string;
   used: number;
   limit: number;
-  resetsAt: Date;
+  resetsAt: Date | string;
 }) {
   if (limit <= 0) return null;
 

@@ -193,7 +193,9 @@ async def record_token_usage(
         cache_creation_tokens: Tokens written to prompt cache (25% cost).
     """
     weighted_input = (
-        prompt_tokens + int(cache_creation_tokens * 0.25) + int(cache_read_tokens * 0.1)
+        prompt_tokens
+        + round(cache_creation_tokens * 0.25)
+        + round(cache_read_tokens * 0.1)
     )
     total = weighted_input + completion_tokens
     if total <= 0:
