@@ -394,7 +394,7 @@ async def extract_business_understanding_from_tally(
         if short_prompts:
             cleaned["suggested_prompts"] = short_prompts
         else:
-            # We dont want to add a None value suggested_prompts filed
+            # We dont want to add a None value suggested_prompts field
             cleaned.pop("suggested_prompts", None)
     else:
         # suggested_prompts must be a list - removing it as its not here
