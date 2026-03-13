@@ -72,7 +72,7 @@ WITH all_steps AS (
 raw AS (
   SELECT
       u."userId",
-      step_txt AS step
+      step_txt::text AS step
   FROM platform."UserOnboarding" u
   CROSS JOIN LATERAL UNNEST(u."completedSteps") AS step_txt
   WHERE u."createdAt" >= CURRENT_DATE - INTERVAL '90 days'
