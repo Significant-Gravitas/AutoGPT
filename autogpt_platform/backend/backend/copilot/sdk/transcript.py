@@ -169,21 +169,38 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
         return None
 
     # Validate glob results don't escape project_dir via symlinks
-    resolved_base = Path(project_dir).resolve()
-    jsonl_files = [
-        str(p)
-        for p in Path(project_dir).glob("*.jsonl")
-        if p.resolve().is_relative_to(resolved_base)
-    ]
+    try:
+        resolved_base = Path(project_dir).resolve()
+    except OSError as e:
+        logger.warning("[Transcript] Failed to resolve project dir: %s", e)
+        return None
+
+    jsonl_files: list[Path] = []
+    for candidate in Path(project_dir).glob("*.jsonl"):
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_relative_to(resolved_base):
+                jsonl_files.append(resolved)
+        except (OSError, RuntimeError) as e:
+            logger.debug(
+                "[Transcript] Skipping invalid CLI session candidate %s: %s",
+                candidate,
+                e,
+            )
+
     if not jsonl_files:
         logger.debug("[Transcript] No CLI session file found in %s", project_dir)
         return None
 
     # Pick the most recently modified file (should be only one per turn).
-    session_file = max(jsonl_files, key=os.path.getmtime)
     try:
-        with open(session_file) as f:
-            content = f.read()
+        session_file = max(jsonl_files, key=lambda p: p.stat().st_mtime)
+    except OSError as e:
+        logger.warning("[Transcript] Failed to inspect CLI session files: %s", e)
+        return None
+
+    try:
+        content = session_file.read_text()
         logger.info(
             "[Transcript] Read CLI session file: %s (%d bytes)",
             session_file,
