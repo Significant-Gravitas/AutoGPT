@@ -1,4 +1,10 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
+import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
 function formatResetTime(resetsAt: Date): string {
@@ -97,7 +103,7 @@ export function UsagePanelContent({
           href="/profile/credits"
           className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
         >
-          Manage billing &amp; credits
+          Learn more about usage limits
         </a>
       )}
     </div>
@@ -110,5 +116,19 @@ export function UsageLimits() {
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
-  return <UsagePanelContent usage={usage} />;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className="rounded p-1 text-black transition-colors hover:bg-zinc-50"
+          aria-label="Usage limits"
+        >
+          <ChartBar className="!size-5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-3">
+        <UsagePanelContent usage={usage} />
+      </PopoverContent>
+    </Popover>
+  );
 }

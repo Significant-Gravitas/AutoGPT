@@ -18,7 +18,6 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarTrigger,
   useSidebar,
@@ -259,6 +258,7 @@ export function ChatSidebar() {
                   Your chats
                 </Text>
                 <div className="relative left-5 flex items-center gap-1">
+                  <UsageLimits />
                   <NotificationToggle />
                   <div className="relative left-1">
                     <SidebarTrigger />
@@ -418,11 +418,6 @@ export function ChatSidebar() {
             </motion.div>
           )}
         </SidebarContent>
-        {!isCollapsed && (
-          <SidebarFooter className="border-t border-zinc-100 px-4 py-3">
-            <UsageLimits />
-          </SidebarFooter>
-        )}
       </Sidebar>
 
       <DeleteChatDialog
