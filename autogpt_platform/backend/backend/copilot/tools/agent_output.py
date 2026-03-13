@@ -108,22 +108,11 @@ class AgentOutputTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Retrieve execution outputs from agents in the user's library.
-
-        Identify the agent using one of:
-        - agent_name: Fuzzy search in user's library
-        - library_agent_id: Exact library agent ID
-        - store_slug: Marketplace format 'username/agent-name'
-
-        Select which run to retrieve using:
-        - execution_id: Specific execution ID
-        - run_time: 'latest' (default), 'yesterday', 'last week', or ISO date 'YYYY-MM-DD'
-
-        Wait for completion (optional):
-        - wait_if_running: Max seconds to wait if execution is still running (0-300).
-          If the execution is running/queued, waits up to this many seconds for completion.
-          Returns current status on timeout. If already finished, returns immediately.
-        """
+        return (
+            "Retrieve execution outputs from a library agent. "
+            "Identify by agent_name, library_agent_id, or store_slug. "
+            "Filter by execution_id or run_time."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -132,32 +121,27 @@ class AgentOutputTool(BaseTool):
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "description": "Agent name to search for in user's library (fuzzy match)",
+                    "description": "Agent name (fuzzy match).",
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Exact library agent ID",
+                    "description": "Library agent ID.",
                 },
                 "store_slug": {
                     "type": "string",
-                    "description": "Marketplace identifier: 'username/agent-slug'",
+                    "description": "Marketplace 'username/agent-slug'.",
                 },
                 "execution_id": {
                     "type": "string",
-                    "description": "Specific execution ID to retrieve",
+                    "description": "Specific execution ID.",
                 },
                 "run_time": {
                     "type": "string",
-                    "description": (
-                        "Time filter: 'latest', 'yesterday', 'last week', or 'YYYY-MM-DD'"
-                    ),
+                    "description": "'latest', relative (today/yesterday/last week/last 30 days), or ISO date.",
                 },
                 "wait_if_running": {
                     "type": "integer",
-                    "description": (
-                        "Max seconds to wait if execution is still running (0-300). "
-                        "If running, waits for completion. Returns current state on timeout."
-                    ),
+                    "description": "Max seconds to wait if still running (0-300).",
                 },
             },
             "required": [],

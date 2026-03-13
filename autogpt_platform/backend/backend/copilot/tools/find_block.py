@@ -51,14 +51,7 @@ class FindBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Search for available blocks by name or description. "
-            "Blocks are reusable components that perform specific tasks like "
-            "sending emails, making API calls, processing text, etc. "
-            "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, name, and description. "
-            "Call run_block with the block's id **with no inputs** to see detailed inputs/outputs and execute it."
-        )
+        return "Search blocks by name or description. Returns block IDs for run_block."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -67,19 +60,11 @@ class FindBlockTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": (
-                        "Search query to find blocks by name or description. "
-                        "Use keywords like 'email', 'http', 'text', 'ai', etc."
-                    ),
+                    "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
                 "include_schemas": {
                     "type": "boolean",
-                    "description": (
-                        "If true, include full input_schema and output_schema "
-                        "for each block. Use when generating agent JSON that "
-                        "needs block schemas. Default is false."
-                    ),
-                    "default": False,
+                    "description": "Include full input/output schemas (for agent JSON generation).",
                 },
             },
             "required": ["query"],

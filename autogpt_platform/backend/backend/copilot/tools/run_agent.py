@@ -104,19 +104,11 @@ class RunAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Run or schedule an agent from the marketplace or user's library.
-
-        The tool automatically handles the setup flow:
-        - Returns missing inputs if required fields are not provided
-        - Returns missing credentials if user needs to configure them
-        - Executes immediately if all requirements are met
-        - Schedules execution if cron expression is provided
-
-        Identify the agent using either:
-        - username_agent_slug: Marketplace format 'username/agent-name'
-        - library_agent_id: ID of an agent in the user's library
-
-        For scheduled execution, provide: schedule_name, cron, and optionally timezone."""
+        return (
+            "Run or schedule an agent. Automatically checks inputs and credentials. "
+            "Identify by username_agent_slug ('user/agent') or library_agent_id. "
+            "For scheduling, provide schedule_name + cron."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -125,40 +117,36 @@ class RunAgentTool(BaseTool):
             "properties": {
                 "username_agent_slug": {
                     "type": "string",
-                    "description": "Agent identifier in format 'username/agent-name'",
+                    "description": "Marketplace format 'username/agent-name'.",
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Library agent ID from user's library",
+                    "description": "Library agent ID.",
                 },
                 "inputs": {
                     "type": "object",
-                    "description": "Input values for the agent",
+                    "description": "Input values for the agent.",
                     "additionalProperties": True,
                 },
                 "use_defaults": {
                     "type": "boolean",
-                    "description": "Set to true to run with default values (user must confirm)",
+                    "description": "Run with default values.",
                 },
                 "schedule_name": {
                     "type": "string",
-                    "description": "Name for scheduled execution (triggers scheduling mode)",
+                    "description": "Name for scheduled execution.",
                 },
                 "cron": {
                     "type": "string",
-                    "description": "Cron expression (5 fields: min hour day month weekday)",
+                    "description": "Cron expression (min hour day month weekday).",
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone for schedule (default: UTC)",
+                    "description": "IANA timezone (default: UTC).",
                 },
                 "wait_for_result": {
                     "type": "integer",
-                    "description": (
-                        "Max seconds to wait for execution to complete (0-300). "
-                        "If >0, blocks until the execution finishes or times out. "
-                        "Returns execution outputs when complete."
-                    ),
+                    "description": "Max seconds to wait for completion (0-300).",
                 },
             },
             "required": [],

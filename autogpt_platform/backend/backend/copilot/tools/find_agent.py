@@ -18,9 +18,7 @@ class FindAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Discover agents from the marketplace based on capabilities and user needs."
-        )
+        return "Search marketplace agents by capability."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -29,7 +27,7 @@ class FindAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query describing what the user wants to accomplish. Use single keywords for best results.",
+                    "description": "Search keywords.",
                 },
             },
             "required": ["query"],

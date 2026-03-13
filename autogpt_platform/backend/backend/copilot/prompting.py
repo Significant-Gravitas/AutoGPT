@@ -11,56 +11,22 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = """\
 
-### Sharing files with the user
-After saving a file to the persistent workspace with `write_workspace_file`,
-share it with the user by embedding the `download_url` from the response in
-your message as a Markdown link or image:
+### Sharing files
+After `write_workspace_file`, embed the `download_url` in Markdown:
+- File: `[report.csv](workspace://file_id#text/csv)`
+- Image: `![chart](workspace://file_id#image/png)`
+- Video: `![recording](workspace://file_id#video/mp4)`
 
-- **Any file** — shows as a clickable download link:
-  `[report.csv](workspace://file_id#text/csv)`
-- **Image** — renders inline in chat:
-  `![chart](workspace://file_id#image/png)`
-- **Video** — renders inline in chat with player controls:
-  `![recording](workspace://file_id#video/mp4)`
+### File references — @@agptfile:
+Pass large file content to tools by reference: `@@agptfile:<uri>[<start>-<end>]`
+- `workspace://<file_id>` or `workspace:///<path>` — workspace files
+- `/absolute/path` — local/sandbox files
+- `[start-end]` — optional 1-indexed line range
 
-The `download_url` field in the `write_workspace_file` response is already
-in the correct format — paste it directly after the `(` in the Markdown.
-
-### Passing file content to tools — @@agptfile: references
-Instead of copying large file contents into a tool argument, pass a file
-reference and the platform will load the content for you.
-
-Syntax: `@@agptfile:<uri>[<start>-<end>]`
-
-- `<uri>` **must** start with `workspace://` or `/` (absolute path):
-  - `workspace://<file_id>` — workspace file by ID
-  - `workspace:///<path>` — workspace file by virtual path
-  - `/absolute/local/path` — ephemeral or sdk_cwd file
-  - E2B sandbox absolute path (e.g. `/home/user/script.py`)
-- `[<start>-<end>]` is an optional 1-indexed inclusive line range.
-- URIs that do not start with `workspace://` or `/` are **not** expanded.
-
-Examples:
-```
-@@agptfile:workspace://abc123
-@@agptfile:workspace://abc123[10-50]
-@@agptfile:workspace:///reports/q1.md
-@@agptfile:/tmp/copilot-<session>/output.py[1-80]
-@@agptfile:/home/user/script.py
-```
-
-You can embed a reference inside any string argument, or use it as the entire
-value.  Multiple references in one argument are all expanded.
-
-**Type coercion**: The platform automatically coerces expanded string values
-to match the block's expected input types.  For example, if a block expects
-`list[list[str]]` and you pass a string containing a JSON array (e.g. from
-an @@agptfile: expansion), the string will be parsed into the correct type.
-
+**Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).
 
 ### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
+- Task tool: NEVER set `run_in_background` to true.
 """
 
 
@@ -96,30 +62,18 @@ def _build_storage_supplement(
 
 ## Tool notes
 
-### Shell commands
-- The SDK built-in Bash tool is NOT available.  Use the `bash_exec` MCP tool
-  for shell commands — it runs {sandbox_type}.
+### Shell & filesystem
+- Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
+- All file tools share the same filesystem.
 
-### Working directory
-- Your working directory is: `{working_dir}`
-- All SDK file tools AND `bash_exec` operate on the same filesystem
-- Use relative paths or absolute paths under `{working_dir}` for all file operations
-
-### Two storage systems — CRITICAL to understand
-
+### Storage
 1. **{storage_system_1_name}** (`{working_dir}`):
 {characteristics}
 {persistence}
-
-2. **Persistent workspace** (cloud storage):
-   - Files here **survive across sessions indefinitely**
-
-### Moving files between storages
-- **{file_move_name_1_to_2}**: Copy to persistent workspace
-- **{file_move_name_2_to_1}**: Download for processing
-
-### File persistence
-Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
+2. **Persistent workspace** (cloud) — survives across sessions.
+- {file_move_name_1_to_2}: use `write_workspace_file`
+- {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
+- Save important files to workspace for persistence.
 {_SHARED_TOOL_NOTES}"""
 
 
