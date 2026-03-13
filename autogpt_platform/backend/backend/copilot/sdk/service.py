@@ -1522,11 +1522,14 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
 
-        if sdk_cwd:
-            await _cleanup_sdk_tool_results(sdk_cwd)
-
-        # Release stream lock to allow new streams for this session
-        await lock.release()
+        try:
+            if sdk_cwd:
+                await _cleanup_sdk_tool_results(sdk_cwd)
+        except Exception:
+            logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
+        finally:
+            # Release stream lock to allow new streams for this session
+            await lock.release()
 
 
 async def _update_title_async(
