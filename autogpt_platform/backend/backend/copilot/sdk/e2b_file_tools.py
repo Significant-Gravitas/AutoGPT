@@ -26,6 +26,36 @@ from backend.copilot.context import (
 logger = logging.getLogger(__name__)
 
 
+async def _check_sandbox_symlink_escape(
+    sandbox: Any,
+    parent: str,
+) -> str | None:
+    """Resolve the canonical parent path inside the sandbox to detect symlink escapes.
+
+    ``normpath`` (used by ``resolve_sandbox_path``) only normalises the string;
+    ``readlink -f`` follows actual symlinks on the sandbox filesystem.
+
+    Returns the canonical parent path, or ``None`` if the path escapes
+    ``E2B_WORKDIR``.
+    """
+    canonical_res = await sandbox.commands.run(
+        f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
+        cwd=E2B_WORKDIR,
+        timeout=5,
+    )
+    canonical_parent = (canonical_res.stdout or "").strip()
+    if (
+        canonical_res.exit_code != 0
+        or not canonical_parent
+        or (
+            canonical_parent != E2B_WORKDIR
+            and not canonical_parent.startswith(E2B_WORKDIR + "/")
+        )
+    ):
+        return None
+    return canonical_parent
+
+
 def _get_sandbox():
     return get_current_sandbox()
 
@@ -106,23 +136,8 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
         parent = os.path.dirname(remote)
         if parent and parent != E2B_WORKDIR:
             await sandbox.files.make_dir(parent)
-        # Resolve the canonical parent path inside the sandbox to detect
-        # symlink escapes.  normpath (used by resolve_sandbox_path) only
-        # normalises the string; readlink -f follows actual symlinks.
-        canonical_res = await sandbox.commands.run(
-            f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
-            cwd=E2B_WORKDIR,
-            timeout=5,
-        )
-        canonical_parent = (canonical_res.stdout or "").strip()
-        if (
-            canonical_res.exit_code != 0
-            or not canonical_parent
-            or (
-                canonical_parent != E2B_WORKDIR
-                and not canonical_parent.startswith(E2B_WORKDIR + "/")
-            )
-        ):
+        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        if canonical_parent is None:
             return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
         remote = os.path.join(canonical_parent, os.path.basename(remote))
         await sandbox.files.write(remote, content)

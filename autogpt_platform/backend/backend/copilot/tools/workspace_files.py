@@ -305,12 +305,9 @@ def _read_local_tool_result(
         return ErrorResponse(message=f"Path not allowed: {path}", session_id=session_id)
     try:
         with open(expanded, encoding="utf-8", errors="replace") as fh:
-            # Use seek + bounded read to avoid loading the entire file when
-            # only a slice is requested.  os.path.getsize gives an approximate
-            # total (bytes, not chars) for the status message.
-            if char_offset > 0:
-                fh.seek(char_offset)
-            slice_text = fh.read(char_length) if char_length is not None else fh.read()
+            content = fh.read()
+            end = char_offset + char_length if char_length is not None else len(content)
+            slice_text = content[char_offset:end]
     except FileNotFoundError:
         return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
     except Exception as exc:
