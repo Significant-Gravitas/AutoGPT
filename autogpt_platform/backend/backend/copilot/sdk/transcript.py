@@ -13,6 +13,7 @@ filesystem for self-hosted) — no DB column needed.
 import logging
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass
 
@@ -144,8 +145,6 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
     safe to remove entirely after the transcript has been uploaded.
     """
-    import shutil
-
     # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
     cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")

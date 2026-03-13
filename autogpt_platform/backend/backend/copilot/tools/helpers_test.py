@@ -50,7 +50,7 @@ def _patch_workspace():
 @pytest.mark.asyncio
 class TestExecuteBlockCreditCharging:
     async def test_charges_credits_when_cost_is_positive(self):
-        """Block with cost > 0 should call spend_credits after execution."""
+        """Block with cost > 0 should call spend_credits before execution."""
         block = _make_block()
         mock_spend = AsyncMock()
 
@@ -59,11 +59,6 @@ class TestExecuteBlockCreditCharging:
             patch(
                 "backend.copilot.tools.helpers.block_usage_cost",
                 return_value=(10, {"key": "val"}),
-            ),
-            patch(
-                "backend.copilot.tools.helpers._get_credits",
-                new_callable=AsyncMock,
-                return_value=100,
             ),
             patch(
                 "backend.copilot.tools.helpers._spend_credits",
@@ -89,7 +84,9 @@ class TestExecuteBlockCreditCharging:
         assert call_kwargs["metadata"].reason == "copilot_block_execution"
 
     async def test_returns_error_when_insufficient_credits_before_exec(self):
-        """Pre-execution check should return ErrorResponse when balance < cost."""
+        """Pre-execution charge should return ErrorResponse on InsufficientBalanceError."""
+        from backend.util.exceptions import InsufficientBalanceError
+
         block = _make_block()
 
         with (
@@ -99,9 +96,9 @@ class TestExecuteBlockCreditCharging:
                 return_value=(10, {}),
             ),
             patch(
-                "backend.copilot.tools.helpers._get_credits",
+                "backend.copilot.tools.helpers._spend_credits",
                 new_callable=AsyncMock,
-                return_value=5,  # balance < cost (10)
+                side_effect=InsufficientBalanceError("Low balance", _USER, 5, 10),
             ),
         ):
             result = await execute_block(
@@ -150,8 +147,8 @@ class TestExecuteBlockCreditCharging:
         mock_get_credits.assert_not_awaited()
         mock_spend_credits.assert_not_awaited()
 
-    async def test_returns_output_on_post_exec_insufficient_balance(self):
-        """If charging fails after execution, output is still returned (block already ran)."""
+    async def test_returns_error_when_spend_credits_raises_insufficient_balance(self):
+        """Pre-exec charge failure returns ErrorResponse -- block never executes."""
         from backend.util.exceptions import InsufficientBalanceError
 
         block = _make_block()
@@ -163,16 +160,9 @@ class TestExecuteBlockCreditCharging:
                 return_value=(10, {}),
             ),
             patch(
-                "backend.copilot.tools.helpers._get_credits",
-                new_callable=AsyncMock,
-                return_value=15,  # passes pre-check
-            ),
-            patch(
                 "backend.copilot.tools.helpers._spend_credits",
                 new_callable=AsyncMock,
-                side_effect=InsufficientBalanceError(
-                    "Low balance", _USER, 5, 10
-                ),  # fails during actual charge (race with concurrent spend)
+                side_effect=InsufficientBalanceError("Low balance", _USER, 5, 10),
             ),
         ):
             result = await execute_block(
@@ -185,9 +175,9 @@ class TestExecuteBlockCreditCharging:
                 matched_credentials={},
             )
 
-        # Block already executed (with side effects), so output is returned
-        assert isinstance(result, BlockOutputResponse)
-        assert result.success is True
+        # Credits charged before execution -- insufficient balance prevents execution
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message
 
 
 # ---------------------------------------------------------------------------

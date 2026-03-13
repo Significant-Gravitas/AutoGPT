@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
+const MS_PER_MINUTE = 60_000;
+const MS_PER_HOUR = 3_600_000;
+const HOURS_PER_DAY = 24;
+
 function formatResetTime(resetsAt: Date | string): string {
   const resetDate =
     typeof resetsAt === "string" ? new Date(resetsAt) : resetsAt;
@@ -15,11 +19,11 @@ function formatResetTime(resetsAt: Date | string): string {
   const diffMs = resetDate.getTime() - now.getTime();
   if (diffMs <= 0) return "now";
 
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const hours = Math.floor(diffMs / MS_PER_HOUR);
 
   // Under 24h: show relative time ("in 4h 23m")
-  if (hours < 24) {
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours < HOURS_PER_DAY) {
+    const minutes = Math.floor((diffMs % MS_PER_HOUR) / MS_PER_MINUTE);
     if (hours > 0) return `in ${hours}h ${minutes}m`;
     return `in ${minutes}m`;
   }
@@ -55,17 +59,15 @@ function UsageBar({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-          {label}
-        </span>
-        <span className="text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
+        <span className="text-xs font-medium text-neutral-700">{label}</span>
+        <span className="text-[11px] tabular-nums text-neutral-500">
           {percentLabel}
         </span>
       </div>
-      <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+      <div className="text-[10px] text-neutral-400">
         Resets {formatResetTime(resetsAt)}
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
@@ -89,17 +91,13 @@ export function UsagePanelContent({
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
-      <div className="text-xs text-neutral-500 dark:text-neutral-400">
-        No usage limits configured
-      </div>
+      <div className="text-xs text-neutral-500">No usage limits configured</div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
-        Usage limits
-      </div>
+      <div className="text-xs font-semibold text-neutral-800">Usage limits</div>
       {hasDailyLimit && (
         <UsageBar
           label="Today"
@@ -119,7 +117,7 @@ export function UsagePanelContent({
       {showBillingLink && (
         <a
           href="/profile/credits"
-          className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+          className="text-[11px] text-blue-600 hover:underline"
         >
           Learn more about usage limits
         </a>

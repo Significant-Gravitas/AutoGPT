@@ -78,13 +78,35 @@ def _daily_reset_time(now: datetime | None = None) -> datetime:
 
 
 def _weekly_reset_time(now: datetime | None = None) -> datetime:
-    """Calculate when the current weekly window resets (next Monday 00:00 UTC)."""
+    """Calculate when the current weekly window resets (next Monday 00:00 UTC).
+
+    On Monday itself, ``(7 - weekday) % 7`` is 0 and the ``or 7`` fallback
+    pushes to *next* Monday.  This means Monday's usage counts toward the
+    current week (which started the previous Monday), matching ISO week semantics.
+    """
     if now is None:
         now = datetime.now(UTC)
     days_until_monday = (7 - now.weekday()) % 7 or 7
     return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
         days=days_until_monday
     )
+
+
+async def _fetch_usage_counters(user_id: str, now: datetime) -> tuple[int, int]:
+    """Fetch daily and weekly token counters from Redis.
+
+    Returns:
+        (daily_used, weekly_used) parsed as ints.
+
+    Raises:
+        RedisError / ConnectionError / OSError on Redis failure.
+    """
+    redis = await get_redis_async()
+    daily_raw, weekly_raw = await asyncio.gather(
+        redis.get(_daily_key(user_id, now=now)),
+        redis.get(_weekly_key(user_id, now=now)),
+    )
+    return int(daily_raw or 0), int(weekly_raw or 0)
 
 
 async def get_usage_status(
@@ -103,18 +125,11 @@ async def get_usage_status(
         CoPilotUsageStatus with current usage and limits.
     """
     now = datetime.now(UTC)
-    daily_used = 0
-    weekly_used = 0
     try:
-        redis = await get_redis_async()
-        daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
-        )
-        daily_used = int(daily_raw or 0)
-        weekly_used = int(weekly_raw or 0)
+        daily_used, weekly_used = await _fetch_usage_counters(user_id, now)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for usage status, returning zeros")
+        daily_used, weekly_used = 0, 0
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -147,13 +162,7 @@ async def check_rate_limit(
     """
     now = datetime.now(UTC)
     try:
-        redis = await get_redis_async()
-        daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
-        )
-        daily_used = int(daily_raw or 0)
-        weekly_used = int(weekly_raw or 0)
+        daily_used, weekly_used = await _fetch_usage_counters(user_id, now)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for rate limit check, allowing request")
         return

@@ -744,6 +744,7 @@ async def stream_chat_completion_sdk(
     turn_cache_read_tokens = 0
     turn_cache_creation_tokens = 0
     turn_cost_usd: float | None = None
+    total_tokens = 0
 
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
@@ -1448,13 +1449,16 @@ async def stream_chat_completion_sdk(
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
+        # total_tokens is computed once in the try block (for StreamUsage)
+        # and reused here to keep the formula DRY.
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
+            if not total_tokens:
+                total_tokens = (
+                    turn_prompt_tokens
+                    + turn_cache_read_tokens
+                    + turn_cache_creation_tokens
+                    + turn_completion_tokens
+                )
             if session is not None:
                 session.usage.append(
                     Usage(
