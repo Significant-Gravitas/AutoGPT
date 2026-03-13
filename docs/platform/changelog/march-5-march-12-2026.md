@@ -22,11 +22,11 @@ We've redesigned how **reasoning steps and tool calls appear in chat**. Intermed
 
 <figure><img src="../.gitbook/assets/reasoning-hero.png" alt="Collapsed reasoning steps keeping the AutoPilot conversation clean and focused"><figcaption><p>Collapsed reasoning steps keeping the AutoPilot conversation clean and focused</p></figcaption></figure>
 
-## See outputs right after actions
+## Give feedback and share outputs instantly
 
-Action results now **display inline immediately after each step completes**. You'll see files, data, and workspace outputs exactly where they belong — right alongside the action that created them. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12258)
+Every response now comes with **action buttons to copy, upvote, downvote, or listen to the output**. Give quick feedback on any response so AutoPilot keeps getting better, and copy or share results in one tap. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12260)
 
-<figure><img src="../.gitbook/assets/outputs-hero.png" alt="Action outputs displayed inline right after each step in AutoPilot"><figcaption><p>Action outputs displayed inline right after each step in AutoPilot</p></figcaption></figure>
+<figure><img src="../.gitbook/assets/outputs-hero.png" alt="Output action buttons for copying, rating, and sharing AutoPilot responses"><figcaption><p>Output action buttons for copying, rating, and sharing AutoPilot responses</p></figcaption></figure>
 
 ***
 
