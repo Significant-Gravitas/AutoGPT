@@ -13,6 +13,7 @@ filesystem for self-hosted) — no DB column needed.
 import logging
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -149,9 +150,34 @@ def _cli_project_dir(sdk_cwd: str) -> str | None:
     project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
 
     if not project_dir.startswith(projects_base + os.sep):
-        logger.warning(f"[Transcript] Project dir escaped projects base: {project_dir}")
+        logger.warning(
+            "[Transcript] Project dir escaped projects base: %s", project_dir
+        )
         return None
     return project_dir
+
+
+def _safe_glob_jsonl(project_dir: str) -> list[Path]:
+    """Glob ``*.jsonl`` files, filtering out symlinks that escape the directory."""
+    try:
+        resolved_base = Path(project_dir).resolve()
+    except OSError as e:
+        logger.warning("[Transcript] Failed to resolve project dir: %s", e)
+        return []
+
+    result: list[Path] = []
+    for candidate in Path(project_dir).glob("*.jsonl"):
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_relative_to(resolved_base):
+                result.append(resolved)
+        except (OSError, RuntimeError) as e:
+            logger.debug(
+                "[Transcript] Skipping invalid CLI session candidate %s: %s",
+                candidate,
+                e,
+            )
+    return result
 
 
 def read_cli_session_file(sdk_cwd: str) -> str | None:
@@ -168,26 +194,7 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
     if not project_dir or not os.path.isdir(project_dir):
         return None
 
-    # Validate glob results don't escape project_dir via symlinks
-    try:
-        resolved_base = Path(project_dir).resolve()
-    except OSError as e:
-        logger.warning("[Transcript] Failed to resolve project dir: %s", e)
-        return None
-
-    jsonl_files: list[Path] = []
-    for candidate in Path(project_dir).glob("*.jsonl"):
-        try:
-            resolved = candidate.resolve()
-            if resolved.is_relative_to(resolved_base):
-                jsonl_files.append(resolved)
-        except (OSError, RuntimeError) as e:
-            logger.debug(
-                "[Transcript] Skipping invalid CLI session candidate %s: %s",
-                candidate,
-                e,
-            )
-
+    jsonl_files = _safe_glob_jsonl(project_dir)
     if not jsonl_files:
         logger.debug("[Transcript] No CLI session file found in %s", project_dir)
         return None
@@ -219,17 +226,15 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
     safe to remove entirely after the transcript has been uploaded.
     """
-    import shutil
-
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir:
         return
 
     if os.path.isdir(project_dir):
         shutil.rmtree(project_dir, ignore_errors=True)
-        logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
+        logger.debug("[Transcript] Cleaned up CLI project dir: %s", project_dir)
     else:
-        logger.debug(f"[Transcript] Project dir not found: {project_dir}")
+        logger.debug("[Transcript] Project dir not found: %s", project_dir)
 
 
 def write_transcript_to_tempfile(

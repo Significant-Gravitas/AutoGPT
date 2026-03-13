@@ -1053,9 +1053,8 @@ async def stream_chat_completion_sdk(
                         # exceeded the model's context window.  Delete the
                         # oversized transcript so the next turn falls back to
                         # the compression-based _build_query_message path.
-                        err_str = str(stream_err)
                         if (
-                            "prompt is too long" in err_str.lower()
+                            "prompt is too long" in str(stream_err).lower()
                             and use_resume
                             and user_id
                         ):
@@ -1472,7 +1471,7 @@ async def stream_chat_completion_sdk(
                 if cli_transcript:
                     transcript_content = cli_transcript
                     logger.info(
-                        "%s Using CLI session file for transcript upload " "(%d bytes)",
+                        "%s Using CLI session file for transcript upload (%d bytes)",
                         log_prefix,
                         len(cli_transcript),
                     )
@@ -1485,6 +1484,12 @@ async def stream_chat_completion_sdk(
                         len(transcript_content) if transcript_content else 0,
                     )
 
+                entry_count = (
+                    len(transcript_content.strip().splitlines())
+                    if cli_transcript
+                    else transcript_builder.entry_count
+                )
+
                 if not transcript_content:
                     logger.warning(
                         "%s No transcript to upload (builder empty)", log_prefix
@@ -1493,13 +1498,13 @@ async def stream_chat_completion_sdk(
                     logger.warning(
                         "%s Transcript invalid, skipping upload (entries=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                     )
                 else:
                     logger.info(
                         "%s Uploading complete transcript (entries=%d, bytes=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                         len(transcript_content),
                     )
                     # Shield upload from cancellation - let it complete even if
