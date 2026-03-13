@@ -307,10 +307,7 @@ async def _infer_format_from_workspace(
             return None
         # Try MIME type first, then filename extension.
         mime = (info.mime_type or "").split(";", 1)[0].strip().lower()
-        fmt = MIME_TO_FORMAT.get(mime)
-        if fmt:
-            return fmt
-        return infer_format(info.name)
+        return MIME_TO_FORMAT.get(mime) or infer_format(info.name)
     except (ValueError, FileNotFoundError, OSError, PermissionError):
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
         return None
