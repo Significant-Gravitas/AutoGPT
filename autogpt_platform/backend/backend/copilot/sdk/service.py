@@ -708,6 +708,7 @@ async def stream_chat_completion_sdk(
     ended_with_stream_error = False
     e2b_sandbox = None
     use_resume = False
+    skip_transcript_upload = False
     resume_file: str | None = None
     transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
@@ -1074,7 +1075,7 @@ async def stream_chat_completion_sdk(
                                 )
                             # Prevent the finally block from re-uploading the
                             # same oversized transcript.
-                            use_resume = False
+                            skip_transcript_upload = True
 
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
@@ -1458,9 +1459,9 @@ async def stream_chat_completion_sdk(
         # The transcript represents the COMPLETE active context (atomic).
         if (
             config.claude_agent_use_resume
-            and use_resume
             and user_id
             and session is not None
+            and not skip_transcript_upload
         ):
             try:
                 # Prefer the CLI's own session file — it reflects any
