@@ -471,3 +471,40 @@ class TestResolveMediaContent:
             ctx,
             return_format="for_external_api",
         )
+
+    @pytest.mark.asyncio
+    async def test_data_uri_delegates_to_store(self):
+        """Data URIs are also resolved via store_media_file."""
+        ctx = make_test_context()
+        data_uri = "data:image/png;base64,iVBORw0KGg=="
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType(data_uri)),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType(data_uri),
+                ctx,
+                return_format="for_external_api",
+            )
+        assert result == data_uri
+        mock_store.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_https_url_delegates_to_store(self):
+        """HTTPS URLs are resolved via store_media_file."""
+        ctx = make_test_context()
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType("data:image/png;base64,abc")),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType("https://example.com/image.png"),
+                ctx,
+                return_format="for_local_processing",
+            )
+        assert result == "data:image/png;base64,abc"
+        mock_store.assert_called_once_with(
+            MediaFileType("https://example.com/image.png"),
+            ctx,
+            return_format="for_local_processing",
+        )

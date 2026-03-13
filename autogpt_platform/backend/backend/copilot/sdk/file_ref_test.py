@@ -1673,12 +1673,6 @@ async def test_e2e_json_array_to_any_block():
 # ---------------------------------------------------------------------------
 
 
-class _MediaFileBlock(pydantic.BaseModel):
-    """Simulates a block schema with a MediaFileType input (format: file)."""
-
-    image: str  # MediaFileType serializes as str with format: "file"
-
-
 @pytest.mark.asyncio
 async def test_media_file_field_passthrough_workspace_uri():
     """When a schema field has format: 'file', @@agptfile: refs should pass

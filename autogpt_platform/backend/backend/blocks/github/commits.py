@@ -387,8 +387,8 @@ class GithubMultiFileCommitBlock(Block):
             resolved_files: list[FileOperationInput] = []
             for file_op in input_data.files:
                 content = file_op.get("content", "")
-                operation = file_op.get("operation", "upsert")
-                if operation != "delete":
+                operation = FileOperation(file_op.get("operation", "upsert"))
+                if operation != FileOperation.DELETE:
                     content = await resolve_media_content(
                         MediaFileType(content),
                         execution_context,

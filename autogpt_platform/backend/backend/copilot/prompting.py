@@ -74,10 +74,10 @@ These fields accept:
 - **`data:<mime>;base64,<payload>`** — inline base64 data URI, suitable for
   small files only.
 
-When a block input has `format: "file"`, **always prefer passing a
-`workspace://` reference** rather than an `@@agptfile:` expansion or inline
-base64 — this avoids large payloads in tool arguments and preserves binary
-content (images, videos) that would be corrupted by text encoding.
+When a block input has `format: "file"`, **pass the `workspace://` URI
+directly as the value** (do NOT wrap it in `@@agptfile:`). This avoids large
+payloads in tool arguments and preserves binary content (images, videos)
+that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
