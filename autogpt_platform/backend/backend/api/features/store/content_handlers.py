@@ -5,17 +5,26 @@ Pluggable system for different content sources (store agents, blocks, docs).
 Each handler knows how to fetch and process its content type for embedding.
 """
 
+from __future__ import annotations
+
+import asyncio
+import functools
+import itertools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
 from backend.api.features.store.text_utils import split_camelcase
+from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+
+if TYPE_CHECKING:
+    from backend.blocks._base import Block
 
 logger = logging.getLogger(__name__)
 
@@ -155,15 +164,17 @@ class StoreAgentHandler(ContentHandler):
         }
 
 
-def _get_enabled_blocks() -> dict[str, Any]:
+@functools.lru_cache(maxsize=1)
+def _get_enabled_blocks() -> dict[str, Block[Any, Any]]:
     """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
 
     Disabled blocks and blocks that fail to instantiate are silently skipped
     (with a warning log), so callers never need their own try/except loop.
-    """
-    from backend.blocks import get_blocks
 
-    enabled: dict[str, Any] = {}
+    Results are cached so repeated calls (e.g. get_missing_items + get_stats)
+    don't re-instantiate all blocks.
+    """
+    enabled: dict[str, Block[Any, Any]] = {}
     for block_id, block_cls in get_blocks().items():
         try:
             instance = block_cls()
@@ -184,7 +195,7 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
-        enabled = _get_enabled_blocks()
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
         if not enabled:
             return []
 
@@ -206,18 +217,15 @@ class BlockHandler(ContentHandler):
 
         # Convert to ContentItem — disabled filtering already done by
         # _get_enabled_blocks so batch_size won't be exhausted by disabled blocks.
+        missing = ((bid, b) for bid, b in enabled.items() if bid not in existing_ids)
         items = []
-        for block_id, block in enabled.items():
-            if block_id in existing_ids:
-                continue
-            if len(items) >= batch_size:
-                break
-
+        for block_id, block in itertools.islice(missing, batch_size):
             try:
                 # Build searchable text from block metadata
+                display_name = split_camelcase(block.name) if block.name else ""
                 parts = []
-                if block.name:
-                    parts.append(split_camelcase(block.name))
+                if display_name:
+                    parts.append(display_name)
                 if block.description:
                     parts.append(block.description)
                 if block.categories:
@@ -257,7 +265,7 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": block.name,
+                            "name": display_name or block.name,
                             "categories": categories_list,
                             "providers": provider_names,
                             "has_llm_model_field": has_llm_model_field,
@@ -274,7 +282,7 @@ class BlockHandler(ContentHandler):
 
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about block embedding coverage."""
-        enabled = _get_enabled_blocks()
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
         total_blocks = len(enabled)
 
         if total_blocks == 0:

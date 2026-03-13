@@ -1358,6 +1358,52 @@
         }
       }
     },
+    "/api/chat/suggested-prompts": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Suggested Prompts",
+        "description": "Get LLM-generated suggested prompts for the authenticated user.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns an empty list if no custom prompts\nare available.",
+        "operationId": "getV2GetSuggestedPrompts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/usage": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Copilot Usage",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
+        "operationId": "getV2GetCopilotUsage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoPilotUsageStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits": {
       "get": {
         "tags": ["v1", "credits"],
@@ -8431,6 +8477,16 @@
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
+      "CoPilotUsageStatus": {
+        "properties": {
+          "daily": { "$ref": "#/components/schemas/UsageWindow" },
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+        },
+        "type": "object",
+        "required": ["daily", "weekly"],
+        "title": "CoPilotUsageStatus",
+        "description": "Current usage status for a user across all windows."
+      },
       "ContentType": {
         "type": "string",
         "enum": [
@@ -12166,6 +12222,16 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "total_prompt_tokens": {
+            "type": "integer",
+            "title": "Total Prompt Tokens",
+            "default": 0
+          },
+          "total_completion_tokens": {
+            "type": "integer",
+            "title": "Total Completion Tokens",
+            "default": 0
           }
         },
         "type": "object",
@@ -13009,6 +13075,19 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPromptsResponse": {
+        "properties": {
+          "prompts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "required": ["prompts"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts."
       },
       "SuggestionsResponse": {
         "properties": {
@@ -14549,6 +14628,25 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UsageWindow": {
+        "properties": {
+          "used": { "type": "integer", "title": "Used" },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At"
+          }
+        },
+        "type": "object",
+        "required": ["used", "limit", "resets_at"],
+        "title": "UsageWindow",
+        "description": "Usage within a single time window."
       },
       "UserHistoryResponse": {
         "properties": {

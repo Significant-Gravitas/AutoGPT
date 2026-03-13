@@ -35,6 +35,9 @@ from backend.api.features.store.text_utils import split_camelcase
         ("getHTTPResponse", "get HTTP Response"),
         ("Block", "Block"),
         ("", ""),
+        ("OAuth2Block", "OAuth2 Block"),
+        ("IOError", "IO Error"),
+        ("getHTTPSResponse", "get HTTPS Response"),
     ],
 )
 def test_split_camelcase(input_text: str, expected: str):

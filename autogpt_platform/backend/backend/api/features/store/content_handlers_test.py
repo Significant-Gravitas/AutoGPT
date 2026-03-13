@@ -16,6 +16,15 @@ from backend.api.features.store.content_handlers import (
     _get_enabled_blocks,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clear_block_cache():
+    """Clear the lru_cache on _get_enabled_blocks before each test."""
+    _get_enabled_blocks.cache_clear()
+    yield
+    _get_enabled_blocks.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # Helper to build a mock block class that returns a pre-configured instance
 # ---------------------------------------------------------------------------
@@ -26,12 +35,12 @@ def _make_block_class(
     name: str = "Block",
     description: str = "",
     disabled: bool = False,
-    categories: list | None = None,
-    fields: dict | None = None,
+    categories: list[MagicMock] | None = None,
+    fields: dict[str, str] | None = None,
     raise_on_init: Exception | None = None,
 ) -> MagicMock:
     cls = MagicMock()
-    if raise_on_init:
+    if raise_on_init is not None:
         cls.side_effect = raise_on_init
         return cls
     inst = MagicMock()
@@ -39,11 +48,9 @@ def _make_block_class(
     inst.disabled = disabled
     inst.description = description
     inst.categories = categories or []
-    field_mocks = {}
-    for fname, fdesc in (fields or {}).items():
-        f = MagicMock()
-        f.description = fdesc
-        field_mocks[fname] = f
+    field_mocks = {
+        fname: MagicMock(description=fdesc) for fname, fdesc in (fields or {}).items()
+    }
     inst.input_schema.model_fields = field_mocks
     inst.input_schema.get_credentials_fields_info.return_value = {}
     cls.return_value = inst
@@ -61,7 +68,9 @@ def test_get_enabled_blocks_filters_disabled():
         "enabled": _make_block_class(name="E", disabled=False),
         "disabled": _make_block_class(name="D", disabled=True),
     }
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         result = _get_enabled_blocks()
     assert list(result.keys()) == ["enabled"]
 
@@ -72,7 +81,9 @@ def test_get_enabled_blocks_skips_broken():
         "good": _make_block_class(name="Good"),
         "bad": _make_block_class(raise_on_init=RuntimeError("boom")),
     }
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         result = _get_enabled_blocks()
     assert list(result.keys()) == ["good"]
 
@@ -150,7 +161,9 @@ async def test_block_handler_get_missing_items():
         ),
     }
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=[],
@@ -160,11 +173,12 @@ async def test_block_handler_get_missing_items():
             assert len(items) == 1
             assert items[0].content_id == "block-uuid-1"
             assert items[0].content_type == ContentType.BLOCK
-            # CamelCase should be split in searchable text
+            # CamelCase should be split in searchable text and metadata name
             assert "Calculator Block" in items[0].searchable_text
             assert "Performs calculations" in items[0].searchable_text
             assert "MATH" in items[0].searchable_text
             assert "expression: Math expression" in items[0].searchable_text
+            assert items[0].metadata["name"] == "Calculator Block"
             assert items[0].user_id is None
 
 
@@ -177,7 +191,9 @@ async def test_block_handler_get_missing_items_splits_camelcase():
         "ai-block": _make_block_class(name="AITextGeneratorBlock"),
     }
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=[],
@@ -201,7 +217,9 @@ async def test_block_handler_disabled_dont_exhaust_batch():
         **{f"en-{i}": _make_block_class(name=f"E{i}") for i in range(3)},
     }
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=[],
@@ -225,7 +243,9 @@ async def test_block_handler_get_stats():
 
     mock_embedded = [{"count": 2}]
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=mock_embedded,
@@ -249,7 +269,9 @@ async def test_block_handler_get_stats_skips_broken():
 
     mock_embedded = [{"count": 1}]
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=mock_embedded,
@@ -267,7 +289,9 @@ async def test_block_handler_handles_empty_attributes():
 
     blocks = {"block-minimal": _make_block_class(name="Minimal Block")}
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=[],
@@ -288,7 +312,9 @@ async def test_block_handler_skips_failed_blocks():
         "bad-block": _make_block_class(raise_on_init=Exception("Instantiation failed")),
     }
 
-    with patch("backend.blocks.get_blocks", return_value=blocks):
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
         with patch(
             "backend.api.features.store.content_handlers.query_raw_with_schema",
             return_value=[],
