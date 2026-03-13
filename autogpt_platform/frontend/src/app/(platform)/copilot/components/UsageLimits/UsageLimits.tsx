@@ -4,6 +4,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
@@ -21,11 +22,12 @@ function formatResetTime(resetsAt: Date): string {
     return `in ${minutes}m`;
   }
 
-  // Over 24h: show day and time in local timezone ("Mon 12:00 AM")
+  // Over 24h: show day and time in local timezone ("Mon 12:00 AM PST")
   return resetsAt.toLocaleString(undefined, {
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
+    timeZoneName: "short",
   });
 }
 
@@ -42,8 +44,11 @@ function UsageBar({
 }) {
   if (limit <= 0) return null;
 
-  const percent = Math.min(100, Math.round((used / limit) * 100));
+  const rawPercent = (used / limit) * 100;
+  const percent = Math.min(100, Math.round(rawPercent));
   const isHigh = percent >= 80;
+  const percentLabel =
+    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-1">
@@ -52,7 +57,7 @@ function UsageBar({
           {label}
         </span>
         <span className="text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
-          {percent}% used
+          {percentLabel}
         </span>
       </div>
       <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
@@ -63,7 +68,7 @@ function UsageBar({
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}
-          style={{ width: `${percent}%` }}
+          style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
     </div>
@@ -130,12 +135,9 @@ export function UsageLimits() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          className="rounded p-1 text-black transition-colors hover:bg-zinc-50"
-          aria-label="Usage limits"
-        >
+        <Button variant="ghost" size="icon" aria-label="Usage limits">
           <ChartBar className="!size-5" weight="light" />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-3">
         <UsagePanelContent usage={usage} />
