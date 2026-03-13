@@ -57,7 +57,7 @@ _EXT_TO_FORMAT: dict[str, str] = {
     ".xlsx": "xlsx",
 }
 
-_MIME_TO_FORMAT: dict[str, str] = {
+MIME_TO_FORMAT: dict[str, str] = {
     "application/json": "json",
     "application/x-ndjson": "jsonl",
     "application/jsonl": "jsonl",
@@ -83,7 +83,7 @@ def infer_format(uri: str) -> str | None:
     # 1. Check MIME fragment  (workspace://abc123#application/json)
     if "#" in uri:
         _, fragment = uri.rsplit("#", 1)
-        fmt = _MIME_TO_FORMAT.get(fragment)
+        fmt = MIME_TO_FORMAT.get(fragment)
         if fmt:
             return fmt
 

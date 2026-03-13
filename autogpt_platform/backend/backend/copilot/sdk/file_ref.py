@@ -49,6 +49,7 @@ from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
+    MIME_TO_FORMAT,
     infer_format,
     parse_file_content,
 )
@@ -256,6 +257,40 @@ async def expand_file_refs_in_string(
     return "".join(result)
 
 
+async def _infer_format_from_workspace(
+    uri: str,
+    user_id: str | None,
+    session: ChatSession,
+) -> str | None:
+    """Look up workspace file metadata to infer the format.
+
+    Workspace URIs by ID (``workspace://abc123``) have no file extension.
+    When the MIME fragment is also absent, we query the workspace file
+    manager for the file's stored MIME type and original filename.
+    """
+    if not user_id:
+        return None
+    try:
+        ws = parse_workspace_uri(uri)
+        manager = await get_manager(user_id, session.session_id)
+        info = await (
+            manager.get_file_info(ws.file_ref)
+            if not ws.is_path
+            else manager.get_file_info_by_path(ws.file_ref)
+        )
+        if info is None:
+            return None
+        # Try MIME type first, then filename extension.
+        mime = (info.mime_type or "").split(";", 1)[0].strip().lower()
+        fmt = MIME_TO_FORMAT.get(mime)
+        if fmt:
+            return fmt
+        return infer_format(info.name)
+    except Exception:
+        logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
+        return None
+
+
 async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
@@ -292,6 +327,13 @@ async def expand_file_refs_in_args(
             ref = parse_file_ref(value)
             if ref is not None:
                 fmt = infer_format(ref.uri)
+
+                # Workspace URIs by ID (workspace://abc123) have no extension.
+                # When the MIME fragment is also missing, fall back to the
+                # workspace file manager's metadata for format detection.
+                if fmt is None and ref.uri.startswith("workspace://"):
+                    fmt = await _infer_format_from_workspace(ref.uri, user_id, session)
+
                 try:
                     if fmt is not None and fmt in BINARY_FORMATS:
                         # Binary formats need raw bytes, not UTF-8 text.
