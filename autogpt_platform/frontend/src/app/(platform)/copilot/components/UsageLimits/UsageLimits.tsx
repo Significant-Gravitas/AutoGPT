@@ -13,9 +13,20 @@ function formatResetTime(resetsAt: Date): string {
   if (diffMs <= 0) return "now";
 
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+
+  // Under 24h: show relative time ("in 4h 23m")
+  if (hours < 24) {
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) return `in ${hours}h ${minutes}m`;
+    return `in ${minutes}m`;
+  }
+
+  // Over 24h: show day and time in local timezone ("Mon 12:00 AM")
+  return resetsAt.toLocaleString(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function UsageBar({
@@ -45,7 +56,7 @@ function UsageBar({
         </span>
       </div>
       <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-        Resets in {formatResetTime(resetsAt)}
+        Resets {formatResetTime(resetsAt)}
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
         <div
@@ -123,7 +134,7 @@ export function UsageLimits() {
           className="rounded p-1 text-black transition-colors hover:bg-zinc-50"
           aria-label="Usage limits"
         >
-          <ChartBar className="!size-5" />
+          <ChartBar className="!size-5" weight="light" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-3">
