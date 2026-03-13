@@ -10,7 +10,9 @@ RUN pip install --no-cache-dir \
     anthropic>=0.20.0 \
     "supabase>=2.0.0" \
     pydantic>=2.0.0 \
-    python-dotenv>=1.0.0
+    python-dotenv>=1.0.0 \
+    "urllib3>=2.0.0" \
+    "requests>=2.32.0"
 
 # Copy only the coaching module and its dependencies
 COPY autogpt/ ./autogpt/
