@@ -73,7 +73,7 @@
 // PAGE CODE (paste this into the Wix Page Code editor)
 // ---------------------------------------------------------------
 
-import wixUsers from 'wix-users';
+import wixLocation from 'wix-location';
 import wixStorage from 'wix-storage';
 import {
   startCoachingSession,
@@ -81,12 +81,26 @@ import {
   endCoachingSession
 } from 'backend/coaching-backend';
 
+const GOOGLE_LOGIN_URL =
+  'https://auto-gpt-production.up.railway.app/auth/google/url' +
+  '?redirect_to=https://www.ben-nesher.com/coaching-chat';
+
 // Chat message history displayed in the repeater
 let chatMessages = [];
 let currentSessionId = null;
 
 $w.onReady(function () {
-  // Restore session if user refreshes the page
+  // ── 1. Capture Google OAuth callback params (?user_id=...&name=...&email=...)
+  const query = wixLocation.query;
+  if (query.user_id) {
+    wixStorage.session.setItem('google_user_id', query.user_id);
+    wixStorage.session.setItem('google_user_name', query.name || '');
+    wixStorage.session.setItem('google_user_email', query.email || '');
+    // Clean the URL params without reloading the page
+    wixLocation.queryParams.remove(['user_id', 'name', 'email']);
+  }
+
+  // ── 2. Restore coaching session if user refreshes the page
   currentSessionId = wixStorage.session.getItem('coaching_session_id');
 
   $w('#endButton').hide();
@@ -105,25 +119,27 @@ $w.onReady(function () {
   });
 
   if (currentSessionId) {
-    // Resume UI if session was already started
     setSessionActive(true);
     appendMessage('system', 'Welcome back! Your session is still active. Continue your check-in below.');
   }
 });
 
 async function handleStart() {
-  const user = wixUsers.currentUser;
-  if (!user.loggedIn) {
-    // Prompt login if using Wix Members
-    wixUsers.promptLogin().then(() => handleStart()).catch(() => {});
+  // ── Use Google OAuth identity stored after login redirect
+  const clientId = wixStorage.session.getItem('google_user_id');
+  const clientName =
+    wixStorage.session.getItem('google_user_name') ||
+    wixStorage.session.getItem('google_user_email') ||
+    'Client';
+
+  if (!clientId) {
+    // Not logged in — redirect to Google OAuth
+    wixLocation.to(GOOGLE_LOGIN_URL);
     return;
   }
 
   setLoading(true);
   try {
-    const clientId = user.id;
-    const clientName = await user.getEmail(); // or use member profile name
-
     const result = await startCoachingSession(clientId, clientName);
     currentSessionId = result.session_id;
     wixStorage.session.setItem('coaching_session_id', currentSessionId);
