@@ -291,6 +291,44 @@ async def _infer_format_from_workspace(
         return None
 
 
+def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
+    """Adapt a parsed file value to better fit the target schema type.
+
+    When the parser returns a natural type (e.g. dict from YAML, list from CSV)
+    that doesn't match the block's expected type, this function converts it to
+    a more useful representation instead of relying on pydantic's generic
+    coercion (which can produce awkward results like flattened dicts → lists).
+
+    Returns *parsed* unchanged when no adaptation is needed.
+    """
+    if prop_schema is None:
+        return parsed
+
+    target_type = prop_schema.get("type")
+
+    # Dict → array: wrap in a single-element list so the block gets [dict]
+    # instead of pydantic flattening keys/values into a flat list.
+    if isinstance(parsed, dict) and target_type == "array":
+        return [parsed]
+
+    # Tabular list → object: convert [[header], [row1], ...] to a column-dict
+    # {"col1": [val1, val2, ...], "col2": [...]} for meaningful dict lookups.
+    if (
+        isinstance(parsed, list)
+        and target_type == "object"
+        and len(parsed) >= 2
+        and all(isinstance(row, list) for row in parsed)
+    ):
+        header = parsed[0]
+        if all(isinstance(h, str) for h in header):
+            return {
+                header[i]: [row[i] for row in parsed[1:] if i < len(row)]
+                for i in range(len(header))
+            }
+
+    return parsed
+
+
 async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
@@ -405,7 +443,7 @@ async def expand_file_refs_in_args(
                     # receive raw bytes when parsing fails.
                     if isinstance(parsed, bytes):
                         parsed = parsed.decode("utf-8", errors="replace")
-                    return parsed
+                    return _adapt_to_schema(parsed, prop_schema)
 
                 # Unknown format — return as plain string, but apply
                 # the same per-ref character limit used by inline refs

@@ -1103,8 +1103,8 @@ class _DictBlock(pydantic.BaseModel):
 
 @pytest.mark.asyncio
 async def test_e2e_jsonl_tabular_to_dict_block():
-    """JSONL with uniform dicts → dict block: table format is coerced to
-    an indexed dict {0: header, 1: row1, ...}, consistent with CSV."""
+    """JSONL with uniform dicts → dict block: table format is adapted to
+    a column-dict {"name": ["apple","banana"], "color": ["red","yellow"]}."""
     jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
 
     async def _resolve(ref, *a, **kw):  # noqa: ARG001
@@ -1123,16 +1123,15 @@ async def test_e2e_jsonl_tabular_to_dict_block():
             input_schema=block_schema,
         )
 
-    # Table format from parser
-    assert expanded["data"] == [
-        ["name", "color"],
-        ["apple", "red"],
-        ["banana", "yellow"],
-    ]
+    # Schema-aware adaptation: tabular → column-dict
+    assert expanded["data"] == {
+        "name": ["apple", "banana"],
+        "color": ["red", "yellow"],
+    }
 
-    # After coercion to dict: pydantic indexes the list
+    # Already a dict — coercion is a no-op
     coerce_inputs_to_schema(expanded, _DictBlock)
-    assert isinstance(expanded["data"], dict)
+    assert expanded["data"]["name"] == ["apple", "banana"]
 
 
 @pytest.mark.asyncio
@@ -1215,7 +1214,7 @@ async def test_e2e_parquet_to_list_block():
 @pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_e2e_parquet_to_dict_block():
-    """Parquet → dict block: table format coerced to indexed dict."""
+    """Parquet → dict block: table format adapted to column-dict."""
     parquet_bytes = _make_parquet_bytes()
 
     async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
@@ -1234,9 +1233,98 @@ async def test_e2e_parquet_to_dict_block():
             input_schema=block_schema,
         )
 
-    # Parser returns table format
-    assert expanded["data"] == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
+    # Schema-aware adaptation: tabular → column-dict
+    assert expanded["data"] == {"Name": ["Alice", "Bob"], "Score": [90, 85]}
 
-    # After coercion to dict: pydantic indexes the list
+
+# ---------------------------------------------------------------------------
+# E2E: YAML/TOML dict → list block (dict wrapped in [dict])
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_e2e_yaml_dict_to_list_block():
+    """YAML dict → list block: dict is wrapped in [dict] instead of
+    pydantic flattening keys/values into a flat list."""
+    yaml_content = "name: Alice\nage: 30"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return yaml_content
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///config.yaml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Dict is wrapped in a list — not flattened by pydantic
+    assert expanded["rows"] == [{"name": "Alice", "age": 30}]
+
+    # Coercion should preserve the wrapped dict
+    coerce_inputs_to_schema(expanded, _ListBlock)
+    assert expanded["rows"] == [{"name": "Alice", "age": 30}]
+
+
+@pytest.mark.asyncio
+async def test_e2e_toml_dict_to_list_block():
+    """TOML dict → list block: dict is wrapped in [dict]."""
+    toml_content = 'name = "test"\ncount = 42'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return toml_content
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///config.toml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["rows"] == [{"name": "test", "count": 42}]
+
+
+# ---------------------------------------------------------------------------
+# E2E: CSV → dict block (column-dict conversion)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_e2e_csv_to_dict_block():
+    """CSV tabular → dict block: adapted to column-dict format."""
+    csv_content = "Name,Score\nAlice,90\nBob,85"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    block_schema = _DictBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Schema-aware adaptation: tabular → column-dict
+    assert expanded["data"] == {"Name": ["Alice", "Bob"], "Score": ["90", "85"]}
+
+    # Already a dict — coercion is a no-op
     coerce_inputs_to_schema(expanded, _DictBlock)
     assert isinstance(expanded["data"], dict)
