@@ -7,10 +7,14 @@ import pytest
 from backend.util import json
 
 from .transcript import (
+    COMPACT_MSG_ID_PREFIX,
     STRIPPABLE_TYPES,
     _cli_project_dir,
+    _flatten_assistant_content,
+    _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
+    compact_transcript,
     read_cli_session_file,
     strip_progress_entries,
     validate_transcript,
@@ -587,3 +591,479 @@ class TestCompactSummaryRoundtrip:
         exported = builder.to_jsonl()
         first = json.loads(exported.strip().split("\n")[0])
         assert first.get("isCompactSummary") is True
+
+
+# --- _flatten_assistant_content ---
+
+
+class TestFlattenAssistantContent:
+    def test_text_blocks(self):
+        blocks = [
+            {"type": "text", "text": "Hello"},
+            {"type": "text", "text": "World"},
+        ]
+        assert _flatten_assistant_content(blocks) == "Hello\nWorld"
+
+    def test_tool_use_blocks(self):
+        blocks = [{"type": "tool_use", "name": "read_file", "id": "t1", "input": {}}]
+        assert _flatten_assistant_content(blocks) == "[tool_use: read_file]"
+
+    def test_mixed_blocks(self):
+        blocks = [
+            {"type": "text", "text": "Let me read that."},
+            {"type": "tool_use", "name": "read", "id": "t1", "input": {}},
+        ]
+        result = _flatten_assistant_content(blocks)
+        assert "Let me read that." in result
+        assert "[tool_use: read]" in result
+
+    def test_string_blocks(self):
+        """Plain strings in the list should be included."""
+        assert _flatten_assistant_content(["hello", "world"]) == "hello\nworld"
+
+    def test_empty_list(self):
+        assert _flatten_assistant_content([]) == ""
+
+    def test_tool_use_missing_name(self):
+        blocks = [{"type": "tool_use", "id": "t1", "input": {}}]
+        assert _flatten_assistant_content(blocks) == "[tool_use: ?]"
+
+
+# --- _flatten_tool_result_content ---
+
+
+class TestFlattenToolResultContent:
+    def test_tool_result_with_text(self):
+        blocks = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "content": [{"type": "text", "text": "file contents here"}],
+            }
+        ]
+        assert _flatten_tool_result_content(blocks) == "file contents here"
+
+    def test_tool_result_with_string_content(self):
+        blocks = [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "simple result"}
+        ]
+        assert _flatten_tool_result_content(blocks) == "simple result"
+
+    def test_tool_result_with_nested_list(self):
+        blocks = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "content": [
+                    {"type": "text", "text": "line 1"},
+                    {"type": "text", "text": "line 2"},
+                ],
+            }
+        ]
+        assert _flatten_tool_result_content(blocks) == "line 1\nline 2"
+
+    def test_text_blocks(self):
+        blocks = [{"type": "text", "text": "some text"}]
+        assert _flatten_tool_result_content(blocks) == "some text"
+
+    def test_string_items(self):
+        assert _flatten_tool_result_content(["raw string"]) == "raw string"
+
+    def test_empty_list(self):
+        assert _flatten_tool_result_content([]) == ""
+
+    def test_tool_result_none_text_uses_json(self):
+        """Dicts without text key fall back to json.dumps."""
+        blocks = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "content": [{"type": "image", "source": "data:..."}],
+            }
+        ]
+        result = _flatten_tool_result_content(blocks)
+        assert "image" in result  # json.dumps fallback includes the key
+
+
+# --- _transcript_to_messages ---
+
+
+class TestTranscriptToMessages:
+    def test_basic_conversation(self):
+        content = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hello"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "u1",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hi there"}],
+                },
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 2
+        assert msgs[0] == {"role": "user", "content": "hello"}
+        assert msgs[1] == {"role": "assistant", "content": "hi there"}
+
+    def test_strips_progress_entries(self):
+        content = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hi"},
+            },
+            {
+                "type": "progress",
+                "uuid": "p1",
+                "message": {"role": "user", "content": "..."},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "ok"}],
+                },
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "user"
+        assert msgs[1]["role"] == "assistant"
+
+    def test_preserves_compact_summaries(self):
+        content = _make_jsonl(
+            {
+                "type": "summary",
+                "uuid": "cs1",
+                "isCompactSummary": True,
+                "message": {"role": "user", "content": "Summary of previous..."},
+            },
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hi"},
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 2
+        assert msgs[0]["content"] == "Summary of previous..."
+
+    def test_strips_regular_summary(self):
+        content = _make_jsonl(
+            {
+                "type": "summary",
+                "uuid": "s1",
+                "message": {"role": "user", "content": "Session summary"},
+            },
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hi"},
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 1
+        assert msgs[0]["content"] == "hi"
+
+    def test_skips_entries_without_role(self):
+        content = _make_jsonl(
+            {"type": "user", "uuid": "u1", "message": {}},
+            {
+                "type": "user",
+                "uuid": "u2",
+                "message": {"role": "user", "content": "hi"},
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 1
+
+    def test_tool_result_content(self):
+        content = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "t1",
+                            "content": "file contents",
+                        }
+                    ],
+                },
+            },
+        )
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 1
+        assert "file contents" in msgs[0]["content"]
+
+    def test_empty_content(self):
+        assert _transcript_to_messages("") == []
+        assert _transcript_to_messages("  \n  ") == []
+
+    def test_invalid_json_lines_skipped(self):
+        content = '{"type":"user","uuid":"u1","message":{"role":"user","content":"hi"}}\nnot json\n'
+        msgs = _transcript_to_messages(content)
+        assert len(msgs) == 1
+
+
+# --- _messages_to_transcript ---
+
+
+class TestMessagesToTranscript:
+    def test_basic_roundtrip_structure(self):
+        messages = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = _messages_to_transcript(messages)
+        assert result.endswith("\n")
+        lines = [json.loads(line) for line in result.strip().split("\n")]
+        assert len(lines) == 2
+
+        # User entry
+        assert lines[0]["type"] == "user"
+        assert lines[0]["message"]["role"] == "user"
+        assert lines[0]["message"]["content"] == "hello"
+        assert lines[0]["parentUuid"] is None
+
+        # Assistant entry
+        assert lines[1]["type"] == "assistant"
+        assert lines[1]["message"]["role"] == "assistant"
+        assert lines[1]["message"]["content"] == [{"type": "text", "text": "hi there"}]
+        assert lines[1]["message"]["id"].startswith(COMPACT_MSG_ID_PREFIX)
+        assert lines[1]["parentUuid"] == lines[0]["uuid"]
+
+    def test_parent_uuid_chain(self):
+        messages = [
+            {"role": "user", "content": "q1"},
+            {"role": "assistant", "content": "a1"},
+            {"role": "user", "content": "q2"},
+        ]
+        result = _messages_to_transcript(messages)
+        lines = [json.loads(line) for line in result.strip().split("\n")]
+        assert lines[0]["parentUuid"] is None
+        assert lines[1]["parentUuid"] == lines[0]["uuid"]
+        assert lines[2]["parentUuid"] == lines[1]["uuid"]
+
+    def test_empty_messages(self):
+        assert _messages_to_transcript([]) == ""
+
+    def test_assistant_empty_content(self):
+        messages = [{"role": "assistant", "content": ""}]
+        result = _messages_to_transcript(messages)
+        entry = json.loads(result.strip())
+        assert entry["message"]["content"] == []
+
+    def test_output_is_valid_transcript(self):
+        messages = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "world"},
+        ]
+        result = _messages_to_transcript(messages)
+        assert validate_transcript(result)
+
+
+# --- _transcript_to_messages + _messages_to_transcript roundtrip ---
+
+
+class TestTranscriptCompactionRoundtrip:
+    def test_content_preserved_through_roundtrip(self):
+        """Messages→transcript→messages preserves content."""
+        original = [
+            {"role": "user", "content": "What is 2+2?"},
+            {"role": "assistant", "content": "4"},
+            {"role": "user", "content": "Thanks"},
+        ]
+        transcript = _messages_to_transcript(original)
+        recovered = _transcript_to_messages(transcript)
+        assert len(recovered) == len(original)
+        for orig, rec in zip(original, recovered):
+            assert orig["role"] == rec["role"]
+            assert orig["content"] == rec["content"]
+
+    def test_full_transcript_to_messages_and_back(self):
+        """Real-ish JSONL → messages → transcript → messages roundtrip."""
+        source = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "explain python"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "u1",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Python is a programming language."}
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "uuid": "u2",
+                "parentUuid": "a1",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "t1",
+                            "content": "output of ls",
+                        }
+                    ],
+                },
+            },
+        )
+        msgs1 = _transcript_to_messages(source)
+        assert len(msgs1) == 3
+
+        rebuilt = _messages_to_transcript(msgs1)
+        msgs2 = _transcript_to_messages(rebuilt)
+        assert len(msgs2) == len(msgs1)
+        for m1, m2 in zip(msgs1, msgs2):
+            assert m1["role"] == m2["role"]
+            # Content may differ in format (list vs string) but text is preserved
+            assert m1["content"] in m2["content"] or m2["content"] in m1["content"]
+
+
+# --- compact_transcript ---
+
+
+class TestCompactTranscript:
+    @pytest.mark.asyncio
+    async def test_too_few_messages_returns_none(self):
+        """Transcripts with < 2 messages can't be compacted."""
+        single = _make_jsonl(
+            {"type": "user", "uuid": "u1", "message": {"role": "user", "content": "hi"}}
+        )
+        result = await compact_transcript(single)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_empty_transcript_returns_none(self):
+        result = await compact_transcript("")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_compaction_produces_valid_transcript(self, monkeypatch):
+        """When compress_context compacts, result should be valid JSONL."""
+        from unittest.mock import AsyncMock
+
+        from backend.util.prompt import CompressResult
+
+        mock_result = CompressResult(
+            messages=[
+                {"role": "user", "content": "Summary of conversation"},
+                {"role": "assistant", "content": "Acknowledged"},
+            ],
+            token_count=50,
+            was_compacted=True,
+            original_token_count=5000,
+            messages_summarized=10,
+            messages_dropped=5,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._run_compression",
+            AsyncMock(return_value=mock_result),
+        )
+
+        source = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "msg1"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "reply1"}],
+                },
+            },
+            {
+                "type": "user",
+                "uuid": "u2",
+                "message": {"role": "user", "content": "msg2"},
+            },
+        )
+        result = await compact_transcript(source)
+        assert result is not None
+        assert validate_transcript(result)
+
+        # Verify compacted content
+        msgs = _transcript_to_messages(result)
+        assert len(msgs) == 2
+        assert msgs[0]["content"] == "Summary of conversation"
+
+    @pytest.mark.asyncio
+    async def test_no_compaction_needed_returns_original(self, monkeypatch):
+        """When compress_context says no compaction needed, return original."""
+        from unittest.mock import AsyncMock
+
+        from backend.util.prompt import CompressResult
+
+        mock_result = CompressResult(
+            messages=[], token_count=100, was_compacted=False, original_token_count=100
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._run_compression",
+            AsyncMock(return_value=mock_result),
+        )
+
+        source = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hi"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+        )
+        result = await compact_transcript(source)
+        assert result == source  # Unchanged
+
+    @pytest.mark.asyncio
+    async def test_compression_failure_returns_none(self, monkeypatch):
+        """When _run_compression raises, compact_transcript returns None."""
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._run_compression",
+            AsyncMock(side_effect=RuntimeError("LLM unavailable")),
+        )
+
+        source = _make_jsonl(
+            {
+                "type": "user",
+                "uuid": "u1",
+                "message": {"role": "user", "content": "hi"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+        )
+        result = await compact_transcript(source)
+        assert result is None
