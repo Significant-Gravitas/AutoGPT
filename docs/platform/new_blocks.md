@@ -57,19 +57,19 @@ Follow these steps to create and test a new block:
    ```python
    def __init__(self):
        super().__init__(
-           # Unique ID for the block, used across users for templates
-           # If you are an AI leave it as is or change to "generate-proper-uuid"
            id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-           input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
-           output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
-
-               # Provide sample input, output and test mock for testing the block
-
+           input_schema=WikipediaSummaryBlock.Input,
+           output_schema=WikipediaSummaryBlock.Output,
            test_input={"topic": "Artificial Intelligence"},
            test_output=("summary", "summary content"),
            test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
        )
    ```
+
+   !!! note "Code Breakdown"
+       - **id**: Unique ID for the block, used across users for templates. If you are an AI leave it as is or change to "generate-proper-uuid".
+       - **input_schema / output_schema**: Assign input and output schemas.
+       - **test_input / test_output / test_mock**: Provide sample input, output and test mock for testing the block.
 
    - `id`: A unique identifier for the block.
 
@@ -142,33 +142,31 @@ async def run(
     execution_context: ExecutionContext,
     **kwargs,
 ) -> BlockOutput:
-    # PROCESSING: Need to work with file locally (ffmpeg, MoviePy, PIL)
     local_path = await store_media_file(
         file=input_data.video,
         execution_context=execution_context,
         return_format="for_local_processing",
     )
-    # local_path = "video.mp4" - use with Path, ffmpeg, subprocess, etc.
     full_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
 
-    # EXTERNAL API: Need to send content to an API like Replicate
     image_b64 = await store_media_file(
         file=input_data.image,
         execution_context=execution_context,
         return_format="for_external_api",
     )
-    # image_b64 = "data:image/png;base64,iVBORw0..." - send to external API
 
-    # OUTPUT: Returning result from block to user/next block
     result_url = await store_media_file(
         file=generated_image_url,
         execution_context=execution_context,
         return_format="for_block_output",
     )
     yield "image_url", result_url
-    # In CoPilot: result_url = "workspace://abc123" (persistent, context-efficient)
-    # In graphs:  result_url = "data:image/png;base64,..." (for next block/display)
 ```
+
+!!! note "File Handling Explanation"
+    - **PROCESSING**: When you need to work with a file locally (ffmpeg, MoviePy, PIL), use `"for_local_processing"`. `local_path` will be e.g., `"video.mp4"` for use with Path, subprocess, etc.
+    - **EXTERNAL API**: When sending content to an API like Replicate, use `"for_external_api"`. `image_b64` will be a Data URI (e.g., `"data:image/png;base64,iVBORw0..."`).
+    - **OUTPUT**: When returning a result from block to user/next block, use `"for_block_output"`. In CoPilot, `result_url` = `"workspace://abc123"` (persistent, context-efficient). In graphs, `result_url` = `"data:image/png;base64,..."` (for next block/display).
 
 **Key points:**
 
@@ -231,22 +229,8 @@ Implementing the block itself is relatively simple. On top of the instructions a
 you're going to add a `credentials` parameter to the `Input` model and the `run` method:
 
 ```python
-from backend.data.model import (
-    APIKeyCredentials,
-    OAuth2Credentials,
-    Credentials,
-)
-
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
-from backend.data.model import CredentialsField
-from backend.integrations.providers import ProviderName
-
-
-# API Key auth:
 class BlockWithAPIKeyAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["api_key"]
         ] = CredentialsField(
@@ -265,11 +249,8 @@ class BlockWithAPIKeyAuth(Block):
     ) -> BlockOutput:
         ...
 
-# OAuth:
 class BlockWithOAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["oauth2"]
         ] = CredentialsField(
@@ -288,11 +269,8 @@ class BlockWithOAuth(Block):
     ) -> BlockOutput:
         ...
 
-# API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
     class Input(BlockSchemaInput):
-        # Note that the type hint below is require or you will get a type error.
-        # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GITHUB], Literal["api_key", "oauth2"]
         ] = CredentialsField(
@@ -312,6 +290,10 @@ class BlockWithAPIKeyAndOAuth(Block):
     ) -> BlockOutput:
         ...
 ```
+
+!!! note "Authentication Configuration"
+    - The type hint for `credentials` is required or you will get a type error. 
+    - The first argument is the provider name, the second is the credential type (`"api_key"`, `"oauth2"`, or both).
 
 The credentials will be automagically injected by the executor in the back end.
 
@@ -631,16 +613,18 @@ from backend.util.request import requests
 class MyNetworkBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            # The requests wrapper automatically validates URLs and blocks dangerous requests
             response = requests.get(input_data.url)
             yield "result", response.text
         except ValueError as e:
-            # URL validation failed
             raise RuntimeError(f"Invalid URL provided: {e}")
         except requests.exceptions.RequestException as e:
-            # Request failed
             raise RuntimeError(f"Request failed: {e}")
 ```
+
+!!! note "Requests Wrapper Features"
+    - The `requests` wrapper automatically validates URLs and blocks dangerous requests.
+    - `ValueError` is raised if URL validation fails.
+    - `requests.exceptions.RequestException` is raised if the request itself fails.
 
 The `Requests` wrapper provides these security features:
 
@@ -704,7 +688,6 @@ from backend.util.exceptions import BlockInputError, BlockExecutionError
 
 class MyBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Input validation - use BlockInputError
         if not input_data.api_key:
             raise BlockInputError(
                 message="API key is required",
@@ -716,13 +699,16 @@ class MyBlock(Block):
             result = await self.call_api(input_data)
             yield "result", result
         except AuthenticationError as e:
-            # API/runtime errors - use BlockExecutionError
             raise BlockExecutionError(
                 message=f"Authentication failed: {e}",
                 block_name=self.name,
                 block_id=self.id,
             ) from e
 ```
+
+!!! note "Exception Handling"
+    - **Input validation**: Use `BlockInputError` when validating parameters before execution.
+    - **API/runtime errors**: Use `BlockExecutionError` to wrap and explain execution failures like authentication issues.
 
 #### What NOT to Catch
 
