@@ -23,6 +23,12 @@ import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
 import { useCustomNode } from "./useCustomNode";
 
+function hasAdvancedFields(schema: RJSFSchema): boolean {
+  const properties = schema?.properties;
+  if (!properties) return false;
+  return Object.values(properties).some((prop: any) => prop.advanced === true);
+}
+
 export type CustomNodeData = {
   hardcodedValues: {
     [key: string]: any;
@@ -47,7 +53,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
+    const { inputSchema, outputSchema, isMCPWithTool } = useCustomNode({
+      data,
+      nodeId,
+    });
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
@@ -98,13 +107,18 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            isMCPWithTool={isMCPWithTool}
             className={cn(
               "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}
           />
-          <NodeAdvancedToggle nodeId={nodeId} />
+          <NodeAdvancedToggle
+            nodeId={nodeId}
+            isLastSection={data.uiType === BlockUIType.OUTPUT}
+            hasAdvancedFields={hasAdvancedFields(inputSchema)}
+          />
           {data.uiType != BlockUIType.OUTPUT && (
             <OutputHandler
               uiType={data.uiType}

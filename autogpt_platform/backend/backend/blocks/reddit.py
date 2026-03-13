@@ -6,7 +6,7 @@ import praw
 from praw.models import Comment, MoreComments, Submission
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -2232,6 +2232,7 @@ class DeleteRedditPostBlock(Block):
                 ("post_id", "abc123"),
             ],
             test_mock={"delete_post": lambda creds, post_id: True},
+            is_sensitive_action=True,
         )
 
     @staticmethod
@@ -2290,6 +2291,7 @@ class DeleteRedditCommentBlock(Block):
                 ("comment_id", "xyz789"),
             ],
             test_mock={"delete_comment": lambda creds, comment_id: True},
+            is_sensitive_action=True,
         )
 
     @staticmethod

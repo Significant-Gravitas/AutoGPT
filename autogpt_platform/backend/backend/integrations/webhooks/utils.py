@@ -9,7 +9,7 @@ from backend.util.settings import Config
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.block import AnyBlockSchema
+    from backend.blocks._base import AnyBlockSchema
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
     from backend.integrations.providers import ProviderName
@@ -42,7 +42,7 @@ async def setup_webhook_for_block(
         Webhook: The created or found webhook object, if successful.
         str: A feedback message, if any required inputs are missing.
     """
-    from backend.data.block import BlockWebhookConfig
+    from backend.blocks._base import BlockWebhookConfig
 
     if not (trigger_base_config := trigger_block.webhook_config):
         raise ValueError(f"Block #{trigger_block.id} does not have a webhook_config")

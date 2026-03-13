@@ -7,7 +7,7 @@ from typing import Any, Callable, List, Optional, Set, Type
 
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import BlockCost
+from backend.blocks._base import BlockCost
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,

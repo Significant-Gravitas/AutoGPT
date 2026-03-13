@@ -11,14 +11,14 @@ python = ">=3.10,<4.0"
 colorama = "^0.4.6"
 cryptography = "^46.0"
 expiringdict = "^1.2.2"
-fastapi = "^0.128.0"
+fastapi = "^0.128.7"
 google-cloud-logging = "^3.13.0"
-launchdarkly-server-sdk = "^9.14.1"
+launchdarkly-server-sdk = "^9.15.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
 pyjwt = { version = "^2.11.0", extras = ["crypto"] }
 redis = "^6.2.0"
-supabase = "^2.27.2"
+supabase = "^2.28.0"
 uvicorn = "^0.40.0"
 
 [tool.poetry.group.dev.dependencies]

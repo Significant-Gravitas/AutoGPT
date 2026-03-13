@@ -4,14 +4,15 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
+import prisma
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
+from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockSchema, BlockSchemaInput
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
@@ -250,8 +251,8 @@ async def test_clean_graph(server: SpinTestServer):
                     "_test_id": "node_with_secrets",
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
-                    "api_key": "secret_api_key_123",  # Should be filtered
-                    "password": "secret_password_456",  # Should be filtered
+                    "api_key": "secret_api_key_123",  # Should be filtered # pragma: allowlist secret # noqa
+                    "password": "secret_password_456",  # Should be filtered # pragma: allowlist secret # noqa
                     "token": "secret_token_789",  # Should be filtered
                     "credentials": {  # Should be filtered
                         "id": "fake-github-credentials-id",
@@ -323,7 +324,6 @@ async def test_clean_graph(server: SpinTestServer):
     # Verify webhook info is removed (if any nodes had it)
     for node in cleaned_graph.nodes:
         assert node.webhook_id is None
-        assert node.webhook is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -355,9 +355,24 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         create_graph, DEFAULT_USER_ID
     )
 
+    # Ensure the default user has a Profile (required for store submissions)
+    existing_profile = await prisma.models.Profile.prisma().find_first(
+        where={"userId": DEFAULT_USER_ID}
+    )
+    if not existing_profile:
+        await prisma.models.Profile.prisma().create(
+            data=prisma.types.ProfileCreateInput(
+                userId=DEFAULT_USER_ID,
+                name="Default User",
+                username=f"default-user-{DEFAULT_USER_ID[:8]}",
+                description="Default test user profile",
+                links=[],
+            )
+        )
+
     store_submission_request = store.StoreSubmissionRequest(
-        agent_id=created_graph.id,
-        agent_version=created_graph.version,
+        graph_id=created_graph.id,
+        graph_version=created_graph.version,
         slug=created_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
@@ -386,8 +401,8 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         assert False, "Failed to create store listing"
 
     slv_id = (
-        store_listing.store_listing_version_id
-        if store_listing.store_listing_version_id is not None
+        store_listing.listing_version_id
+        if store_listing.listing_version_id is not None
         else None
     )
 
@@ -463,3 +478,120 @@ def test_node_credentials_optional_with_other_metadata():
     assert node.credentials_optional is True
     assert node.metadata["position"] == {"x": 100, "y": 200}
     assert node.metadata["customized_name"] == "My Custom Node"
+
+
+# ============================================================================
+# Tests for MCP Credential Deduplication
+# ============================================================================
+
+
+def test_mcp_credential_combine_different_servers():
+    """Two MCP credential fields with different server URLs should produce
+    separate entries when combined (not merged into one)."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_sentry = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+    field_linear = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.linear.app/mcp"},
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_sentry, ("node-sentry", "credentials")),
+        (field_linear, ("node-linear", "credentials")),
+    )
+
+    # Should produce 2 separate credential entries
+    assert len(combined) == 2, (
+        f"Expected 2 credential entries for 2 MCP blocks with different servers, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )
+
+    # Each entry should contain the server hostname in its key
+    keys = list(combined.keys())
+    assert any(
+        "mcp.sentry.dev" in k for k in keys
+    ), f"Expected 'mcp.sentry.dev' in one key, got {keys}"
+    assert any(
+        "mcp.linear.app" in k for k in keys
+    ), f"Expected 'mcp.linear.app' in one key, got {keys}"
+
+
+def test_mcp_credential_combine_same_server():
+    """Two MCP credential fields with the same server URL should be combined
+    into one credential entry."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_a = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+    field_b = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+        discriminator_values={"https://mcp.sentry.dev/mcp"},
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_a, ("node-a", "credentials")),
+        (field_b, ("node-b", "credentials")),
+    )
+
+    # Should produce 1 credential entry (same server URL)
+    assert len(combined) == 1, (
+        f"Expected 1 credential entry for 2 MCP blocks with same server, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )
+
+
+def test_mcp_credential_combine_no_discriminator_values():
+    """MCP credential fields without discriminator_values should be merged
+    into a single entry (backwards compat for blocks without server_url set)."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+
+    field_a = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+    )
+    field_b = CredentialsFieldInfo(
+        credentials_provider=frozenset([ProviderName.MCP]),
+        credentials_types=oauth2_types,
+        credentials_scopes=None,
+        discriminator="server_url",
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (field_a, ("node-a", "credentials")),
+        (field_b, ("node-b", "credentials")),
+    )
+
+    # Should produce 1 entry (no URL differentiation)
+    assert len(combined) == 1, (
+        f"Expected 1 credential entry for MCP blocks without discriminator_values, "
+        f"got {len(combined)}: {list(combined.keys())}"
+    )

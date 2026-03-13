@@ -3,8 +3,17 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { PlusIcon, SpinnerGapIcon, X } from "@phosphor-icons/react";
+import {
+  CheckCircle,
+  PlusIcon,
+  SpeakerHigh,
+  SpeakerSlash,
+  SpinnerGapIcon,
+  X,
+} from "@phosphor-icons/react";
 import { Drawer } from "vaul";
+import { useCopilotUIStore } from "../../store";
+import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 interface Props {
   isOpen: boolean;
@@ -52,6 +61,13 @@ export function MobileDrawer({
   onClose,
   onOpenChange,
 }: Props) {
+  const {
+    completedSessionIDs,
+    clearCompletedSession,
+    isSoundEnabled,
+    toggleSound,
+  } = useCopilotUIStore();
+
   return (
     <Drawer.Root open={isOpen} onOpenChange={onOpenChange} direction="left">
       <Drawer.Portal>
@@ -62,15 +78,45 @@ export function MobileDrawer({
               <Drawer.Title className="text-lg font-semibold text-zinc-800">
                 Your chats
               </Drawer.Title>
-              <Button
-                variant="icon"
-                size="icon"
-                aria-label="Close sessions"
-                onClick={onClose}
-              >
-                <X width="1rem" height="1rem" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={toggleSound}
+                  className="rounded p-1.5 text-zinc-400 transition-colors hover:text-zinc-600"
+                  aria-label={
+                    isSoundEnabled
+                      ? "Disable notification sound"
+                      : "Enable notification sound"
+                  }
+                >
+                  {isSoundEnabled ? (
+                    <SpeakerHigh className="h-4 w-4" />
+                  ) : (
+                    <SpeakerSlash className="h-4 w-4" />
+                  )}
+                </button>
+                <Button
+                  variant="icon"
+                  size="icon"
+                  aria-label="Close sessions"
+                  onClick={onClose}
+                >
+                  <X width="1rem" height="1rem" />
+                </Button>
+              </div>
             </div>
+            {currentSessionId ? (
+              <div className="mt-2">
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={onNewChat}
+                  className="w-full"
+                  leftIcon={<PlusIcon width="1rem" height="1rem" />}
+                >
+                  New Chat
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div
             className={cn(
@@ -90,7 +136,12 @@ export function MobileDrawer({
               sessions.map((session) => (
                 <button
                   key={session.id}
-                  onClick={() => onSelectSession(session.id)}
+                  onClick={() => {
+                    onSelectSession(session.id);
+                    if (completedSessionIDs.has(session.id)) {
+                      clearCompletedSession(session.id);
+                    }
+                  }}
                   className={cn(
                     "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
                     session.id === currentSessionId
@@ -99,7 +150,7 @@ export function MobileDrawer({
                   )}
                 >
                   <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                    <div className="min-w-0 max-w-full">
+                    <div className="flex min-w-0 max-w-full items-center gap-1.5">
                       <Text
                         variant="body"
                         className={cn(
@@ -111,6 +162,18 @@ export function MobileDrawer({
                       >
                         {session.title || "Untitled chat"}
                       </Text>
+                      {session.is_processing &&
+                        !completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId && (
+                          <PulseLoader size={8} className="shrink-0" />
+                        )}
+                      {completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId && (
+                          <CheckCircle
+                            className="h-4 w-4 shrink-0 text-green-500"
+                            weight="fill"
+                          />
+                        )}
                     </div>
                     <Text variant="small" className="text-neutral-400">
                       {formatDate(session.updated_at)}
@@ -120,19 +183,6 @@ export function MobileDrawer({
               ))
             )}
           </div>
-          {currentSessionId && (
-            <div className="shrink-0 bg-white p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-              <Button
-                variant="primary"
-                size="small"
-                onClick={onNewChat}
-                className="w-full"
-                leftIcon={<PlusIcon width="1rem" height="1rem" />}
-              >
-                New Chat
-              </Button>
-            </div>
-          )}
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>

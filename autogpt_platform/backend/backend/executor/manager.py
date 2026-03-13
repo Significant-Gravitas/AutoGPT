@@ -16,16 +16,13 @@ from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
-from backend.data.block import (
-    BlockInput,
-    BlockOutput,
-    BlockOutputEntry,
-    BlockSchema,
-    get_block,
-)
+from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
@@ -96,7 +93,10 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
+    from backend.data.db_manager import (
+        DatabaseManagerAsyncClient,
+        DatabaseManagerClient,
+    )
 
 
 _logger = logging.getLogger(__name__)
@@ -232,6 +232,18 @@ async def execute_node(
             _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
+    elif isinstance(node_block, MCPToolBlock):
+        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        # Dynamic tool fields are flattened to top-level by validate_exec
+        # (via get_input_defaults). Collect them back into tool_arguments.
+        tool_schema = _mcp_data.tool_input_schema
+        tool_props = set(tool_schema.get("properties", {}).keys())
+        merged_args = {**_mcp_data.tool_arguments}
+        for key in tool_props:
+            if key in input_data:
+                merged_args[key] = input_data[key]
+        _mcp_data.tool_arguments = merged_args
+        input_data = _mcp_data.model_dump()
     data.inputs = input_data
 
     # Execute the node
@@ -268,8 +280,34 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
-        credentials_meta = input_type(**input_data[field_name])
-        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        field_value = input_data.get(field_name)
+        if not field_value or (
+            isinstance(field_value, dict) and not field_value.get("id")
+        ):
+            # No credentials configured — nullify so JSON schema validation
+            # doesn't choke on the empty default `{}`.
+            input_data[field_name] = None
+            continue  # Block runs without credentials
+
+        credentials_meta = input_type(**field_value)
+        # Write normalized values back so JSON schema validation also passes
+        # (model_validator may have fixed legacy formats like "ProviderName.MCP")
+        input_data[field_name] = credentials_meta.model_dump(mode="json")
+        try:
+            credentials, lock = await creds_manager.acquire(
+                user_id, credentials_meta.id
+            )
+        except ValueError:
+            # Credential was deleted or doesn't exist.
+            # If the field has a default, run without credentials.
+            if input_model.model_fields[field_name].default is not None:
+                log_metadata.warning(
+                    f"Credentials #{credentials_meta.id} not found, "
+                    "running without (field has default)"
+                )
+                input_data[field_name] = None
+                continue
+            raise
         creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 

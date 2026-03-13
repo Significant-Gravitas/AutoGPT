@@ -14,7 +14,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -241,8 +241,8 @@ class GmailBase(Block, ABC):
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)
-                except ImportError:
-                    # Fallback: return raw HTML if html2text is not available
+                except Exception:
+                    # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
         # Handle content stored as attachment

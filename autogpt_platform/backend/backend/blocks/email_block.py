@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -96,6 +96,7 @@ class SendEmailBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Email sent successfully")],
             test_mock={"send_email": lambda *args, **kwargs: "Email sent successfully"},
+            is_sensitive_action=True,
         )
 
     @staticmethod

@@ -89,6 +89,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    tally_extraction_llm_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="OpenRouter model ID used for extracting business understanding from Tally form data",
+    )
+    ollama_host: str = Field(
+        default="localhost:11434",
+        description="Default Ollama host; exempted from SSRF checks.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -112,6 +120,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
+    )
+    enable_invite_gate: bool = Field(
+        default=True,
+        description="If the invite-only signup gate is enforced",
     )
     enable_credit: bool = Field(
         default=False,
@@ -211,14 +223,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for execution manager daemon to run on",
     )
 
+    num_copilot_workers: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Number of concurrent CoPilot executor workers",
+    )
+
+    copilot_executor_port: int = Field(
+        default=8008,
+        description="The port for CoPilot executor daemon to run on",
+    )
+
     execution_scheduler_port: int = Field(
         default=8003,
         description="The port for execution scheduler daemon to run on",
-    )
-
-    agent_server_port: int = Field(
-        default=8004,
-        description="The port for agent server daemon to run on",
     )
 
     database_api_port: int = Field(
@@ -356,19 +375,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
-    agentgenerator_host: str = Field(
-        default="",
-        description="The host for the Agent Generator service (empty to use built-in)",
-    )
-    agentgenerator_port: int = Field(
-        default=8000,
-        description="The port for the Agent Generator service",
-    )
-    agentgenerator_timeout: int = Field(
-        default=600,
-        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
-    )
-
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -400,6 +406,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
+    )
+
+    max_workspace_storage_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum total workspace storage per user in MB.",
     )
 
     # AutoMod configuration
@@ -658,6 +671,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
 
+    copilot_linear_api_key: str = Field(
+        default="", description="Linear API key for system-level operations"
+    )
+    linear_feature_request_project_id: str = Field(
+        default="",
+        description="Linear project ID where feature requests are tracked",
+    )
+    linear_feature_request_team_id: str = Field(
+        default="",
+        description="Linear team ID used when creating feature request issues",
+    )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
@@ -668,6 +692,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    tally_api_key: str = Field(
+        default="",
+        description="Tally API key for form submission lookup on signup",
+    )
+    tally_form_id: str = Field(
+        default="npGe0q",
+        description="Tally form ID for signup business understanding form",
+    )
 
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
@@ -691,6 +724,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+    langfuse_tracing_environment: str = Field(
+        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics

@@ -85,6 +85,27 @@ class TestGmailReadBlock:
             assert "This is HTML content" in result
 
     @pytest.mark.asyncio
+    async def test_html_fallback_when_html2text_conversion_fails(self):
+        """Fallback to raw HTML when html2text converter raises unexpectedly."""
+        html_text = "<html><body><p>Broken <b>HTML</p></body></html>"
+
+        msg = {
+            "id": "test_msg_html_error",
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": self._encode_base64(html_text)},
+            },
+        }
+
+        with patch("html2text.HTML2Text") as mock_html2text:
+            mock_converter = Mock()
+            mock_converter.handle.side_effect = ValueError("conversion failed")
+            mock_html2text.return_value = mock_converter
+
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
+            assert result == html_text
+
+    @pytest.mark.asyncio
     async def test_html_fallback_when_html2text_unavailable(self):
         """Test fallback to raw HTML when html2text is not available."""
         html_text = "<html><body><p>HTML content</p></body></html>"

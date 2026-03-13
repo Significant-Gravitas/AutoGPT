@@ -7,18 +7,23 @@ from typing import TYPE_CHECKING
 from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
 settings = Settings()
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
     from supabase import AClient, Client
 
+    from backend.data.db_manager import (
+        DatabaseManagerAsyncClient,
+        DatabaseManagerClient,
+    )
     from backend.data.execution import (
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
     from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
-    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -27,7 +32,7 @@ if TYPE_CHECKING:
 @thread_cached
 def get_database_manager_client() -> "DatabaseManagerClient":
     """Get a thread-cached DatabaseManagerClient with request retry enabled."""
-    from backend.executor import DatabaseManagerClient
+    from backend.data.db_manager import DatabaseManagerClient
     from backend.util.service import get_service_client
 
     return get_service_client(DatabaseManagerClient, request_retry=True)
@@ -38,7 +43,7 @@ def get_database_manager_async_client(
     should_retry: bool = True,
 ) -> "DatabaseManagerAsyncClient":
     """Get a thread-cached DatabaseManagerAsyncClient with request retry enabled."""
-    from backend.executor import DatabaseManagerAsyncClient
+    from backend.data.db_manager import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
     return get_service_client(DatabaseManagerAsyncClient, request_retry=should_retry)
@@ -106,6 +111,20 @@ async def get_async_execution_queue() -> "AsyncRabbitMQ":
     return client
 
 
+# ============ CoPilot Queue Helpers ============ #
+
+
+@thread_cached
+async def get_async_copilot_queue() -> "AsyncRabbitMQ":
+    """Get a thread-cached AsyncRabbitMQ CoPilot queue client."""
+    from backend.copilot.executor.utils import create_copilot_queue_config
+    from backend.data.rabbitmq import AsyncRabbitMQ
+
+    client = AsyncRabbitMQ(create_copilot_queue_config())
+    await client.connect()
+    return client
+
+
 # ============ Integration Credentials Store ============ #
 
 
@@ -148,14 +167,20 @@ def get_openai_client() -> "AsyncOpenAI | None":
     """
     Get a process-cached async OpenAI client for embeddings.
 
-    Returns None if API key is not configured.
+    Prefers openai_internal_api_key (direct OpenAI). Falls back to
+    open_router_api_key via OpenRouter's OpenAI-compatible endpoint.
+    Returns None if neither key is configured.
     """
     from openai import AsyncOpenAI
 
-    api_key = settings.secrets.openai_internal_api_key
-    if not api_key:
-        return None
-    return AsyncOpenAI(api_key=api_key)
+    if settings.secrets.openai_internal_api_key:
+        return AsyncOpenAI(api_key=settings.secrets.openai_internal_api_key)
+    if settings.secrets.open_router_api_key:
+        return AsyncOpenAI(
+            api_key=settings.secrets.open_router_api_key,
+            base_url=OPENROUTER_BASE_URL,
+        )
+    return None
 
 
 # ============ Notification Queue Helpers ============ #

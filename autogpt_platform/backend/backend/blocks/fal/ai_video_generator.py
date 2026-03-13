@@ -3,19 +3,19 @@ import logging
 from enum import Enum
 from typing import Any
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.fal._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     FalCredentials,
     FalCredentialsField,
     FalCredentialsInput,
-)
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField

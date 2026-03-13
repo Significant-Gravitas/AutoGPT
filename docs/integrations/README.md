@@ -56,12 +56,16 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [File Store](block-integrations/basic.md#file-store) | Downloads and stores a file from a URL, data URI, or local path |
 | [Find In Dictionary](block-integrations/basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
 | [Find In List](block-integrations/basic.md#find-in-list) | Finds the index of the value in the list |
+| [Flatten List](block-integrations/basic.md#flatten-list) | Flattens a nested list structure into a single flat list |
 | [Get All Memories](block-integrations/basic.md#get-all-memories) | Retrieve all memories from Mem0 with optional conversation filtering |
 | [Get Latest Memory](block-integrations/basic.md#get-latest-memory) | Retrieve the latest memory from Mem0 with optional key filtering |
 | [Get List Item](block-integrations/basic.md#get-list-item) | Returns the element at the given index |
 | [Get Store Agent Details](block-integrations/system/store_operations.md#get-store-agent-details) | Get detailed information about an agent from the store |
 | [Get Weather Information](block-integrations/basic.md#get-weather-information) | Retrieves weather information for a specified location using OpenWeatherMap API |
-| [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution and wait for human approval or modification of data |
+| [Human In The Loop](block-integrations/basic.md#human-in-the-loop) | Pause execution for human review |
+| [Interleave Lists](block-integrations/basic.md#interleave-lists) | Interleaves elements from multiple lists in round-robin fashion, alternating between sources |
+| [List Difference](block-integrations/basic.md#list-difference) | Computes the difference between two lists |
+| [List Intersection](block-integrations/basic.md#list-intersection) | Computes the intersection of two lists, returning only elements present in both |
 | [List Is Empty](block-integrations/basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](block-integrations/system/library_operations.md#list-library-agents) | List all agents in your personal library |
 | [Note](block-integrations/basic.md#note) | A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes |
@@ -84,6 +88,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Store Value](block-integrations/basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
+| [Zip Lists](block-integrations/basic.md#zip-lists) | Zips multiple lists together into a list of grouped elements |
 
 ## Data Processing
 
@@ -300,10 +305,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Create Reddit Post](block-integrations/misc.md#create-reddit-post) | Create a new post on a subreddit |
 | [Delete Reddit Comment](block-integrations/misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
 | [Delete Reddit Post](block-integrations/misc.md#delete-reddit-post) | Delete a Reddit post that you own |
+| [Delete Telegram Message](block-integrations/telegram/blocks.md#delete-telegram-message) | Delete a message from a Telegram chat |
 | [Discord Channel Info](block-integrations/discord/bot_blocks.md#discord-channel-info) | Resolves Discord channel names to IDs and vice versa |
 | [Discord Get Current User](block-integrations/discord/oauth_blocks.md#discord-get-current-user) | Gets information about the currently authenticated Discord user using OAuth2 credentials |
 | [Discord User Info](block-integrations/discord/bot_blocks.md#discord-user-info) | Gets information about a Discord user by their ID |
 | [Edit Reddit Post](block-integrations/misc.md#edit-reddit-post) | Edit the body text of an existing Reddit post that you own |
+| [Edit Telegram Message](block-integrations/telegram/blocks.md#edit-telegram-message) | Edit the text of an existing message sent by the bot |
 | [Get Linkedin Profile](block-integrations/enrichlayer/linkedin.md#get-linkedin-profile) | Fetch LinkedIn profile data using Enrichlayer |
 | [Get Linkedin Profile Picture](block-integrations/enrichlayer/linkedin.md#get-linkedin-profile-picture) | Get LinkedIn profile pictures using Enrichlayer |
 | [Get Reddit Comment](block-integrations/misc.md#get-reddit-comment) | Get details about a specific Reddit comment by its ID |
@@ -316,6 +323,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Subreddit Flairs](block-integrations/misc.md#get-subreddit-flairs) | Get available link flair options for a subreddit |
 | [Get Subreddit Info](block-integrations/misc.md#get-subreddit-info) | Get information about a subreddit including subscriber count, description, and rules |
 | [Get Subreddit Rules](block-integrations/misc.md#get-subreddit-rules) | Get the rules for a subreddit to ensure compliance before posting |
+| [Get Telegram File](block-integrations/telegram/blocks.md#get-telegram-file) | Download a file from Telegram using its file_id |
 | [Get User Posts](block-integrations/misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
@@ -338,12 +346,21 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
+| [Reply To Telegram Message](block-integrations/telegram/blocks.md#reply-to-telegram-message) | Reply to a specific message in a Telegram chat |
 | [Search Reddit](block-integrations/misc.md#search-reddit) | Search Reddit for posts matching a query |
 | [Send Discord DM](block-integrations/discord/bot_blocks.md#send-discord-dm) | Sends a direct message to a Discord user using their user ID |
 | [Send Discord Embed](block-integrations/discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
+| [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
+| [Send Telegram Document](block-integrations/telegram/blocks.md#send-telegram-document) | Send a document (any file type) to a Telegram chat |
+| [Send Telegram Message](block-integrations/telegram/blocks.md#send-telegram-message) | Send a text message to a Telegram chat |
+| [Send Telegram Photo](block-integrations/telegram/blocks.md#send-telegram-photo) | Send a photo to a Telegram chat |
+| [Send Telegram Video](block-integrations/telegram/blocks.md#send-telegram-video) | Send a video to a Telegram chat |
+| [Send Telegram Voice](block-integrations/telegram/blocks.md#send-telegram-voice) | Send a voice message to a Telegram chat |
+| [Telegram Message Reaction Trigger](block-integrations/telegram/triggers.md#telegram-message-reaction-trigger) | Triggers when a reaction to a message is changed |
+| [Telegram Message Trigger](block-integrations/telegram/triggers.md#telegram-message-trigger) | Triggers when a message is received or edited in your Telegram bot |
 | [Transcribe Youtube Video](block-integrations/misc.md#transcribe-youtube-video) | Transcribes a YouTube video using a proxy |
 | [Twitter Add List Member](block-integrations/twitter/list_members.md#twitter-add-list-member) | This block adds a specified user to a Twitter List owned by the authenticated user |
 | [Twitter Bookmark Tweet](block-integrations/twitter/bookmark.md#twitter-bookmark-tweet) | This block bookmarks a tweet on Twitter |
@@ -427,19 +444,24 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Assign Issue](block-integrations/github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](block-integrations/github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
 | [Github Comment](block-integrations/github/issues.md#github-comment) | A block that posts comments on GitHub issues or pull requests using the GitHub API |
+| [Github Compare Branches](block-integrations/github/repo_branches.md#github-compare-branches) | This block compares two branches or commits in a GitHub repository |
 | [Github Create Check Run](block-integrations/github/checks.md#github-create-check-run) | Creates a new check run for a specific commit in a GitHub repository |
 | [Github Create Comment Object](block-integrations/github/reviews.md#github-create-comment-object) | Creates a comment object for use with GitHub blocks |
-| [Github Create File](block-integrations/github/repo.md#github-create-file) | This block creates a new file in a GitHub repository |
+| [Github Create File](block-integrations/github/repo_files.md#github-create-file) | This block creates a new file in a GitHub repository |
 | [Github Create PR Review](block-integrations/github/reviews.md#github-create-pr-review) | This block creates a review on a GitHub pull request with optional inline comments |
 | [Github Create Repository](block-integrations/github/repo.md#github-create-repository) | This block creates a new GitHub repository |
 | [Github Create Status](block-integrations/github/statuses.md#github-create-status) | Creates a new commit status in a GitHub repository |
-| [Github Delete Branch](block-integrations/github/repo.md#github-delete-branch) | This block deletes a specified branch |
+| [Github Delete Branch](block-integrations/github/repo_branches.md#github-delete-branch) | This block deletes a specified branch |
 | [Github Discussion Trigger](block-integrations/github/triggers.md#github-discussion-trigger) | This block triggers on GitHub Discussions events |
+| [Github Fork Repository](block-integrations/github/repo.md#github-fork-repository) | This block forks a GitHub repository to your account or an organization |
 | [Github Get CI Results](block-integrations/github/ci.md#github-get-ci-results) | This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs |
 | [Github Get PR Review Comments](block-integrations/github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
+| [Github Get Repository Info](block-integrations/github/repo.md#github-get-repository-info) | This block retrieves metadata about a GitHub repository |
+| [Github Get Repository Tree](block-integrations/github/repo_files.md#github-get-repository-tree) | This block lists the entire file tree of a GitHub repository recursively |
 | [Github Issues Trigger](block-integrations/github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |
-| [Github List Branches](block-integrations/github/repo.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
+| [Github List Branches](block-integrations/github/repo_branches.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
 | [Github List Comments](block-integrations/github/issues.md#github-list-comments) | A block that retrieves all comments from a GitHub issue or pull request, including comment metadata and content |
+| [Github List Commits](block-integrations/github/commits.md#github-list-commits) | This block lists commits on a branch in a GitHub repository |
 | [Github List Discussions](block-integrations/github/repo.md#github-list-discussions) | This block lists recent discussions for a specified GitHub repository |
 | [Github List Issues](block-integrations/github/issues.md#github-list-issues) | A block that retrieves a list of issues from a GitHub repository with their titles and URLs |
 | [Github List PR Reviewers](block-integrations/github/pull_requests.md#github-list-pr-reviewers) | This block lists all reviewers for a specified GitHub pull request |
@@ -448,25 +470,30 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github List Releases](block-integrations/github/repo.md#github-list-releases) | This block lists all releases for a specified GitHub repository |
 | [Github List Stargazers](block-integrations/github/repo.md#github-list-stargazers) | This block lists all users who have starred a specified GitHub repository |
 | [Github List Tags](block-integrations/github/repo.md#github-list-tags) | This block lists all tags for a specified GitHub repository |
-| [Github Make Branch](block-integrations/github/repo.md#github-make-branch) | This block creates a new branch from a specified source branch |
+| [Github Make Branch](block-integrations/github/repo_branches.md#github-make-branch) | This block creates a new branch from a specified source branch |
 | [Github Make Issue](block-integrations/github/issues.md#github-make-issue) | A block that creates new issues on GitHub repositories with a title and body content |
 | [Github Make Pull Request](block-integrations/github/pull_requests.md#github-make-pull-request) | This block creates a new pull request on a specified GitHub repository |
+| [Github Merge Pull Request](block-integrations/github/pull_requests.md#github-merge-pull-request) | This block merges a pull request using merge, squash, or rebase |
+| [Github Multi File Commit](block-integrations/github/commits.md#github-multi-file-commit) | This block creates a single commit with multiple file upsert/delete operations using the Git Trees API |
 | [Github Pull Request Trigger](block-integrations/github/triggers.md#github-pull-request-trigger) | This block triggers on pull request events and outputs the event type and payload |
-| [Github Read File](block-integrations/github/repo.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
-| [Github Read Folder](block-integrations/github/repo.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
+| [Github Read File](block-integrations/github/repo_files.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
+| [Github Read Folder](block-integrations/github/repo_files.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
 | [Github Read Issue](block-integrations/github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
 | [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
 | [Github Release Trigger](block-integrations/github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
+| [Github Search Code](block-integrations/github/repo_files.md#github-search-code) | This block searches for code in GitHub repositories |
+| [Github Star Repository](block-integrations/github/repo.md#github-star-repository) | This block stars a GitHub repository |
 | [Github Star Trigger](block-integrations/github/triggers.md#github-star-trigger) | This block triggers on GitHub star events |
 | [Github Submit Pending Review](block-integrations/github/reviews.md#github-submit-pending-review) | This block submits a pending (draft) review on a GitHub pull request |
 | [Github Unassign Issue](block-integrations/github/issues.md#github-unassign-issue) | A block that removes a user's assignment from a GitHub issue |
 | [Github Unassign PR Reviewer](block-integrations/github/pull_requests.md#github-unassign-pr-reviewer) | This block unassigns a reviewer from a specified GitHub pull request |
 | [Github Update Check Run](block-integrations/github/checks.md#github-update-check-run) | Updates an existing check run in a GitHub repository |
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
-| [Github Update File](block-integrations/github/repo.md#github-update-file) | This block updates an existing file in a GitHub repository |
+| [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
+| [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation

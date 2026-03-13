@@ -24,9 +24,9 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
-from backend.data.block import BlockInput
+from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -387,7 +387,7 @@ class GraphExecutionJobArgs(BaseModel):
     graph_version: int
     agent_name: str | None = None
     cron: str
-    input_data: BlockInput
+    input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
@@ -605,6 +605,19 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Block Description Optimization - Every 24 hours
+            # Generates concise LLM-optimized block descriptions for
+            # agent generation. Only processes blocks missing descriptions.
+            self.scheduler.add_job(
+                optimize_block_descriptions,
+                id="optimize_block_descriptions",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -649,7 +662,7 @@ class Scheduler(AppService):
         graph_id: str,
         graph_version: int,
         cron: str,
-        input_data: BlockInput,
+        input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
         name: Optional[str] = None,
         user_timezone: str | None = None,

@@ -1,5 +1,6 @@
 from typing import Type
 
+from backend.blocks._base import Block, BlockCost, BlockCostType
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
@@ -37,7 +38,6 @@ from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
-from backend.data.block import Block, BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
@@ -81,6 +81,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_4_6_OPUS: 14,
+    LlmModel.CLAUDE_4_6_SONNET: 9,
     LlmModel.CLAUDE_4_5_HAIKU: 4,
     LlmModel.CLAUDE_4_5_OPUS: 14,
     LlmModel.CLAUDE_4_5_SONNET: 9,
@@ -99,19 +100,31 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_DOLPHIN: 1,
     LlmModel.OPENAI_GPT_OSS_120B: 1,
     LlmModel.OPENAI_GPT_OSS_20B: 1,
+    LlmModel.GEMINI_2_5_PRO_PREVIEW: 4,
     LlmModel.GEMINI_2_5_PRO: 4,
-    LlmModel.GEMINI_3_PRO_PREVIEW: 5,
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: 5,
+    LlmModel.GEMINI_3_FLASH_PREVIEW: 2,
     LlmModel.GEMINI_2_5_FLASH: 1,
     LlmModel.GEMINI_2_0_FLASH: 1,
+    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: 1,
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
     LlmModel.GEMINI_2_0_FLASH_LITE: 1,
     LlmModel.MISTRAL_NEMO: 1,
+    LlmModel.MISTRAL_LARGE_3: 2,
+    LlmModel.MISTRAL_MEDIUM_3_1: 2,
+    LlmModel.MISTRAL_SMALL_3_2: 1,
+    LlmModel.CODESTRAL: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
+    LlmModel.COHERE_COMMAND_A_03_2025: 3,
+    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: 3,
+    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: 6,
+    LlmModel.COHERE_COMMAND_A_VISION_07_2025: 3,
     LlmModel.DEEPSEEK_CHAT: 2,
     LlmModel.DEEPSEEK_R1_0528: 1,
     LlmModel.PERPLEXITY_SONAR: 1,
     LlmModel.PERPLEXITY_SONAR_PRO: 5,
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: 5,
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
@@ -119,6 +132,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AMAZON_NOVA_MICRO_V1: 1,
     LlmModel.AMAZON_NOVA_PRO_V1: 1,
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: 1,
+    LlmModel.MICROSOFT_PHI_4: 1,
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
     LlmModel.META_LLAMA_4_SCOUT: 1,
     LlmModel.META_LLAMA_4_MAVERICK: 1,
@@ -126,6 +140,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_3: 3,
     LlmModel.GROK_4: 9,
     LlmModel.GROK_4_FAST: 1,
     LlmModel.GROK_4_1_FAST: 1,

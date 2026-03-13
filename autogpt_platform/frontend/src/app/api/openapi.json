@@ -820,21 +820,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "enum": [
-                      "blocks",
-                      "integrations",
-                      "marketplace_agents",
-                      "my_agents"
-                    ],
-                    "type": "string"
-                  }
-                },
-                { "type": "null" }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Filter"
             }
           },
@@ -961,63 +947,6 @@
         }
       }
     },
-    "/api/chat/operations/{operation_id}/complete": {
-      "post": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Complete Operation",
-        "description": "External completion webhook for long-running operations.\n\nCalled by Agent Generator (or other services) when an operation completes.\nThis triggers the stream registry to publish completion and continue LLM generation.\n\nArgs:\n    operation_id: The operation ID to complete.\n    request: Completion payload with success status and result/error.\n    x_api_key: Internal API key for authentication.\n\nReturns:\n    dict: Status of the completion.\n\nRaises:\n    HTTPException: If API key is invalid or operation not found.",
-        "operationId": "postV2CompleteOperation",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Operation Id" }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OperationCompleteRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Postv2Completeoperation"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/chat/schema/tool-responses": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1052,15 +981,16 @@
                     {
                       "$ref": "#/components/schemas/ClarificationNeededResponse"
                     },
+                    { "$ref": "#/components/schemas/SuggestedGoalResponse" },
                     { "$ref": "#/components/schemas/BlockListResponse" },
+                    { "$ref": "#/components/schemas/BlockDetailsResponse" },
                     { "$ref": "#/components/schemas/BlockOutputResponse" },
                     { "$ref": "#/components/schemas/DocSearchResultsResponse" },
                     { "$ref": "#/components/schemas/DocPageResponse" },
-                    { "$ref": "#/components/schemas/OperationStartedResponse" },
-                    { "$ref": "#/components/schemas/OperationPendingResponse" },
                     {
-                      "$ref": "#/components/schemas/OperationInProgressResponse"
-                    }
+                      "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
+                    },
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1150,10 +1080,40 @@
       }
     },
     "/api/chat/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete Session",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "deleteV2DeleteSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns the task_id for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1231,6 +1191,46 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/cancel": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel Session Task",
+        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "operationId": "postV2CancelSessionTask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1267,7 +1267,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to Redis for reconnection support. If the client disconnects,\nthey can reconnect using GET /tasks/{task_id}/stream to resume from where they left off.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks. First chunk is a \"start\" event\n    containing the task_id for reconnection.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1305,21 +1305,31 @@
         }
       }
     },
-    "/api/chat/tasks/{task_id}": {
-      "get": {
+    "/api/chat/sessions/{session_id}/title": {
+      "patch": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Get Task Status",
-        "description": "Get the status of a long-running task.\n\nArgs:\n    task_id: The task ID to check.\n    user_id: Authenticated user ID for ownership validation.\n\nReturns:\n    dict: Task status including task_id, status, tool_name, and operation_id.\n\nRaises:\n    NotFoundError: If task_id is not found or user doesn't have access.",
-        "operationId": "getV2GetTaskStatus",
+        "summary": "Update session title",
+        "description": "Update the title of a chat session.\n\nAllows the user to rename their chat session.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new title.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session title",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "task_id",
+            "name": "session_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
+            "schema": { "type": "string", "title": "Session Id" }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionTitleRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1328,7 +1338,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Getv2Gettaskstatus"
+                  "title": "Response Patchv2Update Session Title"
                 }
               }
             }
@@ -1336,6 +1346,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1347,50 +1358,28 @@
         }
       }
     },
-    "/api/chat/tasks/{task_id}/stream": {
+    "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Task",
-        "description": "Reconnect to a long-running task's SSE stream.\n\nWhen a long-running operation (like agent generation) starts, the client\nreceives a task_id. If the connection drops, the client can reconnect\nusing this endpoint to resume receiving updates.\n\nArgs:\n    task_id: The task ID from the operation_started response.\n    user_id: Authenticated user ID for ownership validation.\n    last_message_id: Last Redis Stream message ID received (\"0-0\" for full replay).\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks starting after last_message_id.\n\nRaises:\n    HTTPException: 404 if task not found, 410 if task expired, 403 if access denied.",
-        "operationId": "getV2StreamTask",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Task Id" }
-          },
-          {
-            "name": "last_message_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay.",
-              "default": "0-0",
-              "title": "Last Message Id"
-            },
-            "description": "Last Redis Stream message ID received (e.g., '1706540123456-0'). Use '0-0' for full replay."
-          }
-        ],
+        "summary": "Get Suggested Prompts",
+        "description": "Get LLM-generated suggested prompts for the authenticated user.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns an empty list if no custom prompts\nare available.",
+        "operationId": "getV2GetSuggestedPrompts",
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits": {
@@ -2096,16 +2085,6 @@
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "provider",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "gcs",
-              "title": "Provider"
-            }
-          },
-          {
             "name": "expiration_hours",
             "in": "query",
             "required": false,
@@ -2131,7 +2110,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadFileResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                }
               }
             }
           },
@@ -3588,6 +3569,29 @@
               "title": "Page Size"
             },
             "description": "Number of agents per page (must be >= 1)"
+          },
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by folder ID",
+              "title": "Folder Id"
+            },
+            "description": "Filter by folder ID"
+          },
+          {
+            "name": "include_root_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return agents without a folder (root-level agents)",
+              "default": false,
+              "title": "Include Root Only"
+            },
+            "description": "Only return agents without a folder (root-level agents)"
           }
         ],
         "responses": {
@@ -3955,6 +3959,338 @@
         }
       }
     },
+    "/api/library/folders": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "List Library Folders",
+        "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_relations: Whether to include agent and subfolder relations for counts.\n\nReturns:\n    A FolderListResponse containing folders.",
+        "operationId": "getV2List library folders",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by parent folder ID. If not provided, returns root-level folders.",
+              "title": "Parent Id"
+            },
+            "description": "Filter by parent folder ID. If not provided, returns root-level folders."
+          },
+          {
+            "name": "include_relations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include agent and subfolder relations (for counts)",
+              "default": true,
+              "title": "Include Relations"
+            },
+            "description": "Include agent and subfolder relations (for counts)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of folders",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Create Folder",
+        "description": "Create a new folder.\n\nArgs:\n    payload: The folder creation request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The created LibraryFolder.",
+        "operationId": "postV2Create folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Folder created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Parent folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/agents/bulk-move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Bulk Move Agents",
+        "description": "Move multiple agents to a folder.\n\nArgs:\n    payload: The bulk move request with agent IDs and target folder.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryAgents.",
+        "operationId": "postV2Bulk move agents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BulkMoveAgentsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agents moved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "type": "array",
+                  "title": "Response Postv2Bulk Move Agents"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/tree": {
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder Tree",
+        "description": "Get the full folder tree for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n\nReturns:\n    A FolderTreeResponse containing the nested folder structure.",
+        "operationId": "getV2Get folder tree",
+        "responses": {
+          "200": {
+            "description": "Folder tree structure",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FolderTreeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "500": { "description": "Server error" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/library/folders/{folder_id}": {
+      "delete": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Delete Folder",
+        "description": "Soft-delete a folder and all its contents.\n\nArgs:\n    folder_id: ID of the folder to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.",
+        "operationId": "deleteV2Delete folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Folder deleted successfully" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "get": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Get Folder",
+        "description": "Get a specific folder.\n\nArgs:\n    folder_id: ID of the folder to retrieve.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The requested LibraryFolder.",
+        "operationId": "getV2Get folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folder details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Update Folder",
+        "description": "Update a folder's properties.\n\nArgs:\n    folder_id: ID of the folder to update.\n    payload: The folder update request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryFolder.",
+        "operationId": "patchV2Update folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder not found" },
+          "409": { "description": "Folder name conflict" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
+    "/api/library/folders/{folder_id}/move": {
+      "post": {
+        "tags": ["v2", "library", "folders", "private"],
+        "summary": "Move Folder",
+        "description": "Move a folder to a new parent.\n\nArgs:\n    folder_id: ID of the folder to move.\n    payload: The move request with target parent.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The moved LibraryFolder.",
+        "operationId": "postV2Move folder",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Folder Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderMoveRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder moved successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryFolder" }
+              }
+            }
+          },
+          "400": { "description": "Validation error (circular reference)" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Folder or target parent not found" },
+          "409": { "description": "Folder name conflict in target location" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": { "description": "Server error" }
+        }
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -4266,6 +4602,168 @@
             }
           }
         }
+      }
+    },
+    "/api/mcp/discover-tools": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Discover available tools on an MCP server",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "operationId": "postV2Discover available tools on an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DiscoverToolsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverToolsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/callback": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Exchange OAuth code for MCP tokens",
+        "description": "Exchange the authorization code for tokens and store the credential.\n\nThe frontend calls this after receiving the OAuth code from the popup.\nOn success, subsequent ``/discover-tools`` calls for the same server URL\nwill automatically use the stored credential.",
+        "operationId": "postV2Exchange oauth code for mcp tokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPOAuthCallbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/oauth/login": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Initiate OAuth login for an MCP server",
+        "description": "Discover OAuth metadata from the MCP server and return a login URL.\n\n1. Discovers the protected-resource metadata (RFC 9728)\n2. Fetches the authorization server metadata (RFC 8414)\n3. Performs Dynamic Client Registration (RFC 7591) if available\n4. Returns the authorization URL for the frontend to open in a popup",
+        "operationId": "postV2Initiate oauth login for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPOAuthLoginRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPOAuthLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/mcp/token": {
+      "post": {
+        "tags": ["v2", "mcp", "mcp"],
+        "summary": "Store a bearer token for an MCP server",
+        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "operationId": "postV2Store a bearer token for an mcp server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MCPStoreTokenRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/oauth/app/{client_id}": {
@@ -5115,7 +5613,7 @@
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
-        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
+        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    Paginated listings with their versions",
         "operationId": "getV2Get admin listings history",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5159,7 +5657,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreListingsWithVersionsResponse"
+                  "$ref": "#/components/schemas/StoreListingsWithVersionsAdminViewResponse"
                 }
               }
             }
@@ -5221,7 +5719,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmissionAdminView with updated review information",
         "operationId": "postV2Review store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5247,7 +5745,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+                "schema": {
+                  "$ref": "#/components/schemas/StoreSubmissionAdminView"
+                }
               }
             }
           },
@@ -5269,7 +5769,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the marketplace,\nwith optional filtering and sorting.\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -5278,9 +5778,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Filter to only show featured agents",
               "default": false,
               "title": "Featured"
-            }
+            },
+            "description": "Filter to only show featured agents"
           },
           {
             "name": "creator",
@@ -5288,32 +5790,10 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by creator username",
               "title": "Creator"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["rating", "runs", "name", "updated_at"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
+            },
+            "description": "Filter agents by creator username"
           },
           {
             "name": "category",
@@ -5321,20 +5801,57 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by category",
               "title": "Category"
-            }
+            },
+            "description": "Filter agents by category"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreAgentsSortOptions" },
+                { "type": "null" }
+              ],
+              "description": "Property to sort results by. Ignored if search_query is provided.",
+              "title": "Sorted By"
+            },
+            "description": "Property to sort results by. Ignored if search_query is provided."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -5357,49 +5874,11 @@
         }
       }
     },
-    "/api/store/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store"],
-        "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.",
-        "operationId": "getV2Get agent by version",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "store_listing_version_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Store Listing Version Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/store/agents/{username}/{agent_name}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page.\n\nIt returns the store listing agents details.",
+        "description": "Get details of a marketplace agent",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -5449,7 +5928,7 @@
       "post": {
         "tags": ["v2", "store"],
         "summary": "Create agent review",
-        "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
+        "description": "Post a user review on a marketplace agent listing",
         "operationId": "postV2Create agent review",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5497,11 +5976,96 @@
         }
       }
     },
-    "/api/store/creator/{username}": {
+    "/api/store/creators": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store creators",
+        "description": "List or search marketplace creators",
+        "operationId": "getV2List store creators",
+        "parameters": [
+          {
+            "name": "featured",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Filter to only show featured creators",
+              "default": false,
+              "title": "Featured"
+            },
+            "description": "Filter to only show featured creators"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreCreatorsSortOptions" },
+                { "type": "null" }
+              ],
+              "title": "Sorted By"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/creators/{username}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator.\n- Creator Details Page",
+        "description": "Get details on a marketplace creator",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -5531,103 +6095,31 @@
         }
       }
     },
-    "/api/store/creators": {
+    "/api/store/listings/versions/{store_listing_version_id}": {
       "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
-        "operationId": "getV2List store creators",
-        "parameters": [
-          {
-            "name": "featured",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Featured"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["agent_rating", "agent_runs", "num_agents"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/store/download/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "Download agent file",
-        "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
-        "operationId": "getV2Download agent file",
+        "tags": ["v2", "store"],
+        "summary": "Get agent by version",
+        "operationId": "getV2Get agent by version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string",
-              "description": "The ID of the agent to download",
-              "title": "Store Listing Version Id"
-            },
-            "description": "The ID of the agent to download"
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -5640,11 +6132,11 @@
         }
       }
     },
-    "/api/store/graph/{store_listing_version_id}": {
+    "/api/store/listings/versions/{store_listing_version_id}/graph": {
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.",
+        "description": "Get outline of graph belonging to a specific marketplace listing version",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5680,6 +6172,36 @@
         }
       }
     },
+    "/api/store/listings/versions/{store_listing_version_id}/graph/download": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Download agent file",
+        "description": "Download agent graph file for a specific marketplace listing version",
+        "operationId": "getV2Download agent file",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -5694,11 +6216,11 @@
         }
       }
     },
-    "/api/store/myagents": {
+    "/api/store/my-unpublished-agents": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.",
+        "description": "List the authenticated user's unpublished agents",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5730,7 +6252,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/MyUnpublishedAgentsResponse"
+                }
               }
             }
           },
@@ -5752,7 +6276,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
+        "description": "Get the profile details for the authenticated user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -5772,7 +6296,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
-        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "description": "Update the store profile for the authenticated user.",
         "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
@@ -5787,7 +6311,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorDetails" }
+                "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
           },
@@ -5810,7 +6334,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Unified search across all content types",
-        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "description": "Search across all content types (marketplace agents, blocks, documentation)\nusing hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.",
         "operationId": "getV2Unified search across all content types",
         "security": [{ "HTTPBearer": [] }],
         "parameters": [
@@ -5826,25 +6350,38 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "array", "items": { "type": "string" } },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ContentType" }
+                },
                 { "type": "null" }
               ],
-              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "description": "Content types to search. If not specified, searches all.",
               "title": "Content Types"
             },
-            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+            "description": "Content types to search. If not specified, searches all."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -5873,7 +6410,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "List the authenticated user's marketplace listing submissions",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5881,13 +6418,23 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -5917,7 +6464,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Create store submission",
-        "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
+        "description": "Submit a new marketplace listing for review",
         "operationId": "postV2Create store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -5957,21 +6504,25 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Generate submission image",
-        "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
+        "description": "Generate an image for a marketplace listing submission based on the properties\nof a given graph.",
         "operationId": "postV2Generate submission image",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "graph_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "title": "Agent Id" }
+            "schema": { "type": "string", "title": "Graph Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImageURLResponse" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -5991,7 +6542,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media (images/videos) for a store listing submission.\n\nArgs:\n    file (UploadFile): The media file to upload\n    user_id (str): ID of the authenticated user uploading the media\n\nReturns:\n    str: URL of the uploaded media file\n\nRaises:\n    HTTPException: If there is an error uploading the media",
+        "description": "Upload media for a marketplace listing submission",
         "operationId": "postV2Upload submission media",
         "requestBody": {
           "content": {
@@ -6006,7 +6557,14 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "title": "Response Postv2Upload Submission Media"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6027,7 +6585,7 @@
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",
-        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "description": "Update a pending marketplace listing submission",
         "operationId": "putV2Edit store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6075,7 +6633,7 @@
       "delete": {
         "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
-        "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
+        "description": "Delete a marketplace listing submission",
         "operationId": "deleteV2Delete store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6095,6 +6653,305 @@
                   "type": "boolean",
                   "title": "Response Deletev2Delete Store Submission"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users": {
+      "get": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "List Invited Users",
+        "operationId": "getV2List invited users",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitedUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Create Invited User",
+        "operationId": "postV2Create invited user",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitedUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users/bulk": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Bulk Create Invited Users",
+        "operationId": "postV2BulkCreateInvitedUsers",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2BulkCreateInvitedUsers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkInvitedUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/users/admin/invited-users/{invited_user_id}/retry-tally": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Retry Invited User Tally",
+        "operationId": "postV2Retry invited user tally",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "invited_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invited User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users/{invited_user_id}/revoke": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Revoke Invited User",
+        "operationId": "postV2Revoke invited user",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "invited_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invited User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/upload": {
+      "post": {
+        "tags": ["workspace"],
+        "summary": "Upload file to workspace",
+        "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
+        "operationId": "postWorkspaceUpload file to workspace",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete a workspace file",
+        "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
+        "operationId": "deleteWorkspaceDelete a workspace file",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
               }
             }
           },
@@ -6144,6 +7001,30 @@
             }
           }
         }
+      }
+    },
+    "/api/workspace/storage/usage": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Get workspace storage usage",
+        "description": "Get storage usage information for the user's workspace.",
+        "operationId": "getWorkspaceGet workspace storage usage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/health": {
@@ -6269,9 +7150,11 @@
           "IDENTITY",
           "EXECUTE_GRAPH",
           "READ_GRAPH",
+          "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
           "READ_STORE",
+          "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
@@ -6370,13 +7253,11 @@
       },
       "ActiveStreamInfo": {
         "properties": {
-          "task_id": { "type": "string", "title": "Task Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
+          "turn_id": { "type": "string", "title": "Turn Id" },
+          "last_message_id": { "type": "string", "title": "Last Message Id" }
         },
         "type": "object",
-        "required": ["task_id", "last_message_id", "operation_id", "tool_name"],
+        "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
@@ -6526,6 +7407,26 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id"
           },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "input_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "JSON Schema for the agent's inputs (for AgentExecutorBlock)"
+          },
+          "output_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Output Schema",
+            "description": "JSON Schema for the agent's outputs (for AgentExecutorBlock)"
+          },
           "inputs": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -6592,7 +7493,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_preview"
+            "default": "agent_builder_preview"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -6628,7 +7529,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_saved"
+            "default": "agent_builder_saved"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -6958,6 +7859,58 @@
         "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
       },
+      "BlockDetails": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs",
+            "default": {}
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "default": {}
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
+            "type": "array",
+            "title": "Credentials",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "title": "BlockDetails",
+        "description": "Detailed block information."
+      },
+      "BlockDetailsResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "block_details"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "block": { "$ref": "#/components/schemas/BlockDetails" },
+          "user_authenticated": {
+            "type": "boolean",
+            "title": "User Authenticated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "block"],
+        "title": "BlockDetailsResponse",
+        "description": "Response for block details (first run_block attempt)."
+      },
       "BlockInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7022,29 +7975,30 @@
           "input_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Schema"
+            "title": "Input Schema",
+            "description": "Full JSON schema for block inputs"
           },
           "output_schema": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Output Schema"
+            "title": "Output Schema",
+            "description": "Full JSON schema for block outputs"
+          },
+          "static_output": {
+            "type": "boolean",
+            "title": "Static Output",
+            "description": "Whether the block produces output without needing input",
+            "default": false
           },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
             "title": "Required Inputs",
-            "description": "List of required input fields for this block"
+            "description": "List of input fields for this block"
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "categories",
-          "input_schema",
-          "output_schema"
-        ],
+        "required": ["id", "name", "description", "categories"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
       },
@@ -7090,7 +8044,7 @@
           "usage_hint": {
             "type": "string",
             "title": "Usage Hint",
-            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the required fields from input_schema."
+            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
           }
         },
         "type": "object",
@@ -7310,6 +8264,14 @@
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
+      "Body_postV2BulkCreateInvitedUsers": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV2BulkCreateInvitedUsers"
+      },
       "Body_postV2Execute_a_preset": {
         "properties": {
           "inputs": {
@@ -7335,6 +8297,94 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
+      },
+      "Body_postWorkspaceUpload_file_to_workspace": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postWorkspaceUpload file to workspace"
+      },
+      "BulkInvitedUserRowResponse": {
+        "properties": {
+          "row_number": { "type": "integer", "title": "Row Number" },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["CREATED", "SKIPPED", "ERROR"],
+            "title": "Status"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "invited_user": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/InvitedUserResponse" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["row_number", "status", "message"],
+        "title": "BulkInvitedUserRowResponse"
+      },
+      "BulkInvitedUsersResponse": {
+        "properties": {
+          "created_count": { "type": "integer", "title": "Created Count" },
+          "skipped_count": { "type": "integer", "title": "Skipped Count" },
+          "error_count": { "type": "integer", "title": "Error Count" },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BulkInvitedUserRowResponse"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created_count",
+          "skipped_count",
+          "error_count",
+          "results"
+        ],
+        "title": "BulkInvitedUsersResponse"
+      },
+      "BulkMoveAgentsRequest": {
+        "properties": {
+          "agent_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Agent Ids"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          }
+        },
+        "type": "object",
+        "required": ["agent_ids"],
+        "title": "BulkMoveAgentsRequest",
+        "description": "Request model for moving multiple agents to a folder."
+      },
+      "CancelSessionResponse": {
+        "properties": {
+          "cancelled": { "type": "boolean", "title": "Cancelled" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["cancelled"],
+        "title": "CancelSessionResponse",
+        "description": "Response model for the cancel session endpoint."
       },
       "ChangelogEntry": {
         "properties": {
@@ -7373,7 +8423,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "clarification_needed"
+            "default": "agent_builder_clarification_needed"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7404,6 +8454,17 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "ContentType": {
+        "type": "string",
+        "enum": [
+          "STORE_AGENT",
+          "BLOCK",
+          "INTEGRATION",
+          "DOCUMENTATION",
+          "LIBRARY_AGENT"
+        ],
+        "title": "ContentType"
       },
       "CountResponse": {
         "properties": {
@@ -7471,6 +8532,18 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateInvitedUserRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "CreateInvitedUserRequest"
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7485,43 +8558,24 @@
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
       },
-      "Creator": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "num_agents": { "type": "integer", "title": "Num Agents" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
-          "agent_runs": { "type": "integer", "title": "Agent Runs" },
-          "is_featured": { "type": "boolean", "title": "Is Featured" }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "username",
-          "description",
-          "avatar_url",
-          "num_agents",
-          "agent_rating",
-          "agent_runs",
-          "is_featured"
-        ],
-        "title": "Creator"
-      },
       "CreatorDetails": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
           "links": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Links"
           },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
+          "is_featured": { "type": "boolean", "title": "Is Featured" },
+          "num_agents": { "type": "integer", "title": "Num Agents" },
           "agent_runs": { "type": "integer", "title": "Agent Runs" },
+          "agent_rating": { "type": "number", "title": "Agent Rating" },
           "top_categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -7530,21 +8584,24 @@
         },
         "type": "object",
         "required": [
-          "name",
           "username",
+          "name",
           "description",
-          "links",
           "avatar_url",
-          "agent_rating",
+          "links",
+          "is_featured",
+          "num_agents",
           "agent_runs",
+          "agent_rating",
           "top_categories"
         ],
-        "title": "CreatorDetails"
+        "title": "CreatorDetails",
+        "description": "Marketplace creator profile details, including aggregated stats"
       },
       "CreatorsResponse": {
         "properties": {
           "creators": {
-            "items": { "$ref": "#/components/schemas/Creator" },
+            "items": { "$ref": "#/components/schemas/CreatorDetails" },
             "type": "array",
             "title": "Creators"
           },
@@ -7643,7 +8700,7 @@
           "host": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
-            "description": "Host pattern for host-scoped credentials"
+            "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           }
         },
         "type": "object",
@@ -7655,6 +8712,12 @@
         "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
       },
+      "DeleteFileResponse": {
+        "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
+        "type": "object",
+        "required": ["deleted"],
+        "title": "DeleteFileResponse"
+      },
       "DeleteGraphResponse": {
         "properties": {
           "version_counts": { "type": "integer", "title": "Version Counts" }
@@ -7662,6 +8725,45 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "DiscoverToolsRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server"
+          },
+          "auth_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth Token",
+            "description": "Optional Bearer token for authenticated MCP servers"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "DiscoverToolsRequest",
+        "description": "Request to discover tools on an MCP server."
+      },
+      "DiscoverToolsResponse": {
+        "properties": {
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolResponse" },
+            "type": "array",
+            "title": "Tools"
+          },
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "protocol_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Protocol Version"
+          }
+        },
+        "type": "object",
+        "required": ["tools"],
+        "title": "DiscoverToolsResponse",
+        "description": "Response containing the list of tools available on an MCP server."
       },
       "DocPageResponse": {
         "properties": {
@@ -8019,6 +9121,96 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "FolderCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Color",
+            "description": "Hex color code (#RRGGBB)"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "FolderCreateRequest",
+        "description": "Request model for creating a folder."
+      },
+      "FolderListResponse": {
+        "properties": {
+          "folders": {
+            "items": { "$ref": "#/components/schemas/LibraryFolder" },
+            "type": "array",
+            "title": "Folders"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["folders", "pagination"],
+        "title": "FolderListResponse",
+        "description": "Response schema for a list of folders."
+      },
+      "FolderMoveRequest": {
+        "properties": {
+          "target_parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Parent Id"
+          }
+        },
+        "type": "object",
+        "title": "FolderMoveRequest",
+        "description": "Request model for moving a folder to a new parent."
+      },
+      "FolderTreeResponse": {
+        "properties": {
+          "tree": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Tree"
+          }
+        },
+        "type": "object",
+        "required": ["tree"],
+        "title": "FolderTreeResponse",
+        "description": "Response schema for folder tree structure."
+      },
+      "FolderUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "title": "FolderUpdateRequest",
+        "description": "Request model for updating a folder."
       },
       "Graph": {
         "properties": {
@@ -8771,6 +9963,14 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "ImageURLResponse": {
+        "properties": {
+          "image_url": { "type": "string", "title": "Image Url" }
+        },
+        "type": "object",
+        "required": ["image_url"],
+        "title": "ImageURLResponse"
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -8808,12 +10008,85 @@
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
       },
+      "InvitedUserResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "status": { "$ref": "#/components/schemas/InvitedUserStatus" },
+          "auth_user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth User Id"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "tally_understanding": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Tally Understanding"
+          },
+          "tally_status": {
+            "$ref": "#/components/schemas/TallyComputationStatus"
+          },
+          "tally_computed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Tally Computed At"
+          },
+          "tally_error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tally Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "status",
+          "tally_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InvitedUserResponse"
+      },
+      "InvitedUserStatus": {
+        "type": "string",
+        "enum": ["INVITED", "CLAIMED", "REVOKED"],
+        "title": "InvitedUserStatus"
+      },
+      "InvitedUsersResponse": {
+        "properties": {
+          "invited_users": {
+            "items": { "$ref": "#/components/schemas/InvitedUserResponse" },
+            "type": "array",
+            "title": "Invited Users"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["invited_users", "pagination"],
+        "title": "InvitedUsersResponse"
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
-          "owner_user_id": { "type": "string", "title": "Owner User Id" },
           "image_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Image Url"
@@ -8901,13 +10174,22 @@
           },
           "can_access_graph": {
             "type": "boolean",
-            "title": "Can Access Graph"
+            "title": "Can Access Graph",
+            "description": "Indicates whether the same user owns the corresponding graph"
           },
           "is_latest_version": {
             "type": "boolean",
             "title": "Is Latest Version"
           },
           "is_favorite": { "type": "boolean", "title": "Is Favorite" },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id"
+          },
+          "folder_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Name"
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -8925,7 +10207,6 @@
           "id",
           "graph_id",
           "graph_version",
-          "owner_user_id",
           "image_url",
           "creator_name",
           "creator_image_url",
@@ -9175,11 +10456,108 @@
               { "type": "null" }
             ],
             "description": "User-specific settings for this library agent"
+          },
+          "folder_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Folder Id",
+            "description": "Folder ID to move agent to (None to move to root)"
           }
         },
         "type": "object",
         "title": "LibraryAgentUpdateRequest",
         "description": "Schema for updating a library agent via PUT.\n\nIncludes flags for auto-updating version, marking as favorite,\narchiving, or deleting."
+      },
+      "LibraryFolder": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolder",
+        "description": "Represents a folder for organizing library agents."
+      },
+      "LibraryFolderTree": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "name": { "type": "string", "title": "Name" },
+          "icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "agent_count": {
+            "type": "integer",
+            "title": "Agent Count",
+            "default": 0
+          },
+          "subfolder_count": {
+            "type": "integer",
+            "title": "Subfolder Count",
+            "default": 0
+          },
+          "children": {
+            "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
+            "type": "array",
+            "title": "Children",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
+        "title": "LibraryFolderTree",
+        "description": "Folder with nested children for tree view."
       },
       "Link": {
         "properties": {
@@ -9239,6 +10617,142 @@
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
       },
+      "MCPOAuthCallbackRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Authorization code from OAuth callback"
+          },
+          "state_token": {
+            "type": "string",
+            "title": "State Token",
+            "description": "State token for CSRF verification"
+          }
+        },
+        "type": "object",
+        "required": ["code", "state_token"],
+        "title": "MCPOAuthCallbackRequest",
+        "description": "Request to exchange an OAuth code for tokens."
+      },
+      "MCPOAuthLoginRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "URL of the MCP server that requires OAuth"
+          }
+        },
+        "type": "object",
+        "required": ["server_url"],
+        "title": "MCPOAuthLoginRequest",
+        "description": "Request to start an OAuth flow for an MCP server."
+      },
+      "MCPOAuthLoginResponse": {
+        "properties": {
+          "login_url": { "type": "string", "title": "Login Url" },
+          "state_token": { "type": "string", "title": "State Token" }
+        },
+        "type": "object",
+        "required": ["login_url", "state_token"],
+        "title": "MCPOAuthLoginResponse",
+        "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPStoreTokenRequest": {
+        "properties": {
+          "server_url": {
+            "type": "string",
+            "title": "Server Url",
+            "description": "MCP server URL the token authenticates against"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "format": "password",
+            "title": "Token",
+            "description": "Bearer token / API key for the MCP server",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": ["server_url", "token"],
+        "title": "MCPStoreTokenRequest",
+        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+      },
+      "MCPToolInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolInfo",
+        "description": "Information about a single MCP tool discovered from a server."
+      },
+      "MCPToolOutputResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tool_output"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tool_name": { "type": "string", "title": "Tool Name" },
+          "result": { "title": "Result" },
+          "success": { "type": "boolean", "title": "Success", "default": true }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tool_name"],
+        "title": "MCPToolOutputResponse",
+        "description": "Response after executing an MCP tool."
+      },
+      "MCPToolResponse": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "title": "MCPToolResponse",
+        "description": "A single MCP tool returned by discovery."
+      },
+      "MCPToolsDiscoveredResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "mcp_tools_discovered"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "server_url": { "type": "string", "title": "Server Url" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/MCPToolInfo" },
+            "type": "array",
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": ["message", "server_url", "tools"],
+        "title": "MCPToolsDiscoveredResponse",
+        "description": "Response when MCP tools are discovered from a server (agent-internal)."
+      },
       "MarketplaceListing": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -9283,10 +10797,10 @@
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
       },
-      "MyAgent": {
+      "MyUnpublishedAgent": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_image": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -9305,18 +10819,18 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "agent_name",
           "description",
           "last_edited"
         ],
-        "title": "MyAgent"
+        "title": "MyUnpublishedAgent"
       },
-      "MyAgentsResponse": {
+      "MyUnpublishedAgentsResponse": {
         "properties": {
           "agents": {
-            "items": { "$ref": "#/components/schemas/MyAgent" },
+            "items": { "$ref": "#/components/schemas/MyUnpublishedAgent" },
             "type": "array",
             "title": "Agents"
           },
@@ -9324,7 +10838,7 @@
         },
         "type": "object",
         "required": ["agents", "pagination"],
-        "title": "MyAgentsResponse"
+        "title": "MyUnpublishedAgentsResponse"
       },
       "NeedLoginResponse": {
         "properties": {
@@ -9498,12 +11012,6 @@
           "webhook_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Webhook Id"
-          },
-          "webhook": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/Webhook" },
-              { "type": "null" }
-            ]
           }
         },
         "type": "object",
@@ -9761,87 +11269,6 @@
           "BUILDER_RUN_AGENT"
         ],
         "title": "OnboardingStep"
-      },
-      "OperationCompleteRequest": {
-        "properties": {
-          "success": { "type": "boolean", "title": "Success" },
-          "result": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "OperationCompleteRequest",
-        "description": "Request model for external completion webhook."
-      },
-      "OperationInProgressResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_in_progress"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "tool_call_id": { "type": "string", "title": "Tool Call Id" }
-        },
-        "type": "object",
-        "required": ["message", "tool_call_id"],
-        "title": "OperationInProgressResponse",
-        "description": "Response when an operation is already in progress.\n\nReturned for idempotency when the same tool_call_id is requested again\nwhile the background task is still running."
-      },
-      "OperationPendingResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_pending"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationPendingResponse",
-        "description": "Response stored in chat history while a long-running operation is executing.\n\nThis is persisted to the database so users see a pending state when they\nrefresh before the operation completes."
-      },
-      "OperationStartedResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "operation_started"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "operation_id": { "type": "string", "title": "Operation Id" },
-          "tool_name": { "type": "string", "title": "Tool Name" },
-          "task_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Task Id"
-          }
-        },
-        "type": "object",
-        "required": ["message", "operation_id", "tool_name"],
-        "title": "OperationStartedResponse",
-        "description": "Response when a long-running operation has been started in the background.\n\nThis is returned immediately to the client while the operation continues\nto execute. The user can close the tab and check back later.\n\nThe task_id can be used to reconnect to the SSE stream via\nGET /chat/tasks/{task_id}/stream?last_idx=0"
       },
       "Pagination": {
         "properties": {
@@ -10297,43 +11724,51 @@
       },
       "Profile": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "is_featured": {
-            "type": "boolean",
-            "title": "Is Featured",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["name", "username", "description", "links", "avatar_url"],
-        "title": "Profile"
-      },
-      "ProfileDetails": {
-        "properties": {
           "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
           "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
-        "required": ["name", "username", "description", "links"],
-        "title": "ProfileDetails"
+        "required": ["username", "name", "description", "avatar_url", "links"],
+        "title": "Profile",
+        "description": "Marketplace user profile (only attributes that the user can update)"
+      },
+      "ProfileDetails": {
+        "properties": {
+          "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
+          },
+          "is_featured": { "type": "boolean", "title": "Is Featured" }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "name",
+          "description",
+          "avatar_url",
+          "links",
+          "is_featured"
+        ],
+        "title": "ProfileDetails",
+        "description": "Marketplace user profile (including read-only fields)"
       },
       "Provider": {
         "properties": {
@@ -10477,20 +11912,30 @@
       "ResponseType": {
         "type": "string",
         "enum": [
+          "error",
+          "no_results",
+          "need_login",
           "agents_found",
           "agent_details",
           "setup_requirements",
+          "input_validation_error",
           "execution_started",
-          "need_login",
-          "error",
-          "no_results",
           "agent_output",
           "understanding_updated",
-          "agent_preview",
-          "agent_saved",
-          "clarification_needed",
+          "suggested_goal",
+          "agent_builder_guide",
+          "agent_builder_preview",
+          "agent_builder_saved",
+          "agent_builder_clarification_needed",
+          "agent_builder_validation_result",
+          "agent_builder_fix_result",
           "block_list",
+          "block_details",
           "block_output",
+          "review_required",
+          "mcp_guide",
+          "mcp_tools_discovered",
+          "mcp_tool_output",
           "doc_search_results",
           "doc_page",
           "workspace_file_list",
@@ -10498,10 +11943,19 @@
           "workspace_file_metadata",
           "workspace_file_written",
           "workspace_file_deleted",
-          "operation_started",
-          "operation_pending",
-          "operation_in_progress",
-          "input_validation_error"
+          "folder_created",
+          "folder_list",
+          "folder_updated",
+          "folder_moved",
+          "folder_deleted",
+          "agents_moved_to_folder",
+          "browser_navigate",
+          "browser_act",
+          "browser_screenshot",
+          "bash_exec",
+          "web_fetch",
+          "feature_request_search",
+          "feature_request_created"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -10751,10 +12205,11 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
-          }
+          },
+          "is_processing": { "type": "boolean", "title": "Is Processing" }
         },
         "type": "object",
-        "required": ["id", "created_at", "updated_at"],
+        "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },
@@ -10923,6 +12378,17 @@
         "type": "object",
         "title": "Stats"
       },
+      "StorageUsageResponse": {
+        "properties": {
+          "used_bytes": { "type": "integer", "title": "Used Bytes" },
+          "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
+          "used_percent": { "type": "number", "title": "Used Percent" },
+          "file_count": { "type": "integer", "title": "File Count" }
+        },
+        "type": "object",
+        "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
+        "title": "StorageUsageResponse"
+      },
       "StoreAgent": {
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
@@ -10989,12 +12455,12 @@
             "type": "array",
             "title": "Versions"
           },
-          "agentGraphVersions": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_versions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Agentgraphversions"
+            "title": "Graph Versions"
           },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -11005,13 +12471,12 @@
             "title": "Recommended Schedule Cron"
           },
           "active_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Active Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
-            "title": "Has Approved Version",
-            "default": false
+            "title": "Has Approved Version"
           },
           "changelog": {
             "anyOf": [
@@ -11040,9 +12505,11 @@
           "runs",
           "rating",
           "versions",
-          "agentGraphVersions",
-          "agentGraphId",
-          "last_updated"
+          "graph_id",
+          "graph_versions",
+          "last_updated",
+          "active_version_id",
+          "has_approved_version"
         ],
         "title": "StoreAgentDetails"
       },
@@ -11059,15 +12526,24 @@
         "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
       },
-      "StoreListingWithVersions": {
+      "StoreAgentsSortOptions": {
+        "type": "string",
+        "enum": ["rating", "runs", "name", "updated_at"],
+        "title": "StoreAgentsSortOptions"
+      },
+      "StoreCreatorsSortOptions": {
+        "type": "string",
+        "enum": ["agent_rating", "agent_runs", "num_agents"],
+        "title": "StoreCreatorsSortOptions"
+      },
+      "StoreListingWithVersionsAdminView": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
-          "active_version_id": {
+          "active_listing_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Active Version Id"
+            "title": "Active Listing Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
@@ -11080,27 +12556,29 @@
           },
           "latest_version": {
             "anyOf": [
-              { "$ref": "#/components/schemas/StoreSubmission" },
+              { "$ref": "#/components/schemas/StoreSubmissionAdminView" },
               { "type": "null" }
             ]
           },
           "versions": {
-            "items": { "$ref": "#/components/schemas/StoreSubmission" },
+            "items": {
+              "$ref": "#/components/schemas/StoreSubmissionAdminView"
+            },
             "type": "array",
             "title": "Versions",
             "default": []
           }
         },
         "type": "object",
-        "required": ["listing_id", "slug", "agent_id", "agent_version"],
-        "title": "StoreListingWithVersions",
+        "required": ["listing_id", "graph_id", "slug"],
+        "title": "StoreListingWithVersionsAdminView",
         "description": "A store listing with its version history"
       },
-      "StoreListingsWithVersionsResponse": {
+      "StoreListingsWithVersionsAdminViewResponse": {
         "properties": {
           "listings": {
             "items": {
-              "$ref": "#/components/schemas/StoreListingWithVersions"
+              "$ref": "#/components/schemas/StoreListingWithVersionsAdminView"
             },
             "type": "array",
             "title": "Listings"
@@ -11109,7 +12587,7 @@
         },
         "type": "object",
         "required": ["listings", "pagination"],
-        "title": "StoreListingsWithVersionsResponse",
+        "title": "StoreListingsWithVersionsAdminViewResponse",
         "description": "Response model for listings with version history"
       },
       "StoreReview": {
@@ -11143,59 +12621,31 @@
       "StoreSubmission": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
-          "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Instructions"
           },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Image Urls"
-          },
-          "date_submitted": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Date Submitted"
-          },
-          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
-          "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id"
-          },
-          "version": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Version"
-          },
-          "reviewer_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewer Id"
-          },
-          "review_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Review Comments"
-          },
-          "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Internal Comments"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed At"
-          },
-          "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Changes Summary"
           },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -11205,29 +12655,179 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agent Output Demo Url"
           },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories",
-            "default": []
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
           }
         },
         "type": "object",
         "required": [
           "listing_id",
-          "agent_id",
-          "agent_version",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
           "name",
           "sub_heading",
-          "slug",
           "description",
+          "instructions",
+          "categories",
           "image_urls",
-          "date_submitted",
-          "status",
-          "runs",
-          "rating"
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionAdminView": {
+        "properties": {
+          "listing_id": { "type": "string", "title": "Listing Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
+          },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "listing_id",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
+          "name",
+          "sub_heading",
+          "description",
+          "instructions",
+          "categories",
+          "image_urls",
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status",
+          "internal_comments"
+        ],
+        "title": "StoreSubmissionAdminView"
       },
       "StoreSubmissionEditRequest": {
         "properties": {
@@ -11277,17 +12877,17 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": {
+          "graph_id": {
             "type": "string",
             "minLength": 1,
-            "title": "Agent Id",
-            "description": "Agent ID cannot be empty"
+            "title": "Graph Id",
+            "description": "Graph ID cannot be empty"
           },
-          "agent_version": {
+          "graph_version": {
             "type": "integer",
             "exclusiveMinimum": 0.0,
-            "title": "Agent Version",
-            "description": "Agent version must be greater than 0"
+            "title": "Graph Version",
+            "description": "Graph version must be greater than 0"
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
@@ -11332,8 +12932,8 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "slug",
           "name",
           "sub_heading"
@@ -11370,6 +12970,17 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
           }
         },
         "type": "object",
@@ -11382,13 +12993,62 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
-      "SuggestionsResponse": {
+      "SuggestedGoalResponse": {
         "properties": {
-          "otto_suggestions": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "suggested_goal"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "suggested_goal": {
+            "type": "string",
+            "title": "Suggested Goal",
+            "description": "The suggested alternative goal"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the original goal needs refinement",
+            "default": ""
+          },
+          "original_goal": {
+            "type": "string",
+            "title": "Original Goal",
+            "description": "The user's original goal for context",
+            "default": ""
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": ["vague", "unachievable"],
+            "title": "Goal Type",
+            "description": "Type: 'vague' or 'unachievable'",
+            "default": "vague"
+          }
+        },
+        "type": "object",
+        "required": ["message", "suggested_goal"],
+        "title": "SuggestedGoalResponse",
+        "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPromptsResponse": {
+        "properties": {
+          "prompts": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Otto Suggestions"
-          },
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "required": ["prompts"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts."
+      },
+      "SuggestionsResponse": {
+        "properties": {
           "recent_searches": {
             "items": { "$ref": "#/components/schemas/SearchEntry" },
             "type": "array",
@@ -11409,13 +13069,13 @@
           }
         },
         "type": "object",
-        "required": [
-          "otto_suggestions",
-          "recent_searches",
-          "providers",
-          "top_blocks"
-        ],
+        "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
+      },
+      "TallyComputationStatus": {
+        "type": "string",
+        "enum": ["PENDING", "RUNNING", "READY", "FAILED"],
+        "title": "TallyComputationStatus"
       },
       "TimezoneResponse": {
         "properties": {
@@ -12309,6 +13969,13 @@
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
+      "UpdateSessionTitleRequest": {
+        "properties": { "title": { "type": "string", "title": "Title" } },
+        "type": "object",
+        "required": ["title"],
+        "title": "UpdateSessionTitleRequest",
+        "description": "Request model for updating a session's title."
+      },
       "UpdateTimezoneRequest": {
         "properties": {
           "timezone": {
@@ -12920,24 +14587,6 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
-      "UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -13266,6 +14915,36 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "backend__api__features__workspace__routes__UploadFileResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "UploadFileResponse"
+      },
+      "backend__api__model__UploadFileResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

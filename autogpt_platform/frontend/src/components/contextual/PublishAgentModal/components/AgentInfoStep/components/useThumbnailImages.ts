@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import BackendAPI from "@/lib/autogpt-server-api";
+import {
+  postV2UploadSubmissionMedia,
+  postV2GenerateSubmissionImage,
+} from "@/app/api/__generated__/endpoints/store/store";
+import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface UseThumbnailImagesProps {
@@ -97,21 +101,21 @@ export function useThumbnailImages({
 
   async function uploadImage(file: File) {
     try {
-      const api = new BackendAPI();
-
-      const imageUrl = (await api.uploadStoreSubmissionMedia(file)).replace(
-        /^"(.*)"$/,
-        "$1",
+      const mediaRes = await resolveResponse(
+        postV2UploadSubmissionMedia({ file }),
       );
+      const imageUrl = mediaRes.replace(/^"(.*)"$/, "$1");
 
       setImagesWithValidation([...images, imageUrl]);
       if (!selectedImage) {
         setSelectedImage(imageUrl);
       }
-    } catch (_error) {
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : "Please try again.";
       toast({
         title: "Upload failed",
-        description: "Failed to upload image. Please try again.",
+        description: detail,
         variant: "destructive",
       });
     }
@@ -122,11 +126,12 @@ export function useThumbnailImages({
 
     setIsGenerating(true);
     try {
-      const api = new BackendAPI();
       if (!agentId) {
         throw new Error("Agent ID is required");
       }
-      const { image_url } = await api.generateStoreSubmissionImage(agentId);
+      const { image_url } = await resolveResponse(
+        postV2GenerateSubmissionImage({ graph_id: agentId }),
+      );
       setImagesWithValidation([...images, image_url]);
       if (!selectedImage) {
         setSelectedImage(image_url);

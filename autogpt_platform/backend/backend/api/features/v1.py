@@ -40,10 +40,11 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.blocks import get_block, get_blocks
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
-from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -54,6 +55,7 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
+from backend.data.invited_user import get_or_activate_user
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -69,7 +71,6 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.user import (
-    get_or_create_user,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
@@ -125,6 +126,9 @@ v1_router = APIRouter()
 ########################################################
 
 
+_tally_background_tasks: set[asyncio.Task] = set()
+
+
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
@@ -132,7 +136,23 @@ v1_router = APIRouter()
     dependencies=[Security(requires_user)],
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+    user = await get_or_activate_user(user_data)
+
+    # Fire-and-forget: backfill Tally understanding when invite pre-seeding did
+    # not produce a stored result before first activation.
+    age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
+    if age_seconds < 30:
+        try:
+            from backend.data.tally import populate_understanding_from_tally
+
+            task = asyncio.create_task(
+                populate_understanding_from_tally(user.id, user.email)
+            )
+            _tally_background_tasks.add(task)
+            task.add_done_callback(_tally_background_tasks.discard)
+        except Exception:
+            logger.debug("Failed to start Tally population task", exc_info=True)
+
     return user.model_dump()
 
 
@@ -143,7 +163,8 @@ async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     dependencies=[Security(requires_user)],
 )
 async def update_user_email_route(
-    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
+    user_id: Annotated[str, Security(get_user_id)],
+    email: str = Body(...),
 ) -> dict[str, str]:
     await update_user_email(user_id, email)
 
@@ -157,10 +178,16 @@ async def update_user_email_route(
     dependencies=[Security(requires_user)],
 )
 async def get_user_timezone_route(
-    user_data: dict = Security(get_jwt_payload),
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    user = await get_or_create_user(user_data)
+    try:
+        user = await get_user_by_id(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="User not found. Please complete activation via /auth/user first.",
+        )
     return TimezoneResponse(timezone=user.timezone)
 
 
@@ -171,7 +198,8 @@ async def get_user_timezone_route(
     dependencies=[Security(requires_user)],
 )
 async def update_user_timezone_route(
-    user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
+    user_id: Annotated[str, Security(get_user_id)],
+    request: UpdateTimezoneRequest,
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
@@ -427,7 +455,6 @@ async def execute_graph_block(
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile = File(...),
-    provider: str = "gcs",
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
     """
@@ -490,7 +517,6 @@ async def upload_file(
     storage_path = await cloud_storage.store_file(
         content=content,
         filename=file_name,
-        provider=provider,
         expiration_hours=expiration_hours,
         user_id=user_id,
     )

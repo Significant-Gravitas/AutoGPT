@@ -368,6 +368,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "test-workspace-id"
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
     # Setup mock returns
     # The function returns (graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip)
@@ -495,6 +499,7 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
     # Create mock graph
@@ -508,8 +513,8 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
         nodes_input_masks=None,
     )
 
-    # Node should be in nodes_to_skip, not in errors
-    assert mock_node.id in nodes_to_skip
+    # Node should NOT be in nodes_to_skip (runs without credentials) and not in errors
+    assert mock_node.id not in nodes_to_skip
     assert mock_node.id not in errors
 
 
@@ -535,6 +540,7 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
     # Create mock graph
@@ -641,6 +647,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "test-workspace-id"
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
     # Setup returns - include nodes_to_skip in the tuple
     mock_validate.return_value = (
@@ -678,6 +688,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     # Verify nodes_to_skip was passed to to_graph_execution_entry
     assert "nodes_to_skip" in captured_kwargs
     assert captured_kwargs["nodes_to_skip"] == nodes_to_skip
+
+    # Verify workspace_id is set in the execution context
+    assert "execution_context" in captured_kwargs
+    assert captured_kwargs["execution_context"].workspace_id == "test-workspace-id"
 
 
 @pytest.mark.asyncio

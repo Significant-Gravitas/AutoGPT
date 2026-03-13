@@ -93,27 +93,15 @@ jobs:
         run: poetry run prisma generate && poetry run gen-prisma-stub
 
       # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Set pnpm store directory
-        run: |
-          pnpm config set store-dir ~/.pnpm-store
-          echo "PNPM_HOME=$HOME/.pnpm-store" >> $GITHUB_ENV
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-            ${{ runner.os }}-pnpm-
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install JavaScript dependencies
         working-directory: autogpt_platform/frontend

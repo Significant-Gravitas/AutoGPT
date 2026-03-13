@@ -18,92 +18,60 @@ import {
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
-export interface AgentTableRowProps {
-  agent_id: string;
-  agent_version: number;
-  agentName: string;
-  sub_heading: string;
-  description: string;
-  imageSrc: string[];
-  dateSubmitted: Date;
-  status: SubmissionStatus;
-  runs: number;
-  rating: number;
-  id: number;
-  video_url?: string;
-  categories?: string[];
-  store_listing_version_id?: string;
-  changes_summary?: string;
-  listing_id?: string;
+export type AgentTableRowProps = {
+  storeAgentSubmission: StoreSubmission;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
-      agent_id: string;
+      graph_id: string;
     },
   ) => void;
-}
+};
 
 export const AgentTableRow = ({
-  agent_id,
-  agent_version,
-  agentName,
-  sub_heading,
-  description,
-  imageSrc,
-  dateSubmitted,
-  status,
-  runs,
-  rating,
-  id,
-  video_url,
-  categories,
-  store_listing_version_id,
-  changes_summary,
-  listing_id,
+  storeAgentSubmission,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
 }: AgentTableRowProps) => {
   const { handleView, handleDelete, handleEdit } = useAgentTableRow({
-    id,
+    storeAgentSubmission,
     onViewSubmission,
     onDeleteSubmission,
     onEditSubmission,
-    agent_id,
-    agent_version,
-    agentName,
-    sub_heading,
-    description,
-    imageSrc,
-    dateSubmitted,
-    status,
-    runs,
-    rating,
-    video_url,
-    categories,
-    store_listing_version_id,
-    changes_summary,
-    listing_id,
   });
+
+  const {
+    listing_version_id,
+    graph_id,
+    graph_version,
+    name: agentName,
+    description,
+    image_urls,
+    submitted_at,
+    status,
+    run_count,
+    review_avg_rating,
+  } = storeAgentSubmission;
 
   const canModify = status === SubmissionStatus.PENDING;
 
   return (
     <div
       data-testid="agent-table-row"
-      data-agent-id={agent_id}
-      data-submission-id={store_listing_version_id}
+      data-agent-id={graph_id}
+      data-submission-id={listing_version_id}
       className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
-          {imageSrc?.[0] ? (
+          {image_urls?.[0] ? (
             <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
               <Image
-                src={imageSrc?.[0] ?? ""}
+                src={image_urls?.[0] ?? ""}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}
@@ -128,7 +96,7 @@ export const AgentTableRow = ({
                 size="small"
                 className="text-neutral-500 dark:text-neutral-400"
               >
-                v{agent_version}
+                v{graph_version}
               </Text>
             </div>
             <Text
@@ -142,7 +110,7 @@ export const AgentTableRow = ({
 
         {/* Date column */}
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted.toLocaleDateString()}
+          {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
         {/* Status column */}
@@ -152,14 +120,16 @@ export const AgentTableRow = ({
 
         {/* Runs column */}
         <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
-          {runs?.toLocaleString() ?? "0"}
+          {run_count?.toLocaleString() ?? "0"}
         </div>
 
         {/* Reviews column */}
         <div className="text-right">
-          {rating ? (
+          {review_avg_rating ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium">{rating.toFixed(1)}</span>
+              <span className="text-sm font-medium">
+                {review_avg_rating.toFixed(1)}
+              </span>
               <StarIcon weight="fill" className="h-2 w-2" />
             </div>
           ) : (

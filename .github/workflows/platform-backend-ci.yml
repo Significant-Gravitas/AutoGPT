@@ -41,13 +41,18 @@ jobs:
         ports:
           - 6379:6379
       rabbitmq:
-        image: rabbitmq:3.12-management
+        image: rabbitmq:4.1.4
         ports:
           - 5672:5672
-          - 15672:15672
         env:
           RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+          --health-start-period 10s
       clamav:
         image: clamav/clamav-debian:latest
         ports:

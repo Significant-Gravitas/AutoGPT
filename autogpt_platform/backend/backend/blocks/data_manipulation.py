@@ -1,6 +1,6 @@
 from typing import Any, List
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -682,16 +682,218 @@ class ListIsEmptyBlock(Block):
         yield "is_empty", len(input_data.list) == 0
 
 
+# =============================================================================
+# List Concatenation Helpers
+# =============================================================================
+
+
+def _validate_list_input(item: Any, index: int) -> str | None:
+    """Validate that an item is a list. Returns error message or None."""
+    if item is None:
+        return None  # None is acceptable, will be skipped
+    if not isinstance(item, list):
+        return (
+            f"Invalid input at index {index}: expected a list, "
+            f"got {type(item).__name__}. "
+            f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+        )
+    return None
+
+
+def _validate_all_lists(lists: List[Any]) -> str | None:
+    """Validate that all items in a sequence are lists. Returns first error or None."""
+    for idx, item in enumerate(lists):
+        error = _validate_list_input(item, idx)
+        if error is not None and item is not None:
+            return error
+    return None
+
+
+def _concatenate_lists_simple(lists: List[List[Any]]) -> List[Any]:
+    """Concatenate a sequence of lists into a single list, skipping None values."""
+    result: List[Any] = []
+    for lst in lists:
+        if lst is None:
+            continue
+        result.extend(lst)
+    return result
+
+
+def _flatten_nested_list(nested: List[Any], max_depth: int = -1) -> List[Any]:
+    """
+    Recursively flatten a nested list structure.
+
+    Args:
+        nested: The list to flatten.
+        max_depth: Maximum recursion depth. -1 means unlimited.
+
+    Returns:
+        A flat list with all nested elements extracted.
+    """
+    result: List[Any] = []
+    _flatten_recursive(nested, result, current_depth=0, max_depth=max_depth)
+    return result
+
+
+_MAX_FLATTEN_DEPTH = 1000
+
+
+def _flatten_recursive(
+    items: List[Any],
+    result: List[Any],
+    current_depth: int,
+    max_depth: int,
+) -> None:
+    """Internal recursive helper for flattening nested lists."""
+    if current_depth > _MAX_FLATTEN_DEPTH:
+        raise RecursionError(
+            f"Flattening exceeded maximum depth of {_MAX_FLATTEN_DEPTH} levels. "
+            "Input may be too deeply nested."
+        )
+    for item in items:
+        if isinstance(item, list) and (max_depth == -1 or current_depth < max_depth):
+            _flatten_recursive(item, result, current_depth + 1, max_depth)
+        else:
+            result.append(item)
+
+
+def _deduplicate_list(items: List[Any]) -> List[Any]:
+    """
+    Remove duplicate elements from a list, preserving order of first occurrences.
+
+    Args:
+        items: The list to deduplicate.
+
+    Returns:
+        A list with duplicates removed, maintaining original order.
+    """
+    seen: set = set()
+    result: List[Any] = []
+    for item in items:
+        item_id = _make_hashable(item)
+        if item_id not in seen:
+            seen.add(item_id)
+            result.append(item)
+    return result
+
+
+def _make_hashable(item: Any):
+    """
+    Create a hashable representation of any item for deduplication.
+    Converts unhashable types (dicts, lists) into deterministic tuple structures.
+    """
+    if isinstance(item, dict):
+        return tuple(
+            sorted(
+                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                key=lambda x: (str(type(x[0])), str(x[0])),
+            )
+        )
+    if isinstance(item, (list, tuple)):
+        return tuple(_make_hashable(i) for i in item)
+    if isinstance(item, set):
+        return frozenset(_make_hashable(i) for i in item)
+    return item
+
+
+def _filter_none_values(items: List[Any]) -> List[Any]:
+    """Remove None values from a list."""
+    return [item for item in items if item is not None]
+
+
+def _compute_nesting_depth(
+    items: Any, current: int = 0, max_depth: int = _MAX_FLATTEN_DEPTH
+) -> int:
+    """
+    Compute the maximum nesting depth of a list structure using iteration to avoid RecursionError.
+
+    Uses a stack-based approach to handle deeply nested structures without hitting Python's
+    recursion limit (~1000 levels).
+    """
+    if not isinstance(items, list):
+        return current
+
+    # Stack contains tuples of (item, depth)
+    stack = [(items, current)]
+    max_observed_depth = current
+
+    while stack:
+        item, depth = stack.pop()
+
+        if depth > max_depth:
+            return depth
+
+        if not isinstance(item, list):
+            max_observed_depth = max(max_observed_depth, depth)
+            continue
+
+        if len(item) == 0:
+            max_observed_depth = max(max_observed_depth, depth + 1)
+            continue
+
+        # Add all children to stack with incremented depth
+        for child in item:
+            stack.append((child, depth + 1))
+
+    return max_observed_depth
+
+
+def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
+    """
+    Interleave elements from multiple lists in round-robin fashion.
+    Example: [[1,2,3], [a,b], [x,y,z]] -> [1, a, x, 2, b, y, 3, z]
+    """
+    if not lists:
+        return []
+    filtered = [lst for lst in lists if lst is not None]
+    if not filtered:
+        return []
+    result: List[Any] = []
+    max_len = max(len(lst) for lst in filtered)
+    for i in range(max_len):
+        for lst in filtered:
+            if i < len(lst):
+                result.append(lst[i])
+    return result
+
+
+# =============================================================================
+# List Concatenation Blocks
+# =============================================================================
+
+
 class ConcatenateListsBlock(Block):
+    """
+    Concatenates two or more lists into a single list.
+
+    This block accepts a list of lists and combines all their elements
+    in order into one flat output list. It supports options for
+    deduplication and None-filtering to provide flexible list merging
+    capabilities for workflow pipelines.
+    """
+
     class Input(BlockSchemaInput):
         lists: List[List[Any]] = SchemaField(
             description="A list of lists to concatenate together. All lists will be combined in order into a single list.",
             placeholder="e.g., [[1, 2], [3, 4], [5, 6]]",
         )
+        deduplicate: bool = SchemaField(
+            description="If True, remove duplicate elements from the concatenated result while preserving order.",
+            default=False,
+            advanced=True,
+        )
+        remove_none: bool = SchemaField(
+            description="If True, remove None values from the concatenated result.",
+            default=False,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         concatenated_list: List[Any] = SchemaField(
             description="The concatenated list containing all elements from all input lists in order."
+        )
+        length: int = SchemaField(
+            description="The total number of elements in the concatenated list."
         )
         error: str = SchemaField(
             description="Error message if concatenation failed due to invalid input types."
@@ -700,7 +902,7 @@ class ConcatenateListsBlock(Block):
     def __init__(self):
         super().__init__(
             id="3cf9298b-5817-4141-9d80-7c2cc5199c8e",
-            description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order.",
+            description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order. Supports optional deduplication and None removal.",
             categories={BlockCategory.BASIC},
             input_schema=ConcatenateListsBlock.Input,
             output_schema=ConcatenateListsBlock.Output,
@@ -709,29 +911,497 @@ class ConcatenateListsBlock(Block):
                 {"lists": [["a", "b"], ["c"], ["d", "e", "f"]]},
                 {"lists": [[1, 2], []]},
                 {"lists": []},
+                {"lists": [[1, 2, 2, 3], [3, 4]], "deduplicate": True},
+                {"lists": [[1, None, 2], [None, 3]], "remove_none": True},
             ],
             test_output=[
                 ("concatenated_list", [1, 2, 3, 4, 5, 6]),
+                ("length", 6),
                 ("concatenated_list", ["a", "b", "c", "d", "e", "f"]),
+                ("length", 6),
                 ("concatenated_list", [1, 2]),
+                ("length", 2),
                 ("concatenated_list", []),
+                ("length", 0),
+                ("concatenated_list", [1, 2, 3, 4]),
+                ("length", 4),
+                ("concatenated_list", [1, 2, 3]),
+                ("length", 3),
             ],
         )
 
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
+        return _validate_all_lists(lists)
+
+    def _perform_concatenation(self, lists: List[List[Any]]) -> List[Any]:
+        return _concatenate_lists_simple(lists)
+
+    def _apply_deduplication(self, items: List[Any]) -> List[Any]:
+        return _deduplicate_list(items)
+
+    def _apply_none_removal(self, items: List[Any]) -> List[Any]:
+        return _filter_none_values(items)
+
+    def _post_process(
+        self, items: List[Any], deduplicate: bool, remove_none: bool
+    ) -> List[Any]:
+        """Apply all post-processing steps to the concatenated result."""
+        result = items
+        if remove_none:
+            result = self._apply_none_removal(result)
+        if deduplicate:
+            result = self._apply_deduplication(result)
+        return result
+
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        concatenated = []
-        for idx, lst in enumerate(input_data.lists):
-            if lst is None:
-                # Skip None values to avoid errors
-                continue
-            if not isinstance(lst, list):
-                # Type validation: each item must be a list
-                # Strings are iterable and would cause extend() to iterate character-by-character
-                # Non-iterable types would raise TypeError
-                yield "error", (
-                    f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
-                    f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
-                )
-                return
-            concatenated.extend(lst)
-        yield "concatenated_list", concatenated
+        # Validate all inputs are lists
+        validation_error = self._validate_inputs(input_data.lists)
+        if validation_error is not None:
+            yield "error", validation_error
+            return
+
+        # Perform concatenation
+        concatenated = self._perform_concatenation(input_data.lists)
+
+        # Apply post-processing
+        result = self._post_process(
+            concatenated, input_data.deduplicate, input_data.remove_none
+        )
+
+        yield "concatenated_list", result
+        yield "length", len(result)
+
+
+class FlattenListBlock(Block):
+    """
+    Flattens a nested list structure into a single flat list.
+
+    This block takes a list that may contain nested lists at any depth
+    and produces a single-level list with all leaf elements. Useful
+    for normalizing data structures from multiple sources that may
+    have varying levels of nesting.
+    """
+
+    class Input(BlockSchemaInput):
+        nested_list: List[Any] = SchemaField(
+            description="A potentially nested list to flatten into a single-level list.",
+            placeholder="e.g., [[1, [2, 3]], [4, [5, [6]]]]",
+        )
+        max_depth: int = SchemaField(
+            description="Maximum depth to flatten. -1 means flatten completely. 1 means flatten only one level.",
+            default=-1,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        flattened_list: List[Any] = SchemaField(
+            description="The flattened list with all nested elements extracted."
+        )
+        length: int = SchemaField(
+            description="The number of elements in the flattened list."
+        )
+        original_depth: int = SchemaField(
+            description="The maximum nesting depth of the original input list."
+        )
+        error: str = SchemaField(description="Error message if flattening failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="cc45bb0f-d035-4756-96a7-fe3e36254b4d",
+            description="Flattens a nested list structure into a single flat list. Supports configurable maximum flattening depth.",
+            categories={BlockCategory.BASIC},
+            input_schema=FlattenListBlock.Input,
+            output_schema=FlattenListBlock.Output,
+            test_input=[
+                {"nested_list": [[1, 2], [3, [4, 5]]]},
+                {"nested_list": [1, [2, [3, [4]]]]},
+                {"nested_list": [1, [2, [3, [4]]], 5], "max_depth": 1},
+                {"nested_list": []},
+                {"nested_list": [1, 2, 3]},
+            ],
+            test_output=[
+                ("flattened_list", [1, 2, 3, 4, 5]),
+                ("length", 5),
+                ("original_depth", 3),
+                ("flattened_list", [1, 2, 3, 4]),
+                ("length", 4),
+                ("original_depth", 4),
+                ("flattened_list", [1, 2, [3, [4]], 5]),
+                ("length", 4),
+                ("original_depth", 4),
+                ("flattened_list", []),
+                ("length", 0),
+                ("original_depth", 1),
+                ("flattened_list", [1, 2, 3]),
+                ("length", 3),
+                ("original_depth", 1),
+            ],
+        )
+
+    def _compute_depth(self, items: List[Any]) -> int:
+        """Compute the nesting depth of the input list."""
+        return _compute_nesting_depth(items)
+
+    def _flatten(self, items: List[Any], max_depth: int) -> List[Any]:
+        """Flatten the list to the specified depth."""
+        return _flatten_nested_list(items, max_depth=max_depth)
+
+    def _validate_max_depth(self, max_depth: int) -> str | None:
+        """Validate the max_depth parameter."""
+        if max_depth < -1:
+            return f"max_depth must be -1 (unlimited) or a non-negative integer, got {max_depth}"
+        return None
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Validate max_depth
+        depth_error = self._validate_max_depth(input_data.max_depth)
+        if depth_error is not None:
+            yield "error", depth_error
+            return
+
+        original_depth = self._compute_depth(input_data.nested_list)
+        flattened = self._flatten(input_data.nested_list, input_data.max_depth)
+
+        yield "flattened_list", flattened
+        yield "length", len(flattened)
+        yield "original_depth", original_depth
+
+
+class InterleaveListsBlock(Block):
+    """
+    Interleaves elements from multiple lists in round-robin fashion.
+
+    Given multiple input lists, this block takes one element from each
+    list in turn, producing an output where elements alternate between
+    sources. Lists of different lengths are handled gracefully - shorter
+    lists simply stop contributing once exhausted.
+    """
+
+    class Input(BlockSchemaInput):
+        lists: List[List[Any]] = SchemaField(
+            description="A list of lists to interleave. Elements will be taken in round-robin order.",
+            placeholder="e.g., [[1, 2, 3], ['a', 'b', 'c']]",
+        )
+
+    class Output(BlockSchemaOutput):
+        interleaved_list: List[Any] = SchemaField(
+            description="The interleaved list with elements alternating from each input list."
+        )
+        length: int = SchemaField(
+            description="The total number of elements in the interleaved list."
+        )
+        error: str = SchemaField(description="Error message if interleaving failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="9f616084-1d9f-4f8e-bc00-5b9d2a75cd75",
+            description="Interleaves elements from multiple lists in round-robin fashion, alternating between sources.",
+            categories={BlockCategory.BASIC},
+            input_schema=InterleaveListsBlock.Input,
+            output_schema=InterleaveListsBlock.Output,
+            test_input=[
+                {"lists": [[1, 2, 3], ["a", "b", "c"]]},
+                {"lists": [[1, 2, 3], ["a", "b"], ["x", "y", "z"]]},
+                {"lists": [[1], [2], [3]]},
+                {"lists": []},
+            ],
+            test_output=[
+                ("interleaved_list", [1, "a", 2, "b", 3, "c"]),
+                ("length", 6),
+                ("interleaved_list", [1, "a", "x", 2, "b", "y", 3, "z"]),
+                ("length", 8),
+                ("interleaved_list", [1, 2, 3]),
+                ("length", 3),
+                ("interleaved_list", []),
+                ("length", 0),
+            ],
+        )
+
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
+        return _validate_all_lists(lists)
+
+    def _interleave(self, lists: List[List[Any]]) -> List[Any]:
+        return _interleave_lists(lists)
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        validation_error = self._validate_inputs(input_data.lists)
+        if validation_error is not None:
+            yield "error", validation_error
+            return
+
+        result = self._interleave(input_data.lists)
+        yield "interleaved_list", result
+        yield "length", len(result)
+
+
+class ZipListsBlock(Block):
+    """
+    Zips multiple lists together into a list of grouped tuples/lists.
+
+    Takes two or more input lists and combines corresponding elements
+    into sub-lists. For example, zipping [1,2,3] and ['a','b','c']
+    produces [[1,'a'], [2,'b'], [3,'c']]. Supports both truncating
+    to shortest list and padding to longest list with a fill value.
+    """
+
+    class Input(BlockSchemaInput):
+        lists: List[List[Any]] = SchemaField(
+            description="A list of lists to zip together. Corresponding elements will be grouped.",
+            placeholder="e.g., [[1, 2, 3], ['a', 'b', 'c']]",
+        )
+        pad_to_longest: bool = SchemaField(
+            description="If True, pad shorter lists with fill_value to match the longest list. If False, truncate to shortest.",
+            default=False,
+            advanced=True,
+        )
+        fill_value: Any = SchemaField(
+            description="Value to use for padding when pad_to_longest is True.",
+            default=None,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        zipped_list: List[List[Any]] = SchemaField(
+            description="The zipped list of grouped elements."
+        )
+        length: int = SchemaField(
+            description="The number of groups in the zipped result."
+        )
+        error: str = SchemaField(description="Error message if zipping failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="0d0e684f-5cb9-4c4b-b8d1-47a0860e0c07",
+            description="Zips multiple lists together into a list of grouped elements. Supports padding to longest or truncating to shortest.",
+            categories={BlockCategory.BASIC},
+            input_schema=ZipListsBlock.Input,
+            output_schema=ZipListsBlock.Output,
+            test_input=[
+                {"lists": [[1, 2, 3], ["a", "b", "c"]]},
+                {"lists": [[1, 2, 3], ["a", "b"]]},
+                {
+                    "lists": [[1, 2], ["a", "b", "c"]],
+                    "pad_to_longest": True,
+                    "fill_value": 0,
+                },
+                {"lists": []},
+            ],
+            test_output=[
+                ("zipped_list", [[1, "a"], [2, "b"], [3, "c"]]),
+                ("length", 3),
+                ("zipped_list", [[1, "a"], [2, "b"]]),
+                ("length", 2),
+                ("zipped_list", [[1, "a"], [2, "b"], [0, "c"]]),
+                ("length", 3),
+                ("zipped_list", []),
+                ("length", 0),
+            ],
+        )
+
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
+        return _validate_all_lists(lists)
+
+    def _zip_truncate(self, lists: List[List[Any]]) -> List[List[Any]]:
+        """Zip lists, truncating to shortest."""
+        filtered = [lst for lst in lists if lst is not None]
+        if not filtered:
+            return []
+        return [list(group) for group in zip(*filtered)]
+
+    def _zip_pad(self, lists: List[List[Any]], fill_value: Any) -> List[List[Any]]:
+        """Zip lists, padding shorter ones with fill_value."""
+        if not lists:
+            return []
+        lists = [lst for lst in lists if lst is not None]
+        if not lists:
+            return []
+        max_len = max(len(lst) for lst in lists)
+        result: List[List[Any]] = []
+        for i in range(max_len):
+            group: List[Any] = []
+            for lst in lists:
+                if i < len(lst):
+                    group.append(lst[i])
+                else:
+                    group.append(fill_value)
+            result.append(group)
+        return result
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        validation_error = self._validate_inputs(input_data.lists)
+        if validation_error is not None:
+            yield "error", validation_error
+            return
+
+        if not input_data.lists:
+            yield "zipped_list", []
+            yield "length", 0
+            return
+
+        if input_data.pad_to_longest:
+            result = self._zip_pad(input_data.lists, input_data.fill_value)
+        else:
+            result = self._zip_truncate(input_data.lists)
+
+        yield "zipped_list", result
+        yield "length", len(result)
+
+
+class ListDifferenceBlock(Block):
+    """
+    Computes the difference between two lists (elements in the first
+    list that are not in the second list).
+
+    This is useful for finding items that exist in one dataset but
+    not in another, such as finding new items, missing items, or
+    items that need to be processed.
+    """
+
+    class Input(BlockSchemaInput):
+        list_a: List[Any] = SchemaField(
+            description="The primary list to check elements from.",
+            placeholder="e.g., [1, 2, 3, 4, 5]",
+        )
+        list_b: List[Any] = SchemaField(
+            description="The list to subtract. Elements found here will be removed from list_a.",
+            placeholder="e.g., [3, 4, 5, 6]",
+        )
+        symmetric: bool = SchemaField(
+            description="If True, compute symmetric difference (elements in either list but not both).",
+            default=False,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        difference: List[Any] = SchemaField(
+            description="Elements from list_a not found in list_b (or symmetric difference if enabled)."
+        )
+        length: int = SchemaField(
+            description="The number of elements in the difference result."
+        )
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="05309873-9d61-447e-96b5-b804e2511829",
+            description="Computes the difference between two lists. Returns elements in the first list not found in the second, or symmetric difference.",
+            categories={BlockCategory.BASIC},
+            input_schema=ListDifferenceBlock.Input,
+            output_schema=ListDifferenceBlock.Output,
+            test_input=[
+                {"list_a": [1, 2, 3, 4, 5], "list_b": [3, 4, 5, 6, 7]},
+                {
+                    "list_a": [1, 2, 3, 4, 5],
+                    "list_b": [3, 4, 5, 6, 7],
+                    "symmetric": True,
+                },
+                {"list_a": ["a", "b", "c"], "list_b": ["b"]},
+                {"list_a": [], "list_b": [1, 2, 3]},
+            ],
+            test_output=[
+                ("difference", [1, 2]),
+                ("length", 2),
+                ("difference", [1, 2, 6, 7]),
+                ("length", 4),
+                ("difference", ["a", "c"]),
+                ("length", 2),
+                ("difference", []),
+                ("length", 0),
+            ],
+        )
+
+    def _compute_difference(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
+        """Compute elements in list_a not in list_b."""
+        b_hashes = {_make_hashable(item) for item in list_b}
+        return [item for item in list_a if _make_hashable(item) not in b_hashes]
+
+    def _compute_symmetric_difference(
+        self, list_a: List[Any], list_b: List[Any]
+    ) -> List[Any]:
+        """Compute elements in either list but not both."""
+        a_hashes = {_make_hashable(item) for item in list_a}
+        b_hashes = {_make_hashable(item) for item in list_b}
+        only_in_a = [item for item in list_a if _make_hashable(item) not in b_hashes]
+        only_in_b = [item for item in list_b if _make_hashable(item) not in a_hashes]
+        return only_in_a + only_in_b
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if input_data.symmetric:
+            result = self._compute_symmetric_difference(
+                input_data.list_a, input_data.list_b
+            )
+        else:
+            result = self._compute_difference(input_data.list_a, input_data.list_b)
+
+        yield "difference", result
+        yield "length", len(result)
+
+
+class ListIntersectionBlock(Block):
+    """
+    Computes the intersection of two lists (elements present in both lists).
+
+    This is useful for finding common items between two datasets,
+    such as shared tags, mutual connections, or overlapping categories.
+    """
+
+    class Input(BlockSchemaInput):
+        list_a: List[Any] = SchemaField(
+            description="The first list to intersect.",
+            placeholder="e.g., [1, 2, 3, 4, 5]",
+        )
+        list_b: List[Any] = SchemaField(
+            description="The second list to intersect.",
+            placeholder="e.g., [3, 4, 5, 6, 7]",
+        )
+
+    class Output(BlockSchemaOutput):
+        intersection: List[Any] = SchemaField(
+            description="Elements present in both list_a and list_b."
+        )
+        length: int = SchemaField(
+            description="The number of elements in the intersection."
+        )
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="b6eb08b6-dbe3-411b-b9b4-2508cb311a1f",
+            description="Computes the intersection of two lists, returning only elements present in both.",
+            categories={BlockCategory.BASIC},
+            input_schema=ListIntersectionBlock.Input,
+            output_schema=ListIntersectionBlock.Output,
+            test_input=[
+                {"list_a": [1, 2, 3, 4, 5], "list_b": [3, 4, 5, 6, 7]},
+                {"list_a": ["a", "b", "c"], "list_b": ["c", "d", "e"]},
+                {"list_a": [1, 2], "list_b": [3, 4]},
+                {"list_a": [], "list_b": [1, 2, 3]},
+            ],
+            test_output=[
+                ("intersection", [3, 4, 5]),
+                ("length", 3),
+                ("intersection", ["c"]),
+                ("length", 1),
+                ("intersection", []),
+                ("length", 0),
+                ("intersection", []),
+                ("length", 0),
+            ],
+        )
+
+    def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
+        """Compute elements present in both lists, preserving order from list_a."""
+        b_hashes = {_make_hashable(item) for item in list_b}
+        seen: set = set()
+        result: List[Any] = []
+        for item in list_a:
+            h = _make_hashable(item)
+            if h in b_hashes and h not in seen:
+                result.append(item)
+                seen.add(h)
+        return result
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        result = self._compute_intersection(input_data.list_a, input_data.list_b)
+        yield "intersection", result
+        yield "length", len(result)

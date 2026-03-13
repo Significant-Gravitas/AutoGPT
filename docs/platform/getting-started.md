@@ -218,6 +218,17 @@ If you initially installed Docker with Hyper-V, you **don’t need to reinstall*
 
 For more details, refer to [Docker's official documentation](https://docs.docker.com/desktop/windows/wsl/).
 
+### ⚠️ Podman Not Supported
+
+AutoGPT requires **Docker** (Docker Desktop or Docker Engine). **Podman and podman-compose are not supported** and may cause path resolution issues, particularly on Windows.
+
+If you see errors like:
+```text
+Error: the specified Containerfile or Dockerfile does not exist, ..\..\autogpt_platform\backend\Dockerfile
+```
+
+This indicates you're using Podman instead of Docker. Please install [Docker Desktop](https://docs.docker.com/desktop/) and use `docker compose` instead of `podman-compose`.
+
 
 ## Development
 

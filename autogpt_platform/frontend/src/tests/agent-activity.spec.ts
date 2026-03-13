@@ -11,24 +11,18 @@ test.beforeEach(async ({ page }) => {
   const buildPage = new BuildPage(page);
   const testUser = await getTestUser();
 
-  const { getId } = getSelectors(page);
-
   await page.goto("/login");
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
 
   await page.goto("/build");
   await buildPage.closeTutorial();
-  await buildPage.openBlocksPanel();
 
   const [dictionaryBlock] = await buildPage.getFilteredBlocksFromAPI(
     (block) => block.name === "AddToDictionaryBlock",
   );
 
-  const blockCard = getId(`block-name-${dictionaryBlock.id}`);
-  await blockCard.click();
-  const blockInEditor = getId(dictionaryBlock.id).first();
-  expect(blockInEditor).toBeAttached();
+  await buildPage.addBlock(dictionaryBlock);
 
   await buildPage.saveAgent("Test Agent", "Test Description");
   await test

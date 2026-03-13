@@ -2,25 +2,21 @@ import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentP
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
 import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
-import type { OperationInProgressResponse } from "@/app/api/__generated__/models/operationInProgressResponse";
-import type { OperationPendingResponse } from "@/app/api/__generated__/models/operationPendingResponse";
-import type { OperationStartedResponse } from "@/app/api/__generated__/models/operationStartedResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
 import {
   PlusCircleIcon,
   PlusIcon,
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 export type CreateAgentToolOutput =
-  | OperationStartedResponse
-  | OperationPendingResponse
-  | OperationInProgressResponse
   | AgentPreviewResponse
   | AgentSavedResponse
   | ClarificationNeededResponse
+  | SuggestedGoalResponse
   | ErrorResponse;
 
 function parseOutput(output: unknown): CreateAgentToolOutput | null {
@@ -37,24 +33,20 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
   if (typeof output === "object") {
     const type = (output as { type?: unknown }).type;
     if (
-      type === ResponseType.operation_started ||
-      type === ResponseType.operation_pending ||
-      type === ResponseType.operation_in_progress ||
-      type === ResponseType.agent_preview ||
-      type === ResponseType.agent_saved ||
-      type === ResponseType.clarification_needed ||
+      type === ResponseType.agent_builder_preview ||
+      type === ResponseType.agent_builder_saved ||
+      type === ResponseType.agent_builder_clarification_needed ||
+      type === ResponseType.suggested_goal ||
       type === ResponseType.error
     ) {
       return output as CreateAgentToolOutput;
     }
-    if ("operation_id" in output && "tool_name" in output)
-      return output as OperationStartedResponse | OperationPendingResponse;
-    if ("tool_call_id" in output) return output as OperationInProgressResponse;
     if ("agent_json" in output && "agent_name" in output)
       return output as AgentPreviewResponse;
     if ("agent_id" in output && "library_agent_id" in output)
       return output as AgentSavedResponse;
     if ("questions" in output) return output as ClarificationNeededResponse;
+    if ("suggested_goal" in output) return output as SuggestedGoalResponse;
     if ("error" in output || "details" in output)
       return output as ErrorResponse;
   }
@@ -68,41 +60,20 @@ export function getCreateAgentToolOutput(
   return parseOutput((part as { output?: unknown }).output);
 }
 
-export function isOperationStartedOutput(
-  output: CreateAgentToolOutput,
-): output is OperationStartedResponse {
-  return (
-    output.type === ResponseType.operation_started ||
-    ("operation_id" in output && "tool_name" in output)
-  );
-}
-
-export function isOperationPendingOutput(
-  output: CreateAgentToolOutput,
-): output is OperationPendingResponse {
-  return output.type === ResponseType.operation_pending;
-}
-
-export function isOperationInProgressOutput(
-  output: CreateAgentToolOutput,
-): output is OperationInProgressResponse {
-  return (
-    output.type === ResponseType.operation_in_progress ||
-    "tool_call_id" in output
-  );
-}
-
 export function isAgentPreviewOutput(
   output: CreateAgentToolOutput,
 ): output is AgentPreviewResponse {
-  return output.type === ResponseType.agent_preview || "agent_json" in output;
+  return (
+    output.type === ResponseType.agent_builder_preview || "agent_json" in output
+  );
 }
 
 export function isAgentSavedOutput(
   output: CreateAgentToolOutput,
 ): output is AgentSavedResponse {
   return (
-    output.type === ResponseType.agent_saved || "agent_page_link" in output
+    output.type === ResponseType.agent_builder_saved ||
+    "agent_page_link" in output
   );
 }
 
@@ -110,7 +81,16 @@ export function isClarificationNeededOutput(
   output: CreateAgentToolOutput,
 ): output is ClarificationNeededResponse {
   return (
-    output.type === ResponseType.clarification_needed || "questions" in output
+    output.type === ResponseType.agent_builder_clarification_needed ||
+    "questions" in output
+  );
+}
+
+export function isSuggestedGoalOutput(
+  output: CreateAgentToolOutput,
+): output is SuggestedGoalResponse {
+  return (
+    output.type === ResponseType.suggested_goal || "suggested_goal" in output
   );
 }
 
@@ -132,13 +112,10 @@ export function getAnimationText(part: {
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return "Creating a new agent";
-      if (isOperationStartedOutput(output)) return "Agent creation started";
-      if (isOperationPendingOutput(output)) return "Agent creation in progress";
-      if (isOperationInProgressOutput(output))
-        return "Agent creation already in progress";
-      if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
+      if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isClarificationNeededOutput(output)) return "Needs clarification";
+      if (isSuggestedGoalOutput(output)) return "Goal needs refinement";
       return "Error creating agent";
     }
     case "output-error":
@@ -161,7 +138,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlusIcon size={14} weight="regular" className="text-neutral-400" />;
 }

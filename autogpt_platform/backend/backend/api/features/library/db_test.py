@@ -4,7 +4,6 @@ import prisma.enums
 import prisma.models
 import pytest
 
-import backend.api.features.store.exceptions
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
 
@@ -144,6 +143,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
@@ -178,7 +178,6 @@ async def test_add_agent_to_library(mocker):
                 "agentGraphVersion": 1,
             }
         },
-        include={"AgentGraph": True},
     )
     # Check that create was called with the expected data including settings
     create_call_args = mock_library_agent.return_value.create.call_args
@@ -218,7 +217,7 @@ async def test_add_agent_to_library_not_found(mocker):
     )
 
     # Call function and verify exception
-    with pytest.raises(backend.api.features.store.exceptions.AgentNotFoundError):
+    with pytest.raises(db.NotFoundError):
         await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mock called correctly
