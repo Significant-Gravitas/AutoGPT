@@ -1,6 +1,7 @@
-"""Tests for chat API routes: session title update and file attachment validation."""
+"""Tests for chat API routes: session title update, file attachment validation, usage, and suggested prompts."""
 
-from unittest.mock import AsyncMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
@@ -249,3 +250,130 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
     call_kwargs = mock_prisma.find_many.call_args[1]
     assert call_kwargs["where"]["workspaceId"] == "my-workspace-id"
     assert call_kwargs["where"]["isDeleted"] is False
+
+
+# ─── Usage endpoint ───────────────────────────────────────────────────
+
+
+def _mock_usage(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    daily_used: int = 500,
+    weekly_used: int = 2000,
+) -> AsyncMock:
+    """Mock get_usage_status to return a predictable CoPilotUsageStatus."""
+    from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+
+    resets_at = datetime.now(UTC) + timedelta(days=1)
+    status = CoPilotUsageStatus(
+        daily=UsageWindow(used=daily_used, limit=10000, resets_at=resets_at),
+        weekly=UsageWindow(used=weekly_used, limit=50000, resets_at=resets_at),
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=status,
+    )
+
+
+def test_usage_returns_daily_and_weekly(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """GET /usage returns daily and weekly usage."""
+    mock_get = _mock_usage(mocker, daily_used=500, weekly_used=2000)
+
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_token_limit", 50000)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["daily"]["used"] == 500
+    assert data["weekly"]["used"] == 2000
+
+    mock_get.assert_called_once_with(
+        user_id=test_user_id,
+        daily_token_limit=10000,
+        weekly_token_limit=50000,
+    )
+
+
+def test_usage_uses_config_limits(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The endpoint forwards daily_token_limit and weekly_token_limit from config."""
+    mock_get = _mock_usage(mocker)
+
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
+    mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    mock_get.assert_called_once_with(
+        user_id=test_user_id,
+        daily_token_limit=99999,
+        weekly_token_limit=77777,
+    )
+
+
+# ─── Suggested prompts endpoint ──────────────────────────────────────
+
+
+def _mock_get_business_understanding(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    return_value=None,
+):
+    """Mock get_business_understanding."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.get_business_understanding",
+        new_callable=AsyncMock,
+        return_value=return_value,
+    )
+
+
+def test_suggested_prompts_returns_prompts(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with understanding and prompts gets them back."""
+    mock_understanding = MagicMock()
+    mock_understanding.suggested_prompts = ["Do X", "Do Y", "Do Z"]
+    _mock_get_business_understanding(mocker, return_value=mock_understanding)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"prompts": ["Do X", "Do Y", "Do Z"]}
+
+
+def test_suggested_prompts_no_understanding(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with no understanding gets empty list."""
+    _mock_get_business_understanding(mocker, return_value=None)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"prompts": []}
+
+
+def test_suggested_prompts_empty_prompts(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with understanding but no prompts gets empty list."""
+    mock_understanding = MagicMock()
+    mock_understanding.suggested_prompts = []
+    _mock_get_business_understanding(mocker, return_value=mock_understanding)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"prompts": []}

@@ -73,6 +73,9 @@ class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    # Cache breakdown (Anthropic-specific; zero for non-Anthropic models)
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 class ChatSessionInfo(BaseModel):

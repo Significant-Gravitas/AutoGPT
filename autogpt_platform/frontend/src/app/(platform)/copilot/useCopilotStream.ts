@@ -1,4 +1,5 @@
 import {
+  getGetV2GetCopilotUsageQueryKey,
   getGetV2GetSessionQueryKey,
   postV2CancelSessionTask,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -306,6 +307,9 @@ export function useCopilotStream({
     if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetCopilotUsageQueryKey(),
       });
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;

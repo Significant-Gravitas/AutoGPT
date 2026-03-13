@@ -27,6 +27,12 @@ from backend.copilot.model import (
     get_user_sessions,
     update_session_title,
 )
+from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
+    RateLimitExceeded,
+    check_rate_limit,
+    get_usage_status,
+)
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
@@ -54,6 +60,7 @@ from backend.copilot.tools.models import (
 )
 from backend.copilot.tracking import track_user_message
 from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
@@ -119,6 +126,8 @@ class SessionDetailResponse(BaseModel):
     user_id: str | None
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
 
 class SessionSummaryResponse(BaseModel):
@@ -388,6 +397,10 @@ async def get_session(
             last_message_id=last_message_id,
         )
 
+    # Sum token usage from session
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
@@ -395,6 +408,26 @@ async def get_session(
         user_id=session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+
+@router.get("/usage")
+async def get_copilot_usage(
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+) -> CoPilotUsageStatus:
+    """Get CoPilot usage status for the authenticated user.
+
+    Returns current token usage vs limits for daily and weekly windows.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    return await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=config.daily_token_limit,
+        weekly_token_limit=config.weekly_token_limit,
     )
 
 
@@ -494,6 +527,17 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Pre-turn rate limit check (token-based)
+    if user_id and (config.daily_token_limit > 0 or config.weekly_token_limit > 0):
+        try:
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=config.daily_token_limit,
+                weekly_token_limit=config.weekly_token_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -851,6 +895,36 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
+
+
+# ========== Suggested Prompts ==========
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts."""
+
+    prompts: list[str]
+
+
+@router.get(
+    "/suggested-prompts",
+    dependencies=[Security(auth.requires_user)],
+)
+async def get_suggested_prompts(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> SuggestedPromptsResponse:
+    """
+    Get LLM-generated suggested prompts for the authenticated user.
+
+    Returns personalized quick-action prompts based on the user's
+    business understanding. Returns an empty list if no custom prompts
+    are available.
+    """
+    understanding = await get_business_understanding(user_id)
+    if understanding is None:
+        return SuggestedPromptsResponse(prompts=[])
+
+    return SuggestedPromptsResponse(prompts=understanding.suggested_prompts)
 
 
 # ========== Configuration ==========

@@ -186,12 +186,29 @@ class StreamToolOutputAvailable(StreamBaseResponse):
 
 
 class StreamUsage(StreamBaseResponse):
-    """Token usage statistics."""
+    """Token usage statistics.
+
+    Emitted as an SSE comment so the Vercel AI SDK parser ignores it
+    (it uses z.strictObject() and rejects unknown event types).
+    Usage data is recorded server-side (session DB + Redis counters).
+    """
 
     type: ResponseType = ResponseType.USAGE
-    promptTokens: int = Field(..., description="Number of prompt tokens")
+    promptTokens: int = Field(..., description="Number of uncached prompt tokens")
     completionTokens: int = Field(..., description="Number of completion tokens")
-    totalTokens: int = Field(..., description="Total number of tokens")
+    totalTokens: int = Field(
+        ..., description="Total number of tokens (raw, not weighted)"
+    )
+    cacheReadTokens: int = Field(
+        default=0, description="Prompt tokens served from cache (10% cost)"
+    )
+    cacheCreationTokens: int = Field(
+        default=0, description="Prompt tokens written to cache (25% cost)"
+    )
+
+    def to_sse(self) -> str:
+        """Emit as SSE comment so the AI SDK parser ignores it."""
+        return f": usage {self.model_dump_json(exclude_none=True)}\n\n"
 
 
 class StreamError(StreamBaseResponse):
