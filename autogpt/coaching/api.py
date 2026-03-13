@@ -1,10 +1,15 @@
 """FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
+import base64
+import json
 from typing import Dict, List, Optional
+from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+import requests as http_requests
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
@@ -100,6 +105,123 @@ def auth_login(req: LoginRequest, _: str = Depends(verify_api_key)) -> AuthRespo
 def auth_google(req: GoogleAuthRequest, _: str = Depends(verify_api_key)) -> AuthResponse:
     user = google_auth(google_id=req.google_id, name=req.name, email=req.email)
     return AuthResponse(user_id=user.user_id, name=user.name, email=user.email)
+
+
+@app.get(
+    "/auth/google/url",
+    summary="Redirect the user's browser to Google's OAuth consent screen",
+    response_class=RedirectResponse,
+)
+def google_oauth_start(
+    redirect_to: str = Query(
+        ...,
+        description="The Wix page URL to return the user to after authentication "
+                    "(e.g. https://yoursite.com/dashboard)",
+    ),
+) -> RedirectResponse:
+    """
+    Wix links the 'Sign in with Google' button directly to this endpoint.
+    The user's browser is redirected to Google's consent screen.
+    After consent, Google calls /auth/google/callback which then sends the
+    user back to the *redirect_to* URL with user_id, name, and email as query params.
+    """
+    if not coaching_config.google_client_id or not coaching_config.google_redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth is not configured on this server.",
+        )
+
+    # Encode the Wix return URL inside the `state` param so we can retrieve it in the callback
+    state = base64.urlsafe_b64encode(redirect_to.encode()).decode()
+
+    params = {
+        "client_id": coaching_config.google_client_id,
+        "redirect_uri": coaching_config.google_redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "state": state,
+        "prompt": "select_account",
+    }
+    google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    return RedirectResponse(url=google_auth_url, status_code=302)
+
+
+@app.get(
+    "/auth/google/callback",
+    summary="Google OAuth callback — exchanges code, creates/finds user, redirects to Wix",
+    response_class=RedirectResponse,
+)
+def google_oauth_callback(
+    code: str = Query(..., description="Authorization code from Google"),
+    state: str = Query(..., description="Base64-encoded Wix return URL"),
+    error: Optional[str] = Query(None, description="Error from Google (e.g. access_denied)"),
+) -> RedirectResponse:
+    """
+    Google redirects here after the user consents.
+    This endpoint is the value you must enter as 'Authorized redirect URI'
+    in the Google Cloud Console OAuth 2.0 client settings.
+    """
+    # Decode the Wix return URL
+    try:
+        redirect_to = base64.urlsafe_b64decode(state.encode()).decode()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state parameter.")
+
+    if error:
+        return RedirectResponse(url=f"{redirect_to}?error={error}", status_code=302)
+
+    # Exchange authorization code for tokens
+    token_resp = http_requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": coaching_config.google_client_id,
+            "client_secret": coaching_config.google_client_secret,
+            "redirect_uri": coaching_config.google_redirect_uri,
+            "grant_type": "authorization_code",
+        },
+        timeout=10,
+    )
+    if token_resp.status_code != 200:
+        return RedirectResponse(url=f"{redirect_to}?error=token_exchange_failed", status_code=302)
+
+    access_token = token_resp.json().get("access_token")
+
+    # Fetch user info from Google
+    userinfo_resp = http_requests.get(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=10,
+    )
+    if userinfo_resp.status_code != 200:
+        return RedirectResponse(url=f"{redirect_to}?error=userinfo_failed", status_code=302)
+
+    userinfo = userinfo_resp.json()
+    google_id = userinfo.get("sub")
+    name = userinfo.get("name", "")
+    email = userinfo.get("email", "")
+
+    if not google_id or not email:
+        return RedirectResponse(url=f"{redirect_to}?error=incomplete_profile", status_code=302)
+
+    user = google_auth(google_id=google_id, name=name, email=email)
+
+    # Return user to Wix with identity attached as query params
+    params = urlencode({"user_id": user.user_id, "name": user.name, "email": user.email})
+    return RedirectResponse(url=f"{redirect_to}?{params}", status_code=302)
+
+
+@app.get("/auth/google/config", summary="Show the redirect URI to register in Google Cloud Console")
+def google_oauth_config(_: str = Depends(verify_api_key)) -> dict:
+    return {
+        "google_redirect_uri": coaching_config.google_redirect_uri or "(not configured — set GOOGLE_REDIRECT_URI env var)",
+        "instructions": (
+            "Copy the value of 'google_redirect_uri' and paste it into "
+            "Google Cloud Console → APIs & Services → Credentials → "
+            "your OAuth 2.0 Client ID → Authorized redirect URIs."
+        ),
+    }
 
 
 # ── User profile ──────────────────────────────────────────────────────────────

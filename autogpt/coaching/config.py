@@ -20,6 +20,12 @@ class CoachingConfig(metaclass=Singleton):
         # Claude LLM settings
         self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "claude-haiku-4-5-20251001")
         self.llm_temperature: float = float(os.getenv("COACHING_LLM_TEMPERATURE", "0.7"))
+        # Google OAuth
+        self.google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
+        self.google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        # Full callback URL — must match exactly what is registered in Google Cloud Console
+        # Example: https://your-app.railway.app/auth/google/callback
+        self.google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
