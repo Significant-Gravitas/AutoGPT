@@ -33,9 +33,6 @@ logger = logging.getLogger(__name__)
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
 
-# Status codes where the URL almost certainly doesn't host an MCP server
-_NOT_MCP_STATUS_CODES = {404, 405, 406}
-
 
 def _service_name(host: str) -> str:
     """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
@@ -187,22 +184,11 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
-
             host = server_host(server_url)
-            if e.status_code in _NOT_MCP_STATUS_CODES:
-                error_msg = (
-                    f"No MCP server found at {host} (HTTP {e.status_code}). "
-                    "This URL does not appear to host an MCP server."
-                )
-            else:
-                error_msg = f"MCP server at {host} returned HTTP {e.status_code}."
+            logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
-                message=error_msg,
+                message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
-                # Raw HTTP detail goes in `error` so the frontend can
-                # render it in a collapsible/de-emphasised block instead
-                # of dumping the full body (which may be an HTML page).
                 error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 

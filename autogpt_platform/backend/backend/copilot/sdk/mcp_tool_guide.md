@@ -21,7 +21,7 @@ Use these URLs directly without asking the user:
 | Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
 
 For other services, search the MCP registry API:
-```
+```http
 GET https://registry.modelcontextprotocol.io/v0/servers?q=<search_term>
 ```
 Each result includes a `remotes` array with the exact server URL to use.
