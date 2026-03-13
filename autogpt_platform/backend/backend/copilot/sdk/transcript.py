@@ -140,7 +140,10 @@ _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
 def _cli_project_dir(sdk_cwd: str) -> str | None:
-    """Return the CLI's project directory for a given working directory."""
+    """Return the CLI's project directory for a given working directory.
+
+    Returns ``None`` if the path would escape the projects base.
+    """
     cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
@@ -166,8 +169,18 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
         logger.debug("[Transcript] No CLI session file in %s", project_dir)
         return None
     # Pick the most recently modified file (there should only be one per turn).
+    # Guard against races where a file is deleted between glob and stat.
+    candidates: list[tuple[float, Path]] = []
+    for p in jsonl_files:
+        try:
+            candidates.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+    if not candidates:
+        logger.debug("[Transcript] No readable CLI session file in %s", project_dir)
+        return None
     # Resolve + prefix check to prevent symlink escapes.
-    session_file = max(jsonl_files, key=lambda p: p.stat().st_mtime)
+    session_file = max(candidates, key=lambda item: item[0])[1]
     real_path = str(session_file.resolve())
     if not real_path.startswith(project_dir + os.sep):
         logger.warning("[Transcript] Session file escaped project dir: %s", real_path)
