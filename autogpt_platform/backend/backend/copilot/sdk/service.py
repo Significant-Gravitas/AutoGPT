@@ -746,6 +746,7 @@ async def stream_chat_completion_sdk(
     turn_completion_tokens = 0
     turn_cache_read_tokens = 0
     turn_cache_creation_tokens = 0
+    total_tokens = 0  # computed once before StreamUsage, reused in finally
     turn_cost_usd: float | None = None
 
     try:
@@ -1430,13 +1431,15 @@ async def stream_chat_completion_sdk(
         # Session persistence of usage is in finally to stay consistent with
         # rate-limit recording even if an exception interrupts between here
         # and the finally block.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
+        # Compute total_tokens once; reused in the finally block for
+        # session persistence and rate-limit recording.
+        total_tokens = (
+            turn_prompt_tokens
+            + turn_cache_read_tokens
+            + turn_cache_creation_tokens
+            + turn_completion_tokens
+        )
+        if total_tokens > 0:
             yield StreamUsage(
                 promptTokens=turn_prompt_tokens,
                 completionTokens=turn_completion_tokens,
@@ -1512,13 +1515,8 @@ async def stream_chat_completion_sdk(
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
+        # total_tokens is computed once before StreamUsage yield above.
+        if total_tokens > 0:
             if session is not None:
                 session.usage.append(
                     Usage(
@@ -1540,7 +1538,7 @@ async def stream_chat_completion_sdk(
                 total_tokens,
                 turn_cost_usd,
             )
-        if user_id and (turn_prompt_tokens > 0 or turn_completion_tokens > 0):
+        if user_id and total_tokens > 0:
             try:
                 await record_token_usage(
                     user_id=user_id,

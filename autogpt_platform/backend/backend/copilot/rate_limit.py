@@ -86,6 +86,19 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
     )
 
 
+async def _fetch_counters(user_id: str, now: datetime) -> tuple[int, int]:
+    """Fetch daily and weekly token counters from Redis.
+
+    Returns (daily_used, weekly_used). Returns (0, 0) if Redis is unavailable.
+    """
+    redis = await get_redis_async()
+    daily_raw, weekly_raw = await asyncio.gather(
+        redis.get(_daily_key(user_id, now=now)),
+        redis.get(_weekly_key(user_id, now=now)),
+    )
+    return int(daily_raw or 0), int(weekly_raw or 0)
+
+
 async def get_usage_status(
     user_id: str,
     daily_token_limit: int,
@@ -102,20 +115,13 @@ async def get_usage_status(
         CoPilotUsageStatus with current usage and limits.
     """
     now = datetime.now(UTC)
-    daily_used = 0
-    weekly_used = 0
     try:
-        redis = await get_redis_async()
-        daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
-        )
-        daily_used = int(daily_raw or 0)
-        weekly_used = int(weekly_raw or 0)
+        daily_used, weekly_used = await _fetch_counters(user_id, now)
     except Exception:
         logger.warning(
             "Redis unavailable for usage status, returning zeros", exc_info=True
         )
+        daily_used, weekly_used = 0, 0
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -148,13 +154,7 @@ async def check_rate_limit(
     """
     now = datetime.now(UTC)
     try:
-        redis = await get_redis_async()
-        daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(_daily_key(user_id, now=now)),
-            redis.get(_weekly_key(user_id, now=now)),
-        )
-        daily_used = int(daily_raw or 0)
-        weekly_used = int(weekly_raw or 0)
+        daily_used, weekly_used = await _fetch_counters(user_id, now)
     except Exception:
         logger.warning(
             "Redis unavailable for rate limit check, allowing request", exc_info=True

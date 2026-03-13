@@ -49,7 +49,11 @@ from backend.copilot.service import (
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import compress_context
+from backend.util.prompt import (
+    compress_context,
+    estimate_token_count,
+    estimate_token_count_str,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +262,9 @@ async def stream_chat_completion_baseline(
                     turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     turn_completion_tokens += chunk.usage.completion_tokens or 0
 
-                delta = chunk.choices[0].delta if chunk.choices else None
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
                 if not delta:
                     continue
 
@@ -432,11 +438,6 @@ async def stream_chat_completion_baseline(
         # Count the full message list (system + history + turn) since
         # each API call sends the complete context window.
         if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
-            from backend.util.prompt import (
-                estimate_token_count,
-                estimate_token_count_str,
-            )
-
             turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 0
             )

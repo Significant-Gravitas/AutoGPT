@@ -13,12 +13,17 @@ filesystem for self-hosted) — no DB column needed.
 import logging
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+import openai
+
+from backend.copilot.config import ChatConfig
 from backend.util import json
+from backend.util.prompt import compress_context
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +205,6 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
 
 def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """Remove the CLI's project directory for a specific working directory."""
-    import shutil
-
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir:
         return
@@ -474,6 +477,49 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
 COMPACT_THRESHOLD_BYTES = 400_000
 
 
+def _flatten_assistant_content(blocks: list) -> str:
+    """Flatten assistant content blocks into a single plain-text string."""
+    parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            if block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                parts.append(f"[tool_use: {block.get('name', '?')}]")
+        elif isinstance(block, str):
+            parts.append(block)
+    return "\n".join(parts) if parts else ""
+
+
+def _flatten_tool_result_content(blocks: list) -> str:
+    """Flatten tool_result and other content blocks into plain text.
+
+    Handles nested tool_result structures, text blocks, and raw strings.
+    Uses ``json.dumps`` as fallback for dict blocks without a ``text`` key
+    or where ``text`` is ``None``.
+    """
+    str_parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "tool_result":
+            inner = block.get("content", "")
+            if isinstance(inner, list):
+                for sub in inner:
+                    if isinstance(sub, dict):
+                        text = sub.get("text")
+                        str_parts.append(
+                            str(text) if text is not None else json.dumps(sub)
+                        )
+                    else:
+                        str_parts.append(str(sub))
+            else:
+                str_parts.append(str(inner))
+        elif isinstance(block, dict) and block.get("type") == "text":
+            str_parts.append(str(block.get("text", "")))
+        elif isinstance(block, str):
+            str_parts.append(block)
+    return "\n".join(str_parts) if str_parts else ""
+
+
 def _transcript_to_messages(content: str) -> list[dict]:
     """Convert JSONL transcript entries to message dicts for compress_context."""
     messages: list[dict] = []
@@ -492,37 +538,9 @@ def _transcript_to_messages(content: str) -> list[dict]:
         msg_dict: dict = {"role": role}
         raw_content = msg.get("content")
         if role == "assistant" and isinstance(raw_content, list):
-            parts: list[str] = []
-            for block in raw_content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        parts.append(f"[tool_use: {block.get('name', '?')}]")
-                elif isinstance(block, str):
-                    parts.append(block)
-            msg_dict["content"] = "\n".join(parts) if parts else ""
+            msg_dict["content"] = _flatten_assistant_content(raw_content)
         elif isinstance(raw_content, list):
-            str_parts: list[str] = []
-            for block in raw_content:
-                if isinstance(block, dict) and block.get("type") == "tool_result":
-                    # Flatten tool_result content for summarisation;
-                    # tool_use_id pairing is not preserved through LLM
-                    # compaction — the compacted transcript uses fresh IDs.
-                    inner = block.get("content", "")
-                    if isinstance(inner, list):
-                        for sub in inner:
-                            if isinstance(sub, dict):
-                                str_parts.append(str(sub.get("text", json.dumps(sub))))
-                            else:
-                                str_parts.append(str(sub))
-                    else:
-                        str_parts.append(str(inner))
-                elif isinstance(block, dict) and block.get("type") == "text":
-                    str_parts.append(str(block.get("text", "")))
-                elif isinstance(block, str):
-                    str_parts.append(block)
-            msg_dict["content"] = "\n".join(str_parts) if str_parts else ""
+            msg_dict["content"] = _flatten_tool_result_content(raw_content)
         else:
             msg_dict["content"] = raw_content or ""
         messages.append(msg_dict)
@@ -572,18 +590,12 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
-    from backend.copilot.config import ChatConfig
-
     cfg = ChatConfig()
     messages = _transcript_to_messages(content)
     if len(messages) < 2:
         logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
         return None
     try:
-        import openai
-
-        from backend.util.prompt import compress_context
-
         try:
             async with openai.AsyncOpenAI(
                 api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
