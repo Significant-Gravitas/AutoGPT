@@ -20,6 +20,7 @@ from backend.api.features.store.embeddings import (
     embed_query,
     embedding_to_vector_string,
 )
+from backend.api.features.store.text_utils import split_camelcase
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
@@ -38,10 +39,7 @@ def tokenize(text: str) -> list[str]:
     """
     if not text:
         return []
-    from backend.api.features.store.text_utils import split_camelcase
-
-    tokens = re.findall(r"\b\w+\b", split_camelcase(text).lower())
-    return tokens
+    return re.findall(r"\b\w+\b", split_camelcase(text).lower())
 
 
 def bm25_rerank(
