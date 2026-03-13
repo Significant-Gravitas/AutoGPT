@@ -31,18 +31,16 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric.
+    """Simple tokenizer for BM25 — lowercase and split on word boundaries.
 
-    Also splits CamelCase tokens so that e.g. "AITextGeneratorBlock" yields
-    ["ai", "text", "generator", "block"] in addition to the original token,
-    improving recall for exact-term queries.
+    CamelCase is split first so "AITextGeneratorBlock" becomes
+    ``["ai", "text", "generator", "block"]``.
     """
     if not text:
         return []
-    # Split CamelCase before tokenizing so individual words are matchable
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
-    text = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", text)
-    tokens = re.findall(r"\b\w+\b", text.lower())
+    from backend.api.features.store.text_utils import split_camelcase
+
+    tokens = re.findall(r"\b\w+\b", split_camelcase(text).lower())
     return tokens
 
 
