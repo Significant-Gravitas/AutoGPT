@@ -76,6 +76,7 @@ from .tool_adapter import (
 )
 from .transcript import (
     cleanup_cli_project_dir,
+    compact_transcript,
     download_transcript,
     read_compacted_entries,
     upload_transcript,
@@ -83,6 +84,21 @@ from .transcript import (
     write_transcript_to_tempfile,
 )
 from .transcript_builder import TranscriptBuilder
+
+# Patterns that indicate a "prompt too long" / context-length error from the
+# Claude API.  Matched case-insensitively against the exception message.
+_PROMPT_TOO_LONG_PATTERNS = (
+    "prompt is too long",
+    "prompt_too_long",
+    "context_length_exceeded",
+)
+
+
+def _is_prompt_too_long(err: BaseException) -> bool:
+    """Return True if *err* indicates the prompt exceeded the context window."""
+    msg = str(err).lower()
+    return any(p in msg for p in _PROMPT_TOO_LONG_PATTERNS)
+
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -705,9 +721,11 @@ async def stream_chat_completion_sdk(
     stream_id = str(uuid.uuid4())
     stream_completed = False
     ended_with_stream_error = False
+    transcript_caused_error = False
     e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
+    transcript_content: str = ""
     transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
 
@@ -828,10 +846,13 @@ async def stream_chat_completion_sdk(
                 is_valid,
             )
             if is_valid:
+                transcript_content = dl.content
                 # Load previous FULL context into builder
-                transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
+                transcript_builder.load_previous(
+                    transcript_content, log_prefix=log_prefix
+                )
                 resume_file = write_transcript_to_tempfile(
-                    dl.content, session_id, sdk_cwd
+                    transcript_content, session_id, sdk_cwd
                 )
                 if resume_file:
                     use_resume = True
@@ -897,13 +918,6 @@ async def stream_chat_completion_sdk(
             sdk_options_kwargs["model"] = sdk_model
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
-        if use_resume and resume_file:
-            sdk_options_kwargs["resume"] = resume_file
-
-        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
-
-        adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-
         # Propagate user_id/session_id as OTEL context attributes so the
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
@@ -920,432 +934,533 @@ async def stream_chat_completion_sdk(
         )
         _otel_ctx.__enter__()
 
-        async with ClaudeSDKClient(options=options) as client:
-            current_message = message or ""
-            if not current_message and session.messages:
-                last_user = [m for m in session.messages if m.role == "user"]
-                if last_user:
-                    current_message = last_user[-1].content or ""
+        # Pre-compute message and attachments (reused across retry attempts).
+        current_message = message or ""
+        if not current_message and session.messages:
+            last_user = [m for m in session.messages if m.role == "user"]
+            if last_user:
+                current_message = last_user[-1].content or ""
 
-            if not current_message.strip():
-                yield StreamError(
-                    errorText="Message cannot be empty.",
-                    code="empty_prompt",
+        if not current_message.strip():
+            yield StreamError(
+                errorText="Message cannot be empty.",
+                code="empty_prompt",
+            )
+            return
+
+        attachments = await _prepare_file_attachments(
+            file_ids or [], user_id or "", session_id, sdk_cwd
+        )
+
+        # --- Retry loop for prompt-too-long errors ---
+        # Attempt 1: use transcript as-is with --resume
+        # Attempt 2: compact transcript, retry with --resume
+        # Attempt 3: drop transcript, use _build_query_message DB fallback
+        _MAX_QUERY_ATTEMPTS = 3
+        _prompt_too_long = False
+
+        for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
+            if _query_attempt > 0:
+                logger.warning(
+                    "%s Prompt too long (attempt %d/%d), %s",
+                    log_prefix,
+                    _query_attempt + 1,
+                    _MAX_QUERY_ATTEMPTS,
+                    (
+                        "compacting transcript"
+                        if transcript_content
+                        else "falling back to DB context"
+                    ),
                 )
-                return
+                if transcript_content:
+                    compacted = await compact_transcript(
+                        transcript_content, log_prefix=log_prefix
+                    )
+                    if compacted and compacted != transcript_content:
+                        transcript_content = compacted
+                        transcript_builder = TranscriptBuilder()
+                        transcript_builder.load_previous(
+                            compacted, log_prefix=log_prefix
+                        )
+                        resume_file = write_transcript_to_tempfile(
+                            compacted, session_id, sdk_cwd
+                        )
+                        if not resume_file:
+                            use_resume = False
+                    else:
+                        # Compaction failed or didn't reduce — drop transcript
+                        use_resume = False
+                        resume_file = None
+                        transcript_content = ""
+                        transcript_msg_count = 0
+                        transcript_builder = TranscriptBuilder()
+                else:
+                    # No transcript to compact — use DB fallback
+                    use_resume = False
+                    resume_file = None
+                    transcript_msg_count = 0
+                    transcript_builder = TranscriptBuilder()
 
-            query_message, was_compacted = await _build_query_message(
-                current_message,
-                session,
-                use_resume,
-                transcript_msg_count,
-                session_id,
-            )
-            # If files are attached, prepare them: images become vision
-            # content blocks in the user message, other files go to sdk_cwd.
-            attachments = await _prepare_file_attachments(
-                file_ids or [], user_id or "", session_id, sdk_cwd
-            )
-            if attachments.hint:
-                query_message = f"{query_message}\n\n{attachments.hint}"
+            # Build SDK options for this attempt
+            attempt_kwargs = dict(sdk_options_kwargs)
+            if use_resume and resume_file:
+                attempt_kwargs["resume"] = resume_file
+            options = ClaudeAgentOptions(**attempt_kwargs)  # type: ignore[arg-type]
 
-            logger.info(
-                "%s Sending query — resume=%s, total_msgs=%d, "
-                "query_len=%d, attached_files=%d, image_blocks=%d",
-                log_prefix,
-                use_resume,
-                len(session.messages),
-                len(query_message),
-                len(file_ids) if file_ids else 0,
-                len(attachments.image_blocks),
-            )
+            adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
 
-            compaction.reset_for_query()
-            if was_compacted:
-                for ev in compaction.emit_pre_query(session):
-                    yield ev
-
-            if attachments.image_blocks:
-                # Build multimodal content: image blocks + text
-                content_blocks: list[dict[str, Any]] = [
-                    *attachments.image_blocks,
-                    {"type": "text", "text": query_message},
-                ]
-                user_msg = {
-                    "type": "user",
-                    "message": {"role": "user", "content": content_blocks},
-                    "parent_tool_use_id": None,
-                    "session_id": session_id,
-                }
-                assert client._transport is not None  # noqa: SLF001
-                await client._transport.write(  # noqa: SLF001
-                    json.dumps(user_msg) + "\n"
-                )
-                # Capture user message in transcript (multimodal)
-                transcript_builder.append_user(content=content_blocks)
-            else:
-                await client.query(query_message, session_id=session_id)
-                # Capture actual user message in transcript (not the engineered query)
-                # query_message may include context wrappers, but transcript needs raw input
-                transcript_builder.append_user(content=current_message)
-
+            # Reset per-attempt state
+            _prompt_too_long = False
+            stream_completed = False
+            ended_with_stream_error = False
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []
             has_appended_assistant = False
             has_tool_results = False
-            ended_with_stream_error = False
-            # Use an explicit async iterator with non-cancelling heartbeats.
-            # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
-            # (via asyncio.timeout or wait_for) corrupts the SDK's internal
-            # anyio memory stream, causing StopAsyncIteration on the next
-            # call and silently dropping all in-flight tool results.
-            # Instead, wrap __anext__() in a Task and use asyncio.wait()
-            # with a timeout.  On timeout we emit a heartbeat but keep the
-            # Task alive so it can deliver the next message.
-            msg_iter = client.receive_response().__aiter__()
-            pending_task: asyncio.Task[Any] | None = None
-            try:
-                while not stream_completed:
-                    if pending_task is None:
 
-                        async def _next_msg() -> Any:
-                            return await msg_iter.__anext__()
+            async with ClaudeSDKClient(options=options) as client:
+                query_message, was_compacted = await _build_query_message(
+                    current_message,
+                    session,
+                    use_resume,
+                    transcript_msg_count,
+                    session_id,
+                )
+                if attachments.hint:
+                    query_message = f"{query_message}\n\n{attachments.hint}"
 
-                        pending_task = asyncio.create_task(_next_msg())
+                logger.info(
+                    "%s Sending query — resume=%s, total_msgs=%d, "
+                    "query_len=%d, attached_files=%d, image_blocks=%d",
+                    log_prefix,
+                    use_resume,
+                    len(session.messages),
+                    len(query_message),
+                    len(file_ids) if file_ids else 0,
+                    len(attachments.image_blocks),
+                )
 
-                    done, _ = await asyncio.wait(
-                        {pending_task}, timeout=_HEARTBEAT_INTERVAL
+                compaction.reset_for_query()
+                if was_compacted:
+                    for ev in compaction.emit_pre_query(session):
+                        yield ev
+
+                if attachments.image_blocks:
+                    # Build multimodal content: image blocks + text
+                    content_blocks: list[dict[str, Any]] = [
+                        *attachments.image_blocks,
+                        {"type": "text", "text": query_message},
+                    ]
+                    user_msg = {
+                        "type": "user",
+                        "message": {"role": "user", "content": content_blocks},
+                        "parent_tool_use_id": None,
+                        "session_id": session_id,
+                    }
+                    assert client._transport is not None  # noqa: SLF001
+                    await client._transport.write(  # noqa: SLF001
+                        json.dumps(user_msg) + "\n"
                     )
+                    # Capture user message in transcript (multimodal)
+                    transcript_builder.append_user(content=content_blocks)
+                else:
+                    await client.query(query_message, session_id=session_id)
+                    # Capture actual user message in transcript (not the engineered query)
+                    # query_message may include context wrappers, but transcript needs raw input
+                    transcript_builder.append_user(content=current_message)
 
-                    if not done:
-                        await lock.refresh()
-                        for ev in compaction.emit_start_if_ready():
-                            yield ev
-                        yield StreamHeartbeat()
-                        continue
+                assistant_response = ChatMessage(role="assistant", content="")
+                accumulated_tool_calls: list[dict[str, Any]] = []
+                has_appended_assistant = False
+                has_tool_results = False
+                ended_with_stream_error = False
+                # Use an explicit async iterator with non-cancelling heartbeats.
+                # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
+                # (via asyncio.timeout or wait_for) corrupts the SDK's internal
+                # anyio memory stream, causing StopAsyncIteration on the next
+                # call and silently dropping all in-flight tool results.
+                # Instead, wrap __anext__() in a Task and use asyncio.wait()
+                # with a timeout.  On timeout we emit a heartbeat but keep the
+                # Task alive so it can deliver the next message.
+                msg_iter = client.receive_response().__aiter__()
+                pending_task: asyncio.Task[Any] | None = None
+                try:
+                    while not stream_completed:
+                        if pending_task is None:
 
-                    # Task completed — get result
-                    pending_task = None
-                    try:
-                        sdk_msg = done.pop().result()
-                    except StopAsyncIteration:
-                        logger.info(
-                            "%s Stream ended normally (StopAsyncIteration)",
-                            log_prefix,
-                        )
-                        break
-                    except Exception as stream_err:
-                        # SDK sends {"type": "error"} which raises
-                        # Exception in receive_response() — capture it
-                        # so the session can still be saved and the
-                        # frontend gets a clean finish.
-                        logger.error(
-                            "%s Stream error from SDK: %s",
-                            log_prefix,
-                            stream_err,
-                            exc_info=True,
-                        )
-                        ended_with_stream_error = True
+                            async def _next_msg() -> Any:
+                                return await msg_iter.__anext__()
 
-                        yield StreamError(
-                            errorText=f"SDK stream error: {stream_err}",
-                            code="sdk_stream_error",
-                        )
-                        break
+                            pending_task = asyncio.create_task(_next_msg())
 
-                    logger.info(
-                        "%s Received: %s %s "
-                        "(unresolved=%d, current=%d, resolved=%d)",
-                        log_prefix,
-                        type(sdk_msg).__name__,
-                        getattr(sdk_msg, "subtype", ""),
-                        len(adapter.current_tool_calls)
-                        - len(adapter.resolved_tool_calls),
-                        len(adapter.current_tool_calls),
-                        len(adapter.resolved_tool_calls),
-                    )
-
-                    # Log AssistantMessage API errors (e.g. invalid_request)
-                    # so we can debug Anthropic API 400s surfaced by the CLI.
-                    sdk_error = getattr(sdk_msg, "error", None)
-                    if isinstance(sdk_msg, AssistantMessage) and sdk_error:
-                        logger.error(
-                            "[SDK] [%s] AssistantMessage has error=%s, "
-                            "content_blocks=%d, content_preview=%s",
-                            session_id[:12],
-                            sdk_error,
-                            len(sdk_msg.content),
-                            str(sdk_msg.content)[:500],
+                        done, _ = await asyncio.wait(
+                            {pending_task}, timeout=_HEARTBEAT_INTERVAL
                         )
 
-                    # Race-condition fix: SDK hooks (PostToolUse) are
-                    # executed asynchronously via start_soon() — the next
-                    # message can arrive before the hook stashes output.
-                    # wait_for_stash() awaits an asyncio.Event signaled by
-                    # stash_pending_tool_output(), completing as soon as
-                    # the hook finishes (typically <1ms).  The sleep(0)
-                    # after lets any remaining concurrent hooks complete.
-                    #
-                    # Skip for parallel tool continuations: when the SDK
-                    # sends parallel tool calls as separate
-                    # AssistantMessages (each containing only
-                    # ToolUseBlocks), we must NOT wait/flush — the prior
-                    # tools are still executing concurrently.
-                    is_parallel_continuation = isinstance(
-                        sdk_msg, AssistantMessage
-                    ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+                        if not done:
+                            await lock.refresh()
+                            for ev in compaction.emit_start_if_ready():
+                                yield ev
+                            yield StreamHeartbeat()
+                            continue
 
-                    if (
-                        adapter.has_unresolved_tool_calls
-                        and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
-                        and not is_parallel_continuation
-                    ):
-                        if await wait_for_stash(timeout=0.5):
-                            await asyncio.sleep(0)
-                        else:
-                            logger.warning(
-                                "%s Timed out waiting for "
-                                "PostToolUse hook stash "
-                                "(%d unresolved tool calls)",
+                        # Task completed — get result
+                        pending_task = None
+                        try:
+                            sdk_msg = done.pop().result()
+                        except StopAsyncIteration:
+                            logger.info(
+                                "%s Stream ended normally (StopAsyncIteration)",
                                 log_prefix,
-                                len(adapter.current_tool_calls)
-                                - len(adapter.resolved_tool_calls),
                             )
+                            break
+                        except Exception as stream_err:
+                            # SDK sends {"type": "error"} which raises
+                            # Exception in receive_response() — capture it
+                            # so the session can still be saved and the
+                            # frontend gets a clean finish.
+                            if _is_prompt_too_long(stream_err):
+                                logger.warning(
+                                    "%s Prompt too long on attempt %d: %s",
+                                    log_prefix,
+                                    _query_attempt + 1,
+                                    stream_err,
+                                )
+                                _prompt_too_long = True
+                            else:
+                                logger.error(
+                                    "%s Stream error from SDK: %s",
+                                    log_prefix,
+                                    stream_err,
+                                    exc_info=True,
+                                )
+                                ended_with_stream_error = True
+                                yield StreamError(
+                                    errorText=f"SDK stream error: {stream_err}",
+                                    code="sdk_stream_error",
+                                )
+                            break
 
-                    # Log ResultMessage details for debugging
-                    if isinstance(sdk_msg, ResultMessage):
                         logger.info(
-                            "%s Received: ResultMessage %s "
+                            "%s Received: %s %s "
                             "(unresolved=%d, current=%d, resolved=%d)",
                             log_prefix,
-                            sdk_msg.subtype,
+                            type(sdk_msg).__name__,
+                            getattr(sdk_msg, "subtype", ""),
                             len(adapter.current_tool_calls)
                             - len(adapter.resolved_tool_calls),
                             len(adapter.current_tool_calls),
                             len(adapter.resolved_tool_calls),
                         )
-                        if sdk_msg.subtype in ("error", "error_during_execution"):
+
+                        # Log AssistantMessage API errors (e.g. invalid_request)
+                        # so we can debug Anthropic API 400s surfaced by the CLI.
+                        sdk_error = getattr(sdk_msg, "error", None)
+                        if isinstance(sdk_msg, AssistantMessage) and sdk_error:
                             logger.error(
-                                "%s SDK execution failed with error: %s",
-                                log_prefix,
-                                sdk_msg.result or "(no error message provided)",
+                                "[SDK] [%s] AssistantMessage has error=%s, "
+                                "content_blocks=%d, content_preview=%s",
+                                session_id[:12],
+                                sdk_error,
+                                len(sdk_msg.content),
+                                str(sdk_msg.content)[:500],
                             )
 
-                    # Emit compaction end if SDK finished compacting.
-                    # When compaction ends, sync TranscriptBuilder with the
-                    # CLI's active context so they stay identical.
-                    compact_result = await compaction.emit_end_if_ready(session)
-                    for ev in compact_result.events:
-                        yield ev
-                    # After replace_entries, skip append_assistant for this
-                    # sdk_msg — the CLI session file already contains it,
-                    # so appending again would create a duplicate.
-                    entries_replaced = False
-                    if compact_result.just_ended:
-                        compacted = await asyncio.to_thread(
-                            read_compacted_entries,
-                            compact_result.transcript_path,
-                        )
-                        if compacted is not None:
-                            transcript_builder.replace_entries(
-                                compacted, log_prefix=log_prefix
-                            )
-                            entries_replaced = True
+                        # Race-condition fix: SDK hooks (PostToolUse) are
+                        # executed asynchronously via start_soon() — the next
+                        # message can arrive before the hook stashes output.
+                        # wait_for_stash() awaits an asyncio.Event signaled by
+                        # stash_pending_tool_output(), completing as soon as
+                        # the hook finishes (typically <1ms).  The sleep(0)
+                        # after lets any remaining concurrent hooks complete.
+                        #
+                        # Skip for parallel tool continuations: when the SDK
+                        # sends parallel tool calls as separate
+                        # AssistantMessages (each containing only
+                        # ToolUseBlocks), we must NOT wait/flush — the prior
+                        # tools are still executing concurrently.
+                        is_parallel_continuation = isinstance(
+                            sdk_msg, AssistantMessage
+                        ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
 
-                    for response in adapter.convert_message(sdk_msg):
-                        if isinstance(response, StreamStart):
-                            continue
-
-                        # Log tool events for debugging
-                        if isinstance(
-                            response,
-                            (
-                                StreamToolInputAvailable,
-                                StreamToolOutputAvailable,
-                            ),
+                        if (
+                            adapter.has_unresolved_tool_calls
+                            and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
+                            and not is_parallel_continuation
                         ):
-                            extra = ""
-                            if isinstance(response, StreamToolOutputAvailable):
-                                out_len = len(str(response.output))
-                                extra = f", output_len={out_len}"
-                            logger.info(
-                                "%s Tool event: %s, tool=%s%s",
-                                log_prefix,
-                                type(response).__name__,
-                                getattr(response, "toolName", "N/A"),
-                                extra,
-                            )
-
-                        # Log errors being sent to frontend
-                        if isinstance(response, StreamError):
-                            logger.error(
-                                "%s Sending error to frontend: %s (code=%s)",
-                                log_prefix,
-                                response.errorText,
-                                response.code,
-                            )
-
-                        yield response
-
-                        if isinstance(response, StreamTextDelta):
-                            delta = response.delta or ""
-                            # After tool results, start a new assistant
-                            # message for the post-tool text.
-                            if has_tool_results and has_appended_assistant:
-                                assistant_response = ChatMessage(
-                                    role="assistant", content=delta
-                                )
-                                accumulated_tool_calls = []
-                                has_appended_assistant = False
-                                has_tool_results = False
-                                session.messages.append(assistant_response)
-                                has_appended_assistant = True
+                            if await wait_for_stash(timeout=0.5):
+                                await asyncio.sleep(0)
                             else:
-                                assistant_response.content = (
-                                    assistant_response.content or ""
-                                ) + delta
+                                logger.warning(
+                                    "%s Timed out waiting for "
+                                    "PostToolUse hook stash "
+                                    "(%d unresolved tool calls)",
+                                    log_prefix,
+                                    len(adapter.current_tool_calls)
+                                    - len(adapter.resolved_tool_calls),
+                                )
+
+                        # Log ResultMessage details for debugging
+                        if isinstance(sdk_msg, ResultMessage):
+                            logger.info(
+                                "%s Received: ResultMessage %s "
+                                "(unresolved=%d, current=%d, resolved=%d)",
+                                log_prefix,
+                                sdk_msg.subtype,
+                                len(adapter.current_tool_calls)
+                                - len(adapter.resolved_tool_calls),
+                                len(adapter.current_tool_calls),
+                                len(adapter.resolved_tool_calls),
+                            )
+                            if sdk_msg.subtype in ("error", "error_during_execution"):
+                                logger.error(
+                                    "%s SDK execution failed with error: %s",
+                                    log_prefix,
+                                    sdk_msg.result or "(no error message provided)",
+                                )
+
+                        # Emit compaction end if SDK finished compacting.
+                        # When compaction ends, sync TranscriptBuilder with the
+                        # CLI's active context so they stay identical.
+                        compact_result = await compaction.emit_end_if_ready(session)
+                        for ev in compact_result.events:
+                            yield ev
+                        # After replace_entries, skip append_assistant for this
+                        # sdk_msg — the CLI session file already contains it,
+                        # so appending again would create a duplicate.
+                        entries_replaced = False
+                        if compact_result.just_ended:
+                            compacted = await asyncio.to_thread(
+                                read_compacted_entries,
+                                compact_result.transcript_path,
+                            )
+                            if compacted is not None:
+                                transcript_builder.replace_entries(
+                                    compacted, log_prefix=log_prefix
+                                )
+                                entries_replaced = True
+
+                        for response in adapter.convert_message(sdk_msg):
+                            if isinstance(response, StreamStart):
+                                continue
+
+                            # Log tool events for debugging
+                            if isinstance(
+                                response,
+                                (
+                                    StreamToolInputAvailable,
+                                    StreamToolOutputAvailable,
+                                ),
+                            ):
+                                extra = ""
+                                if isinstance(response, StreamToolOutputAvailable):
+                                    out_len = len(str(response.output))
+                                    extra = f", output_len={out_len}"
+                                logger.info(
+                                    "%s Tool event: %s, tool=%s%s",
+                                    log_prefix,
+                                    type(response).__name__,
+                                    getattr(response, "toolName", "N/A"),
+                                    extra,
+                                )
+
+                            # Log errors being sent to frontend
+                            if isinstance(response, StreamError):
+                                logger.error(
+                                    "%s Sending error to frontend: %s (code=%s)",
+                                    log_prefix,
+                                    response.errorText,
+                                    response.code,
+                                )
+
+                            yield response
+
+                            if isinstance(response, StreamTextDelta):
+                                delta = response.delta or ""
+                                # After tool results, start a new assistant
+                                # message for the post-tool text.
+                                if has_tool_results and has_appended_assistant:
+                                    assistant_response = ChatMessage(
+                                        role="assistant", content=delta
+                                    )
+                                    accumulated_tool_calls = []
+                                    has_appended_assistant = False
+                                    has_tool_results = False
+                                    session.messages.append(assistant_response)
+                                    has_appended_assistant = True
+                                else:
+                                    assistant_response.content = (
+                                        assistant_response.content or ""
+                                    ) + delta
+                                    if not has_appended_assistant:
+                                        session.messages.append(assistant_response)
+                                        has_appended_assistant = True
+
+                            elif isinstance(response, StreamToolInputAvailable):
+                                accumulated_tool_calls.append(
+                                    {
+                                        "id": response.toolCallId,
+                                        "type": "function",
+                                        "function": {
+                                            "name": response.toolName,
+                                            "arguments": json.dumps(
+                                                response.input or {}
+                                            ),
+                                        },
+                                    }
+                                )
+                                assistant_response.tool_calls = accumulated_tool_calls
                                 if not has_appended_assistant:
                                     session.messages.append(assistant_response)
                                     has_appended_assistant = True
 
-                        elif isinstance(response, StreamToolInputAvailable):
-                            accumulated_tool_calls.append(
-                                {
-                                    "id": response.toolCallId,
-                                    "type": "function",
-                                    "function": {
-                                        "name": response.toolName,
-                                        "arguments": json.dumps(response.input or {}),
-                                    },
-                                }
-                            )
-                            assistant_response.tool_calls = accumulated_tool_calls
-                            if not has_appended_assistant:
-                                session.messages.append(assistant_response)
-                                has_appended_assistant = True
-
-                        elif isinstance(response, StreamToolOutputAvailable):
-                            content = (
-                                response.output
-                                if isinstance(response.output, str)
-                                else json.dumps(response.output, ensure_ascii=False)
-                            )
-                            session.messages.append(
-                                ChatMessage(
-                                    role="tool",
-                                    content=content,
-                                    tool_call_id=response.toolCallId,
+                            elif isinstance(response, StreamToolOutputAvailable):
+                                content = (
+                                    response.output
+                                    if isinstance(response.output, str)
+                                    else json.dumps(response.output, ensure_ascii=False)
                                 )
-                            )
-                            if not entries_replaced:
-                                transcript_builder.append_tool_result(
-                                    tool_use_id=response.toolCallId,
-                                    content=content,
+                                session.messages.append(
+                                    ChatMessage(
+                                        role="tool",
+                                        content=content,
+                                        tool_call_id=response.toolCallId,
+                                    )
                                 )
-                            has_tool_results = True
+                                if not entries_replaced:
+                                    transcript_builder.append_tool_result(
+                                        tool_use_id=response.toolCallId,
+                                        content=content,
+                                    )
+                                has_tool_results = True
 
-                        elif isinstance(response, StreamFinish):
-                            stream_completed = True
+                            elif isinstance(response, StreamFinish):
+                                stream_completed = True
 
-                    # Append assistant entry AFTER convert_message so that
-                    # any stashed tool results from the previous turn are
-                    # recorded first, preserving the required API order:
-                    # assistant(tool_use) → tool_result → assistant(text).
-                    # Skip if replace_entries just ran — the CLI session
-                    # file already contains this message.
-                    if isinstance(sdk_msg, AssistantMessage) and not entries_replaced:
-                        transcript_builder.append_assistant(
-                            content_blocks=_format_sdk_content_blocks(sdk_msg.content),
-                            model=sdk_msg.model,
-                        )
+                        # Append assistant entry AFTER convert_message so that
+                        # any stashed tool results from the previous turn are
+                        # recorded first, preserving the required API order:
+                        # assistant(tool_use) → tool_result → assistant(text).
+                        # Skip if replace_entries just ran — the CLI session
+                        # file already contains this message.
+                        if (
+                            isinstance(sdk_msg, AssistantMessage)
+                            and not entries_replaced
+                        ):
+                            transcript_builder.append_assistant(
+                                content_blocks=_format_sdk_content_blocks(
+                                    sdk_msg.content
+                                ),
+                                model=sdk_msg.model,
+                            )
 
-            except asyncio.CancelledError:
-                # Task/generator was cancelled (e.g. client disconnect,
-                # server shutdown).  Log and let the safety-net / finally
-                # blocks handle cleanup.
-                logger.warning(
-                    "%s Streaming loop cancelled (asyncio.CancelledError)",
-                    log_prefix,
-                )
-                raise
-            finally:
-                # Cancel the pending __anext__ task to avoid a leaked
-                # coroutine.  This is safe even if the task already
-                # completed.
-                if pending_task is not None and not pending_task.done():
-                    pending_task.cancel()
-                    try:
-                        await pending_task
-                    except (asyncio.CancelledError, StopAsyncIteration):
-                        # Expected: task was cancelled or exhausted during cleanup
-                        logger.info(
-                            "%s Pending __anext__ task completed during cleanup",
-                            log_prefix,
-                        )
-
-            # Safety net: if tools are still unresolved after the
-            # streaming loop (e.g. StopAsyncIteration before ResultMessage,
-            # or SDK not sending UserMessages for built-in tools), flush
-            # them now so the frontend stops showing spinners.
-            if adapter.has_unresolved_tool_calls:
-                logger.warning(
-                    "%s %d unresolved tool(s) after stream loop — "
-                    "flushing as safety net",
-                    log_prefix,
-                    len(adapter.current_tool_calls) - len(adapter.resolved_tool_calls),
-                )
-                safety_responses: list[StreamBaseResponse] = []
-                adapter._flush_unresolved_tool_calls(safety_responses)
-                for response in safety_responses:
-                    if isinstance(
-                        response,
-                        (StreamToolInputAvailable, StreamToolOutputAvailable),
-                    ):
-                        logger.info(
-                            "%s Safety flush: %s, tool=%s",
-                            log_prefix,
-                            type(response).__name__,
-                            getattr(response, "toolName", "N/A"),
-                        )
-                    if isinstance(response, StreamToolOutputAvailable):
-                        transcript_builder.append_tool_result(
-                            tool_use_id=response.toolCallId,
-                            content=(
-                                response.output
-                                if isinstance(response.output, str)
-                                else json.dumps(response.output, ensure_ascii=False)
-                            ),
-                        )
-                    yield response
-
-            # If the stream ended without a ResultMessage, the SDK
-            # CLI exited unexpectedly or the user stopped execution.
-            # Close any open text/step so chunks are well-formed, and
-            # append a cancellation message so users see feedback.
-            # StreamFinish is published by mark_session_completed in the processor.
-            if not stream_completed and not ended_with_stream_error:
-                logger.info(
-                    "%s Stream ended without ResultMessage (stopped by user)",
-                    log_prefix,
-                )
-                closing_responses: list[StreamBaseResponse] = []
-                adapter._end_text_if_open(closing_responses)
-                for r in closing_responses:
-                    yield r
-
-                # Add "Stopped by user" message so it persists after refresh
-                # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
-                session.messages.append(
-                    ChatMessage(
-                        role="assistant",
-                        content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+                except asyncio.CancelledError:
+                    # Task/generator was cancelled (e.g. client disconnect,
+                    # server shutdown).  Log and let the safety-net / finally
+                    # blocks handle cleanup.
+                    logger.warning(
+                        "%s Streaming loop cancelled (asyncio.CancelledError)",
+                        log_prefix,
                     )
-                )
+                    raise
+                finally:
+                    # Cancel the pending __anext__ task to avoid a leaked
+                    # coroutine.  This is safe even if the task already
+                    # completed.
+                    if pending_task is not None and not pending_task.done():
+                        pending_task.cancel()
+                        try:
+                            await pending_task
+                        except (asyncio.CancelledError, StopAsyncIteration):
+                            # Expected: task was cancelled or exhausted during cleanup
+                            logger.info(
+                                "%s Pending __anext__ task completed during cleanup",
+                                log_prefix,
+                            )
 
-            if (
-                assistant_response.content or assistant_response.tool_calls
-            ) and not has_appended_assistant:
-                session.messages.append(assistant_response)
+                # On prompt-too-long, skip post-stream processing — the retry
+                # loop will either compact and retry, or exhaust attempts.
+                if _prompt_too_long:
+                    continue  # goes to next iteration of for _query_attempt
+
+                # Safety net: if tools are still unresolved after the
+                # streaming loop (e.g. StopAsyncIteration before ResultMessage,
+                # or SDK not sending UserMessages for built-in tools), flush
+                # them now so the frontend stops showing spinners.
+                if adapter.has_unresolved_tool_calls:
+                    logger.warning(
+                        "%s %d unresolved tool(s) after stream loop — "
+                        "flushing as safety net",
+                        log_prefix,
+                        len(adapter.current_tool_calls)
+                        - len(adapter.resolved_tool_calls),
+                    )
+                    safety_responses: list[StreamBaseResponse] = []
+                    adapter._flush_unresolved_tool_calls(safety_responses)
+                    for response in safety_responses:
+                        if isinstance(
+                            response,
+                            (StreamToolInputAvailable, StreamToolOutputAvailable),
+                        ):
+                            logger.info(
+                                "%s Safety flush: %s, tool=%s",
+                                log_prefix,
+                                type(response).__name__,
+                                getattr(response, "toolName", "N/A"),
+                            )
+                        if isinstance(response, StreamToolOutputAvailable):
+                            transcript_builder.append_tool_result(
+                                tool_use_id=response.toolCallId,
+                                content=(
+                                    response.output
+                                    if isinstance(response.output, str)
+                                    else json.dumps(response.output, ensure_ascii=False)
+                                ),
+                            )
+                        yield response
+
+                # If the stream ended without a ResultMessage, the SDK
+                # CLI exited unexpectedly or the user stopped execution.
+                # Close any open text/step so chunks are well-formed, and
+                # append a cancellation message so users see feedback.
+                # StreamFinish is published by mark_session_completed in the processor.
+                if not stream_completed and not ended_with_stream_error:
+                    logger.info(
+                        "%s Stream ended without ResultMessage (stopped by user)",
+                        log_prefix,
+                    )
+                    closing_responses: list[StreamBaseResponse] = []
+                    adapter._end_text_if_open(closing_responses)
+                    for r in closing_responses:
+                        yield r
+
+                    # Add "Stopped by user" message so it persists after refresh
+                    # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
+                    session.messages.append(
+                        ChatMessage(
+                            role="assistant",
+                            content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+                        )
+                    )
+
+                if (
+                    assistant_response.content or assistant_response.tool_calls
+                ) and not has_appended_assistant:
+                    session.messages.append(assistant_response)
+
+            # --- End of async with ClaudeSDKClient ---
+
+            if not _prompt_too_long:
+                break  # Success or non-retriable error — exit retry loop
+
+        # All retry attempts exhausted with prompt-too-long
+        if _prompt_too_long:
+            transcript_caused_error = True
+            ended_with_stream_error = True
+            yield StreamError(
+                errorText="Prompt too long after compaction and fallback attempts",
+                code="prompt_too_long",
+            )
 
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
@@ -1447,7 +1562,16 @@ async def stream_chat_completion_sdk(
         # TranscriptBuilder is the single source of truth.  It mirrors the
         # CLI's active context: on compaction, replace_entries() syncs it
         # with the compacted session file.  No CLI file read needed here.
-        if config.claude_agent_use_resume and user_id and session is not None:
+        # Skip upload if the transcript caused a prompt-too-long error —
+        # re-uploading a problematic transcript would cause the next turn
+        # to fail identically.
+        if transcript_caused_error:
+            logger.warning(
+                "%s Skipping transcript upload — transcript caused "
+                "prompt-too-long error",
+                log_prefix,
+            )
+        elif config.claude_agent_use_resume and user_id and session is not None:
             try:
                 transcript_content = transcript_builder.to_jsonl()
                 entry_count = transcript_builder.entry_count
