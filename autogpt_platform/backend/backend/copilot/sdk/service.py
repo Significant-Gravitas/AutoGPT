@@ -282,7 +282,7 @@ def _make_sdk_cwd(session_id: str) -> str:
 _STALE_PROJECT_DIR_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
 
-def _cleanup_sdk_tool_results(cwd: str) -> None:
+async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
     Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
@@ -292,6 +292,9 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     This prevents unbounded disk growth while preserving tool-result files
     needed by recent ``--resume`` turns.
 
+    All synchronous filesystem work is offloaded to a thread to avoid
+    blocking the event loop during async stream cleanup.
+
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
@@ -300,14 +303,17 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
 
-    # Clean up the temp cwd directory itself.
-    try:
-        shutil.rmtree(normalized, ignore_errors=True)
-    except OSError:
-        pass
+    def _sync_cleanup() -> None:
+        # Clean up the temp cwd directory itself.
+        try:
+            shutil.rmtree(normalized, ignore_errors=True)
+        except OSError:
+            pass
 
-    # Sweep stale conversation dirs under the CLI project directory.
-    _sweep_stale_project_dirs()
+        # Sweep stale conversation dirs under the CLI project directory.
+        _sweep_stale_project_dirs()
+
+    await asyncio.to_thread(_sync_cleanup)
 
 
 def _sweep_stale_project_dirs() -> None:
@@ -1517,7 +1523,7 @@ async def stream_chat_completion_sdk(
                 )
 
         if sdk_cwd:
-            _cleanup_sdk_tool_results(sdk_cwd)
+            await _cleanup_sdk_tool_results(sdk_cwd)
 
         # Release stream lock to allow new streams for this session
         await lock.release()
