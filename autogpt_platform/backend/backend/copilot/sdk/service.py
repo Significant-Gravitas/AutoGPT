@@ -1059,6 +1059,9 @@ async def stream_chat_completion_sdk(
                             and use_resume
                             and user_id
                         ):
+                            # Set before await so cancellation during delete
+                            # cannot allow re-upload of an oversized transcript.
+                            skip_transcript_upload = True
                             logger.warning(
                                 "%s Prompt too long with --resume — deleting "
                                 "oversized transcript for session %s",
@@ -1073,9 +1076,6 @@ async def stream_chat_completion_sdk(
                                     log_prefix,
                                     del_err,
                                 )
-                            # Prevent the finally block from re-uploading the
-                            # same oversized transcript.
-                            skip_transcript_upload = True
 
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
