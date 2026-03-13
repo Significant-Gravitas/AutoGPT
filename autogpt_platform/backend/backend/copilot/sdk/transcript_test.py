@@ -510,8 +510,9 @@ class TestReadCompactedEntries:
         assert result is not None
         assert len(result) == 2  # summary + post-compact assistant
 
-    def test_multiple_compact_summaries_uses_first(self, tmp_path, monkeypatch):
-        """When multiple isCompactSummary entries exist, uses the first one."""
+    def test_multiple_compact_summaries_uses_last(self, tmp_path, monkeypatch):
+        """When multiple isCompactSummary entries exist, uses the last one
+        (most recent compaction)."""
         config_dir = tmp_path / "config"
         projects_dir = config_dir / "projects"
         session_dir = projects_dir / "proj"
@@ -529,9 +530,9 @@ class TestReadCompactedEntries:
 
         result = read_compacted_entries(str(path))
         assert result is not None
-        # First summary found, so all 3 entries returned
-        assert len(result) == 3
-        assert result[0]["uuid"] == "cs1"
+        # Last summary found, so only cs2 returned
+        assert len(result) == 1
+        assert result[0]["uuid"] == "cs2"
 
     def test_path_outside_projects_base_returns_none(self, tmp_path, monkeypatch):
         """Transcript path outside the projects directory is rejected."""
@@ -622,13 +623,14 @@ class TestTranscriptBuilderReplaceEntries:
         entries = [json.loads(line) for line in output.strip().split("\n")]
         assert entries[-1]["parentUuid"] == "a1"
 
-    def test_empty_entries_list(self):
-        """Replacing with empty list clears all entries."""
+    def test_empty_entries_list_keeps_existing(self):
+        """Replacing with empty list keeps existing entries (safety check)."""
         builder = TranscriptBuilder()
         builder.append_user("hello")
         builder.replace_entries([])
-        assert builder.entry_count == 0
-        assert builder.is_empty
+        # Empty input is treated as corrupt — existing entries preserved
+        assert builder.entry_count == 1
+        assert not builder.is_empty
 
 
 # --- TranscriptBuilder.load_previous with compacted content ---

@@ -53,6 +53,23 @@ class TranscriptBuilder:
             return self._entries[-1].message.get("id", "")
         return ""
 
+    @staticmethod
+    def _parse_entry(data: dict) -> TranscriptEntry | None:
+        """Parse a single transcript entry, filtering strippable types.
+
+        Returns ``None`` for entries that should be skipped (strippable types
+        that are not compaction summaries).
+        """
+        entry_type = data.get("type", "")
+        if entry_type in STRIPPABLE_TYPES and not data.get("isCompactSummary"):
+            return None
+        return TranscriptEntry(
+            type=entry_type,
+            uuid=data.get("uuid") or str(uuid4()),
+            parentUuid=data.get("parentUuid"),
+            message=data.get("message", {}),
+        )
+
     def load_previous(self, content: str, log_prefix: str = "[Transcript]") -> None:
         """Load complete previous transcript.
 
@@ -78,19 +95,9 @@ class TranscriptBuilder:
                 )
                 continue
 
-            # Load all non-strippable entries (user/assistant/system/etc.)
-            # Skip only STRIPPABLE_TYPES to match strip_progress_entries() behavior
-            # but preserve isCompactSummary entries (compacted context from CLI)
-            entry_type = data.get("type", "")
-            if entry_type in STRIPPABLE_TYPES and not data.get("isCompactSummary"):
+            entry = self._parse_entry(data)
+            if entry is None:
                 continue
-
-            entry = TranscriptEntry(
-                type=data["type"],
-                uuid=data.get("uuid") or str(uuid4()),
-                parentUuid=data.get("parentUuid"),
-                message=data.get("message", {}),
-            )
             self._entries.append(entry)
             self._last_uuid = entry.uuid
 
@@ -170,24 +177,28 @@ class TranscriptBuilder:
 
         Called after mid-stream compaction so TranscriptBuilder mirrors the
         CLI's active context (compaction summary + post-compaction entries).
+
+        Builds the new list first and validates it's non-empty before swapping,
+        so corrupt input cannot wipe the conversation history.
         """
-        old_count = len(self._entries)
-        self._entries.clear()
-        self._last_uuid = None
-
+        new_entries: list[TranscriptEntry] = []
         for data in compacted_entries:
-            entry_type = data.get("type", "")
-            if entry_type in STRIPPABLE_TYPES and not data.get("isCompactSummary"):
-                continue
+            entry = self._parse_entry(data)
+            if entry is not None:
+                new_entries.append(entry)
 
-            entry = TranscriptEntry(
-                type=entry_type,
-                uuid=data.get("uuid") or str(uuid4()),
-                parentUuid=data.get("parentUuid"),
-                message=data.get("message", {}),
+        if not new_entries:
+            logger.warning(
+                "%s replace_entries produced 0 entries from %d inputs, keeping old (%d entries)",
+                log_prefix,
+                len(compacted_entries),
+                len(self._entries),
             )
-            self._entries.append(entry)
-            self._last_uuid = entry.uuid
+            return
+
+        old_count = len(self._entries)
+        self._entries = new_entries
+        self._last_uuid = new_entries[-1].uuid
 
         logger.info(
             "%s TranscriptBuilder compacted: %d entries -> %d entries",

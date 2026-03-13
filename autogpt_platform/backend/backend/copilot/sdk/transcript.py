@@ -84,7 +84,11 @@ def strip_progress_entries(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if entry.get("type", "") in STRIPPABLE_TYPES and uid:
+        if (
+            entry.get("type", "") in STRIPPABLE_TYPES
+            and uid
+            and not entry.get("isCompactSummary")
+        ):
             stripped_uuids.add(uid)
 
     # Second pass: keep non-stripped entries, reparenting where needed.
@@ -108,7 +112,9 @@ def strip_progress_entries(content: str) -> str:
         if not isinstance(entry, dict):
             result_lines.append(line)
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES:
+        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
+            "isCompactSummary"
+        ):
             continue
         uid = entry.get("uuid", "")
         if uid in reparented:
@@ -139,14 +145,19 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
+def _projects_base() -> str:
+    """Return the resolved path to the CLI's projects directory."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    return os.path.realpath(os.path.join(config_dir, "projects"))
+
+
 def _cli_project_dir(sdk_cwd: str) -> str | None:
     """Return the CLI's project directory for a given working directory.
 
     Returns ``None`` if the path would escape the projects base.
     """
     cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    projects_base = _projects_base()
     project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
 
     if not project_dir.startswith(projects_base + os.sep):
@@ -195,8 +206,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
     if not transcript_path:
         return None
 
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    projects_base = _projects_base()
     real_path = os.path.realpath(transcript_path)
     if not real_path.startswith(projects_base + os.sep):
         logger.warning(
@@ -222,8 +232,7 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         if not isinstance(entry, dict):
             continue
         if entry.get("isCompactSummary"):
-            compact_idx = idx
-            break
+            compact_idx = idx  # don't break — find the LAST summary
 
     if compact_idx is None:
         logger.debug("[Transcript] No compaction summary found in %s", transcript_path)
@@ -397,24 +406,27 @@ def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, s
     )
 
 
-def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
-    """Build the full storage path string that ``retrieve()`` expects.
-
-    ``store()`` returns a path like ``gcs://bucket/workspaces/...`` or
-    ``local://workspace_id/file_id/filename``.  Since we use deterministic
-    arguments we can reconstruct the same path for download/delete without
-    having stored the return value.
-    """
+def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
+    """Build a full storage path from (workspace_id, file_id, filename) parts."""
     from backend.util.workspace_storage import GCSWorkspaceStorage
 
-    wid, fid, fname = _storage_path_parts(user_id, session_id)
-
+    wid, fid, fname = parts
     if isinstance(backend, GCSWorkspaceStorage):
         blob = f"workspaces/{wid}/{fid}/{fname}"
         return f"gcs://{backend.bucket_name}/{blob}"
-    else:
-        # LocalWorkspaceStorage returns local://{relative_path}
-        return f"local://{wid}/{fid}/{fname}"
+    return f"local://{wid}/{fid}/{fname}"
+
+
+def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
+    """Build the full storage path string that ``retrieve()`` expects."""
+    return _build_path_from_parts(_storage_path_parts(user_id, session_id), backend)
+
+
+def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> str:
+    """Build the full storage path for the companion .meta.json file."""
+    return _build_path_from_parts(
+        _meta_storage_path_parts(user_id, session_id), backend
+    )
 
 
 async def upload_transcript(
@@ -519,15 +531,7 @@ async def download_transcript(
     message_count = 0
     uploaded_at = 0.0
     try:
-        from backend.util.workspace_storage import GCSWorkspaceStorage
-
-        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
-        if isinstance(storage, GCSWorkspaceStorage):
-            blob = f"workspaces/{mwid}/{mfid}/{mfname}"
-            meta_path = f"gcs://{storage.bucket_name}/{blob}"
-        else:
-            meta_path = f"local://{mwid}/{mfid}/{mfname}"
-
+        meta_path = _build_meta_storage_path(user_id, session_id, storage)
         meta_data = await storage.retrieve(meta_path)
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
@@ -549,10 +553,7 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
     Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
     so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
     """
-    from backend.util.workspace_storage import (
-        GCSWorkspaceStorage,
-        get_workspace_storage,
-    )
+    from backend.util.workspace_storage import get_workspace_storage
 
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
@@ -565,12 +566,7 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
 
     # Also delete the companion .meta.json to avoid orphaned metadata.
     try:
-        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
-        if isinstance(storage, GCSWorkspaceStorage):
-            blob = f"workspaces/{mwid}/{mfid}/{mfname}"
-            meta_path = f"gcs://{storage.bucket_name}/{blob}"
-        else:
-            meta_path = f"local://{mwid}/{mfid}/{mfname}"
+        meta_path = _build_meta_storage_path(user_id, session_id, storage)
         await storage.delete(meta_path)
         logger.info("[Transcript] Deleted metadata for session %s", session_id)
     except Exception as e:

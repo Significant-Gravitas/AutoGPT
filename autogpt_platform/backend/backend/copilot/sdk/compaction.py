@@ -11,6 +11,7 @@ persistence, and the ``CompactionTracker`` state machine.
 import asyncio
 import logging
 import uuid
+from dataclasses import dataclass, field
 
 from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from ..model import ChatMessage, ChatSession
@@ -24,6 +25,19 @@ from ..response_model import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CompactionResult:
+    """Result of emit_end_if_ready — bundles events with compaction metadata.
+
+    Eliminates the need for separate ``compaction_just_ended`` checks,
+    preventing TOCTOU races between the emit call and the flag read.
+    """
+
+    events: list[StreamBaseResponse] = field(default_factory=list)
+    just_ended: bool = False
+    transcript_path: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -178,25 +192,18 @@ class CompactionTracker:
         self._tool_call_id = ""
         self._transcript_path: str = ""
 
-    @property
-    def transcript_path(self) -> str:
-        """Path to the CLI session file, captured from PreCompact hook."""
-        return self._transcript_path
-
-    @property
-    def compaction_just_ended(self) -> bool:
-        """One-shot: returns True once after a compaction cycle completes.
-
-        The flag resets after being read so subsequent compactions within the
-        same query are detected correctly.
-        """
-        if self._done:
-            self._done = False
-            return True
-        return False
-
     def on_compact(self, transcript_path: str = "") -> None:
         """Callback for the PreCompact hook. Stores transcript_path."""
+        if (
+            self._transcript_path
+            and transcript_path
+            and self._transcript_path != transcript_path
+        ):
+            logger.warning(
+                "[Compaction] Overwriting transcript_path %s -> %s",
+                self._transcript_path,
+                transcript_path,
+            )
         self._transcript_path = transcript_path
         self._compact_start.set()
 
@@ -229,15 +236,20 @@ class CompactionTracker:
             return _start_events(self._tool_call_id)
         return []
 
-    async def emit_end_if_ready(self, session: ChatSession) -> list[StreamBaseResponse]:
-        """If compaction is in progress, emit end events and persist."""
+    async def emit_end_if_ready(self, session: ChatSession) -> CompactionResult:
+        """If compaction is in progress, emit end events and persist.
+
+        Returns a ``CompactionResult`` with ``just_ended=True`` and the
+        captured ``transcript_path`` when a compaction cycle completes.
+        This avoids a separate flag check (TOCTOU-safe).
+        """
         # Yield so pending hook tasks can set compact_start
         await asyncio.sleep(0)
 
         if self._done:
-            return []
+            return CompactionResult()
         if not self._start_emitted and not self._compact_start.is_set():
-            return []
+            return CompactionResult()
 
         if self._start_emitted:
             # Close the open spinner
@@ -250,8 +262,12 @@ class CompactionTracker:
                 COMPACTION_DONE_MSG, tool_call_id=persist_id
             )
 
+        transcript_path = self._transcript_path
         self._compact_start.clear()
         self._start_emitted = False
         self._done = True
+        self._transcript_path = ""
         _persist(session, persist_id, COMPACTION_DONE_MSG)
-        return done_events
+        return CompactionResult(
+            events=done_events, just_ended=True, transcript_path=transcript_path
+        )

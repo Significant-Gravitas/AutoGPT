@@ -302,7 +302,12 @@ def create_security_hooks(
             """
             _ = context, tool_use_id
             trigger = input_data.get("trigger", "auto")
-            transcript_path = input_data.get("transcript_path", "")
+            # Sanitize untrusted input before logging to prevent log injection
+            transcript_path = (
+                str(input_data.get("transcript_path", ""))
+                .replace("\n", "")
+                .replace("\r", "")
+            )
             logger.info(
                 "[SDK] Context compaction triggered: %s, user=%s, "
                 "transcript_path=%s",
