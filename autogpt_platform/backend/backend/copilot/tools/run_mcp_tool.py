@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 _AUTH_STATUS_CODES = {401, 403}
 
 
+def _looks_like_html(text: str) -> bool:
+    """Detect if an error body is an HTML page rather than a plain-text message."""
+    lower = text.lower()
+    return "<!doctype" in lower or "<html" in lower or "</html>" in lower
+
+
 def _service_name(host: str) -> str:
     """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
     return host[4:] if host.startswith("mcp.") else host
@@ -185,8 +191,21 @@ class RunMCPToolTool(BaseTool):
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
             logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
+            # Sanitize error: strip HTML bodies (e.g. raw 404 pages) to avoid
+            # dumping entire HTML documents into the agent/user-facing message.
+            error_body = str(e)
+            if _looks_like_html(error_body):
+                error_msg = (
+                    f"MCP server at {server_host(server_url)} returned HTTP "
+                    f"{e.status_code}. "
+                    "This URL does not appear to host an MCP server."
+                )
+            else:
+                error_msg = (
+                    f"MCP server returned HTTP {e.status_code}: " f"{error_body[:200]}"
+                )
             return ErrorResponse(
-                message=f"MCP server returned HTTP {e.status_code}: {e}",
+                message=error_msg,
                 session_id=session_id,
             )
 
