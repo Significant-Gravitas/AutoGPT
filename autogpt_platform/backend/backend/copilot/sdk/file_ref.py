@@ -302,19 +302,26 @@ def _is_tabular(parsed: Any) -> bool:
 
 
 def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
-    """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...]."""
+    """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...].
+
+    Ragged rows (fewer columns than the header) get None for missing values.
+    """
     header = parsed[0]
     return [
-        {header[i]: row[i] for i in range(len(header)) if i < len(row)}
+        {header[i]: (row[i] if i < len(row) else None) for i in range(len(header))}
         for row in parsed[1:]
     ]
 
 
 def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
-    """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}."""
+    """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}.
+
+    Ragged rows (fewer columns than the header) get None for missing values,
+    ensuring all columns have equal length.
+    """
     header = parsed[0]
     return {
-        header[i]: [row[i] for row in parsed[1:] if i < len(row)]
+        header[i]: [row[i] if i < len(row) else None for row in parsed[1:]]
         for i in range(len(header))
     }
 
