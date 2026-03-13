@@ -7,10 +7,6 @@ import {
 import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
-interface Props {
-  sessionID: string | null;
-}
-
 function formatResetTime(resetsAt: Date): string {
   const now = new Date();
   const diffMs = resetsAt.getTime() - now.getTime();
@@ -64,10 +60,10 @@ function UsageBar({
 }
 
 function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
-  const hasSessionLimit = usage.session.limit > 0;
+  const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
 
-  if (!hasSessionLimit && !hasWeeklyLimit) {
+  if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
       <div className="text-xs text-neutral-500 dark:text-neutral-400">
         No usage limits configured
@@ -78,19 +74,19 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
-        Plan usage limits
+        Usage limits
       </div>
-      {hasSessionLimit && (
+      {hasDailyLimit && (
         <UsageBar
-          label="Current session"
-          used={usage.session.used}
-          limit={usage.session.limit}
-          resetsAt={usage.session.resets_at}
+          label="Today"
+          used={usage.daily.used}
+          limit={usage.daily.limit}
+          resetsAt={usage.daily.resets_at}
         />
       )}
       {hasWeeklyLimit && (
         <UsageBar
-          label="Weekly limits"
+          label="This week"
           used={usage.weekly.used}
           limit={usage.weekly.limit}
           resetsAt={usage.weekly.resets_at}
@@ -106,12 +102,12 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
   );
 }
 
-export function UsageLimits({ sessionID }: Props) {
-  const { data: usage, isLoading } = useUsageLimits(sessionID);
+export function UsageLimits() {
+  const { data: usage, isLoading } = useUsageLimits();
 
   // Don't show if no limits configured or still loading
   if (isLoading || !usage) return null;
-  if (usage.session.limit <= 0 && usage.weekly.limit <= 0) return null;
+  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
   return (
     <Popover>

@@ -5,7 +5,7 @@ import { UsageLimits } from "../UsageLimits";
 // Mock the useUsageLimits hook
 const mockUseUsageLimits = vi.fn();
 vi.mock("../useUsageLimits", () => ({
-  useUsageLimits: (...args: unknown[]) => mockUseUsageLimits(...args),
+  useUsageLimits: () => mockUseUsageLimits(),
 }));
 
 // Mock Popover to render children directly (Radix portals don't work in happy-dom)
@@ -27,19 +27,19 @@ afterEach(() => {
 });
 
 function makeUsage({
-  sessionUsed = 500,
-  sessionLimit = 10000,
+  dailyUsed = 500,
+  dailyLimit = 10000,
   weeklyUsed = 2000,
   weeklyLimit = 50000,
 }: {
-  sessionUsed?: number;
-  sessionLimit?: number;
+  dailyUsed?: number;
+  dailyLimit?: number;
   weeklyUsed?: number;
   weeklyLimit?: number;
 } = {}) {
   const future = new Date(Date.now() + 3600 * 1000); // 1h from now
   return {
-    session: { used: sessionUsed, limit: sessionLimit, resets_at: future },
+    daily: { used: dailyUsed, limit: dailyLimit, resets_at: future },
     weekly: { used: weeklyUsed, limit: weeklyLimit, resets_at: future },
   };
 }
@@ -47,16 +47,16 @@ function makeUsage({
 describe("UsageLimits", () => {
   it("renders nothing while loading", () => {
     mockUseUsageLimits.mockReturnValue({ data: undefined, isLoading: true });
-    const { container } = render(<UsageLimits sessionID="sess-1" />);
+    const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
   });
 
   it("renders nothing when no limits are configured", () => {
     mockUseUsageLimits.mockReturnValue({
-      data: makeUsage({ sessionLimit: 0, weeklyLimit: 0 }),
+      data: makeUsage({ dailyLimit: 0, weeklyLimit: 0 }),
       isLoading: false,
     });
-    const { container } = render(<UsageLimits sessionID="sess-1" />);
+    const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
   });
 
@@ -65,44 +65,44 @@ describe("UsageLimits", () => {
       data: makeUsage(),
       isLoading: false,
     });
-    render(<UsageLimits sessionID="sess-1" />);
+    render(<UsageLimits />);
     expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
   });
 
-  it("displays session and weekly usage percentages", () => {
+  it("displays daily and weekly usage percentages", () => {
     mockUseUsageLimits.mockReturnValue({
-      data: makeUsage({ sessionUsed: 5000, sessionLimit: 10000 }),
+      data: makeUsage({ dailyUsed: 5000, dailyLimit: 10000 }),
       isLoading: false,
     });
-    render(<UsageLimits sessionID="sess-1" />);
+    render(<UsageLimits />);
 
     expect(screen.getByText("50% used")).toBeDefined();
-    expect(screen.getByText("Current session")).toBeDefined();
-    expect(screen.getByText("Weekly limits")).toBeDefined();
-    expect(screen.getByText("Plan usage limits")).toBeDefined();
+    expect(screen.getByText("Today")).toBeDefined();
+    expect(screen.getByText("This week")).toBeDefined();
+    expect(screen.getByText("Usage limits")).toBeDefined();
   });
 
-  it("shows only weekly bar when session limit is 0", () => {
+  it("shows only weekly bar when daily limit is 0", () => {
     mockUseUsageLimits.mockReturnValue({
       data: makeUsage({
-        sessionLimit: 0,
+        dailyLimit: 0,
         weeklyUsed: 25000,
         weeklyLimit: 50000,
       }),
       isLoading: false,
     });
-    render(<UsageLimits sessionID="sess-1" />);
+    render(<UsageLimits />);
 
-    expect(screen.getByText("Weekly limits")).toBeDefined();
-    expect(screen.queryByText("Current session")).toBeNull();
+    expect(screen.getByText("This week")).toBeDefined();
+    expect(screen.queryByText("Today")).toBeNull();
   });
 
   it("caps percentage at 100% when over limit", () => {
     mockUseUsageLimits.mockReturnValue({
-      data: makeUsage({ sessionUsed: 15000, sessionLimit: 10000 }),
+      data: makeUsage({ dailyUsed: 15000, dailyLimit: 10000 }),
       isLoading: false,
     });
-    render(<UsageLimits sessionID="sess-1" />);
+    render(<UsageLimits />);
 
     expect(screen.getByText("100% used")).toBeDefined();
   });
@@ -112,22 +112,10 @@ describe("UsageLimits", () => {
       data: makeUsage(),
       isLoading: false,
     });
-    render(<UsageLimits sessionID="sess-1" />);
+    render(<UsageLimits />);
 
     const link = screen.getByText("Learn more about usage limits");
     expect(link).toBeDefined();
     expect(link.closest("a")?.getAttribute("href")).toBe("/profile/credits");
-  });
-
-  it("passes sessionID to the hook", () => {
-    mockUseUsageLimits.mockReturnValue({ data: undefined, isLoading: true });
-    render(<UsageLimits sessionID="my-session-42" />);
-    expect(mockUseUsageLimits).toHaveBeenCalledWith("my-session-42");
-  });
-
-  it("passes null sessionID to the hook", () => {
-    mockUseUsageLimits.mockReturnValue({ data: undefined, isLoading: true });
-    render(<UsageLimits sessionID={null} />);
-    expect(mockUseUsageLimits).toHaveBeenCalledWith(null);
   });
 });

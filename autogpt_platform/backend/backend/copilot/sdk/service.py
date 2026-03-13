@@ -1461,7 +1461,6 @@ async def stream_chat_completion_sdk(
             try:
                 await record_token_usage(
                     user_id=user_id,
-                    session_id=session_id,
                     prompt_tokens=turn_prompt_tokens,
                     completion_tokens=turn_completion_tokens,
                 )

@@ -152,7 +152,7 @@ export function CopilotPage() {
             headerSlot={
               sessionId ? (
                 <div className="flex items-center justify-end gap-1">
-                  <UsageLimits sessionID={sessionId} />
+                  <UsageLimits />
                   {isMobile && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

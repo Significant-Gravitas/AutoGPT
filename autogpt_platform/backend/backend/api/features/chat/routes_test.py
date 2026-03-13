@@ -258,7 +258,7 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
 def _mock_usage(
     mocker: pytest_mock.MockerFixture,
     *,
-    session_used: int = 500,
+    daily_used: int = 500,
     weekly_used: int = 2000,
 ) -> AsyncMock:
     """Mock get_usage_status to return a predictable CoPilotUsageStatus."""
@@ -266,7 +266,7 @@ def _mock_usage(
 
     resets_at = datetime.now(UTC) + timedelta(days=1)
     status = CoPilotUsageStatus(
-        session=UsageWindow(used=session_used, limit=10000, resets_at=resets_at),
+        daily=UsageWindow(used=daily_used, limit=10000, resets_at=resets_at),
         weekly=UsageWindow(used=weekly_used, limit=50000, resets_at=resets_at),
     )
     return mocker.patch(
@@ -276,54 +276,27 @@ def _mock_usage(
     )
 
 
-def test_usage_with_session_id(
+def test_usage_returns_daily_and_weekly(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """GET /usage?session_id=... returns usage and forwards session_id."""
-    mock_get = _mock_usage(mocker, session_used=500, weekly_used=2000)
+    """GET /usage returns daily and weekly usage."""
+    mock_get = _mock_usage(mocker, daily_used=500, weekly_used=2000)
 
-    # Override the module-level config so we control the limits passed downstream
-    mocker.patch.object(chat_routes.config, "session_token_limit", 10000)
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 10000)
     mocker.patch.object(chat_routes.config, "weekly_token_limit", 50000)
-
-    response = client.get("/usage", params={"session_id": "sess-42"})
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["session"]["used"] == 500
-    assert data["weekly"]["used"] == 2000
-
-    mock_get.assert_called_once_with(
-        user_id=test_user_id,
-        session_id="sess-42",
-        session_token_limit=10000,
-        weekly_token_limit=50000,
-    )
-
-
-def test_usage_without_session_id(
-    mocker: pytest_mock.MockerFixture,
-    test_user_id: str,
-) -> None:
-    """GET /usage without session_id passes session_id=None (session usage = 0)."""
-    mock_get = _mock_usage(mocker, session_used=0, weekly_used=1500)
-
-    mocker.patch.object(chat_routes.config, "session_token_limit", 8000)
-    mocker.patch.object(chat_routes.config, "weekly_token_limit", 40000)
 
     response = client.get("/usage")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["session"]["used"] == 0
-    assert data["weekly"]["used"] == 1500
+    assert data["daily"]["used"] == 500
+    assert data["weekly"]["used"] == 2000
 
     mock_get.assert_called_once_with(
         user_id=test_user_id,
-        session_id=None,
-        session_token_limit=8000,
-        weekly_token_limit=40000,
+        daily_token_limit=10000,
+        weekly_token_limit=50000,
     )
 
 
@@ -331,18 +304,17 @@ def test_usage_uses_config_limits(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """The endpoint forwards session_token_limit and weekly_token_limit from config."""
+    """The endpoint forwards daily_token_limit and weekly_token_limit from config."""
     mock_get = _mock_usage(mocker)
 
-    mocker.patch.object(chat_routes.config, "session_token_limit", 99999)
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
     mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
 
-    response = client.get("/usage", params={"session_id": "s1"})
+    response = client.get("/usage")
 
     assert response.status_code == 200
     mock_get.assert_called_once_with(
         user_id=test_user_id,
-        session_id="s1",
-        session_token_limit=99999,
+        daily_token_limit=99999,
         weekly_token_limit=77777,
     )

@@ -415,21 +415,17 @@ async def get_session(
 @router.get("/usage")
 async def get_copilot_usage(
     user_id: Annotated[str | None, Depends(auth.get_user_id)],
-    session_id: str | None = Query(default=None),
 ) -> CoPilotUsageStatus:
     """Get CoPilot usage status for the authenticated user.
 
-    Returns current token usage vs limits for session and weekly windows.
-    When ``session_id`` is omitted, session usage will be reported as 0
-    (no session context to query).
+    Returns current token usage vs limits for daily and weekly windows.
     """
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     return await get_usage_status(
         user_id=user_id,
-        session_id=session_id,
-        session_token_limit=config.session_token_limit,
+        daily_token_limit=config.daily_token_limit,
         weekly_token_limit=config.weekly_token_limit,
     )
 
@@ -532,12 +528,11 @@ async def stream_chat_post(
     )
 
     # Pre-turn rate limit check (token-based)
-    if user_id and (config.session_token_limit > 0 or config.weekly_token_limit > 0):
+    if user_id and (config.daily_token_limit > 0 or config.weekly_token_limit > 0):
         try:
             await check_rate_limit(
                 user_id=user_id,
-                session_id=session_id,
-                session_token_limit=config.session_token_limit,
+                daily_token_limit=config.daily_token_limit,
                 weekly_token_limit=config.weekly_token_limit,
             )
         except RateLimitExceeded as e:

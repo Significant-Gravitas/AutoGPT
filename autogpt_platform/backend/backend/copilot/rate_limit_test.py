@@ -7,17 +7,14 @@ import pytest
 from redis.exceptions import RedisError
 
 from .rate_limit import (
-    _SESSION_TTL_SECONDS,
     CoPilotUsageStatus,
     RateLimitExceeded,
-    _session_reset_from_ttl,
     check_rate_limit,
     get_usage_status,
     record_token_usage,
 )
 
 _USER = "test-user-rl"
-_SESSION = "test-session-rl"
 
 
 # ---------------------------------------------------------------------------
@@ -27,8 +24,8 @@ _SESSION = "test-session-rl"
 
 class TestRateLimitExceeded:
     def test_message_contains_window_name(self):
-        exc = RateLimitExceeded("session", datetime.now(UTC) + timedelta(hours=1))
-        assert "session" in str(exc)
+        exc = RateLimitExceeded("daily", datetime.now(UTC) + timedelta(hours=1))
+        assert "daily" in str(exc)
 
     def test_message_contains_reset_time(self):
         exc = RateLimitExceeded(
@@ -40,7 +37,7 @@ class TestRateLimitExceeded:
         assert "Resets in" in msg
 
     def test_message_minutes_only_when_under_one_hour(self):
-        exc = RateLimitExceeded("session", datetime.now(UTC) + timedelta(minutes=15))
+        exc = RateLimitExceeded("daily", datetime.now(UTC) + timedelta(minutes=15))
         msg = str(exc)
         assert "Resets in" in msg
         # Should not have "0h"
@@ -48,59 +45,8 @@ class TestRateLimitExceeded:
 
     def test_message_says_now_when_resets_at_is_in_the_past(self):
         """Negative delta (clock skew / stale TTL) should say 'now', not '-1h -30m'."""
-        exc = RateLimitExceeded("session", datetime.now(UTC) - timedelta(minutes=5))
+        exc = RateLimitExceeded("daily", datetime.now(UTC) - timedelta(minutes=5))
         assert "Resets in now" in str(exc)
-
-
-# ---------------------------------------------------------------------------
-# _session_reset_from_ttl
-# ---------------------------------------------------------------------------
-
-
-class TestSessionResetFromTtl:
-    @pytest.mark.asyncio
-    async def test_returns_ttl_based_time_when_key_exists(self):
-        mock_redis = AsyncMock()
-        mock_redis.ttl = AsyncMock(return_value=3600)  # 1 hour
-
-        before = datetime.now(UTC)
-        result = await _session_reset_from_ttl(mock_redis, _USER, _SESSION)
-        after = datetime.now(UTC)
-
-        # Should be ~1 hour from now
-        assert (
-            before + timedelta(seconds=3600)
-            <= result
-            <= after + timedelta(seconds=3600)
-        )
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_default_ttl_when_key_expired(self):
-        """TTL <= 0 (expired/missing key) should fall back to default TTL."""
-        mock_redis = AsyncMock()
-        mock_redis.ttl = AsyncMock(return_value=-2)  # Key does not exist
-
-        before = datetime.now(UTC)
-        result = await _session_reset_from_ttl(mock_redis, _USER, _SESSION)
-        after = datetime.now(UTC)
-
-        expected_min = before + timedelta(seconds=_SESSION_TTL_SECONDS)
-        expected_max = after + timedelta(seconds=_SESSION_TTL_SECONDS)
-        assert expected_min <= result <= expected_max
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_default_ttl_on_redis_error(self):
-        """RedisError should not propagate — falls back to default TTL."""
-        mock_redis = AsyncMock()
-        mock_redis.ttl = AsyncMock(side_effect=RedisError("Connection lost"))
-
-        before = datetime.now(UTC)
-        result = await _session_reset_from_ttl(mock_redis, _USER, _SESSION)
-        after = datetime.now(UTC)
-
-        expected_min = before + timedelta(seconds=_SESSION_TTL_SECONDS)
-        expected_max = after + timedelta(seconds=_SESSION_TTL_SECONDS)
-        assert expected_min <= result <= expected_max
 
 
 # ---------------------------------------------------------------------------
@@ -113,19 +59,18 @@ class TestGetUsageStatus:
     async def test_returns_redis_values(self):
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["500", "2000"])
-        mock_redis.ttl = AsyncMock(return_value=7200)  # 2 hours remaining
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
             status = await get_usage_status(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
         assert isinstance(status, CoPilotUsageStatus)
-        assert status.session.used == 500
-        assert status.session.limit == 10000
+        assert status.daily.used == 500
+        assert status.daily.limit == 10000
         assert status.weekly.used == 2000
         assert status.weekly.limit == 50000
 
@@ -136,64 +81,63 @@ class TestGetUsageStatus:
             side_effect=ConnectionError("Redis down"),
         ):
             status = await get_usage_status(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
-        assert status.session.used == 0
+        assert status.daily.used == 0
         assert status.weekly.used == 0
 
     @pytest.mark.asyncio
-    async def test_partial_none_session_counter(self):
-        """Session counter is None (new session), weekly has usage."""
+    async def test_partial_none_daily_counter(self):
+        """Daily counter is None (new day), weekly has usage."""
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=[None, "3000"])
-        mock_redis.ttl = AsyncMock(return_value=-2)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
             status = await get_usage_status(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
-        assert status.session.used == 0
+        assert status.daily.used == 0
         assert status.weekly.used == 3000
 
     @pytest.mark.asyncio
     async def test_partial_none_weekly_counter(self):
-        """Weekly counter is None (start of week), session has usage."""
+        """Weekly counter is None (start of week), daily has usage."""
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["500", None])
-        mock_redis.ttl = AsyncMock(return_value=7200)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
             status = await get_usage_status(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
-        assert status.session.used == 500
+        assert status.daily.used == 500
         assert status.weekly.used == 0
 
     @pytest.mark.asyncio
-    async def test_returns_weekly_only_when_no_session_id(self):
-        """When session_id is None, session usage should be 0."""
+    async def test_resets_at_daily_is_next_midnight_utc(self):
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="4000")
+        mock_redis.get = AsyncMock(side_effect=["0", "0"])
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
             status = await get_usage_status(
-                _USER, None, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
-        assert status.session.used == 0
-        assert status.weekly.used == 4000
+        now = datetime.now(UTC)
+        # Daily reset should be within 24h
+        assert status.daily.resets_at > now
+        assert status.daily.resets_at <= now + timedelta(hours=24, seconds=5)
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +157,13 @@ class TestCheckRateLimit:
         ):
             # Should not raise
             await check_rate_limit(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
     @pytest.mark.asyncio
-    async def test_raises_when_session_limit_exceeded(self):
+    async def test_raises_when_daily_limit_exceeded(self):
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["10000", "200"])
-        mock_redis.ttl = AsyncMock(return_value=3600)  # 1 hour remaining
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -228,9 +171,9 @@ class TestCheckRateLimit:
         ):
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(
-                    _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                    _USER, daily_token_limit=10000, weekly_token_limit=50000
                 )
-            assert exc_info.value.window == "session"
+            assert exc_info.value.window == "daily"
 
     @pytest.mark.asyncio
     async def test_raises_when_weekly_limit_exceeded(self):
@@ -243,7 +186,7 @@ class TestCheckRateLimit:
         ):
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(
-                    _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                    _USER, daily_token_limit=10000, weekly_token_limit=50000
                 )
             assert exc_info.value.window == "weekly"
 
@@ -256,7 +199,7 @@ class TestCheckRateLimit:
         ):
             # Should not raise
             await check_rate_limit(
-                _USER, _SESSION, session_token_limit=10000, weekly_token_limit=50000
+                _USER, daily_token_limit=10000, weekly_token_limit=50000
             )
 
     @pytest.mark.asyncio
@@ -269,9 +212,7 @@ class TestCheckRateLimit:
             return_value=mock_redis,
         ):
             # Should not raise — limits of 0 mean unlimited
-            await check_rate_limit(
-                _USER, _SESSION, session_token_limit=0, weekly_token_limit=0
-            )
+            await check_rate_limit(_USER, daily_token_limit=0, weekly_token_limit=0)
 
 
 # ---------------------------------------------------------------------------
@@ -297,14 +238,12 @@ class TestRecordTokenUsage:
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
-            await record_token_usage(
-                _USER, _SESSION, prompt_tokens=100, completion_tokens=50
-            )
+            await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
 
-        # Should call incrby twice (session + weekly) with total=150
+        # Should call incrby twice (daily + weekly) with total=150
         incrby_calls = mock_pipe.incrby.call_args_list
         assert len(incrby_calls) == 2
-        assert incrby_calls[0].args[1] == 150  # session
+        assert incrby_calls[0].args[1] == 150  # daily
         assert incrby_calls[1].args[1] == 150  # weekly
 
     @pytest.mark.asyncio
@@ -315,16 +254,14 @@ class TestRecordTokenUsage:
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
-            await record_token_usage(
-                _USER, _SESSION, prompt_tokens=0, completion_tokens=0
-            )
+            await record_token_usage(_USER, prompt_tokens=0, completion_tokens=0)
 
         # Should not call pipeline at all
         mock_redis.pipeline.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_sets_expire_on_both_keys(self):
-        """Pipeline should call expire for both session and weekly keys."""
+        """Pipeline should call expire for both daily and weekly keys."""
         mock_pipe = self._make_pipeline_mock()
         mock_redis = AsyncMock()
         mock_redis.pipeline = lambda **_kw: mock_pipe
@@ -333,16 +270,14 @@ class TestRecordTokenUsage:
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
-            await record_token_usage(
-                _USER, _SESSION, prompt_tokens=100, completion_tokens=50
-            )
+            await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
 
         expire_calls = mock_pipe.expire.call_args_list
         assert len(expire_calls) == 2
 
-        # Session key TTL should match the configured session TTL
-        session_ttl = expire_calls[0].args[1]
-        assert session_ttl == _SESSION_TTL_SECONDS
+        # Daily key TTL should be positive (seconds until next midnight)
+        daily_ttl = expire_calls[0].args[1]
+        assert daily_ttl >= 1
 
         # Weekly key TTL should be positive (seconds until next Monday)
         weekly_ttl = expire_calls[1].args[1]
@@ -356,9 +291,7 @@ class TestRecordTokenUsage:
             side_effect=ConnectionError("Redis down"),
         ):
             # Should not raise
-            await record_token_usage(
-                _USER, _SESSION, prompt_tokens=100, completion_tokens=50
-            )
+            await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
 
     @pytest.mark.asyncio
     async def test_handles_redis_error_during_pipeline_execute(self):
@@ -373,6 +306,4 @@ class TestRecordTokenUsage:
             return_value=mock_redis,
         ):
             # Should not raise — fail-open
-            await record_token_usage(
-                _USER, _SESSION, prompt_tokens=100, completion_tokens=50
-            )
+            await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
