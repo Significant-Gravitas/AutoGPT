@@ -31,6 +31,7 @@ import io
 import json
 import logging
 import tomllib
+import zipfile
 from collections.abc import Callable
 
 # posixpath.splitext handles forward-slash URI paths correctly on all platforms,
@@ -262,6 +263,9 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
         UnicodeDecodeError,
         ImportError,
         OSError,
+        KeyError,
+        TypeError,
+        zipfile.BadZipFile,
     ):
         if strict:
             raise

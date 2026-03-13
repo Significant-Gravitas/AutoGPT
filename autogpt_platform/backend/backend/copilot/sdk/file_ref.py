@@ -38,6 +38,7 @@ import logging
 import os
 import re
 import tomllib
+import zipfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -451,6 +452,9 @@ async def _expand_bare_ref(
             UnicodeDecodeError,
             ImportError,
             OSError,
+            KeyError,
+            TypeError,
+            zipfile.BadZipFile,
         ) as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never
