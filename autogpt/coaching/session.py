@@ -44,21 +44,21 @@ class CoachingSession:
             {"role": "system", "content": self._system_prompt},
         ] + self.full_message_history
 
-        from autogpt.llm_utils import create_chat_completion  # lazy — keeps coaching importable standalone
-        reply = create_chat_completion(messages=messages)
+        from autogpt.coaching.llm import chat_completion
+        reply = chat_completion(messages=messages, model=coaching_config.llm_model, temperature=coaching_config.llm_temperature)
         self.full_message_history.append({"role": "assistant", "content": reply})
         return reply
 
     def extract_summary(self) -> SessionSummary:
         """Ask the LLM to produce a structured JSON summary, then parse it."""
-        from autogpt.llm_utils import create_chat_completion  # lazy import
+        from autogpt.coaching.llm import chat_completion
         extraction_messages: List[Message] = [
             {"role": "system", "content": self._system_prompt},
         ] + self.full_message_history + [
             {"role": "user", "content": SUMMARY_EXTRACTION_PROMPT}
         ]
 
-        raw = create_chat_completion(messages=extraction_messages)
+        raw = chat_completion(messages=extraction_messages, model=coaching_config.llm_model, temperature=0.0)
         weekly_log, summary_text = self._parse_summary_json(raw)
         alert = self._compute_alerts(weekly_log)
 

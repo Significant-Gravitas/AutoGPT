@@ -17,6 +17,9 @@ class CoachingConfig(metaclass=Singleton):
         self.api_key: str = os.getenv("COACHING_API_KEY", "")
         self.supabase_url: str = os.getenv("SUPABASE_URL", "")
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
+        # Claude LLM settings
+        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "claude-sonnet-4-6")
+        self.llm_temperature: float = float(os.getenv("COACHING_LLM_TEMPERATURE", "0.7"))
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
@@ -27,6 +30,8 @@ class CoachingConfig(metaclass=Singleton):
             missing.append("SUPABASE_SERVICE_KEY")
         if not self.api_key:
             missing.append("COACHING_API_KEY")
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            missing.append("ANTHROPIC_API_KEY")
         if missing:
             raise EnvironmentError(
                 f"Missing required environment variables: {', '.join(missing)}"

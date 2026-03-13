@@ -29,6 +29,7 @@ fastapi>=0.100.0
 uvicorn[standard]>=0.22.0
 pydantic>=2.0.0
 supabase>=2.0.0
+anthropic>=0.20.0
 
 ##Dev
 coverage
