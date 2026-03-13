@@ -177,6 +177,24 @@ class TranscriptBuilder:
         lines = [entry.model_dump_json(exclude_none=True) for entry in self._entries]
         return "\n".join(lines) + "\n"
 
+    def replace_entries(self, content: str, log_prefix: str = "[Transcript]") -> None:
+        """Replace all entries with compacted JSONL content.
+
+        Called after the CLI performs mid-stream compaction so the builder's
+        state reflects the compacted conversation instead of the full
+        pre-compaction history.
+        """
+        prev_count = len(self._entries)
+        self._entries.clear()
+        self._last_uuid = None
+        self.load_previous(content, log_prefix=log_prefix)
+        logger.info(
+            "%s Replaced %d entries with %d compacted entries",
+            log_prefix,
+            prev_count,
+            len(self._entries),
+        )
+
     @property
     def entry_count(self) -> int:
         """Total number of entries in the complete context."""

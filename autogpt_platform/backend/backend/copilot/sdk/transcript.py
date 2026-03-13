@@ -137,32 +137,61 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
-def cleanup_cli_project_dir(sdk_cwd: str) -> None:
-    """Remove the CLI's project directory for a specific working directory.
-
-    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
-    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
-    safe to remove entirely after the transcript has been uploaded.
-    """
-    import shutil
-
-    # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
+def _cli_project_dir(sdk_cwd: str) -> str | None:
+    """Return the CLI's project directory for a given working directory."""
     cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
     project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
-
     if not project_dir.startswith(projects_base + os.sep):
-        logger.warning(
-            f"[Transcript] Cleanup path escaped projects base: {project_dir}"
-        )
-        return
+        logger.warning("[Transcript] Project dir escaped base: %s", project_dir)
+        return None
+    return project_dir
 
+
+def read_cli_session_file(sdk_cwd: str) -> str | None:
+    """Read the CLI's own session file, which reflects any mid-stream compaction.
+
+    After the CLI compacts context, its session file contains the compacted
+    conversation.  Reading this file lets ``TranscriptBuilder`` replace its
+    uncompacted entries with the CLI's compacted version.
+    """
+    import glob as glob_mod
+
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir or not os.path.isdir(project_dir):
+        return None
+    jsonl_files = glob_mod.glob(os.path.join(project_dir, "*.jsonl"))
+    if not jsonl_files:
+        logger.debug("[Transcript] No CLI session file in %s", project_dir)
+        return None
+    session_file = max(jsonl_files, key=os.path.getmtime)
+    try:
+        with open(session_file) as f:
+            content = f.read()
+        logger.info(
+            "[Transcript] Read CLI session file: %s (%d bytes)",
+            session_file,
+            len(content),
+        )
+        return content
+    except OSError as e:
+        logger.warning("[Transcript] Failed to read CLI session file: %s", e)
+        return None
+
+
+def cleanup_cli_project_dir(sdk_cwd: str) -> None:
+    """Remove the CLI's project directory for a specific working directory."""
+    import shutil
+
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir:
+        return
     if os.path.isdir(project_dir):
         shutil.rmtree(project_dir, ignore_errors=True)
-        logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
+        logger.debug("[Transcript] Cleaned up CLI project dir: %s", project_dir)
     else:
-        logger.debug(f"[Transcript] Project dir not found: {project_dir}")
+        logger.debug("[Transcript] Project dir not found: %s", project_dir)
 
 
 def write_transcript_to_tempfile(
@@ -417,3 +446,147 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
         logger.info(f"[Transcript] Deleted transcript for session {session_id}")
     except Exception as e:
         logger.warning(f"[Transcript] Failed to delete transcript: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Transcript compaction
+# ---------------------------------------------------------------------------
+
+# Transcripts above this byte threshold are compacted at download time.
+COMPACT_THRESHOLD_BYTES = 400_000
+
+
+def _transcript_to_messages(content: str) -> list[dict]:
+    """Convert JSONL transcript entries to message dicts for compress_context."""
+    messages: list[dict] = []
+    for line in content.strip().split("\n"):
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type", "") in STRIPPABLE_TYPES:
+            continue
+        msg = entry.get("message", {})
+        role = msg.get("role", "")
+        if not role:
+            continue
+        msg_dict: dict = {"role": role}
+        raw_content = msg.get("content")
+        if role == "assistant" and isinstance(raw_content, list):
+            parts: list[str] = []
+            for block in raw_content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        parts.append(f"[tool_use: {block.get('name', '?')}]")
+                elif isinstance(block, str):
+                    parts.append(block)
+            msg_dict["content"] = "\n".join(parts) if parts else ""
+        elif isinstance(raw_content, list):
+            parts = []
+            for block in raw_content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    parts.append(str(block.get("content", "")))
+                elif isinstance(block, str):
+                    parts.append(block)
+            msg_dict["content"] = "\n".join(parts) if parts else ""
+        else:
+            msg_dict["content"] = raw_content or ""
+        messages.append(msg_dict)
+    return messages
+
+
+def _messages_to_transcript(messages: list[dict]) -> str:
+    """Convert compressed message dicts back to JSONL transcript format."""
+    from uuid import uuid4
+
+    lines: list[str] = []
+    last_uuid: str | None = None
+    for msg in messages:
+        role = msg.get("role", "user")
+        entry_type = "assistant" if role == "assistant" else "user"
+        uid = str(uuid4())
+        content = msg.get("content", "")
+        if role == "assistant":
+            message: dict = {
+                "role": "assistant",
+                "model": "",
+                "id": f"msg_compact_{uuid4().hex[:24]}",
+                "type": "message",
+                "content": [{"type": "text", "text": content}] if content else [],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+            }
+        else:
+            message = {"role": role, "content": content}
+        entry = {
+            "type": entry_type,
+            "uuid": uid,
+            "parentUuid": last_uuid,
+            "message": message,
+        }
+        lines.append(json.dumps(entry, separators=(",", ":")))
+        last_uuid = uid
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+async def compact_transcript(
+    content: str,
+    log_prefix: str = "[Transcript]",
+) -> str | None:
+    """Compact an oversized JSONL transcript using LLM summarization.
+
+    Converts transcript entries to plain messages, runs ``compress_context``
+    (the same compressor used for pre-query history), and rebuilds JSONL.
+
+    Returns the compacted JSONL string, or ``None`` on failure.
+    """
+    from backend.copilot.config import ChatConfig
+
+    cfg = ChatConfig()
+    messages = _transcript_to_messages(content)
+    if len(messages) < 2:
+        logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
+        return None
+    try:
+        import openai
+
+        from backend.util.prompt import compress_context
+
+        try:
+            async with openai.AsyncOpenAI(
+                api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
+            ) as client:
+                result = await compress_context(
+                    messages=messages, model=cfg.model, client=client
+                )
+        except Exception as e:
+            logger.warning(
+                "%s LLM compaction failed, using truncation: %s", log_prefix, e
+            )
+            result = await compress_context(
+                messages=messages, model=cfg.model, client=None
+            )
+        if not result.was_compacted:
+            logger.info("%s Transcript already within token budget", log_prefix)
+            return content
+        logger.info(
+            "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
+            log_prefix,
+            result.original_token_count,
+            result.token_count,
+            result.messages_summarized,
+            result.messages_dropped,
+        )
+        compacted = _messages_to_transcript(result.messages)
+        if not validate_transcript(compacted):
+            logger.warning("%s Compacted transcript failed validation", log_prefix)
+            return None
+        return compacted
+    except Exception as e:
+        logger.error(
+            "%s Transcript compaction failed: %s", log_prefix, e, exc_info=True
+        )
+        return None

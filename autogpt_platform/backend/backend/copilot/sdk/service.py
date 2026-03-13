@@ -78,8 +78,11 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
+    COMPACT_THRESHOLD_BYTES,
     cleanup_cli_project_dir,
+    compact_transcript,
     download_transcript,
+    read_cli_session_file,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -837,16 +840,41 @@ async def stream_chat_completion_sdk(
                 is_valid,
             )
             if is_valid:
+                transcript_content = dl.content
+                # Compact oversized transcripts to prevent "Prompt is too long"
+                if len(transcript_content) > COMPACT_THRESHOLD_BYTES:
+                    logger.warning(
+                        "%s Transcript oversized (%dB > %dB), compacting",
+                        log_prefix,
+                        len(transcript_content),
+                        COMPACT_THRESHOLD_BYTES,
+                    )
+                    compacted = await compact_transcript(
+                        transcript_content, log_prefix=log_prefix
+                    )
+                    if compacted:
+                        transcript_content = compacted
+                        # Upload the compacted version for future turns
+                        await upload_transcript(
+                            user_id=user_id or "",
+                            session_id=session_id,
+                            content=transcript_content,
+                            message_count=dl.message_count,
+                            log_prefix=log_prefix,
+                        )
+
                 # Load previous FULL context into builder
-                transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
+                transcript_builder.load_previous(
+                    transcript_content, log_prefix=log_prefix
+                )
                 resume_file = write_transcript_to_tempfile(
-                    dl.content, session_id, sdk_cwd
+                    transcript_content, session_id, sdk_cwd
                 )
                 if resume_file:
                     use_resume = True
                     transcript_msg_count = dl.message_count
                     logger.debug(
-                        f"{log_prefix} Using --resume ({len(dl.content)}B, "
+                        f"{log_prefix} Using --resume ({len(transcript_content)}B, "
                         f"msg_count={transcript_msg_count})"
                     )
             else:
@@ -1166,9 +1194,19 @@ async def stream_chat_completion_sdk(
                         if sdk_msg.total_cost_usd is not None:
                             turn_cost_usd = sdk_msg.total_cost_usd
 
-                    # Emit compaction end if SDK finished compacting
-                    for ev in await compaction.emit_end_if_ready(session):
+                    # Emit compaction end if SDK finished compacting.
+                    # When compaction ends, sync TranscriptBuilder with
+                    # the CLI's compacted session file so the uploaded
+                    # transcript reflects compaction.
+                    compaction_events = await compaction.emit_end_if_ready(session)
+                    for ev in compaction_events:
                         yield ev
+                    if compaction_events and sdk_cwd:
+                        cli_content = read_cli_session_file(sdk_cwd)
+                        if cli_content:
+                            transcript_builder.replace_entries(
+                                cli_content, log_prefix=log_prefix
+                            )
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
