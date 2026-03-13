@@ -52,9 +52,7 @@ class TestExecuteBlockCreditCharging:
     async def test_charges_credits_when_cost_is_positive(self):
         """Block with cost > 0 should call spend_credits after execution."""
         block = _make_block()
-        mock_credit = AsyncMock()
-        mock_credit.get_credits = AsyncMock(return_value=100)
-        mock_credit.spend_credits = AsyncMock()
+        mock_spend = AsyncMock()
 
         with (
             _patch_workspace(),
@@ -63,8 +61,14 @@ class TestExecuteBlockCreditCharging:
                 return_value=(10, {"key": "val"}),
             ),
             patch(
-                "backend.copilot.tools.helpers.get_user_credit_model",
-                return_value=mock_credit,
+                "backend.copilot.tools.helpers._get_credits",
+                new_callable=AsyncMock,
+                return_value=100,
+            ),
+            patch(
+                "backend.copilot.tools.helpers._spend_credits",
+                new_callable=AsyncMock,
+                side_effect=mock_spend,
             ),
         ):
             result = await execute_block(
@@ -79,16 +83,14 @@ class TestExecuteBlockCreditCharging:
 
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
-        mock_credit.spend_credits.assert_awaited_once()
-        call_kwargs = mock_credit.spend_credits.call_args.kwargs
+        mock_spend.assert_awaited_once()
+        call_kwargs = mock_spend.call_args.kwargs
         assert call_kwargs["cost"] == 10
         assert call_kwargs["metadata"].reason == "copilot_block_execution"
 
     async def test_returns_error_when_insufficient_credits_before_exec(self):
         """Pre-execution check should return ErrorResponse when balance < cost."""
         block = _make_block()
-        mock_credit = AsyncMock()
-        mock_credit.get_credits = AsyncMock(return_value=5)  # balance < cost (10)
 
         with (
             _patch_workspace(),
@@ -97,8 +99,9 @@ class TestExecuteBlockCreditCharging:
                 return_value=(10, {}),
             ),
             patch(
-                "backend.copilot.tools.helpers.get_user_credit_model",
-                return_value=mock_credit,
+                "backend.copilot.tools.helpers._get_credits",
+                new_callable=AsyncMock,
+                return_value=5,  # balance < cost (10)
             ),
         ):
             result = await execute_block(
@@ -125,8 +128,11 @@ class TestExecuteBlockCreditCharging:
                 return_value=(0, {}),
             ),
             patch(
-                "backend.copilot.tools.helpers.get_user_credit_model",
-            ) as mock_get_credit,
+                "backend.copilot.tools.helpers._get_credits",
+            ) as mock_get_credits,
+            patch(
+                "backend.copilot.tools.helpers._spend_credits",
+            ) as mock_spend_credits,
         ):
             result = await execute_block(
                 block=block,
@@ -140,19 +146,15 @@ class TestExecuteBlockCreditCharging:
 
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
-        # get_user_credit_model should not be called at all for zero-cost blocks
-        mock_get_credit.assert_not_awaited()
+        # Credit functions should not be called at all for zero-cost blocks
+        mock_get_credits.assert_not_awaited()
+        mock_spend_credits.assert_not_awaited()
 
     async def test_returns_output_on_post_exec_insufficient_balance(self):
         """If charging fails after execution, output is still returned (block already ran)."""
         from backend.util.exceptions import InsufficientBalanceError
 
         block = _make_block()
-        mock_credit = AsyncMock()
-        mock_credit.get_credits = AsyncMock(return_value=15)  # passes pre-check
-        mock_credit.spend_credits = AsyncMock(
-            side_effect=InsufficientBalanceError("Low balance", _USER, 5, 10)
-        )  # fails during actual charge (race with concurrent spend)
 
         with (
             _patch_workspace(),
@@ -161,8 +163,16 @@ class TestExecuteBlockCreditCharging:
                 return_value=(10, {}),
             ),
             patch(
-                "backend.copilot.tools.helpers.get_user_credit_model",
-                return_value=mock_credit,
+                "backend.copilot.tools.helpers._get_credits",
+                new_callable=AsyncMock,
+                return_value=15,  # passes pre-check
+            ),
+            patch(
+                "backend.copilot.tools.helpers._spend_credits",
+                new_callable=AsyncMock,
+                side_effect=InsufficientBalanceError(
+                    "Low balance", _USER, 5, 10
+                ),  # fails during actual charge (race with concurrent spend)
             ),
         ):
             result = await execute_block(
