@@ -13,7 +13,10 @@
  *    - #loadingSpinner → Image or animation (hidden by default)
  * 3. Store your API key in Wix Secrets Manager as "COACHING_API_KEY"
  *    (Wix Editor → Settings → Secrets Manager)
- * 4. Replace API_BASE with your deployed FastAPI server URL
+ * 4. API_BASE is already set to the deployed Railway server URL
+ * 5. For "Sign in with Google", link a button to:
+ *    https://auto-gpt-production.up.railway.app/auth/google/url?redirect_to=https://www.ben-nesher.com/coaching-chat
+ *    After login, the page receives ?user_id=...&name=...&email=... in the URL.
  *
  * IMPORTANT: Never expose COACHING_API_KEY directly in client-side code.
  * Use a Wix Backend (web module) to make API calls securely.
@@ -30,7 +33,7 @@
  * import { getSecret } from 'wix-secrets-backend';
  * import { fetch } from 'wix-fetch';
  *
- * const API_BASE = 'https://your-api-domain.com';
+ * const API_BASE = 'https://auto-gpt-production.up.railway.app';
  *
  * async function getApiKey() {
  *   return await getSecret('COACHING_API_KEY');
