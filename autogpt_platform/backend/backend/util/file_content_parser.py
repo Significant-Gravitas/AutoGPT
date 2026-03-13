@@ -202,14 +202,16 @@ _BINARY_PARSERS: dict[str, Callable[[bytes], Any]] = {
 # ---------------------------------------------------------------------------
 
 
-def parse_file_content(content: str | bytes, fmt: str) -> Any:
+def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) -> Any:
     """Parse *content* according to *fmt* and return a native Python value.
 
-    Returns the original *content* unchanged if:
-    - *fmt* is not recognised
-    - parsing fails for any reason (malformed content, missing dependency, etc.)
+    When *strict* is ``False`` (default), returns the original *content*
+    unchanged if *fmt* is not recognised or parsing fails for any reason.
+    This mode **never raises**.
 
-    This function **never raises**.
+    When *strict* is ``True``, parsing errors are propagated to the caller.
+    Unrecognised formats or type mismatches (e.g. text for a binary format)
+    still return *content* unchanged without raising.
     """
     try:
         if fmt in BINARY_FORMATS:
@@ -229,5 +231,7 @@ def parse_file_content(content: str | bytes, fmt: str) -> Any:
         return parser(content)
 
     except Exception:
+        if strict:
+            raise
         logger.debug("Structured parsing failed for format=%s, falling back", fmt)
         return content

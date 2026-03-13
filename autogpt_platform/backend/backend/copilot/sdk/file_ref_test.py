@@ -454,6 +454,88 @@ async def test_bare_ref_oversized_raises_error():
 
 
 # ---------------------------------------------------------------------------
+# Schema-aware string bypass
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_csv_returns_raw_string_when_schema_expects_string():
+    """When the input schema declares the parameter as type: string,
+    structured parsing is skipped and raw file content is returned."""
+    csv_content = "Name,Score\nAlice,90\nBob,85"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    schema = {
+        "type": "object",
+        "properties": {"data": {"type": "string"}},
+        "required": ["data"],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    # Should return the raw CSV text, NOT a parsed list[list[str]]
+    assert result["data"] == csv_content
+    assert isinstance(result["data"], str)
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_json_parses_when_schema_expects_object():
+    """When the input schema declares the parameter as type: object,
+    structured parsing is applied as usual."""
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return '{"key": "value"}'
+
+    schema = {
+        "type": "object",
+        "properties": {"data": {"type": "object"}},
+        "required": ["data"],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///report.json"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["data"] == {"key": "value"}
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_csv_parses_when_no_schema_provided():
+    """Without input_schema, structured parsing proceeds as usual."""
+    csv_content = "Name,Score\nAlice,90\nBob,85"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
+
+
+# ---------------------------------------------------------------------------
 # Per-file truncation and aggregate budget
 # ---------------------------------------------------------------------------
 

@@ -295,6 +295,8 @@ async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
     session: "ChatSession",
+    *,
+    input_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Recursively expand ``@@agptfile:...`` references in tool call arguments.
 
@@ -306,6 +308,10 @@ async def expand_file_refs_in_args(
     parsed according to the file's extension or MIME type.  See
     :mod:`backend.util.file_content_parser` for the full list of supported
     formats (JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel).
+
+    When *input_schema* is provided and the target property has
+    ``"type": "string"``, structured parsing is skipped — the raw file content
+    is returned as a plain string so blocks receive the original text.
 
     If the format is unrecognised or parsing fails, the content is returned as
     a plain string (the fallback).
@@ -321,7 +327,9 @@ async def expand_file_refs_in_args(
     if not args:
         return args
 
-    async def _expand(value: Any) -> Any:
+    properties = (input_schema or {}).get("properties", {})
+
+    async def _expand(value: Any, *, expect_string: bool = False) -> Any:
         if isinstance(value, str):
             # Check for a bare file reference first — enables structured parsing.
             ref = parse_file_ref(value)
@@ -361,18 +369,25 @@ async def expand_file_refs_in_args(
                         f"({content_size} bytes, limit {_MAX_BARE_REF_BYTES})"
                     )
 
+                # When the tool's input schema declares this parameter as
+                # "string", return raw file content — don't parse into a
+                # structured type that would need json.dumps() serialisation.
+                if expect_string:
+                    if isinstance(content, bytes):
+                        return content.decode("utf-8", errors="replace")
+                    return content
+
                 if fmt is not None:
-                    parsed = parse_file_content(content, fmt)
-                    # If a binary format's parser failed, parse_file_content
-                    # returns the raw bytes unchanged.  Decoding those as
-                    # UTF-8 produces garbled text — raise a clear error
-                    # instead so the model knows the file can't be parsed.
-                    if parsed is content and fmt in BINARY_FORMATS:
+                    # Use strict mode for binary formats so we surface the
+                    # actual error (e.g. missing pyarrow/openpyxl, corrupt
+                    # file) instead of silently returning garbled bytes.
+                    strict = fmt in BINARY_FORMATS
+                    try:
+                        parsed = parse_file_content(content, fmt, strict=strict)
+                    except Exception as exc:
                         raise FileRefExpansionError(
-                            f"Failed to parse {fmt} file — the required "
-                            f"library may not be installed (parquet needs "
-                            f"pyarrow, xlsx needs openpyxl)."
-                        )
+                            f"Failed to parse {fmt} file: {exc}"
+                        ) from exc
                     # Normalize bytes fallback to str so tools never
                     # receive raw bytes when parsing fails.
                     if isinstance(parsed, bytes):
@@ -401,4 +416,10 @@ async def expand_file_refs_in_args(
             return [await _expand(item) for item in value]
         return value
 
-    return {k: await _expand(v) for k, v in args.items()}
+    return {
+        k: await _expand(
+            v,
+            expect_string=properties.get(k, {}).get("type") == "string",
+        )
+        for k, v in args.items()
+    }
