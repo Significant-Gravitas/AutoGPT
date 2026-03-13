@@ -12,7 +12,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import openai
 from claude_agent_sdk import (
@@ -87,6 +87,10 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
+class _ClaudeSDKTransport(Protocol):
+    async def write(self, data: str) -> None: ...
+
+
 def _setup_langfuse_otel() -> None:
     """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
 
@@ -134,6 +138,16 @@ def _setup_langfuse_otel() -> None:
 
 
 _setup_langfuse_otel()
+
+
+async def _write_multimodal_query(
+    client: ClaudeSDKClient,
+    user_message: dict[str, Any],
+) -> None:
+    transport = cast(_ClaudeSDKTransport | None, getattr(client, "_transport", None))
+    if transport is None:
+        raise RuntimeError("Claude SDK transport is unavailable for multimodal input")
+    await transport.write(json.dumps(user_message) + "\n")
 
 
 # Set to hold background tasks to prevent garbage collection
@@ -980,10 +994,7 @@ async def stream_chat_completion_sdk(
                     "parent_tool_use_id": None,
                     "session_id": session_id,
                 }
-                assert client._transport is not None  # noqa: SLF001
-                await client._transport.write(  # noqa: SLF001
-                    json.dumps(user_msg) + "\n"
-                )
+                await _write_multimodal_query(client, user_msg)
                 # Capture user message in transcript (multimodal)
                 transcript_builder.append_user(content=content_blocks)
             else:

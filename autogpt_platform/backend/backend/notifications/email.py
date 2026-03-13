@@ -8,6 +8,7 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
+    AgentRunData,
     NotificationDataType_co,
     NotificationEventModel,
     NotificationTypeOverride,
@@ -46,6 +47,47 @@ class EmailSender:
         self.formatter = TextFormatter()
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
+
+    def _build_large_output_summary(
+        self,
+        data: (
+            NotificationEventModel[NotificationDataType_co]
+            | list[NotificationEventModel[NotificationDataType_co]]
+        ),
+        *,
+        email_size: int,
+        base_url: str,
+    ) -> str:
+        if isinstance(data, list):
+            if not data:
+                return (
+                    "⚠️ A notification generated a very large output "
+                    f"({email_size / 1_000_000:.2f} MB)."
+                )
+            event = data[0]
+        else:
+            event = data
+        execution_url = (
+            f"{base_url}/executions/{event.id}" if event.id is not None else None
+        )
+
+        if isinstance(event.data, AgentRunData):
+            lines = [
+                f"⚠️ Your agent '{event.data.agent_name}' generated a very large output ({email_size / 1_000_000:.2f} MB).",
+                "",
+                f"Execution time: {event.data.execution_time}",
+                f"Credits used: {event.data.credits_used}",
+            ]
+            if execution_url is not None:
+                lines.append(f"View full results: {execution_url}")
+            return "\n".join(lines)
+
+        lines = [
+            f"⚠️ A notification generated a very large output ({email_size / 1_000_000:.2f} MB).",
+        ]
+        if execution_url is not None:
+            lines.extend(["", f"View full results: {execution_url}"])
+        return "\n".join(lines)
 
     def send_template(
         self,
@@ -124,13 +166,10 @@ class EmailSender:
                 "Sending summary email instead."
             )
 
-            # Create lightweight summary
-            summary_message = (
-                f"⚠️ Your agent '{getattr(data, 'agent_name', 'Unknown')}' "
-                f"generated a very large output ({email_size / 1_000_000:.2f} MB).\n\n"
-                f"Execution time: {getattr(data, 'execution_time', 'N/A')}\n"
-                f"Credits used: {getattr(data, 'credits_used', 'N/A')}\n"
-                f"View full results: {base_url}/executions/{getattr(data, 'id', 'N/A')}"
+            summary_message = self._build_large_output_summary(
+                data,
+                email_size=email_size,
+                base_url=base_url,
             )
 
             self._send_email(

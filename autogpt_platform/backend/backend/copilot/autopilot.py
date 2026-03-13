@@ -4,13 +4,15 @@ import json
 import logging
 import re
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import prisma.enums
 import prisma.models
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot import stream_registry
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.executor.utils import enqueue_copilot_turn
 from backend.copilot.model import (
@@ -30,6 +32,7 @@ from backend.copilot.session_types import (
 from backend.data.understanding import (
     format_understanding_for_prompt,
     get_business_understanding,
+    parse_business_understanding_input,
 )
 from backend.notifications.email import EmailSender
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -56,6 +59,22 @@ AUTOPILOT_INVITE_CTA_EMAIL_TEMPLATE = "nightly_copilot_invite_cta.html.jinja2"
 
 class CallbackTokenConsumeResult(BaseModel):
     session_id: str
+
+
+class CompletionReportToolCallFunction(BaseModel):
+    name: str | None = None
+    arguments: str | None = None
+
+
+class CompletionReportToolCall(BaseModel):
+    id: str
+    function: CompletionReportToolCallFunction = Field(
+        default_factory=CompletionReportToolCallFunction
+    )
+
+
+class ToolOutputEnvelope(BaseModel):
+    type: str | None = None
 
 
 def wrap_internal_message(content: str) -> str:
@@ -150,6 +169,16 @@ async def _session_exists_for_execution_tag(user_id: str, execution_tag: str) ->
     return existing is not None
 
 
+def _get_invited_user_tally_understanding(
+    invited_user: prisma.models.InvitedUser | None,
+) -> dict[str, Any] | None:
+    if invited_user is None:
+        return None
+
+    understanding = parse_business_understanding_input(invited_user.tallyUnderstanding)
+    return understanding.model_dump(mode="json") if understanding is not None else None
+
+
 def _render_initial_message(
     start_type: ChatSessionStartType,
     *,
@@ -170,9 +199,10 @@ def _render_initial_message(
         )
 
     invite_summary = ""
-    if invited_user and isinstance(invited_user.tallyUnderstanding, dict):
+    tally_understanding = _get_invited_user_tally_understanding(invited_user)
+    if tally_understanding is not None:
         invite_summary = "\nKnown context from the beta application:\n" + json.dumps(
-            invited_user.tallyUnderstanding, ensure_ascii=False
+            tally_understanding, ensure_ascii=False
         )
     return wrap_internal_message(
         "This is a one-off invite CTA session for an invited beta user who has not yet activated. "
@@ -330,8 +360,9 @@ async def _build_autopilot_system_prompt(
             "## Recent Manual Sessions Since Previous Nightly Run\n" + recent_context
         )
 
-    if invited_user and isinstance(invited_user.tallyUnderstanding, dict):
-        invite_context = json.dumps(invited_user.tallyUnderstanding, ensure_ascii=False)
+    tally_understanding = _get_invited_user_tally_understanding(invited_user)
+    if tally_understanding is not None:
+        invite_context = json.dumps(tally_understanding, ensure_ascii=False)
         context_sections.append("## Beta Application Context\n" + invite_context)
 
     base_prompt = await _get_system_prompt_template("\n\n".join(context_sections))
@@ -350,8 +381,6 @@ async def _enqueue_session_turn(
     message: str,
     tool_name: str,
 ) -> None:
-    from backend.copilot import stream_registry
-
     turn_id = str(uuid4())
     await stream_registry.create_session(
         session_id=session.session_id,
@@ -416,6 +445,79 @@ async def _create_autopilot_session(
     return session
 
 
+async def _try_create_invite_cta_session(
+    user: prisma.models.User,
+    *,
+    invited_user: prisma.models.InvitedUser | None,
+    now_utc: datetime,
+    timezone_name: str,
+    invite_cta_start: date,
+    invite_cta_delay: timedelta,
+) -> bool:
+    if invited_user is None:
+        return False
+    if invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
+        return False
+    if invited_user.createdAt.date() < invite_cta_start:
+        return False
+    if invited_user.createdAt > now_utc - invite_cta_delay:
+        return False
+    if await _session_exists_for_execution_tag(user.id, get_invite_cta_execution_tag()):
+        return False
+
+    created = await _create_autopilot_session(
+        user,
+        start_type=ChatSessionStartType.AUTOPILOT_INVITE_CTA,
+        execution_tag=get_invite_cta_execution_tag(),
+        timezone_name=timezone_name,
+        invited_user=invited_user,
+    )
+    return created is not None
+
+
+async def _try_create_nightly_session(
+    user: prisma.models.User,
+    *,
+    now_utc: datetime,
+    timezone_name: str,
+    target_local_date: date,
+) -> bool:
+    if not await _user_has_recent_manual_message(
+        user.id,
+        now_utc - timedelta(hours=24),
+    ):
+        return False
+
+    created = await _create_autopilot_session(
+        user,
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+        execution_tag=get_nightly_execution_tag(target_local_date),
+        timezone_name=timezone_name,
+        target_local_date=target_local_date,
+    )
+    return created is not None
+
+
+async def _try_create_callback_session(
+    user: prisma.models.User,
+    *,
+    callback_start: datetime,
+    timezone_name: str,
+) -> bool:
+    if not await _user_has_session_since(user.id, callback_start):
+        return False
+    if await _session_exists_for_execution_tag(user.id, get_callback_execution_tag()):
+        return False
+
+    created = await _create_autopilot_session(
+        user,
+        start_type=ChatSessionStartType.AUTOPILOT_CALLBACK,
+        execution_tag=get_callback_execution_tag(),
+        timezone_name=timezone_name,
+    )
+    return created is not None
+
+
 async def dispatch_nightly_copilot() -> int:
     now_utc = datetime.now(UTC)
     bucket_end = _bucket_end_for_now(now_utc)
@@ -457,51 +559,32 @@ async def dispatch_nightly_copilot() -> int:
             continue
 
         invited_user = invites_by_user_id.get(user.id)
-        if (
-            invited_user is not None
-            and invited_user.status == prisma.enums.InvitedUserStatus.INVITED
-            and invited_user.createdAt.date() >= invite_cta_start
-            and invited_user.createdAt <= now_utc - invite_cta_delay
-            and not await _session_exists_for_execution_tag(
-                user.id, get_invite_cta_execution_tag()
-            )
+        if await _try_create_invite_cta_session(
+            user,
+            invited_user=invited_user,
+            now_utc=now_utc,
+            timezone_name=timezone_name,
+            invite_cta_start=invite_cta_start,
+            invite_cta_delay=invite_cta_delay,
         ):
-            created = await _create_autopilot_session(
-                user,
-                start_type=ChatSessionStartType.AUTOPILOT_INVITE_CTA,
-                execution_tag=get_invite_cta_execution_tag(),
-                timezone_name=timezone_name,
-                invited_user=invited_user,
-            )
-            created_count += 1 if created else 0
+            created_count += 1
             continue
 
-        if await _user_has_recent_manual_message(
-            user.id,
-            now_utc - timedelta(hours=24),
+        if await _try_create_nightly_session(
+            user,
+            now_utc=now_utc,
+            timezone_name=timezone_name,
+            target_local_date=target_local_date,
         ):
-            created = await _create_autopilot_session(
-                user,
-                start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
-                execution_tag=get_nightly_execution_tag(target_local_date),
-                timezone_name=timezone_name,
-                target_local_date=target_local_date,
-            )
-            created_count += 1 if created else 0
+            created_count += 1
             continue
 
-        if await _user_has_session_since(
-            user.id, callback_start
-        ) and not await _session_exists_for_execution_tag(
-            user.id, get_callback_execution_tag()
+        if await _try_create_callback_session(
+            user,
+            callback_start=callback_start,
+            timezone_name=timezone_name,
         ):
-            created = await _create_autopilot_session(
-                user,
-                start_type=ChatSessionStartType.AUTOPILOT_CALLBACK,
-                execution_tag=get_callback_execution_tag(),
-                timezone_name=timezone_name,
-            )
-            created_count += 1 if created else 0
+            created_count += 1
 
     return created_count
 
@@ -537,32 +620,30 @@ def _extract_completion_report_from_session(
             continue
 
         for tool_call in message.tool_calls:
-            function = tool_call.get("function") or {}
-            if function.get("name") != "completion_report":
+            try:
+                parsed_tool_call = CompletionReportToolCall.model_validate(tool_call)
+            except ValidationError:
                 continue
 
-            tool_call_id = tool_call.get("id")
-            if not isinstance(tool_call_id, str):
+            if parsed_tool_call.function.name != "completion_report":
                 continue
-            output = tool_outputs.get(tool_call_id)
+
+            output = tool_outputs.get(parsed_tool_call.id)
             if not output:
                 continue
 
             try:
-                output_payload = json.loads(output)
-            except Exception:
-                continue
+                output_payload = ToolOutputEnvelope.model_validate_json(output)
+            except ValidationError:
+                output_payload = None
 
-            if (
-                isinstance(output_payload, dict)
-                and output_payload.get("type") == "error"
-            ):
+            if output_payload is not None and output_payload.type == "error":
                 continue
 
             try:
-                raw_arguments = function.get("arguments") or "{}"
-                report = CompletionReportInput.model_validate(json.loads(raw_arguments))
-            except Exception:
+                raw_arguments = parsed_tool_call.function.arguments or "{}"
+                report = CompletionReportInput.model_validate_json(raw_arguments)
+            except ValidationError:
                 continue
 
             if pending_approval_count > 0 and not report.approval_summary:
@@ -735,8 +816,6 @@ async def _send_completion_email(session: ChatSession) -> None:
 
 
 async def send_nightly_copilot_emails() -> int:
-    from backend.copilot import stream_registry
-
     candidates = await prisma.models.ChatSession.prisma().find_many(
         where={
             "startType": {"not": ChatSessionStartType.MANUAL.value},

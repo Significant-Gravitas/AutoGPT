@@ -1,5 +1,7 @@
 """Data models and access layer for user business understanding."""
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from typing import Any, Optional, cast
@@ -29,6 +31,18 @@ def _json_to_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return cast(list[str], value)
     return []
+
+
+def parse_business_understanding_input(
+    payload: Any,
+) -> BusinessUnderstandingInput | None:
+    if payload is None:
+        return None
+
+    try:
+        return BusinessUnderstandingInput.model_validate(payload)
+    except pydantic.ValidationError:
+        return None
 
 
 class BusinessUnderstandingInput(pydantic.BaseModel):

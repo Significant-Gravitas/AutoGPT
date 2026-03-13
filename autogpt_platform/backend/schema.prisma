@@ -258,8 +258,8 @@ model ChatSession {
   credentials Json    @default("{}") // Map of provider -> credential metadata
   startType   ChatSessionStartType @default(MANUAL)
   executionTag String?
-  sessionConfig Json @default("{}")
-  completionReport Json?
+  sessionConfig Json @default("{}") // ChatSessionConfig payload from backend.copilot.session_types.ChatSessionConfig
+  completionReport Json? // StoredCompletionReport payload from backend.copilot.session_types.StoredCompletionReport
   completionReportRepairCount Int @default(0)
   completionReportRepairQueuedAt DateTime?
   completedAt DateTime?
@@ -291,7 +291,7 @@ model ChatSessionCallbackToken {
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   sourceSessionId String?
-  SourceSession   ChatSession? @relation("ChatSessionCallbackSource", fields: [sourceSessionId], references: [id], onDelete: SetNull)
+  SourceSession   ChatSession? @relation("ChatSessionCallbackSource", fields: [sourceSessionId], references: [id], onDelete: Cascade)
 
   callbackSessionMessage String
   expiresAt DateTime
@@ -299,6 +299,7 @@ model ChatSessionCallbackToken {
   consumedSessionId String?
 
   @@index([userId, expiresAt])
+  @@index([consumedSessionId])
 }
 
 model ChatMessage {

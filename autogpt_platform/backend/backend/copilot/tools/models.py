@@ -139,7 +139,7 @@ class NoResultsResponse(ToolResponseBase):
     """Response when no agents found."""
 
     type: ResponseType = ResponseType.NO_RESULTS
-    suggestions: list[str] = []
+    suggestions: list[str] = Field(default_factory=list)
     name: str = "no_results"
 
 
@@ -171,8 +171,8 @@ class AgentDetails(BaseModel):
     name: str
     description: str
     in_library: bool = False
-    inputs: dict[str, Any] = {}
-    credentials: list[CredentialsMetaInput] = []
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    credentials: list[CredentialsMetaInput] = Field(default_factory=list)
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
     trigger_info: dict[str, Any] | None = None
 
@@ -192,7 +192,7 @@ class UserReadiness(BaseModel):
     """User readiness status."""
 
     has_all_credentials: bool = False
-    missing_credentials: dict[str, Any] = {}
+    missing_credentials: dict[str, Any] = Field(default_factory=dict)
     ready_to_run: bool = False
 
 
@@ -445,9 +445,9 @@ class BlockDetails(BaseModel):
     id: str
     name: str
     description: str
-    inputs: dict[str, Any] = {}
-    outputs: dict[str, Any] = {}
-    credentials: list[CredentialsMetaInput] = []
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, Any] = Field(default_factory=dict)
+    credentials: list[CredentialsMetaInput] = Field(default_factory=list)
 
 
 class BlockDetailsResponse(ToolResponseBase):
@@ -640,7 +640,7 @@ class FolderInfo(BaseModel):
 class FolderTreeInfo(FolderInfo):
     """Folder with nested children for tree display."""
 
-    children: list["FolderTreeInfo"] = []
+    children: list["FolderTreeInfo"] = Field(default_factory=list)
 
 
 class FolderCreatedResponse(ToolResponseBase):
@@ -687,6 +687,6 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
     agent_ids: list[str]
-    agent_names: list[str] = []
+    agent_names: list[str] = Field(default_factory=list)
     folder_id: str | None = None
     count: int = 0

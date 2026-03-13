@@ -34,6 +34,36 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
     return ChatSession.from_db(session) if session else None
 
 
+def _build_chat_message_create_input(
+    *,
+    session_id: str,
+    sequence: int,
+    now: datetime,
+    msg: dict[str, Any],
+) -> ChatMessageCreateInput:
+    data: ChatMessageCreateInput = {
+        "sessionId": session_id,
+        "role": msg["role"],
+        "sequence": sequence,
+        "createdAt": now,
+    }
+
+    if msg.get("content") is not None:
+        data["content"] = sanitize_string(msg["content"])
+    if msg.get("name") is not None:
+        data["name"] = msg["name"]
+    if msg.get("tool_call_id") is not None:
+        data["toolCallId"] = msg["tool_call_id"]
+    if msg.get("refusal") is not None:
+        data["refusal"] = sanitize_string(msg["refusal"])
+    if msg.get("tool_calls") is not None:
+        data["toolCalls"] = SafeJson(msg["tool_calls"])
+    if msg.get("function_call") is not None:
+        data["functionCall"] = SafeJson(msg["function_call"])
+
+    return data
+
+
 async def create_chat_session(
     session_id: str,
     user_id: str,
@@ -224,37 +254,15 @@ async def add_chat_messages_batch(
             now = datetime.now(UTC)
 
             async with db.transaction() as tx:
-                # Build all message data
-                messages_data = []
-                for i, msg in enumerate(messages):
-                    # Build ChatMessageCreateInput with only non-None values
-                    # (Prisma TypedDict rejects optional fields set to None)
-                    # Note: create_many doesn't support nested creates, use sessionId directly
-                    data: ChatMessageCreateInput = {
-                        "sessionId": session_id,
-                        "role": msg["role"],
-                        "sequence": start_sequence + i,
-                        "createdAt": now,
-                    }
-
-                    # Add optional string fields — sanitize to strip
-                    # PostgreSQL-incompatible control characters.
-                    if msg.get("content") is not None:
-                        data["content"] = sanitize_string(msg["content"])
-                    if msg.get("name") is not None:
-                        data["name"] = msg["name"]
-                    if msg.get("tool_call_id") is not None:
-                        data["toolCallId"] = msg["tool_call_id"]
-                    if msg.get("refusal") is not None:
-                        data["refusal"] = sanitize_string(msg["refusal"])
-
-                    # Add optional JSON fields only when they have values
-                    if msg.get("tool_calls") is not None:
-                        data["toolCalls"] = SafeJson(msg["tool_calls"])
-                    if msg.get("function_call") is not None:
-                        data["functionCall"] = SafeJson(msg["function_call"])
-
-                    messages_data.append(data)
+                messages_data = [
+                    _build_chat_message_create_input(
+                        session_id=session_id,
+                        sequence=start_sequence + i,
+                        now=now,
+                        msg=msg,
+                    )
+                    for i, msg in enumerate(messages)
+                ]
 
                 # Run create_many and session update in parallel within transaction
                 # Both use the same timestamp for consistency

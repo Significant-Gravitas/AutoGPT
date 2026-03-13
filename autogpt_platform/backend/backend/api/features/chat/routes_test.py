@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, and suggested prompts."""
 
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -11,6 +12,7 @@ import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.response_model import StreamFinish
 from backend.copilot.session_types import ChatSessionStartType
 
 app = fastapi.FastAPI()
@@ -317,7 +319,11 @@ def _mock_stream_internals(mocker: pytest_mock.MockFixture):
         return_value=None,
     )
     mock_registry = mocker.MagicMock()
+    subscriber_queue = asyncio.Queue()
+    subscriber_queue.put_nowait(StreamFinish())
     mock_registry.create_session = mocker.AsyncMock(return_value=None)
+    mock_registry.subscribe_to_session = mocker.AsyncMock(return_value=subscriber_queue)
+    mock_registry.unsubscribe_from_session = mocker.AsyncMock(return_value=None)
     mocker.patch(
         "backend.api.features.chat.routes.stream_registry",
         mock_registry,

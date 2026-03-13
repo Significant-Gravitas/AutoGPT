@@ -5,7 +5,6 @@ import {
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
@@ -24,25 +23,16 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import {
-  CheckCircle,
-  DotsThree,
-  PlusCircleIcon,
-  PlusIcon,
-} from "@phosphor-icons/react";
+import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
-import {
-  getSessionListParams,
-  getSessionStartTypeLabel,
-  isNonManualSessionStartType,
-} from "../../helpers";
+import { getSessionListParams } from "../../helpers";
 import { useCopilotUIStore } from "../../store";
+import { SessionListItem } from "../SessionListItem/SessionListItem";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -198,31 +188,6 @@ export function ChatSidebar() {
     }
   }
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-
-    const day = date.getDate();
-    const ordinal =
-      day % 10 === 1 && day !== 11
-        ? "st"
-        : day % 10 === 2 && day !== 12
-          ? "nd"
-          : day % 10 === 3 && day !== 13
-            ? "rd"
-            : "th";
-    const month = date.toLocaleDateString("en-US", { month: "short" });
-    const year = date.getFullYear();
-
-    return `${day}${ordinal} ${month} ${year}`;
-  }
-
   return (
     <>
       <Sidebar
@@ -326,17 +291,17 @@ export function ChatSidebar() {
                   No conversations yet
                 </p>
               ) : (
-                sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className={cn(
-                      "group relative w-full rounded-lg transition-colors",
-                      session.id === sessionId
-                        ? "bg-zinc-100"
-                        : "hover:bg-zinc-50",
-                    )}
-                  >
-                    {editingSessionId === session.id ? (
+                sessions.map((session) =>
+                  editingSessionId === session.id ? (
+                    <div
+                      key={session.id}
+                      className={cn(
+                        "group relative w-full rounded-lg transition-colors",
+                        session.id === sessionId
+                          ? "bg-zinc-100"
+                          : "hover:bg-zinc-50",
+                      )}
+                    >
                       <div className="px-3 py-2.5">
                         <input
                           ref={renameInputRef}
@@ -362,94 +327,49 @@ export function ChatSidebar() {
                           className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => handleSelectSession(session.id)}
-                        className="w-full px-3 py-2.5 pr-10 text-left"
-                      >
-                        <div className="flex min-w-0 max-w-full items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <Text
-                              variant="body"
-                              className={cn(
-                                "truncate font-normal",
-                                session.id === sessionId
-                                  ? "text-zinc-600"
-                                  : "text-zinc-800",
-                              )}
+                    </div>
+                  ) : (
+                    <SessionListItem
+                      key={session.id}
+                      session={session}
+                      currentSessionId={sessionId}
+                      isCompleted={completedSessionIDs.has(session.id)}
+                      onSelect={handleSelectSession}
+                      variant="sidebar"
+                      actionSlot={
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                              aria-label="More actions"
                             >
-                              <AnimatePresence mode="wait" initial={false}>
-                                <motion.span
-                                  key={session.title || "untitled"}
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: -4 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="block truncate"
-                                >
-                                  {session.title || "Untitled chat"}
-                                </motion.span>
-                              </AnimatePresence>
-                            </Text>
-                            {isNonManualSessionStartType(session.start_type) ? (
-                              <div className="mt-1">
-                                <Badge variant="info" size="small">
-                                  {getSessionStartTypeLabel(session.start_type)}
-                                </Badge>
-                              </div>
-                            ) : null}
-                            <Text variant="small" className="text-neutral-400">
-                              {formatDate(session.updated_at)}
-                            </Text>
-                          </div>
-                          {session.is_processing &&
-                            session.id !== sessionId &&
-                            !completedSessionIDs.has(session.id) && (
-                              <PulseLoader size={16} className="shrink-0" />
-                            )}
-                          {completedSessionIDs.has(session.id) &&
-                            session.id !== sessionId && (
-                              <CheckCircle
-                                className="h-4 w-4 shrink-0 text-green-500"
-                                weight="fill"
-                              />
-                            )}
-                        </div>
-                      </button>
-                    )}
-                    {editingSessionId !== session.id && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
-                            aria-label="More actions"
-                          >
-                            <DotsThree className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleRenameClick(e, session.id, session.title)
-                            }
-                          >
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleDeleteClick(e, session.id, session.title)
-                            }
-                            disabled={isDeleting}
-                            className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                          >
-                            Delete chat
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                ))
+                              <DotsThree className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleRenameClick(e, session.id, session.title)
+                              }
+                            >
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleDeleteClick(e, session.id, session.title)
+                              }
+                              disabled={isDeleting}
+                              className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                            >
+                              Delete chat
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      }
+                    />
+                  ),
+                )
               )}
             </motion.div>
           )}

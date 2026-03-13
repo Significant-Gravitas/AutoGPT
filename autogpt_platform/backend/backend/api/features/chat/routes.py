@@ -3,8 +3,9 @@
 import asyncio
 import logging
 import re
+import time
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any, NoReturn
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -28,7 +29,12 @@ from backend.copilot.model import (
     get_user_sessions,
     update_session_title,
 )
-from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamFinish,
+    StreamHeartbeat,
+)
 from backend.copilot.session_types import ChatSessionStartType
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
@@ -67,6 +73,187 @@ _UUID_RE = re.compile(
 )
 
 logger = logging.getLogger(__name__)
+STREAM_QUEUE_GET_TIMEOUT_SECONDS = 10.0
+STREAMING_RESPONSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1",
+}
+
+
+def _build_streaming_response(
+    generator: AsyncGenerator[str, None],
+) -> StreamingResponse:
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers=STREAMING_RESPONSE_HEADERS,
+    )
+
+
+async def _unsubscribe_stream_queue(
+    session_id: str,
+    subscriber_queue: asyncio.Queue[StreamBaseResponse] | None,
+) -> None:
+    if subscriber_queue is None:
+        return
+
+    try:
+        await stream_registry.unsubscribe_from_session(session_id, subscriber_queue)
+    except Exception as unsub_err:
+        logger.error(
+            f"Error unsubscribing from session {session_id}: {unsub_err}",
+            exc_info=True,
+        )
+
+
+async def _stream_subscriber_queue(
+    *,
+    session_id: str,
+    subscriber_queue: asyncio.Queue[StreamBaseResponse],
+    log_meta: dict[str, Any],
+    started_at: float,
+    label: str,
+    surface_errors: bool,
+) -> AsyncGenerator[str, None]:
+    chunk_count = 0
+    first_chunk_type: str | None = None
+
+    try:
+        while True:
+            try:
+                chunk = await asyncio.wait_for(
+                    subscriber_queue.get(),
+                    timeout=STREAM_QUEUE_GET_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                yield StreamHeartbeat().to_sse()
+                continue
+
+            chunk_count += 1
+            if first_chunk_type is None:
+                first_chunk_type = type(chunk).__name__
+                elapsed = (time.perf_counter() - started_at) * 1000
+                logger.info(
+                    f"[TIMING] {label} first chunk at {elapsed:.1f}ms, type={first_chunk_type}",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "chunk_type": first_chunk_type,
+                            "elapsed_ms": elapsed,
+                        }
+                    },
+                )
+
+            yield chunk.to_sse()
+
+            if isinstance(chunk, StreamFinish):
+                total_time = (time.perf_counter() - started_at) * 1000
+                logger.info(
+                    f"[TIMING] {label} received StreamFinish in {total_time:.1f}ms",
+                    extra={
+                        "json_fields": {
+                            **log_meta,
+                            "chunks_yielded": chunk_count,
+                            "total_time_ms": total_time,
+                        }
+                    },
+                )
+                break
+    except GeneratorExit:
+        logger.info(
+            f"[TIMING] {label} client disconnected after {chunk_count} chunks",
+            extra={
+                "json_fields": {
+                    **log_meta,
+                    "chunks_yielded": chunk_count,
+                    "reason": "client_disconnect",
+                }
+            },
+        )
+    except Exception as exc:
+        elapsed = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            f"[TIMING] {label} error after {elapsed:.1f}ms: {exc}",
+            extra={
+                "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(exc)}
+            },
+        )
+        if surface_errors:
+            yield StreamError(
+                errorText="An error occurred. Please try again.",
+                code="stream_error",
+            ).to_sse()
+            yield StreamFinish().to_sse()
+    finally:
+        total_time = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            f"[TIMING] {label} finished in {total_time:.1f}ms",
+            extra={
+                "json_fields": {
+                    **log_meta,
+                    "total_time_ms": total_time,
+                    "chunks_yielded": chunk_count,
+                    "first_chunk_type": first_chunk_type,
+                }
+            },
+        )
+        yield "data: [DONE]\n\n"
+
+
+async def _stream_chat_events(
+    *,
+    session_id: str,
+    user_id: str | None,
+    subscribe_from_id: str,
+    turn_id: str,
+    log_meta: dict[str, Any],
+) -> AsyncGenerator[str, None]:
+    started_at = time.perf_counter()
+    subscriber_queue = await stream_registry.subscribe_to_session(
+        session_id=session_id,
+        user_id=user_id,
+        last_message_id=subscribe_from_id,
+    )
+
+    try:
+        if subscriber_queue is None:
+            yield StreamFinish().to_sse()
+            yield "data: [DONE]\n\n"
+            return
+
+        async for chunk in _stream_subscriber_queue(
+            session_id=session_id,
+            subscriber_queue=subscriber_queue,
+            log_meta=log_meta,
+            started_at=started_at,
+            label=f"stream_chat_post[{turn_id}]",
+            surface_errors=True,
+        ):
+            yield chunk
+    finally:
+        await _unsubscribe_stream_queue(session_id, subscriber_queue)
+
+
+async def _resume_stream_events(
+    *,
+    session_id: str,
+    subscriber_queue: asyncio.Queue[StreamBaseResponse],
+) -> AsyncGenerator[str, None]:
+    started_at = time.perf_counter()
+    try:
+        async for chunk in _stream_subscriber_queue(
+            session_id=session_id,
+            subscriber_queue=subscriber_queue,
+            log_meta={"session_id": session_id},
+            started_at=started_at,
+            label=f"resume_stream[{session_id}]",
+            surface_errors=False,
+        ):
+            yield chunk
+    finally:
+        await _unsubscribe_stream_queue(session_id, subscriber_queue)
 
 
 async def _validate_and_get_session(
@@ -403,7 +590,8 @@ async def get_session(
     # Check if there's an active stream for this session
     active_stream_info = None
     active_session, last_message_id = await stream_registry.get_active_session(
-        session_id, user_id
+        session_id,
+        user_id,
     )
     logger.info(
         f"[GET_SESSION] session={session_id}, active_session={active_session is not None}, "
@@ -519,9 +707,6 @@ async def stream_chat_post(
         StreamingResponse: SSE-formatted response chunks.
 
     """
-    import asyncio
-    import time
-
     stream_start_time = time.perf_counter()
     log_meta = {"component": "ChatStream", "session_id": session_id}
     if user_id:
@@ -634,141 +819,14 @@ async def stream_chat_post(
         f"[TIMING] Task enqueued to RabbitMQ, setup={setup_time:.1f}ms",
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
-
-    # SSE endpoint that subscribes to the task's stream
-    async def event_generator() -> AsyncGenerator[str, None]:
-        import time as time_module
-
-        event_gen_start = time_module.perf_counter()
-        logger.info(
-            f"[TIMING] event_generator STARTED, turn={turn_id}, session={session_id}, "
-            f"user={user_id}",
-            extra={"json_fields": log_meta},
+    return _build_streaming_response(
+        _stream_chat_events(
+            session_id=session_id,
+            user_id=user_id,
+            subscribe_from_id=subscribe_from_id,
+            turn_id=turn_id,
+            log_meta=log_meta,
         )
-        subscriber_queue = None
-        first_chunk_yielded = False
-        chunks_yielded = 0
-        try:
-            # Subscribe from the position we captured before enqueuing
-            # This avoids replaying old messages while catching all new ones
-            subscriber_queue = await stream_registry.subscribe_to_session(
-                session_id=session_id,
-                user_id=user_id,
-                last_message_id=subscribe_from_id,
-            )
-
-            if subscriber_queue is None:
-                yield StreamFinish().to_sse()
-                yield "data: [DONE]\n\n"
-                return
-
-            # Read from the subscriber queue and yield to SSE
-            logger.info(
-                "[TIMING] Starting to read from subscriber_queue",
-                extra={"json_fields": log_meta},
-            )
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                    chunks_yielded += 1
-
-                    if not first_chunk_yielded:
-                        first_chunk_yielded = True
-                        elapsed = time_module.perf_counter() - event_gen_start
-                        logger.info(
-                            f"[TIMING] FIRST CHUNK from queue at {elapsed:.2f}s, "
-                            f"type={type(chunk).__name__}",
-                            extra={
-                                "json_fields": {
-                                    **log_meta,
-                                    "chunk_type": type(chunk).__name__,
-                                    "elapsed_ms": elapsed * 1000,
-                                }
-                            },
-                        )
-
-                    yield chunk.to_sse()
-
-                    # Check for finish signal
-                    if isinstance(chunk, StreamFinish):
-                        total_time = time_module.perf_counter() - event_gen_start
-                        logger.info(
-                            f"[TIMING] StreamFinish received in {total_time:.2f}s; "
-                            f"n_chunks={chunks_yielded}",
-                            extra={
-                                "json_fields": {
-                                    **log_meta,
-                                    "chunks_yielded": chunks_yielded,
-                                    "total_time_ms": total_time * 1000,
-                                }
-                            },
-                        )
-                        break
-                except asyncio.TimeoutError:
-                    yield StreamHeartbeat().to_sse()
-
-        except GeneratorExit:
-            logger.info(
-                f"[TIMING] GeneratorExit (client disconnected), chunks={chunks_yielded}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "chunks_yielded": chunks_yielded,
-                        "reason": "client_disconnect",
-                    }
-                },
-            )
-            pass  # Client disconnected - background task continues
-        except Exception as e:
-            elapsed = (time_module.perf_counter() - event_gen_start) * 1000
-            logger.error(
-                f"[TIMING] event_generator ERROR after {elapsed:.1f}ms: {e}",
-                extra={
-                    "json_fields": {**log_meta, "elapsed_ms": elapsed, "error": str(e)}
-                },
-            )
-            # Surface error to frontend so it doesn't appear stuck
-            yield StreamError(
-                errorText="An error occurred. Please try again.",
-                code="stream_error",
-            ).to_sse()
-            yield StreamFinish().to_sse()
-        finally:
-            # Unsubscribe when client disconnects or stream ends
-            if subscriber_queue is not None:
-                try:
-                    await stream_registry.unsubscribe_from_session(
-                        session_id, subscriber_queue
-                    )
-                except Exception as unsub_err:
-                    logger.error(
-                        f"Error unsubscribing from session {session_id}: {unsub_err}",
-                        exc_info=True,
-                    )
-            # AI SDK protocol termination - always yield even if unsubscribe fails
-            total_time = time_module.perf_counter() - event_gen_start
-            logger.info(
-                f"[TIMING] event_generator FINISHED in {total_time:.2f}s; "
-                f"turn={turn_id}, session={session_id}, n_chunks={chunks_yielded}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "total_time_ms": total_time * 1000,
-                        "chunks_yielded": chunks_yielded,
-                    }
-                },
-            )
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
-        },
     )
 
 
@@ -794,11 +852,7 @@ async def resume_session_stream(
         StreamingResponse (SSE) when an active stream exists,
         or 204 No Content when there is nothing to resume.
     """
-    import asyncio
-
-    active_session, last_message_id = await stream_registry.get_active_session(
-        session_id, user_id
-    )
+    active_session, _ = await stream_registry.get_active_session(session_id, user_id)
 
     if not active_session:
         return Response(status_code=204)
@@ -815,64 +869,11 @@ async def resume_session_stream(
 
     if subscriber_queue is None:
         return Response(status_code=204)
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        chunk_count = 0
-        first_chunk_type: str | None = None
-        try:
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                    if chunk_count < 3:
-                        logger.info(
-                            "Resume stream chunk",
-                            extra={
-                                "session_id": session_id,
-                                "chunk_type": str(chunk.type),
-                            },
-                        )
-                    if not first_chunk_type:
-                        first_chunk_type = str(chunk.type)
-                    chunk_count += 1
-                    yield chunk.to_sse()
-
-                    if isinstance(chunk, StreamFinish):
-                        break
-                except asyncio.TimeoutError:
-                    yield StreamHeartbeat().to_sse()
-        except GeneratorExit:
-            pass
-        except Exception as e:
-            logger.error(f"Error in resume stream for session {session_id}: {e}")
-        finally:
-            try:
-                await stream_registry.unsubscribe_from_session(
-                    session_id, subscriber_queue
-                )
-            except Exception as unsub_err:
-                logger.error(
-                    f"Error unsubscribing from session {active_session.session_id}: {unsub_err}",
-                    exc_info=True,
-                )
-            logger.info(
-                "Resume stream completed",
-                extra={
-                    "session_id": session_id,
-                    "n_chunks": chunk_count,
-                    "first_chunk_type": first_chunk_type,
-                },
-            )
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "x-vercel-ai-ui-message-stream": "v1",
-        },
+    return _build_streaming_response(
+        _resume_stream_events(
+            session_id=session_id,
+            subscriber_queue=subscriber_queue,
+        )
     )
 
 
@@ -1024,6 +1025,6 @@ ToolResponseUnion = (
     description="This endpoint is not meant to be called. It exists solely to "
     "expose tool response models in the OpenAPI schema for frontend codegen.",
 )
-async def _tool_response_schema() -> ToolResponseUnion:  # type: ignore[return]
+async def _tool_response_schema() -> NoReturn:
     """Never called at runtime. Exists only so Orval generates TS types."""
     raise HTTPException(status_code=501, detail="Schema-only endpoint")

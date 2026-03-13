@@ -1,11 +1,8 @@
-import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import {
-  CheckCircle,
   PlusIcon,
   SpeakerHigh,
   SpeakerSlash,
@@ -13,12 +10,9 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
-import {
-  getSessionStartTypeLabel,
-  isNonManualSessionStartType,
-} from "../../helpers";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { useCopilotUIStore } from "../../store";
-import { PulseLoader } from "../PulseLoader/PulseLoader";
+import { SessionListItem } from "../SessionListItem/SessionListItem";
 
 interface Props {
   isOpen: boolean;
@@ -31,31 +25,6 @@ interface Props {
   onNewChat: () => void;
   onClose: () => void;
   onOpenChange: (open: boolean) => void;
-}
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  const day = date.getDate();
-  const ordinal =
-    day % 10 === 1 && day !== 11
-      ? "st"
-      : day % 10 === 2 && day !== 12
-        ? "nd"
-        : day % 10 === 3 && day !== 13
-          ? "rd"
-          : "th";
-  const month = date.toLocaleDateString("en-US", { month: "short" });
-  const year = date.getFullYear();
-
-  return `${day}${ordinal} ${month} ${year}`;
 }
 
 export function MobileDrawer({
@@ -156,59 +125,19 @@ export function MobileDrawer({
               </p>
             ) : (
               sessions.map((session) => (
-                <button
+                <SessionListItem
                   key={session.id}
-                  onClick={() => {
-                    onSelectSession(session.id);
-                    if (completedSessionIDs.has(session.id)) {
-                      clearCompletedSession(session.id);
+                  session={session}
+                  currentSessionId={currentSessionId}
+                  isCompleted={completedSessionIDs.has(session.id)}
+                  variant="drawer"
+                  onSelect={(selectedSessionId) => {
+                    onSelectSession(selectedSessionId);
+                    if (completedSessionIDs.has(selectedSessionId)) {
+                      clearCompletedSession(selectedSessionId);
                     }
                   }}
-                  className={cn(
-                    "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
-                    session.id === currentSessionId
-                      ? "bg-zinc-100"
-                      : "hover:bg-zinc-50",
-                  )}
-                >
-                  <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                    <div className="flex min-w-0 max-w-full items-center gap-1.5">
-                      <Text
-                        variant="body"
-                        className={cn(
-                          "truncate font-normal",
-                          session.id === currentSessionId
-                            ? "text-zinc-600"
-                            : "text-zinc-800",
-                        )}
-                      >
-                        {session.title || "Untitled chat"}
-                      </Text>
-                      {session.is_processing &&
-                        !completedSessionIDs.has(session.id) &&
-                        session.id !== currentSessionId && (
-                          <PulseLoader size={8} className="shrink-0" />
-                        )}
-                      {completedSessionIDs.has(session.id) &&
-                        session.id !== currentSessionId && (
-                          <CheckCircle
-                            className="h-4 w-4 shrink-0 text-green-500"
-                            weight="fill"
-                          />
-                        )}
-                    </div>
-                    {isNonManualSessionStartType(session.start_type) ? (
-                      <div className="mt-1">
-                        <Badge variant="info" size="small">
-                          {getSessionStartTypeLabel(session.start_type)}
-                        </Badge>
-                      </div>
-                    ) : null}
-                    <Text variant="small" className="text-neutral-400">
-                      {formatDate(session.updated_at)}
-                    </Text>
-                  </div>
-                </button>
+                />
               ))
             )}
           </div>

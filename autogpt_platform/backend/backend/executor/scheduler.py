@@ -419,7 +419,7 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     ) -> "GraphExecutionJobInfo":
         # Extract timezone from the trigger if it's a CronTrigger
         timezone_str = "UTC"
-        if hasattr(job_obj.trigger, "timezone"):
+        if isinstance(job_obj.trigger, CronTrigger):
             timezone_str = str(job_obj.trigger.timezone)
 
         return GraphExecutionJobInfo(

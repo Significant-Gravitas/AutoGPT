@@ -18,6 +18,9 @@ ADD COLUMN "completedAt" TIMESTAMP(3),
 ADD COLUMN "notificationEmailSentAt" TIMESTAMP(3),
 ADD COLUMN "notificationEmailSkippedAt" TIMESTAMP(3);
 
+COMMENT ON COLUMN "ChatSession"."sessionConfig" IS 'Validated by backend.copilot.session_types.ChatSessionConfig';
+COMMENT ON COLUMN "ChatSession"."completionReport" IS 'Validated by backend.copilot.session_types.StoredCompletionReport';
+
 -- CreateTable
 CREATE TABLE "ChatSessionCallbackToken"(
   "id" TEXT NOT NULL,
@@ -48,6 +51,10 @@ CREATE INDEX "ChatSessionCallbackToken_userId_expiresAt_idx"
 ON "ChatSessionCallbackToken"("userId",
   "expiresAt");
 
+-- CreateIndex
+CREATE INDEX "ChatSessionCallbackToken_consumedSessionId_idx"
+ON "ChatSessionCallbackToken"("consumedSessionId");
+
 -- AddForeignKey
 ALTER TABLE "ChatSessionCallbackToken" ADD CONSTRAINT "ChatSessionCallbackToken_userId_fkey" FOREIGN KEY("userId") REFERENCES "User"("id")
 ON DELETE CASCADE
@@ -56,5 +63,5 @@ ON UPDATE CASCADE;
 -- AddForeignKey
 ALTER TABLE "ChatSessionCallbackToken" ADD CONSTRAINT "ChatSessionCallbackToken_sourceSessionId_fkey" FOREIGN KEY("sourceSessionId") REFERENCES "ChatSession"("id")
 ON DELETE 
-SET NULL
+CASCADE
 ON UPDATE CASCADE;

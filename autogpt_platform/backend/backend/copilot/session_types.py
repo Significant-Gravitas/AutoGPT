@@ -38,14 +38,13 @@ class CompletionReportInput(BaseModel):
     @model_validator(mode="after")
     def validate_notification_fields(self) -> "CompletionReportInput":
         if self.should_notify_user:
+            required_fields = {
+                "email_title": self.email_title,
+                "email_body": self.email_body,
+                "callback_session_message": self.callback_session_message,
+            }
             missing = [
-                field_name
-                for field_name in (
-                    "email_title",
-                    "email_body",
-                    "callback_session_message",
-                )
-                if not getattr(self, field_name)
+                field_name for field_name, value in required_fields.items() if not value
             ]
             if missing:
                 raise ValueError(
