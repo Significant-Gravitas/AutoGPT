@@ -10,9 +10,9 @@ _CP = TypeVar("_CP", bound=CommandProvider)
 
 
 def command(
-    names: list[str] = [],
+    names: list[str] = None,
     description: Optional[str] = None,
-    parameters: dict[str, JSONSchema] = {},
+    parameters: dict[str, JSONSchema] = None,
 ) -> Callable[[Callable[Concatenate[_CP, P], CO]], Command[P, CO]]:
     """
     The command decorator is used to make a Command from a function.
@@ -26,6 +26,10 @@ def command(
         parameters (dict[str, JSONSchema]): The parameters of the function
             that the command executes.
     """
+    if names is None:
+        names = []
+    if parameters is None:
+        parameters = {}
 
     def decorator(func: Callable[Concatenate[_CP, P], CO]) -> Command[P, CO]:
         doc = func.__doc__ or ""

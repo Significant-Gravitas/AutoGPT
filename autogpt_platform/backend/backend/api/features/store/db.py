@@ -578,11 +578,11 @@ async def create_store_submission(
     name: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
-    image_urls: list[str] = [],
+    image_urls: list[str] = None,
     description: str = "",
     instructions: str | None = None,
     sub_heading: str = "",
-    categories: list[str] = [],
+    categories: list[str] = None,
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
 ) -> store_model.StoreSubmission:
@@ -605,6 +605,10 @@ async def create_store_submission(
     Returns:
         StoreSubmission: The created store submission
     """
+    if image_urls is None:
+        image_urls = []
+    if categories is None:
+        categories = []
     logger.debug(
         f"Creating store submission for user #{user_id}, "
         f"graph #{graph_id} v{graph_version}"
@@ -755,10 +759,10 @@ async def edit_store_submission(
     name: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
-    image_urls: list[str] = [],
+    image_urls: list[str] = None,
     description: str = "",
     sub_heading: str = "",
-    categories: list[str] = [],
+    categories: list[str] = None,
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
     instructions: str | None = None,
@@ -785,6 +789,10 @@ async def edit_store_submission(
         UnauthorizedError: If the user doesn't own the submission
         InvalidOperationError: If trying to edit a submission that can't be edited
     """
+    if image_urls is None:
+        image_urls = []
+    if categories is None:
+        categories = []
     try:
         # Get the current version and verify ownership
         current_version = await prisma.models.StoreListingVersion.prisma().find_first(

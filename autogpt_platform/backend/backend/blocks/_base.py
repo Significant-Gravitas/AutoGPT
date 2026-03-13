@@ -424,7 +424,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self,
         id: str = "",
         description: str = "",
-        contributors: list["ContributorDetails"] = [],
+        contributors: list["ContributorDetails"] = None,
         categories: set[BlockCategory] | None = None,
         input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
         output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
@@ -455,6 +455,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
         """
+        if contributors is None:
+            contributors = []
         from backend.data.model import NodeExecutionStats
 
         self.id = id

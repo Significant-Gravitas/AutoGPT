@@ -38,7 +38,7 @@ class StreamElementsSpeech(VoiceBase):
         tts_url = (
             f"https://api.streamelements.com/kappa/v2/speech?voice={voice}&text={text}"
         )
-        response = requests.get(tts_url)
+        response = requests.get(tts_url, timeout=10.0)
 
         if response.status_code == 200:
             with open("speech.mp3", "wb") as f:

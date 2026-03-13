@@ -112,8 +112,10 @@ class Configurable(Generic[S]):
         return _recurse_user_config_values(cls.default_settings)
 
     @classmethod
-    def build_agent_configuration(cls, overrides: dict = {}) -> S:
+    def build_agent_configuration(cls, overrides: dict = None) -> S:
         """Process the configuration for this object."""
+        if overrides is None:
+            overrides = {}
 
         base_config = _update_user_config_from_env(cls.default_settings)
         final_configuration = deep_update(base_config, overrides)

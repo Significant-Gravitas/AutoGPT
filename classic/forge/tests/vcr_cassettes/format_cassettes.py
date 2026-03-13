@@ -13,7 +13,7 @@ def convert_cassette_file(filename: str | Path):
     print(f"{filename} STARTING")
 
     with open(filename) as c:
-        cassette_content = yaml.load(c, Loader)
+        cassette_content = yaml.safe_load(c, Loader)
 
     # Iterate over all request+response pairs
     for interaction in cassette_content["interactions"]:

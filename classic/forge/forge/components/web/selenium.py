@@ -139,7 +139,7 @@ class WebSeleniumComponent(
         self,
         url: str,
         *,
-        topics_of_interest: list[str] = [],
+        topics_of_interest: list[str] = None,
         get_raw_content: bool = False,
         question: str = "",
     ) -> str:
@@ -152,6 +152,8 @@ class WebSeleniumComponent(
         Returns:
             str: The answer and links to the user and the webdriver
         """
+        if topics_of_interest is None:
+            topics_of_interest = []
         driver = None
         try:
             driver = await self.open_page_in_browser(url)

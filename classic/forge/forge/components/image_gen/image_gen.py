@@ -139,6 +139,7 @@ class ImageGeneratorComponent(
                 json={
                     "inputs": prompt,
                 },
+                    timeout=10.0,
             )
 
             if response.ok:
@@ -222,7 +223,7 @@ class ImageGeneratorComponent(
         output_file: Path,
         size: int = 512,
         negative_prompt: str = "",
-        extra: dict = {},
+        extra: dict = None,
     ) -> str:
         """Generate an image with Stable Diffusion webui.
         Args:
@@ -234,6 +235,8 @@ class ImageGeneratorComponent(
         Returns:
             str: The filename of the image
         """
+        if extra is None:
+            extra = {}
         # Create a session and set the basic auth if needed
         s = requests.Session()
         if self.config.sd_webui_auth:
@@ -254,6 +257,7 @@ class ImageGeneratorComponent(
                 "n_iter": 1,
                 **extra,
             },
+                timeout=10.0,
         )
 
         logger.info(f"Image Generated for prompt: '{prompt}'")

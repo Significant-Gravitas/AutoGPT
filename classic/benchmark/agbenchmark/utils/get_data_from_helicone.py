@@ -59,6 +59,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
                 "variables": variables,
                 "operationName": operation_name,
             },
+                timeout=10.0,
         )
 
         data = response.json()

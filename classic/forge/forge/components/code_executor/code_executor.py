@@ -176,7 +176,7 @@ class CodeExecutorComponent(
             ),
         },
     )
-    def execute_python_file(self, filename: str | Path, args: list[str] = []) -> str:
+    def execute_python_file(self, filename: str | Path, args: list[str] = None) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
@@ -186,6 +186,8 @@ class CodeExecutorComponent(
         Returns:
             str: The output of the file
         """
+        if args is None:
+            args = []
         logger.info(f"Executing python file '{filename}'")
 
         if not str(filename).endswith(".py"):

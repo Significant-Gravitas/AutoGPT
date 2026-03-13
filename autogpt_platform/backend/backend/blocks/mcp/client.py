@@ -133,7 +133,7 @@ class MCPClient:
             raise_for_status=True,
             extra_headers=headers,
         )
-        response = await requests.post(self.server_url, json=payload)
+        response = await requests.post(self.server_url, json=payload, timeout=10.0)
 
         # Capture session ID from response (MCP Streamable HTTP transport)
         session_id = response.headers.get("Mcp-Session-Id")
@@ -176,7 +176,7 @@ class MCPClient:
             raise_for_status=False,
             extra_headers=headers,
         )
-        await requests.post(self.server_url, json=notification)
+        await requests.post(self.server_url, json=notification, timeout=10.0)
 
     async def discover_auth(self) -> dict[str, Any] | None:
         """Probe the MCP server's OAuth metadata (RFC 9728 / MCP spec).
@@ -207,7 +207,7 @@ class MCPClient:
         )
         for url in candidates:
             try:
-                resp = await requests.get(url)
+                resp = await requests.get(url, timeout=10.0)
                 if resp.status == 200:
                     data = resp.json()
                     if isinstance(data, dict) and "authorization_servers" in data:
@@ -248,7 +248,7 @@ class MCPClient:
         )
         for url in candidates:
             try:
-                resp = await requests.get(url)
+                resp = await requests.get(url, timeout=10.0)
                 if resp.status == 200:
                     data = resp.json()
                     if isinstance(data, dict) and "authorization_endpoint" in data:

@@ -156,8 +156,10 @@ class AgentDB:
         self.engine.dispose()
 
     async def create_task(
-        self, input: Optional[str], additional_input: Optional[dict] = {}
+        self, input: Optional[str], additional_input: Optional[dict] = None
     ) -> Task:
+        if additional_input is None:
+            additional_input = {}
         if self.debug_enabled:
             logger.debug("Creating new task")
 
@@ -186,8 +188,10 @@ class AgentDB:
         task_id: str,
         input: StepRequestBody,
         is_last: bool = False,
-        additional_input: Optional[Dict[str, Any]] = {},
+        additional_input: Optional[Dict[str, Any]] = None,
     ) -> Step:
+        if additional_input is None:
+            additional_input = {}
         if self.debug_enabled:
             logger.debug(f"Creating new step for task_id: {task_id}")
         try:

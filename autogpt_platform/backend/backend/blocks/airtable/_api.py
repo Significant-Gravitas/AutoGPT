@@ -1336,20 +1336,7 @@ async def create_base(
     credentials: Credentials,
     workspace_id: str,
     name: str,
-    tables: list[dict] = [
-        {
-            "description": "Default table",
-            "name": "Default table",
-            "fields": [
-                {
-                    "name": "ID",
-                    "type": "number",
-                    "description": "Auto-incrementing ID field",
-                    "options": {"precision": 0},
-                }
-            ],
-        }
-    ],
+    tables: list[dict] = None,
 ) -> dict:
     """
     Create a new base in Airtable.
@@ -1363,6 +1350,8 @@ async def create_base(
     Returns:
         dict: Response containing the created base information
     """
+    if tables is None:
+        tables = []
     params: dict[str, Any] = {
         "name": name,
         "workspaceId": workspace_id,

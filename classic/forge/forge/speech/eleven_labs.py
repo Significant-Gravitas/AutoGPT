@@ -79,7 +79,7 @@ class ElevenLabsSpeech(VoiceBase):
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_id]}"
         )
-        response = requests.post(tts_url, headers=self._headers, json={"text": text})
+        response = requests.post(tts_url, headers=self._headers, json={"text": text}, timeout=10.0)
 
         if response.status_code == 200:
             with open("speech.mpeg", "wb") as f:
