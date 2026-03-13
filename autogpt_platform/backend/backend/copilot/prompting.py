@@ -80,9 +80,9 @@ def _build_storage_supplement(
 {characteristics}
 {persistence}
 2. **Persistent workspace** (cloud) — survives across sessions.
-      - {file_move_name_1_to_2}: use `write_workspace_file`
-      - {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
-      - Save important files to workspace for persistence.
+   - {file_move_name_1_to_2}: use `write_workspace_file`
+   - {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
+   - Save important files to workspace for persistence.
 {_SHARED_TOOL_NOTES}"""
 
 
