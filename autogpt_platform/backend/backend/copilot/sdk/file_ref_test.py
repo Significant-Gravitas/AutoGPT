@@ -1779,9 +1779,15 @@ async def test_non_media_string_field_still_reads_content():
     async def _resolve(ref, *a, **kw):  # noqa: ARG001
         return "file content here"
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref._infer_format_from_workspace",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {"text": "@@agptfile:workspace://abc123"},
