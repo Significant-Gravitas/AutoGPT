@@ -188,10 +188,13 @@ class BlockHandler(ContentHandler):
         )
 
         existing_ids = {row["contentId"] for row in existing_result}
+        # Filter disabled blocks before applying batch_size so that a large
+        # number of disabled blocks can't exhaust the batch budget and prevent
+        # enabled blocks from being indexed.
         missing_blocks = [
             (block_id, block_cls)
             for block_id, block_cls in all_blocks.items()
-            if block_id not in existing_ids
+            if block_id not in existing_ids and not block_cls().disabled
         ]
 
         # Convert to ContentItem
@@ -199,9 +202,6 @@ class BlockHandler(ContentHandler):
         for block_id, block_cls in missing_blocks[:batch_size]:
             try:
                 block_instance = block_cls()
-
-                if block_instance.disabled:
-                    continue
 
                 # Build searchable text from block metadata
                 parts = []
