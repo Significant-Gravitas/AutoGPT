@@ -227,9 +227,6 @@ async def stream_chat_completion_baseline(
     # Token usage accumulators — populated from streaming chunks
     turn_prompt_tokens = 0
     turn_completion_tokens = 0
-    # Track message count before the tool loop so the fallback estimator
-    # only counts messages added during *this* turn, not the full history.
-    _msgs_before_turn = len(openai_messages)
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
             # Open a new step for each LLM round
@@ -432,17 +429,16 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # Only count messages added during *this* turn (user message +
-        # tool rounds), not the full conversation history.
+        # Count the full message list (system + history + turn) since
+        # each API call sends the complete context window.
         if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
             from backend.util.prompt import (
                 estimate_token_count,
                 estimate_token_count_str,
             )
 
-            turn_messages = openai_messages[_msgs_before_turn - 1 :]
             turn_prompt_tokens = max(
-                estimate_token_count(turn_messages, model=config.model), 1
+                estimate_token_count(openai_messages, model=config.model), 1
             )
             turn_completion_tokens = max(
                 estimate_token_count_str(assistant_text, model=config.model), 1
