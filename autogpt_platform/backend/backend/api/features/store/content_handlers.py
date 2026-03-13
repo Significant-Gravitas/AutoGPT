@@ -6,7 +6,6 @@ Each handler knows how to fetch and process its content type for embedding.
 """
 
 import logging
-import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +13,7 @@ from typing import Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
+from backend.api.features.store.text_utils import split_camelcase
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
 
@@ -191,11 +191,17 @@ class BlockHandler(ContentHandler):
         # Filter disabled blocks before applying batch_size so that a large
         # number of disabled blocks can't exhaust the batch budget and prevent
         # enabled blocks from being indexed.
-        missing_blocks = [
-            (block_id, block_cls)
-            for block_id, block_cls in all_blocks.items()
-            if block_id not in existing_ids and not block_cls().disabled
-        ]
+        missing_blocks: list[tuple[str, type]] = []
+        for block_id, block_cls in all_blocks.items():
+            if block_id in existing_ids:
+                continue
+            try:
+                if block_cls().disabled:
+                    continue
+            except Exception as e:
+                logger.warning(f"Skipping block {block_id}: failed to init: {e}")
+                continue
+            missing_blocks.append((block_id, block_cls))
 
         # Convert to ContentItem
         items = []
@@ -206,14 +212,7 @@ class BlockHandler(ContentHandler):
                 # Build searchable text from block metadata
                 parts = []
                 if block_instance.name:
-                    # Split CamelCase names into separate words so that
-                    # lexical search (tsvector) and BM25 can match individual
-                    # terms.  "AITextGeneratorBlock" → "AI Text Generator Block"
-                    split_name = re.sub(
-                        r"([a-z0-9])([A-Z])", r"\1 \2", block_instance.name
-                    )
-                    split_name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split_name)
-                    parts.append(split_name)
+                    parts.append(split_camelcase(block_instance.name))
                 if block_instance.description:
                     parts.append(block_instance.description)
                 if block_instance.categories:
