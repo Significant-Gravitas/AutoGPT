@@ -130,7 +130,7 @@ class RunAgentTool(BaseTool):
                 },
                 "use_defaults": {
                     "type": "boolean",
-                    "description": "Run with default values.",
+                    "description": "Run with default values (confirm with user first).",
                 },
                 "schedule_name": {
                     "type": "string",

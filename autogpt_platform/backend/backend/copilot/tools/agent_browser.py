@@ -409,7 +409,8 @@ class BrowserNavigateTool(BaseTool):
     def description(self) -> str:
         return (
             "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
-            "for browser_act. Session persists (cookies/auth carry over)."
+            "for browser_act. Session persists (cookies/auth carry over). "
+            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify."
         )
 
     @property
@@ -737,8 +738,8 @@ class BrowserScreenshotTool(BaseTool):
         return (
             "Screenshot the current browser page and save to workspace. "
             "annotate=true overlays @ref labels on elements. "
-            "After calling, immediately call read_workspace_file with the returned "
-            "file_id to display the image inline."
+            "IMPORTANT: After calling, you MUST immediately call read_workspace_file with the "
+            "returned file_id to display the image inline."
         )
 
     @property

@@ -101,7 +101,7 @@ class CreateFolderTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Folder name.",
+                    "description": "Folder name (max 100 chars).",
                 },
                 "parent_id": {
                     "type": "string",

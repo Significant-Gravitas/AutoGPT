@@ -22,12 +22,14 @@ Pass large file content to tools by reference: `@@agptfile:<uri>[<start>-<end>]`
 - `workspace://<file_id>` or `workspace:///<path>` — workspace files
 - `/absolute/path` — local/sandbox files
 - `[start-end]` — optional 1-indexed line range
+- Multiple refs per argument supported. Only `workspace://` and absolute paths are expanded.
 
 Examples:
 ```
 @@agptfile:workspace://abc123
 @@agptfile:workspace://abc123[10-50]
-@@agptfile:/tmp/copilot-<session>/output.py[1-80]
+@@agptfile:workspace:///reports/q1.md
+@@agptfile:/home/user/script.py[1-80]
 ```
 
 **Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).
@@ -71,16 +73,16 @@ def _build_storage_supplement(
 
 ### Shell & filesystem
 - Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
-- All file tools share the same filesystem.
+- All file tools share the same filesystem. Use relative or absolute paths under this dir.
 
 ### Storage
 1. **{storage_system_1_name}** (`{working_dir}`):
 {characteristics}
 {persistence}
 2. **Persistent workspace** (cloud) — survives across sessions.
-- {file_move_name_1_to_2}: use `write_workspace_file`
-- {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
-- Save important files to workspace for persistence.
+      - {file_move_name_1_to_2}: use `write_workspace_file`
+      - {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
+      - Save important files to workspace for persistence.
 {_SHARED_TOOL_NOTES}"""
 
 

@@ -46,7 +46,8 @@ class CustomizeAgentTool(BaseTool):
                 },
                 "save": {
                     "type": "boolean",
-                    "description": "Save the agent (default: true).",
+                    "description": "Save the agent (default: true). False for preview.",
+                    "default": True,
                 },
                 "folder_id": {
                     "type": "string",

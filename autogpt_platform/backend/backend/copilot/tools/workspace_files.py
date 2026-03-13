@@ -465,7 +465,7 @@ class ReadWorkspaceFileTool(BaseTool):
                     "description": "Max characters to return for paginated reads.",
                 },
             },
-            "required": [],
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property
@@ -799,7 +799,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                     "description": "Virtual file path.",
                 },
             },
-            "required": [],
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property
