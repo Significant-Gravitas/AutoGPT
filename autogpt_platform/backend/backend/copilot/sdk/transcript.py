@@ -490,13 +490,26 @@ def _transcript_to_messages(content: str) -> list[dict]:
                     parts.append(block)
             msg_dict["content"] = "\n".join(parts) if parts else ""
         elif isinstance(raw_content, list):
-            parts = []
+            str_parts: list[str] = []
             for block in raw_content:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
-                    parts.append(str(block.get("content", "")))
+                    # Flatten tool_result content for summarisation;
+                    # tool_use_id pairing is not preserved through LLM
+                    # compaction — the compacted transcript uses fresh IDs.
+                    inner = block.get("content", "")
+                    if isinstance(inner, list):
+                        for sub in inner:
+                            if isinstance(sub, dict):
+                                str_parts.append(str(sub.get("text", "")))
+                            else:
+                                str_parts.append(str(sub))
+                    else:
+                        str_parts.append(str(inner))
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    str_parts.append(str(block.get("text", "")))
                 elif isinstance(block, str):
-                    parts.append(block)
-            msg_dict["content"] = "\n".join(parts) if parts else ""
+                    str_parts.append(block)
+            msg_dict["content"] = "\n".join(str_parts) if str_parts else ""
         else:
             msg_dict["content"] = raw_content or ""
         messages.append(msg_dict)

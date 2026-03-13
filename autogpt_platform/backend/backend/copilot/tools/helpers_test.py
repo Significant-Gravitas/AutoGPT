@@ -150,8 +150,8 @@ class TestExecuteBlockCreditCharging:
         mock_get_credits.assert_not_awaited()
         mock_spend_credits.assert_not_awaited()
 
-    async def test_returns_output_on_post_exec_insufficient_balance(self):
-        """If charging fails after execution, output is still returned (block already ran)."""
+    async def test_returns_error_on_post_exec_insufficient_balance(self):
+        """If charging fails after execution, return ErrorResponse."""
         from backend.util.exceptions import InsufficientBalanceError
 
         block = _make_block()
@@ -185,9 +185,8 @@ class TestExecuteBlockCreditCharging:
                 matched_credentials={},
             )
 
-        # Block already executed (with side effects), so output is returned
-        assert isinstance(result, BlockOutputResponse)
-        assert result.success is True
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message
 
 
 # ---------------------------------------------------------------------------

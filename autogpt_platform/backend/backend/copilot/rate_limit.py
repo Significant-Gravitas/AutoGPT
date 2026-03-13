@@ -11,7 +11,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
-from redis.exceptions import RedisError
 
 from backend.data.redis_client import get_redis_async
 
@@ -113,8 +112,10 @@ async def get_usage_status(
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
-    except (RedisError, ConnectionError, OSError):
-        logger.warning("Redis unavailable for usage status, returning zeros")
+    except Exception:
+        logger.warning(
+            "Redis unavailable for usage status, returning zeros", exc_info=True
+        )
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -154,8 +155,10 @@ async def check_rate_limit(
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
-    except (RedisError, ConnectionError, OSError):
-        logger.warning("Redis unavailable for rate limit check, allowing request")
+    except Exception:
+        logger.warning(
+            "Redis unavailable for rate limit check, allowing request", exc_info=True
+        )
         return
 
     if daily_token_limit > 0 and daily_used >= daily_token_limit:
@@ -238,8 +241,9 @@ async def record_token_usage(
         pipe.expire(w_key, max(seconds_until_weekly_reset, 1))
 
         await pipe.execute()
-    except (RedisError, ConnectionError, OSError):
+    except Exception:
         logger.warning(
             "Redis unavailable for recording token usage (tokens=%d)",
             total,
+            exc_info=True,
         )

@@ -185,9 +185,18 @@ class TranscriptBuilder:
         pre-compaction history.
         """
         prev_count = len(self._entries)
-        self._entries.clear()
-        self._last_uuid = None
-        self.load_previous(content, log_prefix=log_prefix)
+        temp = TranscriptBuilder()
+        try:
+            temp.load_previous(content, log_prefix=log_prefix)
+        except Exception:
+            logger.exception(
+                "%s Failed to parse compacted transcript; keeping %d existing entries",
+                log_prefix,
+                prev_count,
+            )
+            return
+        self._entries = temp._entries
+        self._last_uuid = temp._last_uuid
         logger.info(
             "%s Replaced %d entries with %d compacted entries",
             log_prefix,

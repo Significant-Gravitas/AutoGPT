@@ -188,13 +188,17 @@ async def execute_block(
                     ),
                 )
             except InsufficientBalanceError:
-                # Concurrent spend drained balance after our pre-check passed.
-                # Block already executed (with possible side effects), so return
-                # its output. Log the billing leak amount for reconciliation.
                 logger.warning(
                     "Post-exec credit charge failed for block %s (cost=%d)",
                     block.name,
                     cost,
+                )
+                return ErrorResponse(
+                    message=(
+                        f"Insufficient credits to complete '{block.name}'. "
+                        "Please top up your credits to continue."
+                    ),
+                    session_id=session_id,
                 )
 
         return BlockOutputResponse(
@@ -216,7 +220,7 @@ async def execute_block(
     except Exception as e:
         logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
-            message=f"Failed to execute block: {e}",
+            message="Failed to execute block",
             error=str(e),
             session_id=session_id,
         )

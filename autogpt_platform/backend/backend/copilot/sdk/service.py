@@ -861,21 +861,41 @@ async def stream_chat_completion_sdk(
                             for line in transcript_content.splitlines()
                             if line.strip()
                         )
-                        # Upload the compacted version for future turns
-                        await upload_transcript(
-                            user_id=user_id or "",
-                            session_id=session_id,
-                            content=transcript_content,
-                            message_count=dl.message_count,
-                            log_prefix=log_prefix,
+                        # Best-effort upload of compacted version
+                        try:
+                            await upload_transcript(
+                                user_id=user_id or "",
+                                session_id=session_id,
+                                content=transcript_content,
+                                message_count=dl.message_count,
+                                log_prefix=log_prefix,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "%s Failed to upload compacted transcript",
+                                log_prefix,
+                                exc_info=True,
+                            )
+                    else:
+                        # Compaction failed — skip resume to avoid
+                        # "Prompt is too long" on an oversized transcript.
+                        logger.warning(
+                            "%s Compaction failed, skipping resume for this turn",
+                            log_prefix,
                         )
+                        transcript_content = ""
 
-                # Load previous FULL context into builder
-                transcript_builder.load_previous(
-                    transcript_content, log_prefix=log_prefix
-                )
-                resume_file = write_transcript_to_tempfile(
-                    transcript_content, session_id, sdk_cwd
+                # Load previous context into builder (empty string is a no-op)
+                if transcript_content:
+                    transcript_builder.load_previous(
+                        transcript_content, log_prefix=log_prefix
+                    )
+                resume_file = (
+                    write_transcript_to_tempfile(
+                        transcript_content, session_id, sdk_cwd
+                    )
+                    if transcript_content
+                    else None
                 )
                 if resume_file:
                     use_resume = True
