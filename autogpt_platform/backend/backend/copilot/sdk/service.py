@@ -76,7 +76,9 @@ from .tool_adapter import (
 )
 from .transcript import (
     cleanup_cli_project_dir,
+    delete_transcript,
     download_transcript,
+    read_cli_session_file,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -1045,6 +1047,35 @@ async def stream_chat_completion_sdk(
                             exc_info=True,
                         )
                         ended_with_stream_error = True
+
+                        # "Prompt is too long" means the resumed transcript
+                        # exceeded the model's context window.  Delete the
+                        # oversized transcript so the next turn falls back to
+                        # the compression-based _build_query_message path.
+                        err_str = str(stream_err)
+                        if (
+                            "prompt is too long" in err_str.lower()
+                            and use_resume
+                            and user_id
+                        ):
+                            logger.warning(
+                                "%s Prompt too long with --resume — deleting "
+                                "oversized transcript for session %s",
+                                log_prefix,
+                                session_id,
+                            )
+                            try:
+                                await delete_transcript(user_id, session_id)
+                            except Exception as del_err:
+                                logger.warning(
+                                    "%s Failed to delete oversized transcript: %s",
+                                    log_prefix,
+                                    del_err,
+                                )
+                            # Prevent the finally block from re-uploading the
+                            # same oversized transcript.
+                            use_resume = False
+
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
                             code="sdk_stream_error",
@@ -1425,10 +1456,33 @@ async def stream_chat_completion_sdk(
         # This MUST run in finally so the transcript is uploaded even when
         # the streaming loop raises an exception.
         # The transcript represents the COMPLETE active context (atomic).
-        if config.claude_agent_use_resume and user_id and session is not None:
+        if (
+            config.claude_agent_use_resume
+            and use_resume
+            and user_id
+            and session is not None
+        ):
             try:
-                # Build complete transcript from captured SDK messages
-                transcript_content = transcript_builder.to_jsonl()
+                # Prefer the CLI's own session file — it reflects any
+                # mid-stream compaction the CLI performed.  Fall back to
+                # TranscriptBuilder output when the CLI file isn't available
+                # (e.g. the process was killed before writing it).
+                cli_transcript = read_cli_session_file(sdk_cwd) if sdk_cwd else None
+                if cli_transcript:
+                    transcript_content = cli_transcript
+                    logger.info(
+                        "%s Using CLI session file for transcript upload " "(%d bytes)",
+                        log_prefix,
+                        len(cli_transcript),
+                    )
+                else:
+                    transcript_content = transcript_builder.to_jsonl()
+                    logger.info(
+                        "%s CLI session file not available, using "
+                        "TranscriptBuilder (%d bytes)",
+                        log_prefix,
+                        len(transcript_content) if transcript_content else 0,
+                    )
 
                 if not transcript_content:
                     logger.warning(

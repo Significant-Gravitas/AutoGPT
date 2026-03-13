@@ -137,6 +137,59 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
+def _cli_project_dir(sdk_cwd: str) -> str | None:
+    """Return the CLI's project directory for a given working directory.
+
+    Returns ``None`` if the path would escape the projects base.
+    """
+    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
+
+    if not project_dir.startswith(projects_base + os.sep):
+        logger.warning(f"[Transcript] Project dir escaped projects base: {project_dir}")
+        return None
+    return project_dir
+
+
+def read_cli_session_file(sdk_cwd: str) -> str | None:
+    """Read the CLI's own session file, which reflects any compaction.
+
+    The CLI writes its session transcript to
+    ``~/.claude/projects/<encoded_cwd>/<session_id>.jsonl``.
+    Since each SDK turn uses a unique ``sdk_cwd``, there should be
+    exactly one ``.jsonl`` file in that directory.
+
+    Returns the file content, or ``None`` if not found.
+    """
+    import glob
+
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir or not os.path.isdir(project_dir):
+        return None
+
+    jsonl_files = glob.glob(os.path.join(project_dir, "*.jsonl"))
+    if not jsonl_files:
+        logger.debug("[Transcript] No CLI session file found in %s", project_dir)
+        return None
+
+    # Pick the most recently modified file (should be only one per turn).
+    session_file = max(jsonl_files, key=os.path.getmtime)
+    try:
+        with open(session_file) as f:
+            content = f.read()
+        logger.info(
+            "[Transcript] Read CLI session file: %s (%d bytes)",
+            session_file,
+            len(content),
+        )
+        return content
+    except OSError as e:
+        logger.warning("[Transcript] Failed to read CLI session file: %s", e)
+        return None
+
+
 def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """Remove the CLI's project directory for a specific working directory.
 
@@ -146,16 +199,8 @@ def cleanup_cli_project_dir(sdk_cwd: str) -> None:
     """
     import shutil
 
-    # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
-    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
-    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
-
-    if not project_dir.startswith(projects_base + os.sep):
-        logger.warning(
-            f"[Transcript] Cleanup path escaped projects base: {project_dir}"
-        )
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir:
         return
 
     if os.path.isdir(project_dir):
