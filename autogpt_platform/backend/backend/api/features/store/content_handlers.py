@@ -281,11 +281,17 @@ class BlockHandler(ContentHandler):
         all_blocks = get_blocks()
 
         # Filter out disabled blocks - they're not indexed
-        enabled_block_ids = [
-            block_id
-            for block_id, block_cls in all_blocks.items()
-            if not block_cls().disabled
-        ]
+        enabled_block_ids: list[str] = []
+        for block_id, block_cls in all_blocks.items():
+            try:
+                if block_cls().disabled:
+                    continue
+            except Exception as e:
+                logger.warning(
+                    "Skipping block %s in stats: init failed: %s", block_id, e
+                )
+                continue
+            enabled_block_ids.append(block_id)
         total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
