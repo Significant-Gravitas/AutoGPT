@@ -1137,6 +1137,10 @@ async def stream_chat_completion_sdk(
                     compact_result = await compaction.emit_end_if_ready(session)
                     for ev in compact_result.events:
                         yield ev
+                    # After replace_entries, skip append_assistant for this
+                    # sdk_msg — the CLI session file already contains it,
+                    # so appending again would create a duplicate.
+                    entries_replaced = False
                     if compact_result.just_ended:
                         compacted = await asyncio.to_thread(
                             read_compacted_entries,
@@ -1146,6 +1150,7 @@ async def stream_chat_completion_sdk(
                             transcript_builder.replace_entries(
                                 compacted, log_prefix=log_prefix
                             )
+                            entries_replaced = True
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
@@ -1232,10 +1237,11 @@ async def stream_chat_completion_sdk(
                                     tool_call_id=response.toolCallId,
                                 )
                             )
-                            transcript_builder.append_tool_result(
-                                tool_use_id=response.toolCallId,
-                                content=content,
-                            )
+                            if not entries_replaced:
+                                transcript_builder.append_tool_result(
+                                    tool_use_id=response.toolCallId,
+                                    content=content,
+                                )
                             has_tool_results = True
 
                         elif isinstance(response, StreamFinish):
@@ -1245,7 +1251,9 @@ async def stream_chat_completion_sdk(
                     # any stashed tool results from the previous turn are
                     # recorded first, preserving the required API order:
                     # assistant(tool_use) → tool_result → assistant(text).
-                    if isinstance(sdk_msg, AssistantMessage):
+                    # Skip if replace_entries just ran — the CLI session
+                    # file already contains this message.
+                    if isinstance(sdk_msg, AssistantMessage) and not entries_replaced:
                         transcript_builder.append_assistant(
                             content_blocks=_format_sdk_content_blocks(sdk_msg.content),
                             model=sdk_msg.model,
