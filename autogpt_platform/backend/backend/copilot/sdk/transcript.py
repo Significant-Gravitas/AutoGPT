@@ -164,13 +164,15 @@ def _cli_project_dir(sdk_cwd: str) -> str | None:
     return project_dir
 
 
-def read_cli_session_file(sdk_cwd: str) -> str | None:
+async def read_cli_session_file(sdk_cwd: str) -> str | None:
     """Read the CLI's own session file, which reflects any mid-stream compaction.
 
     After the CLI compacts context, its session file contains the compacted
     conversation.  Reading this file lets ``TranscriptBuilder`` replace its
     uncompacted entries with the CLI's compacted version.
     """
+    import aiofiles
+
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir or not os.path.isdir(project_dir):
         return None
@@ -196,7 +198,8 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
         logger.warning("[Transcript] Session file escaped project dir: %s", real_path)
         return None
     try:
-        content = session_file.read_text()
+        async with aiofiles.open(real_path) as f:
+            content = await f.read()
         logger.info(
             "[Transcript] Read CLI session file: %s (%d bytes)",
             real_path,

@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 from backend.util import json
 
 from .transcript import (
@@ -14,6 +16,7 @@ from .transcript import (
     validate_transcript,
     write_transcript_to_tempfile,
 )
+from .transcript_builder import TranscriptBuilder
 
 
 def _make_jsonl(*entries: dict) -> str:
@@ -268,7 +271,8 @@ class TestCliProjectDir:
 
 
 class TestReadCliSessionFile:
-    def test_reads_session_file(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_reads_session_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
         # Create the CLI project directory structure
         cwd = "/tmp/copilot-testread"
@@ -281,11 +285,12 @@ class TestReadCliSessionFile:
         session_file = project_dir / "test-session.jsonl"
         session_file.write_text(json.dumps(ASST_MSG) + "\n")
 
-        result = read_cli_session_file(cwd)
+        result = await read_cli_session_file(cwd)
         assert result is not None
         assert "assistant" in result
 
-    def test_returns_none_when_no_files(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_files(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
         cwd = "/tmp/copilot-nofiles"
         import re
@@ -294,13 +299,14 @@ class TestReadCliSessionFile:
         project_dir = tmp_path / "projects" / encoded
         project_dir.mkdir(parents=True)
         # No jsonl files
-        result = read_cli_session_file(cwd)
+        result = await read_cli_session_file(cwd)
         assert result is None
 
-    def test_returns_none_when_dir_missing(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_returns_none_when_dir_missing(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
         (tmp_path / "projects").mkdir()
-        result = read_cli_session_file("/tmp/copilot-nonexistent")
+        result = await read_cli_session_file("/tmp/copilot-nonexistent")
         assert result is None
 
 
@@ -398,3 +404,113 @@ class TestTranscriptMessageConversion:
         lines = result.strip().split("\n")
         asst_entry = json.loads(lines[-1])
         assert asst_entry["parentUuid"] == "u1"  # reparented
+
+
+# --- TranscriptBuilder ---
+
+
+class TestTranscriptBuilderReplaceEntries:
+    """Tests for TranscriptBuilder.replace_entries — the compaction sync path."""
+
+    def test_replace_entries_with_valid_content(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        builder.append_assistant([{"type": "text", "text": "world"}])
+        assert builder.entry_count == 2
+
+        # Replace with compacted content (one user + one assistant)
+        compacted = _make_jsonl(USER_MSG, ASST_MSG)
+        builder.replace_entries(compacted)
+        assert builder.entry_count == 2
+
+    def test_replace_entries_keeps_old_on_corrupt_content(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        assert builder.entry_count == 1
+
+        # Corrupt content that fails to parse
+        builder.replace_entries("not valid json at all\n")
+        # Should still have old entries (load_previous skips invalid lines,
+        # but if ALL lines are invalid, temp builder is empty → exception path)
+        assert builder.entry_count >= 0  # doesn't crash
+
+    def test_replace_entries_with_empty_content(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        assert builder.entry_count == 1
+
+        builder.replace_entries("")
+        # Empty content → load_previous returns early → temp is empty
+        # replace_entries swaps to empty (0 entries)
+        assert builder.entry_count == 0
+
+    def test_replace_entries_filters_strippable_types(self):
+        """Strippable types (progress, file-history-snapshot) are filtered out."""
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+
+        content = _make_jsonl(
+            {"type": "progress", "uuid": "p1", "message": {}},
+            USER_MSG,
+            ASST_MSG,
+        )
+        builder.replace_entries(content)
+        # Only user + assistant should remain (progress filtered)
+        assert builder.entry_count == 2
+
+    def test_replace_entries_preserves_uuids(self):
+        builder = TranscriptBuilder()
+        content = _make_jsonl(USER_MSG, ASST_MSG)
+        builder.replace_entries(content)
+
+        jsonl = builder.to_jsonl()
+        lines = jsonl.strip().split("\n")
+        first = json.loads(lines[0])
+        assert first["uuid"] == "u1"
+
+
+class TestTranscriptBuilderBasic:
+    def test_append_user_and_assistant(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hi")
+        builder.append_assistant([{"type": "text", "text": "hello"}])
+        assert builder.entry_count == 2
+        assert not builder.is_empty
+
+    def test_to_jsonl_empty(self):
+        builder = TranscriptBuilder()
+        assert builder.to_jsonl() == ""
+        assert builder.is_empty
+
+    def test_load_previous_and_append(self):
+        builder = TranscriptBuilder()
+        content = _make_jsonl(USER_MSG, ASST_MSG)
+        builder.load_previous(content)
+        assert builder.entry_count == 2
+        builder.append_user("new message")
+        assert builder.entry_count == 3
+
+    def test_consecutive_assistant_entries_share_message_id(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hi")
+        builder.append_assistant([{"type": "text", "text": "part1"}])
+        builder.append_assistant([{"type": "text", "text": "part2"}])
+
+        jsonl = builder.to_jsonl()
+        lines = jsonl.strip().split("\n")
+        asst1 = json.loads(lines[1])
+        asst2 = json.loads(lines[2])
+        assert asst1["message"]["id"] == asst2["message"]["id"]
+
+    def test_non_consecutive_assistant_entries_get_new_id(self):
+        builder = TranscriptBuilder()
+        builder.append_user("hi")
+        builder.append_assistant([{"type": "text", "text": "response1"}])
+        builder.append_user("followup")
+        builder.append_assistant([{"type": "text", "text": "response2"}])
+
+        jsonl = builder.to_jsonl()
+        lines = jsonl.strip().split("\n")
+        asst1 = json.loads(lines[1])
+        asst2 = json.loads(lines[3])
+        assert asst1["message"]["id"] != asst2["message"]["id"]

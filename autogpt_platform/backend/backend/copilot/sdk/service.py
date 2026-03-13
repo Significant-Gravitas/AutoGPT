@@ -1242,7 +1242,7 @@ async def stream_chat_completion_sdk(
                     for ev in compaction_events:
                         yield ev
                     if compaction_events and sdk_cwd:
-                        cli_content = read_cli_session_file(sdk_cwd)
+                        cli_content = await read_cli_session_file(sdk_cwd)
                         if cli_content:
                             transcript_builder.replace_entries(
                                 cli_content, log_prefix=log_prefix
