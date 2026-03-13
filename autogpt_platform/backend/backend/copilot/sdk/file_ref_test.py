@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pydantic
 import pytest
 
 from backend.copilot.sdk.file_ref import (
@@ -16,6 +17,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_string,
     parse_file_ref,
 )
+from backend.util.type import coerce_inputs_to_schema
 
 # ---------------------------------------------------------------------------
 # parse_file_ref
@@ -884,3 +886,114 @@ async def test_matrix_second_phase_expansion_with_block_schema():
     # Phase 2 should return raw CSV since text is string-typed
     assert isinstance(phase2_result["text"], str)
     assert phase2_result["text"] == csv_content
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: file ref expansion + coerce_inputs_to_schema
+# ---------------------------------------------------------------------------
+# This proves the full pipeline: expand_file_refs_in_args returns the right
+# type, and coerce_inputs_to_schema does NOT re-serialize it (the bug that
+# caused CSV→string blocks to receive json.dumps(list[list[str]])).
+
+
+class _StringBlock(pydantic.BaseModel):
+    """Simulates a block schema with a string-typed input (e.g. TextEncoderBlock)."""
+
+    text: str
+
+
+class _ListBlock(pydantic.BaseModel):
+    """Simulates a block schema with a list-typed input (e.g. ConcatenateListsBlock)."""
+
+    rows: list
+
+
+@pytest.mark.asyncio
+async def test_e2e_csv_to_string_block_no_json_dumps():
+    """Full pipeline: CSV file ref → expand with string schema → coerce.
+    The block receives the raw CSV text, NOT json.dumps(parsed_rows)."""
+    csv_content = "Name,Score\nAlice,90\nBob,85"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    block_schema = _StringBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"text": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # After expansion: should be raw CSV string
+    assert isinstance(expanded["text"], str)
+    assert expanded["text"] == csv_content
+
+    # After coercion: should still be raw CSV string (not json.dumps of parsed data)
+    coerce_inputs_to_schema(expanded, _StringBlock)
+    assert expanded["text"] == csv_content
+    assert "[[" not in expanded["text"], "CSV was parsed and json.dumps'd — the old bug"
+
+
+@pytest.mark.asyncio
+async def test_e2e_csv_to_list_block_parses():
+    """Full pipeline: CSV file ref → expand without string schema → coerce.
+    The block receives parsed rows."""
+    csv_content = "A,B\n1,2"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///data.csv"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # After expansion: should be parsed rows
+    assert expanded["rows"] == [["A", "B"], ["1", "2"]]
+
+    # After coercion: list satisfies list annotation, no conversion needed
+    coerce_inputs_to_schema(expanded, _ListBlock)
+    assert expanded["rows"] == [["A", "B"], ["1", "2"]]
+
+
+@pytest.mark.asyncio
+async def test_e2e_json_to_string_block_returns_raw_json():
+    """JSON file ref to a string-typed block input returns the raw JSON text,
+    not the parsed dict."""
+    json_content = '{"key": "value", "num": 42}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return json_content
+
+    block_schema = _StringBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"text": "@@agptfile:workspace:///config.json"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert isinstance(expanded["text"], str)
+    assert expanded["text"] == json_content
+
+    coerce_inputs_to_schema(expanded, _StringBlock)
+    assert expanded["text"] == json_content
