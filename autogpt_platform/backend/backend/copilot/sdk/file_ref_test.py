@@ -535,6 +535,88 @@ async def test_bare_ref_csv_parses_when_no_schema_provided():
     assert result["data"] == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
 
 
+@pytest.mark.asyncio
+async def test_opaque_object_skips_inner_expansion():
+    """When the schema declares a property as {type: "object"} with no
+    properties, inner file refs are NOT expanded — they stay as-is for
+    the tool to expand later with the correct nested schema."""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "block_id": {"type": "string"},
+            "input_data": {
+                "type": "object",
+                "description": "Opaque block inputs",
+            },
+        },
+    }
+
+    # resolve_file_ref should NOT be called for the inner ref
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        result = await expand_file_refs_in_args(
+            {
+                "block_id": "some-id",
+                "input_data": {"text": "@@agptfile:workspace:///data.csv"},
+            },
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    # input_data should be returned unchanged
+    assert result["input_data"]["text"] == "@@agptfile:workspace:///data.csv"
+
+
+@pytest.mark.asyncio
+async def test_nested_schema_propagation():
+    """When the schema declares nested properties, the inner type
+    information is used for expand/skip decisions."""
+    csv_content = "Name,Score\nAlice,90\nBob,85"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "input_data": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "rows": {"type": "array"},
+                },
+            },
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {
+                "input_data": {
+                    "text": "@@agptfile:workspace:///data.csv",
+                    "rows": "@@agptfile:workspace:///data.csv",
+                },
+            },
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    # string-typed field: raw CSV text
+    assert result["input_data"]["text"] == csv_content
+    # array-typed field: parsed rows
+    assert result["input_data"]["rows"] == [
+        ["Name", "Score"],
+        ["Alice", "90"],
+        ["Bob", "85"],
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Per-file truncation and aggregate budget
 # ---------------------------------------------------------------------------
@@ -584,3 +666,221 @@ async def test_expand_aggregate_budget_exhausted():
         )
 
     assert "budget exhausted" in result
+
+
+# ---------------------------------------------------------------------------
+# Full format × schema-type matrix
+# ---------------------------------------------------------------------------
+# Each text format is tested against two schema types:
+#   - type: string  → raw file content returned as-is
+#   - no type / non-string → structured parsing applied
+# This ensures CSV→string blocks get raw CSV, not json.dumps(list[list[str]]).
+
+_FORMAT_SAMPLES: dict[str, tuple[str, str, object]] = {
+    # format_label: (extension, raw_content, expected_parsed_value)
+    "json": (
+        ".json",
+        '{"name": "Alice", "score": 90}',
+        {"name": "Alice", "score": 90},
+    ),
+    "csv": (
+        ".csv",
+        "Name,Score\nAlice,90\nBob,85",
+        [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]],
+    ),
+    "tsv": (
+        ".tsv",
+        "Name\tScore\nAlice\t90\nBob\t85",
+        [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]],
+    ),
+    "jsonl": (
+        ".jsonl",
+        '{"a":1}\n{"a":2}',
+        [{"a": 1}, {"a": 2}],
+    ),
+    "yaml": (
+        ".yaml",
+        "name: Alice\nscore: 90",
+        {"name": "Alice", "score": 90},
+    ),
+    "toml": (
+        ".toml",
+        '[person]\nname = "Alice"\nscore = 90',
+        {"person": {"name": "Alice", "score": 90}},
+    ),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", _FORMAT_SAMPLES.keys())
+async def test_matrix_format_to_string_schema(fmt: str):
+    """When the schema declares the parameter as type: string,
+    every text format returns the raw file content as a plain string."""
+    ext, raw_content, _ = _FORMAT_SAMPLES[fmt]
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return raw_content
+
+    schema = {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"text": f"@@agptfile:workspace:///data{ext}"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert isinstance(
+        result["text"], str
+    ), f"{fmt}: expected str, got {type(result['text'])}"
+    assert result["text"] == raw_content, f"{fmt}: raw content mismatch"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", _FORMAT_SAMPLES.keys())
+async def test_matrix_format_to_nonstring_schema(fmt: str):
+    """Without a string schema constraint, every text format returns
+    a structured (parsed) value."""
+    ext, raw_content, expected_parsed = _FORMAT_SAMPLES[fmt]
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return raw_content
+
+    # No input_schema → structured parsing is the default
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": f"@@agptfile:workspace:///data{ext}"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    assert result["data"] == expected_parsed, f"{fmt}: parsed value mismatch"
+    assert not isinstance(
+        result["data"], str
+    ), f"{fmt}: expected structured type, got str"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", _FORMAT_SAMPLES.keys())
+async def test_matrix_format_opaque_object_preserves_ref(fmt: str):
+    """When the parameter is an opaque object (type: object, no properties),
+    inner file refs are preserved for second-phase expansion."""
+    ext, _, _ = _FORMAT_SAMPLES[fmt]
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "input_data": {"type": "object"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        ref_token = f"@@agptfile:workspace:///data{ext}"
+        result = await expand_file_refs_in_args(
+            {"input_data": {"field": ref_token}},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["input_data"]["field"] == ref_token, f"{fmt}: ref should be preserved"
+
+
+@pytest.mark.asyncio
+async def test_matrix_mixed_fields_string_and_array():
+    """A single call with both string-typed and array-typed fields:
+    CSV→string returns raw text, CSV→array returns parsed rows."""
+    csv_content = "A,B\n1,2\n3,4"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "raw_text": {"type": "string"},
+            "parsed_rows": {"type": "array"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {
+                "raw_text": "@@agptfile:workspace:///data.csv",
+                "parsed_rows": "@@agptfile:workspace:///data.csv",
+            },
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert isinstance(result["raw_text"], str)
+    assert result["raw_text"] == csv_content
+    assert result["parsed_rows"] == [["A", "B"], ["1", "2"], ["3", "4"]]
+
+
+@pytest.mark.asyncio
+async def test_matrix_second_phase_expansion_with_block_schema():
+    """Simulates the two-phase expansion: first phase skips opaque input_data,
+    second phase expands with the block's actual schema."""
+    csv_content = "X,Y\n10,20"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    # Phase 1: tool-level schema (input_data is opaque)
+    tool_schema = {
+        "type": "object",
+        "properties": {
+            "block_id": {"type": "string"},
+            "input_data": {"type": "object"},
+        },
+    }
+
+    ref_token = "@@agptfile:workspace:///data.csv"
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("phase 1 should not expand")),
+    ):
+        phase1_result = await expand_file_refs_in_args(
+            {"block_id": "some-id", "input_data": {"text": ref_token}},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=tool_schema,
+        )
+    # Ref should survive phase 1
+    assert phase1_result["input_data"]["text"] == ref_token
+
+    # Phase 2: block-level schema (text is string)
+    block_schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        phase2_result = await expand_file_refs_in_args(
+            phase1_result["input_data"],
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+    # Phase 2 should return raw CSV since text is string-typed
+    assert isinstance(phase2_result["text"], str)
+    assert phase2_result["text"] == csv_content

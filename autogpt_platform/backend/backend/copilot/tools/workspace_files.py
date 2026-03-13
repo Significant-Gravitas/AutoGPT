@@ -10,11 +10,11 @@ from pydantic import BaseModel
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
+    get_workspace_manager,
     resolve_sandbox_path,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
-from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
@@ -219,9 +219,12 @@ def _is_text_mime(mime_type: str) -> bool:
 
 
 async def get_manager(user_id: str, session_id: str) -> WorkspaceManager:
-    """Create a session-scoped WorkspaceManager."""
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    """Create a session-scoped WorkspaceManager.
+
+    Delegates to :func:`backend.copilot.context.get_workspace_manager`.
+    Kept here for backward-compatibility with callers inside ``tools/``.
+    """
+    return await get_workspace_manager(user_id, session_id)
 
 
 async def _resolve_file(

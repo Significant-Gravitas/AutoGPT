@@ -41,11 +41,11 @@ from typing import Any
 from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
+    get_workspace_manager,
     is_allowed_local_path,
     resolve_sandbox_path,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.workspace_files import get_manager
 from backend.util.file import parse_workspace_uri
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
@@ -138,7 +138,7 @@ async def read_file_bytes(
     if plain.startswith("workspace://"):
         if not user_id:
             raise ValueError("workspace:// file references require authentication")
-        manager = await get_manager(user_id, session.session_id)
+        manager = await get_workspace_manager(user_id, session.session_id)
         ws = parse_workspace_uri(plain)
         try:
             return await (
@@ -272,7 +272,7 @@ async def _infer_format_from_workspace(
         return None
     try:
         ws = parse_workspace_uri(uri)
-        manager = await get_manager(user_id, session.session_id)
+        manager = await get_workspace_manager(user_id, session.session_id)
         info = await (
             manager.get_file_info(ws.file_ref)
             if not ws.is_path
@@ -329,7 +329,13 @@ async def expand_file_refs_in_args(
 
     properties = (input_schema or {}).get("properties", {})
 
-    async def _expand(value: Any, *, expect_string: bool = False) -> Any:
+    async def _expand(
+        value: Any,
+        *,
+        prop_schema: dict[str, Any] | None = None,
+    ) -> Any:
+        expect_string = (prop_schema or {}).get("type") == "string"
+
         if isinstance(value, str):
             # Check for a bare file reference first — enables structured parsing.
             ref = parse_file_ref(value)
@@ -369,9 +375,9 @@ async def expand_file_refs_in_args(
                         f"({content_size} bytes, limit {_MAX_BARE_REF_BYTES})"
                     )
 
-                # When the tool's input schema declares this parameter as
-                # "string", return raw file content — don't parse into a
-                # structured type that would need json.dumps() serialisation.
+                # When the schema declares this parameter as "string",
+                # return raw file content — don't parse into a structured
+                # type that would need json.dumps() serialisation.
                 if expect_string:
                     if isinstance(content, bytes):
                         return content.decode("utf-8", errors="replace")
@@ -411,15 +417,23 @@ async def expand_file_refs_in_args(
                 value, user_id, session, raise_on_error=True
             )
         if isinstance(value, dict):
-            return {k: await _expand(v) for k, v in value.items()}
+            # When the schema says this is an object but doesn't define
+            # inner properties, skip expansion — the caller (e.g.
+            # RunBlockTool) will expand with the actual nested schema.
+            if (
+                prop_schema is not None
+                and prop_schema.get("type") == "object"
+                and "properties" not in prop_schema
+            ):
+                return value
+            nested_props = (prop_schema or {}).get("properties", {})
+            return {
+                k: await _expand(v, prop_schema=nested_props.get(k))
+                for k, v in value.items()
+            }
         if isinstance(value, list):
-            return [await _expand(item) for item in value]
+            items_schema = (prop_schema or {}).get("items")
+            return [await _expand(item, prop_schema=items_schema) for item in value]
         return value
 
-    return {
-        k: await _expand(
-            v,
-            expect_string=properties.get(k, {}).get("type") == "string",
-        )
-        for k, v in args.items()
-    }
+    return {k: await _expand(v, prop_schema=properties.get(k)) for k, v in args.items()}
