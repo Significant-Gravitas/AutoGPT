@@ -380,7 +380,14 @@ async def expand_file_refs_in_args(
                 # type that would need json.dumps() serialisation.
                 if expect_string:
                     if isinstance(content, bytes):
-                        return content.decode("utf-8", errors="replace")
+                        # Binary formats (parquet/xlsx) decoded to string
+                        # produce garbled output — reject with a clear error.
+                        raise FileRefExpansionError(
+                            f"Cannot use {fmt} file as text input: "
+                            f"binary formats (parquet, xlsx) must be passed "
+                            f"to a block that accepts structured data (list/object), "
+                            f"not a string-typed parameter."
+                        )
                     return content
 
                 if fmt is not None:

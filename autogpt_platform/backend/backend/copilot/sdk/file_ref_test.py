@@ -997,3 +997,27 @@ async def test_e2e_json_to_string_block_returns_raw_json():
 
     coerce_inputs_to_schema(expanded, _StringBlock)
     assert expanded["text"] == json_content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt,ext", [("parquet", ".parquet"), ("xlsx", ".xlsx")])
+async def test_e2e_binary_format_to_string_block_raises_error(fmt: str, ext: str):
+    """Binary formats (parquet/xlsx) passed to a string-typed block input
+    should raise FileRefExpansionError, not silently pass garbled bytes."""
+
+    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+        return b"\x00\x01\x02binary data"
+
+    block_schema = _StringBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(side_effect=_resolve_bytes),
+    ):
+        with pytest.raises(FileRefExpansionError, match="Cannot use .* as text input"):
+            await expand_file_refs_in_args(
+                {"text": f"@@agptfile:workspace:///data{ext}"},
+                user_id="u1",
+                session=_make_session(),
+                input_schema=block_schema,
+            )
