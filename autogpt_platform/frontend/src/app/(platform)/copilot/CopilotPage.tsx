@@ -73,7 +73,6 @@ export function CopilotPage() {
     isReconnecting,
     createSession,
     onSend,
-    initialPrompt,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -149,7 +148,6 @@ export function CopilotPage() {
             isUploadingFiles={isUploadingFiles}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
-            initialPrompt={initialPrompt}
             headerSlot={
               isMobile && sessionId ? (
                 <div className="flex justify-end">

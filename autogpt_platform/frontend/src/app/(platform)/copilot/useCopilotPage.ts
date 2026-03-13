@@ -42,8 +42,15 @@ function extractPromptFromUrl(): {
   const searchParams = new URLSearchParams(window.location.search);
   const autosubmit = searchParams.get("autosubmit") === "true";
 
-  // Clean up the URL so reloading doesn't re-trigger
-  window.history.replaceState(null, "", window.location.pathname);
+  // Clean up hash + autosubmit param only (preserve other query params)
+  const cleanURL = new URL(window.location.href);
+  cleanURL.hash = "";
+  cleanURL.searchParams.delete("autosubmit");
+  window.history.replaceState(
+    null,
+    "",
+    `${cleanURL.pathname}${cleanURL.search}`,
+  );
 
   return { prompt: prompt.trim(), autosubmit };
 }
@@ -58,7 +65,6 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
@@ -158,6 +164,7 @@ export function useCopilotPage() {
   }, [sessionId, pendingMessage, sendMessage]);
 
   // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
+  const { setInitialPrompt } = useCopilotUIStore();
   const hasProcessedUrlPrompt = useRef(false);
   useEffect(() => {
     if (hasProcessedUrlPrompt.current) return;
@@ -168,14 +175,15 @@ export function useCopilotPage() {
     hasProcessedUrlPrompt.current = true;
 
     if (urlPrompt.autosubmit) {
-      // Auto-submit: create session and send immediately
       setPendingMessage(urlPrompt.prompt);
-      void createSession();
+      void createSession().catch(() => {
+        setPendingMessage(null);
+        setInitialPrompt(urlPrompt.prompt);
+      });
     } else {
-      // Populate only: pre-fill the input for the user to review
       setInitialPrompt(urlPrompt.prompt);
     }
-  }, [createSession]);
+  }, [createSession, setInitialPrompt]);
 
   async function uploadFiles(
     files: File[],
@@ -392,7 +400,6 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
-    initialPrompt,
     // Mobile drawer
     isMobile,
     isDrawerOpen,

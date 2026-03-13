@@ -1,3 +1,4 @@
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 interface Args {
@@ -6,8 +7,6 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
-  /** Pre-fill the input with this value on mount. */
-  initialValue?: string;
 }
 
 export function useChatInput({
@@ -15,10 +14,19 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
-  initialValue,
 }: Args) {
-  const [value, setValue] = useState(initialValue ?? "");
+  const [value, setValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
+
+  useEffect(
+    function consumeInitialPrompt() {
+      if (!initialPrompt) return;
+      setValue((prev) => (prev.length === 0 ? initialPrompt : prev));
+      setInitialPrompt(null);
+    },
+    [initialPrompt, setInitialPrompt],
+  );
 
   useEffect(
     function focusOnMount() {

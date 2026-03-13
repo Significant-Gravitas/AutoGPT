@@ -28,8 +28,6 @@ export interface Props {
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
   onDroppedFilesConsumed?: () => void;
-  /** Pre-fill the input with this value (e.g. from a URL prompt parameter). */
-  initialValue?: string;
 }
 
 export function ChatInput({
@@ -43,7 +41,6 @@ export function ChatInput({
   inputId = "chat-input",
   droppedFiles,
   onDroppedFilesConsumed,
-  initialValue,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
 
@@ -72,7 +69,6 @@ export function ChatInput({
     disabled: isBusy,
     canSendEmpty: hasFiles,
     inputId,
-    initialValue,
   });
 
   const {
