@@ -219,7 +219,7 @@ async def test_read_file_handler_workspace_uri():
         "backend.copilot.sdk.tool_adapter.get_execution_context",
         return_value=("user-1", mock_session),
     ), patch(
-        "backend.copilot.sdk.file_ref.get_manager",
+        "backend.copilot.sdk.file_ref.get_workspace_manager",
         new=AsyncMock(return_value=mock_manager),
     ):
         result = await _read_file_handler(
@@ -276,7 +276,7 @@ async def test_read_file_bytes_workspace_virtual_path():
     mock_manager.read_file.return_value = b"virtual path content"
 
     with patch(
-        "backend.copilot.sdk.file_ref.get_manager",
+        "backend.copilot.sdk.file_ref.get_workspace_manager",
         new=AsyncMock(return_value=mock_manager),
     ):
         result = await read_file_bytes("workspace:///reports/q1.md", "user-1", session)
