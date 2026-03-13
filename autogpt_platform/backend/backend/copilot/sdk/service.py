@@ -739,8 +739,10 @@ async def stream_chat_completion_sdk(
 
     # Make sure there is no more code between the lock acquisition and try-block.
     # Token usage accumulators — populated from ResultMessage at end of turn
-    turn_prompt_tokens = 0
+    turn_prompt_tokens = 0  # uncached input tokens only
     turn_completion_tokens = 0
+    turn_cache_read_tokens = 0
+    turn_cache_creation_tokens = 0
     turn_cost_usd: float | None = None
 
     try:
@@ -1142,23 +1144,23 @@ async def stream_chat_completion_sdk(
                         #   input_tokens = uncached only
                         #   cache_read_input_tokens = served from cache
                         #   cache_creation_input_tokens = written to cache
-                        # Total input = sum of all three.
                         if sdk_msg.usage:
-                            turn_prompt_tokens += (
-                                sdk_msg.usage.get("input_tokens", 0)
-                                + sdk_msg.usage.get("cache_read_input_tokens", 0)
-                                + sdk_msg.usage.get("cache_creation_input_tokens", 0)
+                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                            turn_cache_read_tokens += sdk_msg.usage.get(
+                                "cache_read_input_tokens", 0
+                            )
+                            turn_cache_creation_tokens += sdk_msg.usage.get(
+                                "cache_creation_input_tokens", 0
                             )
                             turn_completion_tokens += sdk_msg.usage.get(
                                 "output_tokens", 0
                             )
                             logger.info(
-                                "%s Token usage: input=%d (uncached=%d, cache_read=%d, cache_create=%d), output=%d",
+                                "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
                                 log_prefix,
                                 turn_prompt_tokens,
-                                sdk_msg.usage.get("input_tokens", 0),
-                                sdk_msg.usage.get("cache_read_input_tokens", 0),
-                                sdk_msg.usage.get("cache_creation_input_tokens", 0),
+                                turn_cache_read_tokens,
+                                turn_cache_creation_tokens,
                                 turn_completion_tokens,
                             )
                         if sdk_msg.total_cost_usd is not None:
@@ -1365,11 +1367,18 @@ async def stream_chat_completion_sdk(
         # rate-limit recording even if an exception interrupts between here
         # and the finally block.
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            total_tokens = (
+                turn_prompt_tokens
+                + turn_cache_read_tokens
+                + turn_cache_creation_tokens
+                + turn_completion_tokens
+            )
             yield StreamUsage(
                 promptTokens=turn_prompt_tokens,
                 completionTokens=turn_completion_tokens,
                 totalTokens=total_tokens,
+                cacheReadTokens=turn_cache_read_tokens,
+                cacheCreationTokens=turn_cache_creation_tokens,
             )
 
         # Transcript upload is handled exclusively in the finally block
@@ -1440,19 +1449,29 @@ async def stream_chat_completion_sdk(
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            total_tokens = (
+                turn_prompt_tokens
+                + turn_cache_read_tokens
+                + turn_cache_creation_tokens
+                + turn_completion_tokens
+            )
             if session is not None:
                 session.usage.append(
                     Usage(
                         prompt_tokens=turn_prompt_tokens,
                         completion_tokens=turn_completion_tokens,
                         total_tokens=total_tokens,
+                        cache_read_tokens=turn_cache_read_tokens,
+                        cache_creation_tokens=turn_cache_creation_tokens,
                     )
                 )
             logger.info(
-                "%s Turn usage: prompt=%d, completion=%d, total=%d, cost_usd=%s",
+                "%s Turn usage: uncached=%d, cache_read=%d, cache_create=%d, "
+                "output=%d, total=%d, cost_usd=%s",
                 log_prefix,
                 turn_prompt_tokens,
+                turn_cache_read_tokens,
+                turn_cache_creation_tokens,
                 turn_completion_tokens,
                 total_tokens,
                 turn_cost_usd,
@@ -1463,6 +1482,8 @@ async def stream_chat_completion_sdk(
                     user_id=user_id,
                     prompt_tokens=turn_prompt_tokens,
                     completion_tokens=turn_completion_tokens,
+                    cache_read_tokens=turn_cache_read_tokens,
+                    cache_creation_tokens=turn_cache_creation_tokens,
                 )
             except Exception as usage_err:
                 logger.warning(

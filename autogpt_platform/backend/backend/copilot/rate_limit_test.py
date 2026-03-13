@@ -294,6 +294,31 @@ class TestRecordTokenUsage:
             await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
 
     @pytest.mark.asyncio
+    async def test_cost_weighted_counting(self):
+        """Cached tokens should be weighted: cache_read=10%, cache_create=25%."""
+        mock_pipe = self._make_pipeline_mock()
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await record_token_usage(
+                _USER,
+                prompt_tokens=100,  # uncached → 100
+                completion_tokens=50,  # output → 50
+                cache_read_tokens=10000,  # 10% → 1000
+                cache_creation_tokens=400,  # 25% → 100
+            )
+
+        # Expected weighted total: 100 + 1000 + 100 + 50 = 1250
+        incrby_calls = mock_pipe.incrby.call_args_list
+        assert len(incrby_calls) == 2
+        assert incrby_calls[0].args[1] == 1250  # daily
+        assert incrby_calls[1].args[1] == 1250  # weekly
+
+    @pytest.mark.asyncio
     async def test_handles_redis_error_during_pipeline_execute(self):
         """Should not raise when pipeline.execute() fails with RedisError."""
         mock_pipe = self._make_pipeline_mock()

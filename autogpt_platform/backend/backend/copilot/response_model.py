@@ -189,9 +189,17 @@ class StreamUsage(StreamBaseResponse):
     """Token usage statistics."""
 
     type: ResponseType = ResponseType.USAGE
-    promptTokens: int = Field(..., description="Number of prompt tokens")
+    promptTokens: int = Field(..., description="Number of uncached prompt tokens")
     completionTokens: int = Field(..., description="Number of completion tokens")
-    totalTokens: int = Field(..., description="Total number of tokens")
+    totalTokens: int = Field(
+        ..., description="Total number of tokens (raw, not weighted)"
+    )
+    cacheReadTokens: int = Field(
+        default=0, description="Prompt tokens served from cache (10% cost)"
+    )
+    cacheCreationTokens: int = Field(
+        default=0, description="Prompt tokens written to cache (25% cost)"
+    )
 
 
 class StreamError(StreamBaseResponse):

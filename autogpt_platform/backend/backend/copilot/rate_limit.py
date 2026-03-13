@@ -169,17 +169,50 @@ async def record_token_usage(
     user_id: str,
     prompt_tokens: int,
     completion_tokens: int,
+    *,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> None:
     """Record token usage for a user across all windows.
 
+    Uses cost-weighted counting so cached tokens don't unfairly penalise
+    multi-turn conversations. Anthropic's pricing:
+      - uncached input: 100%
+      - cache creation:  25%
+      - cache read:      10%
+      - output:         100%
+
+    ``prompt_tokens`` should be the *uncached* input count (``input_tokens``
+    from the API response). Cache counts are passed separately.
+
     Args:
         user_id: The user's ID.
-        prompt_tokens: Number of prompt tokens used.
-        completion_tokens: Number of completion tokens used.
+        prompt_tokens: Uncached input tokens.
+        completion_tokens: Output tokens.
+        cache_read_tokens: Tokens served from prompt cache (10% cost).
+        cache_creation_tokens: Tokens written to prompt cache (25% cost).
     """
-    total = prompt_tokens + completion_tokens
+    weighted_input = (
+        prompt_tokens + int(cache_creation_tokens * 0.25) + int(cache_read_tokens * 0.1)
+    )
+    total = weighted_input + completion_tokens
     if total <= 0:
         return
+
+    raw_total = (
+        prompt_tokens + cache_read_tokens + cache_creation_tokens + completion_tokens
+    )
+    logger.info(
+        "Recording token usage for %s: raw=%d, weighted=%d "
+        "(uncached=%d, cache_read=%d@10%%, cache_create=%d@25%%, output=%d)",
+        user_id[:8],
+        raw_total,
+        total,
+        prompt_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        completion_tokens,
+    )
 
     now = datetime.now(UTC)
     try:
