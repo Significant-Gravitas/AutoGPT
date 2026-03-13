@@ -21,6 +21,8 @@ interface Props {
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  /** Pre-fill the input with a prompt from the URL. */
+  initialPrompt?: string | null;
 }
 
 export function EmptySession({
@@ -30,6 +32,7 @@ export function EmptySession({
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
+  initialPrompt,
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
@@ -85,6 +88,7 @@ export function EmptySession({
                 className="w-full"
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}
+                initialValue={initialPrompt ?? undefined}
               />
             </motion.div>
           </div>

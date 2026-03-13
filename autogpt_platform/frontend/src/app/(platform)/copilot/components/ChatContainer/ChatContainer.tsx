@@ -26,6 +26,8 @@ export interface ChatContainerProps {
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
+  /** Pre-fill the input with a prompt from the URL. */
+  initialPrompt?: string | null;
 }
 export const ChatContainer = ({
   messages,
@@ -43,6 +45,7 @@ export const ChatContainer = ({
   headerSlot,
   droppedFiles,
   onDroppedFilesConsumed,
+  initialPrompt,
 }: ChatContainerProps) => {
   const isBusy =
     status === "streaming" ||
@@ -95,6 +98,7 @@ export const ChatContainer = ({
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={onDroppedFilesConsumed}
+              initialPrompt={initialPrompt}
             />
           )}
         </div>

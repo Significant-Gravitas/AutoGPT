@@ -6,6 +6,8 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  /** Pre-fill the input with this value on mount. */
+  initialValue?: string;
 }
 
 export function useChatInput({
@@ -13,8 +15,9 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  initialValue,
 }: Args) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue ?? "");
   const [isSending, setIsSending] = useState(false);
 
   useEffect(
