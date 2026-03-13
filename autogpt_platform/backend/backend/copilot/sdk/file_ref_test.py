@@ -1666,3 +1666,134 @@ async def test_e2e_json_array_to_any_block():
 
     # Already a list of dicts — no adaptation needed
     assert expanded["input"] == [{"name": "apple"}, {"name": "banana"}]
+
+
+# ---------------------------------------------------------------------------
+# MediaFileType passthrough: format: "file" fields get the raw URI, not content
+# ---------------------------------------------------------------------------
+
+
+class _MediaFileBlock(pydantic.BaseModel):
+    """Simulates a block schema with a MediaFileType input (format: file)."""
+
+    image: str  # MediaFileType serializes as str with format: "file"
+
+
+@pytest.mark.asyncio
+async def test_media_file_field_passthrough_workspace_uri():
+    """When a schema field has format: 'file', @@agptfile: refs should pass
+    through the workspace URI without reading file content."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "image": {"type": "string", "format": "file"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not read file content")),
+    ), patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(side_effect=AssertionError("should not read file bytes")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"image": "@@agptfile:workspace://img123"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    assert result["image"] == "workspace://img123"
+
+
+@pytest.mark.asyncio
+async def test_media_file_field_passthrough_workspace_uri_with_mime():
+    """workspace://id#mime URI passes through for format: 'file' fields."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "image": {"type": "string", "format": "file"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not read")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"image": "@@agptfile:workspace://img123#image/png"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    assert result["image"] == "workspace://img123#image/png"
+
+
+@pytest.mark.asyncio
+async def test_media_file_field_in_nested_list():
+    """MediaFileType passthrough works inside list items (e.g. files[].content)."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string", "format": "file"},
+                    },
+                },
+            },
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not read")),
+    ):
+        result = await expand_file_refs_in_args(
+            {
+                "files": [
+                    {
+                        "path": "docs/hero.png",
+                        "content": "@@agptfile:workspace://abc123#image/png",
+                    },
+                ],
+            },
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    assert result["files"][0]["content"] == "workspace://abc123#image/png"
+    assert result["files"][0]["path"] == "docs/hero.png"
+
+
+@pytest.mark.asyncio
+async def test_non_media_string_field_still_reads_content():
+    """Fields without format: 'file' still read and return file content."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+        },
+    }
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return "file content here"
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"text": "@@agptfile:workspace://abc123"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    assert result["text"] == "file content here"

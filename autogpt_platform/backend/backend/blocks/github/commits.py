@@ -11,7 +11,10 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
+from backend.util.file import parse_data_uri, resolve_media_content
+from backend.util.type import MediaFileType
 
 from ._api import get_api
 from ._auth import (
@@ -178,7 +181,7 @@ class FileOperation(StrEnum):
 
 class FileOperationInput(TypedDict):
     path: str
-    content: str
+    content: MediaFileType
     operation: FileOperation
 
 
@@ -283,6 +286,14 @@ class GithubMultiFileCommitBlock(Block):
             )
             return blob_response.json()["sha"]
 
+        async def _create_binary_blob(b64_content: str) -> str:
+            blob_url = repo_url + "/git/blobs"
+            blob_response = await api.post(
+                blob_url,
+                json={"content": b64_content, "encoding": "base64"},
+            )
+            return blob_response.json()["sha"]
+
         tree_entries: list[dict] = []
         upsert_files = []
         for file_op in files:
@@ -301,10 +312,19 @@ class GithubMultiFileCommitBlock(Block):
             else:
                 upsert_files.append((path, file_op.get("content", "")))
 
-        # Create all blobs concurrently
+        # Create all blobs concurrently.  Data URIs (from store_media_file)
+        # are sent as base64 blobs to preserve binary content.
         if upsert_files:
+
+            async def _make_blob(content: str) -> str:
+                parsed = parse_data_uri(content)
+                if parsed is not None:
+                    _, b64_payload = parsed
+                    return await _create_binary_blob(b64_payload)
+                return await _create_blob(content)
+
             blob_shas = await asyncio.gather(
-                *[_create_blob(content) for _, content in upsert_files]
+                *[_make_blob(content) for _, content in upsert_files]
             )
             for (path, _), blob_sha in zip(upsert_files, blob_shas):
                 tree_entries.append(
@@ -358,15 +378,36 @@ class GithubMultiFileCommitBlock(Block):
         input_data: Input,
         *,
         credentials: GithubCredentials,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         try:
+            # Resolve media references (workspace://, data:, URLs) to data
+            # URIs so _make_blob can send binary content correctly.
+            resolved_files: list[FileOperationInput] = []
+            for file_op in input_data.files:
+                content = file_op.get("content", "")
+                operation = file_op.get("operation", "upsert")
+                if operation != "delete":
+                    content = await resolve_media_content(
+                        MediaFileType(content),
+                        execution_context,
+                        return_format="for_external_api",
+                    )
+                resolved_files.append(
+                    FileOperationInput(
+                        path=file_op["path"],
+                        content=MediaFileType(content),
+                        operation=operation,
+                    )
+                )
+
             sha, url = await self.multi_file_commit(
                 credentials,
                 input_data.repo_url,
                 input_data.branch,
                 input_data.commit_message,
-                input_data.files,
+                resolved_files,
             )
             yield "sha", sha
             yield "url", url

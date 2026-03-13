@@ -65,6 +65,30 @@ Legacy `.xls` files are **not** supported — only the modern `.xlsx` format.
 block's expected input types.  For example, if a block expects `list[list[str]]`
 and the expanded value is a JSON string, it will be parsed into the correct type.
 
+### Media file inputs (format: "file")
+Some block inputs accept media files — their schema shows `"format": "file"`.
+These fields accept:
+- **`workspace://<file_id>`** or **`workspace://<file_id>#<mime>`** — preferred
+  for large files (images, videos, PDFs). The platform passes the reference
+  directly to the block without reading the content into memory.
+- **`data:<mime>;base64,<payload>`** — inline base64 data URI, suitable for
+  small files only.
+
+When a block input has `format: "file"`, **always prefer passing a
+`workspace://` reference** rather than an `@@agptfile:` expansion or inline
+base64 — this avoids large payloads in tool arguments and preserves binary
+content (images, videos) that would be corrupted by text encoding.
+
+Example — committing an image file to GitHub:
+```json
+{
+  "files": [{
+    "path": "docs/hero.png",
+    "content": "workspace://abc123#image/png",
+    "operation": "upsert"
+  }]
+}
+```
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.

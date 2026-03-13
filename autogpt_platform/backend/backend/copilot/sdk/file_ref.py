@@ -59,6 +59,7 @@ from backend.util.file_content_parser import (
     infer_format,
     parse_file_content,
 )
+from backend.util.type import MediaFileType
 
 
 class FileRefExpansionError(Exception):
@@ -395,6 +396,16 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     return parsed
 
 
+def _is_media_file_field(prop_schema: dict[str, Any] | None) -> bool:
+    """Return True if *prop_schema* describes a MediaFileType field (format: file)."""
+    if prop_schema is None:
+        return False
+    return (
+        prop_schema.get("type") == "string"
+        and prop_schema.get("format") == MediaFileType.string_format
+    )
+
+
 async def _expand_bare_ref(
     ref: FileRef,
     fmt: str | None,
@@ -408,6 +419,9 @@ async def _expand_bare_ref(
     according to *fmt*, and adapted to the target *prop_schema*.
 
     Raises :class:`FileRefExpansionError` on resolution or parsing failure.
+
+    Note: MediaFileType fields (format: "file") are handled earlier in
+    ``_expand`` to avoid unnecessary format inference and file I/O.
     """
     try:
         if fmt is not None and fmt in BINARY_FORMATS:
@@ -518,6 +532,11 @@ async def expand_file_refs_in_args(
         if isinstance(value, str):
             ref = parse_file_ref(value)
             if ref is not None:
+                # MediaFileType fields: return the raw URI immediately —
+                # no file reading, no format inference, no content parsing.
+                if _is_media_file_field(prop_schema):
+                    return ref.uri
+
                 fmt = infer_format(ref.uri)
                 # Workspace URIs by ID (workspace://abc123) have no extension.
                 # When the MIME fragment is also missing, fall back to the
