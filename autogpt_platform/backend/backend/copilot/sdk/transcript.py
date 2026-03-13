@@ -137,34 +137,6 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
-def cleanup_cli_project_dir(sdk_cwd: str) -> None:
-    """Remove the CLI's project directory for a specific working directory.
-
-    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
-    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
-    safe to remove entirely after the transcript has been uploaded.
-    """
-    import shutil
-
-    # Encode cwd the same way CLI does (replaces non-alphanumeric with -)
-    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
-    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
-
-    if not project_dir.startswith(projects_base + os.sep):
-        logger.warning(
-            f"[Transcript] Cleanup path escaped projects base: {project_dir}"
-        )
-        return
-
-    if os.path.isdir(project_dir):
-        shutil.rmtree(project_dir, ignore_errors=True)
-        logger.debug(f"[Transcript] Cleaned up CLI project dir: {project_dir}")
-    else:
-        logger.debug(f"[Transcript] Project dir not found: {project_dir}")
-
-
 def write_transcript_to_tempfile(
     transcript_content: str,
     session_id: str,

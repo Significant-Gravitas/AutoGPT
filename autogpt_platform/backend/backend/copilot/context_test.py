@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.copilot.context import (
-    _SDK_PROJECTS_DIR,
+    SDK_PROJECTS_DIR,
     _current_project_dir,
     get_current_sandbox,
     get_execution_context,
@@ -109,7 +109,7 @@ def test_is_allowed_local_path_tool_results_with_uuid():
     encoded = "test-encoded-dir"
     conv_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     path = os.path.join(
-        _SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results", "output.txt"
+        SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results", "output.txt"
     )
 
     _current_project_dir.set(encoded)
@@ -122,7 +122,7 @@ def test_is_allowed_local_path_tool_results_with_uuid():
 def test_is_allowed_local_path_tool_results_without_uuid_rejected():
     """Direct <encoded-cwd>/tool-results/ (no UUID) is rejected."""
     encoded = "test-encoded-dir"
-    path = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results", "output.txt")
+    path = os.path.join(SDK_PROJECTS_DIR, encoded, "tool-results", "output.txt")
 
     _current_project_dir.set(encoded)
     try:
@@ -134,11 +134,26 @@ def test_is_allowed_local_path_tool_results_without_uuid_rejected():
 def test_is_allowed_local_path_sibling_of_tool_results_is_rejected():
     """A path adjacent to tool-results/ but not inside it is rejected."""
     encoded = "test-encoded-dir"
-    sibling_path = os.path.join(_SDK_PROJECTS_DIR, encoded, "other-dir", "file.txt")
+    sibling_path = os.path.join(SDK_PROJECTS_DIR, encoded, "other-dir", "file.txt")
 
     _current_project_dir.set(encoded)
     try:
         assert not is_allowed_local_path(sibling_path, sdk_cwd=None)
+    finally:
+        _current_project_dir.set("")
+
+
+def test_is_allowed_local_path_valid_uuid_wrong_segment_name_rejected():
+    """A valid UUID dir but non-'tool-results' second segment is rejected."""
+    encoded = "test-encoded-dir"
+    uuid_str = "12345678-1234-5678-9abc-def012345678"
+    path = os.path.join(
+        SDK_PROJECTS_DIR, encoded, uuid_str, "not-tool-results", "output.txt"
+    )
+
+    _current_project_dir.set(encoded)
+    try:
+        assert not is_allowed_local_path(path, sdk_cwd=None)
     finally:
         _current_project_dir.set("")
 

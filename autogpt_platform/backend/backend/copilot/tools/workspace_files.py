@@ -289,17 +289,28 @@ def _read_local_tool_result(
     char_offset: int,
     char_length: Optional[int],
     session_id: str,
+    sdk_cwd: str | None = None,
 ) -> ToolResponseBase:
     """Read an SDK tool-result file from local disk.
 
     This is a fallback for when the model mistakenly calls
     ``read_workspace_file`` with an SDK tool-result path that only exists on
     the host filesystem, not in cloud workspace storage.
+
+    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    regardless of what the caller has already checked.
     """
     expanded = os.path.realpath(os.path.expanduser(path))
+    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+        return ErrorResponse(message=f"Path not allowed: {path}", session_id=session_id)
     try:
         with open(expanded, encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
+            # Use seek + bounded read to avoid loading the entire file when
+            # only a slice is requested.  os.path.getsize gives an approximate
+            # total (bytes, not chars) for the status message.
+            if char_offset > 0:
+                fh.seek(char_offset)
+            slice_text = fh.read(char_length) if char_length is not None else fh.read()
     except FileNotFoundError:
         return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
     except Exception as exc:
@@ -307,10 +318,7 @@ def _read_local_tool_result(
             message=f"Error reading {path}: {exc}", session_id=session_id
         )
 
-    total_chars = len(text)
-    end = char_offset + char_length if char_length is not None else total_chars
-    slice_text = text[char_offset:end]
-
+    total_bytes = os.path.getsize(expanded)
     return WorkspaceFileContentResponse(
         file_id="local",
         name=os.path.basename(path),
@@ -319,7 +327,8 @@ def _read_local_tool_result(
         content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("utf-8"),
         message=(
             f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
-            f"of {total_chars:,} total from local tool-result {os.path.basename(path)}"
+            f"of ~{total_bytes:,} bytes from local tool-result "
+            f"{os.path.basename(path)}"
         ),
         session_id=session_id,
     )
@@ -586,9 +595,10 @@ class ReadWorkspaceFileTool(BaseTool):
                 # Fallback: if the path is an SDK tool-result on local disk,
                 # read it directly instead of failing.  The model sometimes
                 # calls read_workspace_file for these paths by mistake.
-                if path and is_allowed_local_path(path, get_sdk_cwd()):
+                sdk_cwd = get_sdk_cwd()
+                if path and is_allowed_local_path(path, sdk_cwd):
                     return _read_local_tool_result(
-                        path, char_offset, char_length, session_id
+                        path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
                     )
                 return resolved
             target_file_id, file_info = resolved

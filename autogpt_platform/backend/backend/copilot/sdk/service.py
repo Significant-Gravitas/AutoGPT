@@ -30,7 +30,7 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
-from backend.copilot.context import _SDK_PROJECTS_DIR
+from backend.copilot.context import SDK_PROJECTS_DIR
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -305,15 +305,14 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
 
+    encoded_dir = re.sub(r"[^a-zA-Z0-9]", "-", normalized)
+
     def _sync_cleanup() -> None:
         # Clean up the temp cwd directory itself.
-        try:
-            shutil.rmtree(normalized, ignore_errors=True)
-        except OSError:
-            pass
+        shutil.rmtree(normalized, ignore_errors=True)
 
         # Sweep stale conversation dirs under the CLI project directory.
-        _sweep_stale_project_dirs()
+        _sweep_stale_project_dirs(encoded_dir)
 
     await asyncio.to_thread(_sync_cleanup)
 
@@ -321,9 +320,13 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
 def _latest_mtime(dir_path: str) -> float:
     """Return the most recent mtime of *dir_path* and its immediate children.
 
-    A directory's mtime only updates when its direct entries change, so we
-    check one level deeper to catch active sessions that write new files
-    inside sub-directories like ``tool-results/``.
+    One level of children suffices because adding a file inside
+    ``tool-results/`` updates ``tool-results/``'s own mtime, and
+    ``tool-results/`` is an immediate child of the UUID dir.
+
+    ``follow_symlinks=False`` prevents symlink-based mtime spoofing --
+    an attacker could create a symlink to a recently-modified file to
+    prevent cleanup of a stale directory.
     """
     latest = os.stat(dir_path, follow_symlinks=False).st_mtime
     for child in os.scandir(dir_path):
@@ -334,31 +337,32 @@ def _latest_mtime(dir_path: str) -> float:
     return latest
 
 
-def _sweep_stale_project_dirs() -> None:
+def _sweep_stale_project_dirs(encoded_dir: str) -> None:
     """Remove conversation UUID dirs older than the TTL threshold.
+
+    Only sweeps within the given *encoded_dir* (the CLI-encoded cwd for the
+    current session) to avoid cross-session interference in multi-tenant
+    deployments.
 
     The SDK creates ``~/.claude/projects/<encoded-cwd>/<uuid>/`` directories
     for each conversation.  We keep recent ones (needed by ``--resume``) and
     remove those older than ``_STALE_PROJECT_DIR_TTL_SECONDS``.
     """
     try:
-        if not os.path.isdir(_SDK_PROJECTS_DIR):
+        project_dir = os.path.join(SDK_PROJECTS_DIR, encoded_dir)
+        if not os.path.isdir(project_dir):
             return
         cutoff = time.time() - _STALE_PROJECT_DIR_TTL_SECONDS
-        for encoded_dir in os.scandir(_SDK_PROJECTS_DIR):
-            if not encoded_dir.is_dir(follow_symlinks=False):
+        for conv_dir in os.scandir(project_dir):
+            if not conv_dir.is_dir(follow_symlinks=False):
                 continue
-            for conv_dir in os.scandir(encoded_dir.path):
-                if not conv_dir.is_dir(follow_symlinks=False):
-                    continue
-                try:
-                    if _latest_mtime(conv_dir.path) < cutoff:
-                        shutil.rmtree(conv_dir.path, ignore_errors=True)
-                        logger.debug(
-                            "[SDK] Removed stale project dir: %s", conv_dir.path
-                        )
-                except OSError:
-                    continue
+            try:
+                mtime = _latest_mtime(conv_dir.path)
+            except OSError:
+                continue
+            if mtime < cutoff:
+                shutil.rmtree(conv_dir.path, ignore_errors=True)
+                logger.debug("[SDK] Removed stale project dir: %s", conv_dir.path)
     except OSError:
         pass  # Best-effort cleanup
 

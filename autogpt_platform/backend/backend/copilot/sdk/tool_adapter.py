@@ -155,12 +155,12 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     by waiting on the ``_stash_event``, which is signaled by
     :func:`stash_pending_tool_output`.
 
-    After the event fires, callers should ``await asyncio.sleep(0)`` to
-    give any remaining concurrent hooks a chance to complete.
-
     Returns ``True`` if a stash signal was received, ``False`` on timeout.
-    The timeout is a safety net — normally the stash happens within
-    microseconds of yielding to the event loop.
+
+    The 2.0 s default was chosen based on production metrics: the original
+    0.5 s caused frequent timeouts under load (parallel tool calls, large
+    outputs).  2.0 s gives a comfortable margin while still failing fast
+    when the hook genuinely will not fire.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -176,12 +176,6 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
         event.clear()
         return True
     except TimeoutError:
-        # Last chance: yield to the event loop once — the hook may have
-        # completed between the timeout and this point.
-        await asyncio.sleep(0)
-        if event.is_set():
-            event.clear()
-            return True
         return False
 
 

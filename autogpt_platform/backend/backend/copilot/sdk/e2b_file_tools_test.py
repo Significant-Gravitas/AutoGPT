@@ -8,12 +8,9 @@ import shutil
 
 import pytest
 
-from backend.copilot.context import _current_project_dir
+from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 
 from .e2b_file_tools import _read_local, resolve_sandbox_path
-
-_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-
 
 # ---------------------------------------------------------------------------
 # resolve_sandbox_path — sandbox path normalisation & boundary enforcement
@@ -79,7 +76,7 @@ class TestReadLocal:
     def _make_tool_results_file(self, encoded: str, filename: str, content: str) -> str:
         """Create a tool-results file under <encoded>/<uuid>/tool-results/."""
         tool_results_dir = os.path.join(
-            _SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
         )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, filename)
@@ -113,7 +110,7 @@ class TestReadLocal:
         """A tool-results path that doesn't exist returns FileNotFoundError."""
         encoded = "-tmp-copilot-e2b-test-nofile"
         tool_results_dir = os.path.join(
-            _SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
         )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, "nonexistent.txt")
@@ -124,7 +121,7 @@ class TestReadLocal:
             assert "not found" in result["content"][0]["text"].lower()
         finally:
             _current_project_dir.reset(token)
-            shutil.rmtree(os.path.join(_SDK_PROJECTS_DIR, encoded), ignore_errors=True)
+            shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
 
     def test_read_traversal_path_blocked(self):
         """A traversal attempt that escapes allowed directories is blocked."""

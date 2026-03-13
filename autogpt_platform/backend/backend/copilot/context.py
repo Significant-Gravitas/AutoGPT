@@ -15,8 +15,14 @@ from backend.copilot.model import ChatSession
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
-# Allowed base directory for the Read tool.
-_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+# Allowed base directory for the Read tool.  Public so service.py can use it
+# for sweep operations without depending on a private implementation detail.
+SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+
+# Compiled UUID-v4 pattern for validating conversation directory names.
+# Kept as a module-level constant so the security-relevant pattern is easy
+# to audit in one place and avoids recompilation on every call.
+_UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
 
 # Encoded project-directory name for the current session (e.g.
 # "-private-tmp-copilot-<uuid>").  Set by set_execution_context() so path
@@ -87,8 +93,9 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/``.
-      The SDK always nests tool-results under a conversation UUID directory.
+    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``.
+      The SDK nests tool-results under a conversation UUID directory;
+      the UUID segment is validated with ``_UUID_RE``.
     """
     if not path:
         return False
@@ -107,7 +114,7 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     encoded = _current_project_dir.get("")
     if encoded:
-        project_dir = os.path.join(_SDK_PROJECTS_DIR, encoded)
+        project_dir = os.path.join(SDK_PROJECTS_DIR, encoded)
         # Only allow: <encoded-cwd>/<uuid>/tool-results/<file>
         # The SDK always creates a conversation UUID directory between
         # the project dir and tool-results/.
@@ -117,7 +124,7 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
             # Require exactly: [<uuid>, "tool-results", <file>, ...]
             if (
                 len(parts) >= 3
-                and re.match(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", parts[0])
+                and _UUID_RE.match(parts[0])
                 and parts[1] == "tool-results"
             ):
                 return True

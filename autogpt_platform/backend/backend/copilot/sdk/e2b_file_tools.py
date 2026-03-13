@@ -115,9 +115,13 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
             timeout=5,
         )
         canonical_parent = (canonical_res.stdout or "").strip()
-        if not canonical_parent or (
-            canonical_parent != E2B_WORKDIR
-            and not canonical_parent.startswith(E2B_WORKDIR + "/")
+        if (
+            canonical_res.exit_code != 0
+            or not canonical_parent
+            or (
+                canonical_parent != E2B_WORKDIR
+                and not canonical_parent.startswith(E2B_WORKDIR + "/")
+            )
         ):
             return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
         remote = os.path.join(canonical_parent, os.path.basename(remote))
