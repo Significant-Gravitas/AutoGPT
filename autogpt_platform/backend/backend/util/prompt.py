@@ -728,6 +728,12 @@ async def compress_context(
     # This is more granular than dropping all old messages at once.
     while total_tokens() + reserve > target_tokens and len(msgs) > 2:
         deletable: list[int] = []
+        # Count assistant messages to ensure we keep at least one
+        assistant_indices: set[int] = {
+            i
+            for i in range(len(msgs))
+            if msgs[i] is not None and msgs[i].get("role") == "assistant"
+        }
         for i in range(1, len(msgs) - 1):
             msg = msgs[i]
             if (
@@ -735,6 +741,9 @@ async def compress_context(
                 and not _is_tool_message(msg)
                 and not _is_objective_message(msg)
             ):
+                # Skip if this is the last remaining assistant message
+                if msg.get("role") == "assistant" and len(assistant_indices) <= 1:
+                    continue
                 deletable.append(i)
         if not deletable:
             break
