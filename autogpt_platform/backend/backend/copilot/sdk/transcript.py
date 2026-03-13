@@ -23,7 +23,7 @@ import openai
 
 from backend.copilot.config import ChatConfig
 from backend.util import json
-from backend.util.prompt import compress_context
+from backend.util.prompt import CompressResult, compress_context
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,11 @@ _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 STRIPPABLE_TYPES = frozenset(
     {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
 )
+
+# JSONL protocol values used in transcript serialization.
+STOP_REASON_END_TURN = "end_turn"
+COMPACT_MSG_ID_PREFIX = "msg_compact_"
+ENTRY_TYPE_MESSAGE = "message"
 
 
 @dataclass
@@ -560,10 +565,10 @@ def _messages_to_transcript(messages: list[dict]) -> str:
             message: dict = {
                 "role": "assistant",
                 "model": "",
-                "id": f"msg_compact_{uuid4().hex[:24]}",
-                "type": "message",
+                "id": f"{COMPACT_MSG_ID_PREFIX}{uuid4().hex[:24]}",
+                "type": ENTRY_TYPE_MESSAGE,
                 "content": [{"type": "text", "text": content}] if content else [],
-                "stop_reason": "end_turn",
+                "stop_reason": STOP_REASON_END_TURN,
                 "stop_sequence": None,
             }
         else:
@@ -577,6 +582,23 @@ def _messages_to_transcript(messages: list[dict]) -> str:
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n" if lines else ""
+
+
+async def _run_compression(
+    messages: list[dict],
+    model: str,
+    cfg: ChatConfig,
+    log_prefix: str,
+) -> CompressResult:
+    """Run LLM-based compression with truncation fallback."""
+    try:
+        async with openai.AsyncOpenAI(
+            api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
+        ) as client:
+            return await compress_context(messages=messages, model=model, client=client)
+    except Exception as e:
+        logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
+        return await compress_context(messages=messages, model=model, client=None)
 
 
 async def compact_transcript(
@@ -596,20 +618,7 @@ async def compact_transcript(
         logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
         return None
     try:
-        try:
-            async with openai.AsyncOpenAI(
-                api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
-            ) as client:
-                result = await compress_context(
-                    messages=messages, model=cfg.model, client=client
-                )
-        except Exception as e:
-            logger.warning(
-                "%s LLM compaction failed, using truncation: %s", log_prefix, e
-            )
-            result = await compress_context(
-                messages=messages, model=cfg.model, client=None
-            )
+        result = await _run_compression(messages, cfg.model, cfg, log_prefix)
         if not result.was_compacted:
             logger.info("%s Transcript already within token budget", log_prefix)
             return content

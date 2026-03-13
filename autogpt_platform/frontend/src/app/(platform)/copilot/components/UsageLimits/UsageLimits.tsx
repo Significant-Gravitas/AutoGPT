@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
+const MS_PER_MINUTE = 60_000;
+const MS_PER_HOUR = 3_600_000;
+
 function formatResetTime(resetsAt: Date | string): string {
   const resetDate =
     typeof resetsAt === "string" ? new Date(resetsAt) : resetsAt;
@@ -15,11 +18,11 @@ function formatResetTime(resetsAt: Date | string): string {
   const diffMs = resetDate.getTime() - now.getTime();
   if (diffMs <= 0) return "now";
 
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const hours = Math.floor(diffMs / MS_PER_HOUR);
 
   // Under 24h: show relative time ("in 4h 23m")
   if (hours < 24) {
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const minutes = Math.floor((diffMs % MS_PER_HOUR) / MS_PER_MINUTE);
     if (hours > 0) return `in ${hours}h ${minutes}m`;
     return `in ${minutes}m`;
   }

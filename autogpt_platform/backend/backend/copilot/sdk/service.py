@@ -79,6 +79,7 @@ from .tool_adapter import (
 )
 from .transcript import (
     COMPACT_THRESHOLD_BYTES,
+    TranscriptDownload,
     cleanup_cli_project_dir,
     compact_transcript,
     download_transcript,
@@ -630,6 +631,56 @@ async def _prepare_file_attachments(
     return PreparedAttachments(hint=hint, image_blocks=image_blocks)
 
 
+async def _maybe_compact_and_upload(
+    dl: TranscriptDownload,
+    user_id: str,
+    session_id: str,
+    log_prefix: str = "[Transcript]",
+) -> str:
+    """Compact an oversized transcript and upload the compacted version.
+
+    Returns the (possibly compacted) transcript content, or an empty string
+    if compaction was needed but failed.
+    """
+    content = dl.content
+    if len(content) <= COMPACT_THRESHOLD_BYTES:
+        return content
+
+    logger.warning(
+        "%s Transcript oversized (%dB > %dB), compacting",
+        log_prefix,
+        len(content),
+        COMPACT_THRESHOLD_BYTES,
+    )
+    compacted = await compact_transcript(content, log_prefix=log_prefix)
+    if not compacted:
+        logger.warning(
+            "%s Compaction failed, skipping resume for this turn", log_prefix
+        )
+        return ""
+
+    # Keep the original message_count: it reflects the number of
+    # session.messages covered by this transcript, which the gap-fill
+    # logic uses as a slice index.  Counting JSONL lines would give a
+    # smaller number (compacted messages != session message count) and
+    # cause already-covered messages to be re-injected.
+    try:
+        await upload_transcript(
+            user_id=user_id,
+            session_id=session_id,
+            content=compacted,
+            message_count=dl.message_count,
+            log_prefix=log_prefix,
+        )
+    except Exception:
+        logger.warning(
+            "%s Failed to upload compacted transcript",
+            log_prefix,
+            exc_info=True,
+        )
+    return compacted
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -841,50 +892,12 @@ async def stream_chat_completion_sdk(
                 is_valid,
             )
             if is_valid:
-                transcript_content = dl.content
-                # Compact oversized transcripts to prevent "Prompt is too long"
-                if len(transcript_content) > COMPACT_THRESHOLD_BYTES:
-                    logger.warning(
-                        "%s Transcript oversized (%dB > %dB), compacting",
-                        log_prefix,
-                        len(transcript_content),
-                        COMPACT_THRESHOLD_BYTES,
-                    )
-                    compacted = await compact_transcript(
-                        transcript_content, log_prefix=log_prefix
-                    )
-                    if compacted:
-                        transcript_content = compacted
-                        # Keep the original message_count: it reflects the
-                        # number of session.messages covered by this transcript,
-                        # which the gap-fill logic uses as a slice index.
-                        # Counting JSONL lines would give a smaller number
-                        # (compacted messages != session message count) and
-                        # cause already-covered messages to be re-injected.
-                        # Best-effort upload of compacted version
-                        try:
-                            await upload_transcript(
-                                user_id=user_id or "",
-                                session_id=session_id,
-                                content=transcript_content,
-                                message_count=dl.message_count,
-                                log_prefix=log_prefix,
-                            )
-                        except Exception:
-                            logger.warning(
-                                "%s Failed to upload compacted transcript",
-                                log_prefix,
-                                exc_info=True,
-                            )
-                    else:
-                        # Compaction failed — skip resume to avoid
-                        # "Prompt is too long" on an oversized transcript.
-                        logger.warning(
-                            "%s Compaction failed, skipping resume for this turn",
-                            log_prefix,
-                        )
-                        transcript_content = ""
-
+                transcript_content = await _maybe_compact_and_upload(
+                    dl,
+                    user_id=user_id or "",
+                    session_id=session_id,
+                    log_prefix=log_prefix,
+                )
                 # Load previous context into builder (empty string is a no-op)
                 if transcript_content:
                     transcript_builder.load_previous(

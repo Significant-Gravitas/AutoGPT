@@ -77,7 +77,11 @@ def _daily_reset_time(now: datetime | None = None) -> datetime:
 
 
 def _weekly_reset_time(now: datetime | None = None) -> datetime:
-    """Calculate when the current weekly window resets (next Monday 00:00 UTC)."""
+    """Calculate when the current weekly window resets (next Monday 00:00 UTC).
+
+    On Monday itself, ``(7 - weekday) % 7`` is 0; the ``or 7`` fallback
+    pushes to *next* Monday so the current week's window stays open.
+    """
     if now is None:
         now = datetime.now(UTC)
     days_until_monday = (7 - now.weekday()) % 7 or 7
