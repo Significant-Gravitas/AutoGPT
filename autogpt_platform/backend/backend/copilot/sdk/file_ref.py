@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import yaml
+from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
 
 from backend.copilot.context import (
     get_current_sandbox,
@@ -469,6 +470,7 @@ async def _expand_bare_ref(
             KeyError,
             TypeError,
             zipfile.BadZipFile,
+            OpenpyxlInvalidFile,
         ) as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never
