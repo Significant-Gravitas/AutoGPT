@@ -1134,10 +1134,9 @@ async def stream_chat_completion_sdk(
                     # Emit compaction end if SDK finished compacting.
                     # When compaction ends, sync TranscriptBuilder with the
                     # CLI's active context so they stay identical.
-                    compaction_was_done = compaction.compaction_just_ended
                     for ev in await compaction.emit_end_if_ready(session):
                         yield ev
-                    if not compaction_was_done and compaction.compaction_just_ended:
+                    if compaction.compaction_just_ended:
                         compacted = read_compacted_entries(compaction.transcript_path)
                         if compacted is not None:
                             transcript_builder.replace_entries(

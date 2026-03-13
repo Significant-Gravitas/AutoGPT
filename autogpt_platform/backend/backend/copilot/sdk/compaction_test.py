@@ -216,13 +216,15 @@ class TestCompactionTracker:
         assert len(session.messages) == 2
 
     @pytest.mark.asyncio
-    async def test_emit_end_no_op_when_done(self):
+    async def test_emit_end_no_op_when_no_new_compaction(self):
         tracker = CompactionTracker()
         session = _make_session()
         tracker.on_compact()
         tracker.emit_start_if_ready()
         await tracker.emit_end_if_ready(session)
-        # Second call should be no-op
+        # Consume the one-shot flag
+        _ = tracker.compaction_just_ended
+        # Second call should be no-op (no new on_compact)
         evts = await tracker.emit_end_if_ready(session)
         assert evts == []
 
@@ -246,20 +248,28 @@ class TestCompactionTracker:
         tracker._done = True
         tracker._start_emitted = True
         tracker._tool_call_id = "old"
+        tracker._transcript_path = "/some/path"
         tracker.reset_for_query()
         assert tracker._done is False
         assert tracker._start_emitted is False
         assert tracker._tool_call_id == ""
+        assert tracker._transcript_path == ""
 
     @pytest.mark.asyncio
-    async def test_pre_query_blocks_sdk_compaction(self):
-        """After pre-query compaction, SDK compaction events are suppressed."""
+    async def test_pre_query_blocks_sdk_compaction_until_consumed(self):
+        """After pre-query compaction, SDK compaction is blocked until the
+        one-shot flag is consumed via compaction_just_ended."""
         tracker = CompactionTracker()
         session = _make_session()
         tracker.emit_pre_query(session)
         tracker.on_compact()
+        # _done is True so emit_start_if_ready is blocked
         evts = tracker.emit_start_if_ready()
-        assert evts == []  # _done blocks it
+        assert evts == []
+        # Consuming the one-shot flag allows subsequent compaction
+        assert tracker.compaction_just_ended is True
+        evts = tracker.emit_start_if_ready()
+        assert len(evts) == 3
 
     @pytest.mark.asyncio
     async def test_reset_allows_new_compaction(self):
@@ -289,3 +299,36 @@ class TestCompactionTracker:
         tool_calls = session.messages[0].tool_calls
         assert tool_calls is not None
         assert tool_calls[0]["id"] == start_evt.toolCallId
+
+    def test_compaction_just_ended_is_one_shot(self):
+        """compaction_just_ended returns True once, then False."""
+        tracker = CompactionTracker()
+        tracker._done = True
+        assert tracker.compaction_just_ended is True
+        assert tracker.compaction_just_ended is False
+
+    @pytest.mark.asyncio
+    async def test_multiple_compactions_within_query(self):
+        """Two mid-stream compactions within a single query both trigger."""
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        # First compaction cycle
+        tracker.on_compact("/path/1")
+        tracker.emit_start_if_ready()
+        evts1 = await tracker.emit_end_if_ready(session)
+        assert len(evts1) == 2
+        assert tracker.compaction_just_ended is True
+
+        # Second compaction cycle (should NOT be blocked)
+        tracker.on_compact("/path/2")
+        start_evts = tracker.emit_start_if_ready()
+        assert len(start_evts) == 3  # Not blocked by first compaction
+        evts2 = await tracker.emit_end_if_ready(session)
+        assert len(evts2) == 2
+        assert tracker.compaction_just_ended is True
+
+    def test_on_compact_stores_transcript_path(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/some/path.jsonl")
+        assert tracker.transcript_path == "/some/path.jsonl"

@@ -12,10 +12,12 @@ from .transcript import (
     _cli_project_dir,
     delete_transcript,
     read_cli_session_file,
+    read_compacted_entries,
     strip_progress_entries,
     validate_transcript,
     write_transcript_to_tempfile,
 )
+from .transcript_builder import TranscriptBuilder
 
 
 def _make_jsonl(*entries: dict) -> str:
@@ -424,3 +426,232 @@ class TestDeleteTranscript:
         ):
             # Should not raise
             await delete_transcript("user-123", "session-456")
+
+
+# --- read_compacted_entries ---
+
+
+COMPACT_SUMMARY = {
+    "type": "summary",
+    "uuid": "cs1",
+    "isCompactSummary": True,
+    "message": {"role": "assistant", "content": "compacted context"},
+}
+POST_COMPACT_ASST = {
+    "type": "assistant",
+    "uuid": "a2",
+    "parentUuid": "cs1",
+    "message": {"role": "assistant", "content": "response after compaction"},
+}
+
+
+class TestReadCompactedEntries:
+    def test_returns_summary_and_entries_after(self, tmp_path, monkeypatch):
+        """File with isCompactSummary entry returns summary + entries after."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        pre_compact = {"type": "user", "uuid": "u1", "message": {"role": "user"}}
+        path = session_dir / "session.jsonl"
+        path.write_text(_make_jsonl(pre_compact, COMPACT_SUMMARY, POST_COMPACT_ASST))
+
+        result = read_compacted_entries(str(path))
+        assert result is not None
+        assert len(result) == 2
+        assert result[0]["isCompactSummary"] is True
+        assert result[1]["uuid"] == "a2"
+
+    def test_no_compact_summary_returns_none(self, tmp_path, monkeypatch):
+        """File without isCompactSummary returns None."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        path = session_dir / "session.jsonl"
+        path.write_text(_make_jsonl(USER_MSG, ASST_MSG))
+
+        result = read_compacted_entries(str(path))
+        assert result is None
+
+    def test_file_not_found_returns_none(self, tmp_path, monkeypatch):
+        """Non-existent file returns None."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        projects_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        result = read_compacted_entries(str(projects_dir / "missing.jsonl"))
+        assert result is None
+
+    def test_empty_path_returns_none(self):
+        """Empty string path returns None."""
+        result = read_compacted_entries("")
+        assert result is None
+
+    def test_malformed_json_lines_skipped(self, tmp_path, monkeypatch):
+        """Malformed JSON lines are skipped gracefully."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        path = session_dir / "session.jsonl"
+        content = "not valid json\n" + json.dumps(COMPACT_SUMMARY) + "\n"
+        content += "also bad\n" + json.dumps(POST_COMPACT_ASST) + "\n"
+        path.write_text(content)
+
+        result = read_compacted_entries(str(path))
+        assert result is not None
+        assert len(result) == 2  # summary + post-compact assistant
+
+    def test_multiple_compact_summaries_uses_first(self, tmp_path, monkeypatch):
+        """When multiple isCompactSummary entries exist, uses the first one."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        second_summary = {
+            "type": "summary",
+            "uuid": "cs2",
+            "isCompactSummary": True,
+            "message": {"role": "assistant", "content": "second summary"},
+        }
+        path = session_dir / "session.jsonl"
+        path.write_text(_make_jsonl(COMPACT_SUMMARY, POST_COMPACT_ASST, second_summary))
+
+        result = read_compacted_entries(str(path))
+        assert result is not None
+        # First summary found, so all 3 entries returned
+        assert len(result) == 3
+        assert result[0]["uuid"] == "cs1"
+
+    def test_path_outside_projects_base_returns_none(self, tmp_path, monkeypatch):
+        """Transcript path outside the projects directory is rejected."""
+        config_dir = tmp_path / "config"
+        (config_dir / "projects").mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        evil_file = tmp_path / "evil.jsonl"
+        evil_file.write_text(_make_jsonl(COMPACT_SUMMARY))
+
+        result = read_compacted_entries(str(evil_file))
+        assert result is None
+
+
+# --- TranscriptBuilder.replace_entries ---
+
+
+class TestTranscriptBuilderReplaceEntries:
+    def test_replaces_existing_entries(self):
+        """replace_entries replaces all entries with compacted ones."""
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        builder.append_assistant([{"type": "text", "text": "world"}])
+        assert builder.entry_count == 2
+
+        compacted = [
+            {
+                "type": "user",
+                "uuid": "cs1",
+                "isCompactSummary": True,
+                "message": {"role": "user", "content": "compacted summary"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "cs1",
+                "message": {"role": "assistant", "content": "response"},
+            },
+        ]
+        builder.replace_entries(compacted)
+        assert builder.entry_count == 2
+        output = builder.to_jsonl()
+        entries = [json.loads(line) for line in output.strip().split("\n")]
+        assert entries[0]["uuid"] == "cs1"
+        assert entries[1]["uuid"] == "a1"
+
+    def test_filters_strippable_types(self):
+        """Strippable types are filtered out during replace."""
+        builder = TranscriptBuilder()
+        compacted = [
+            {
+                "type": "user",
+                "uuid": "cs1",
+                "message": {"role": "user", "content": "compacted summary"},
+            },
+            {"type": "progress", "uuid": "p1", "message": {}},
+            {"type": "summary", "uuid": "s1", "message": {}},
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "cs1",
+                "message": {"role": "assistant", "content": "hi"},
+            },
+        ]
+        builder.replace_entries(compacted)
+        assert builder.entry_count == 2  # progress and summary were filtered
+
+    def test_maintains_last_uuid_chain(self):
+        """After replace, _last_uuid is the last entry's uuid."""
+        builder = TranscriptBuilder()
+        compacted = [
+            {
+                "type": "user",
+                "uuid": "cs1",
+                "message": {"role": "user", "content": "compacted summary"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "cs1",
+                "message": {"role": "assistant", "content": "hi"},
+            },
+        ]
+        builder.replace_entries(compacted)
+        # Appending a new user message should chain to a1
+        builder.append_user("next question")
+        output = builder.to_jsonl()
+        entries = [json.loads(line) for line in output.strip().split("\n")]
+        assert entries[-1]["parentUuid"] == "a1"
+
+    def test_empty_entries_list(self):
+        """Replacing with empty list clears all entries."""
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        builder.replace_entries([])
+        assert builder.entry_count == 0
+        assert builder.is_empty
+
+
+# --- TranscriptBuilder.load_previous with compacted content ---
+
+
+class TestTranscriptBuilderLoadPreviousCompacted:
+    def test_preserves_compact_summary_entry(self):
+        """load_previous preserves isCompactSummary entries even though
+        their type is 'summary' (which is in STRIPPABLE_TYPES)."""
+        compacted_content = _make_jsonl(COMPACT_SUMMARY, POST_COMPACT_ASST)
+        builder = TranscriptBuilder()
+        builder.load_previous(compacted_content)
+        assert builder.entry_count == 2
+        output = builder.to_jsonl()
+        entries = [json.loads(line) for line in output.strip().split("\n")]
+        assert entries[0]["type"] == "summary"
+        assert entries[0]["uuid"] == "cs1"
+        assert entries[1]["uuid"] == "a2"
+
+    def test_strips_regular_summary_entries(self):
+        """Regular summary entries (without isCompactSummary) are still stripped."""
+        regular_summary = {"type": "summary", "uuid": "s1", "message": {"content": "x"}}
+        content = _make_jsonl(regular_summary, POST_COMPACT_ASST)
+        builder = TranscriptBuilder()
+        builder.load_previous(content)
+        assert builder.entry_count == 1  # Only the assistant entry

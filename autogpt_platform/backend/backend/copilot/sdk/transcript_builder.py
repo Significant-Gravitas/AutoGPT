@@ -80,8 +80,9 @@ class TranscriptBuilder:
 
             # Load all non-strippable entries (user/assistant/system/etc.)
             # Skip only STRIPPABLE_TYPES to match strip_progress_entries() behavior
+            # but preserve isCompactSummary entries (compacted context from CLI)
             entry_type = data.get("type", "")
-            if entry_type in STRIPPABLE_TYPES:
+            if entry_type in STRIPPABLE_TYPES and not data.get("isCompactSummary"):
                 continue
 
             entry = TranscriptEntry(
@@ -176,7 +177,7 @@ class TranscriptBuilder:
 
         for data in compacted_entries:
             entry_type = data.get("type", "")
-            if entry_type in STRIPPABLE_TYPES:
+            if entry_type in STRIPPABLE_TYPES and not data.get("isCompactSummary"):
                 continue
 
             entry = TranscriptEntry(

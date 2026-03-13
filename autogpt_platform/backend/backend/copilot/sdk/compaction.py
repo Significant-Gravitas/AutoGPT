@@ -185,8 +185,15 @@ class CompactionTracker:
 
     @property
     def compaction_just_ended(self) -> bool:
-        """True after emit_end_if_ready() has completed a compaction cycle."""
-        return self._done
+        """One-shot: returns True once after a compaction cycle completes.
+
+        The flag resets after being read so subsequent compactions within the
+        same query are detected correctly.
+        """
+        if self._done:
+            self._done = False
+            return True
+        return False
 
     def on_compact(self, transcript_path: str = "") -> None:
         """Callback for the PreCompact hook. Stores transcript_path."""
@@ -211,6 +218,7 @@ class CompactionTracker:
         self._done = False
         self._start_emitted = False
         self._tool_call_id = ""
+        self._transcript_path = ""
 
     def emit_start_if_ready(self) -> list[StreamBaseResponse]:
         """If the PreCompact hook fired, emit start events (spinning tool)."""

@@ -195,8 +195,17 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
     if not transcript_path:
         return None
 
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    projects_base = os.path.realpath(os.path.join(config_dir, "projects"))
+    real_path = os.path.realpath(transcript_path)
+    if not real_path.startswith(projects_base + os.sep):
+        logger.warning(
+            "[Transcript] transcript_path outside projects base: %s", transcript_path
+        )
+        return None
+
     try:
-        content = Path(transcript_path).read_text()
+        content = Path(real_path).read_text()
     except OSError as e:
         logger.warning(
             "[Transcript] Failed to read session file %s: %s", transcript_path, e
