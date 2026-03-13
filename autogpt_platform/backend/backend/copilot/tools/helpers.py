@@ -8,9 +8,8 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from backend.data import db
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.utils import block_usage_cost
@@ -22,36 +21,6 @@ from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
 
 logger = logging.getLogger(__name__)
-
-
-async def _get_credits(user_id: str) -> int:
-    """Get user credits using the adapter pattern (RPC when Prisma unavailable)."""
-    if db.is_connected():
-        from backend.data.credit import get_user_credit_model
-
-        credit_model = await get_user_credit_model(user_id)
-        return await credit_model.get_credits(user_id)
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        return await get_database_manager_async_client().get_credits(user_id)
-
-
-async def _spend_credits(
-    user_id: str, cost: int, metadata: UsageTransactionMetadata
-) -> int:
-    """Spend user credits using the adapter pattern (RPC when Prisma unavailable)."""
-    if db.is_connected():
-        from backend.data.credit import get_user_credit_model
-
-        credit_model = await get_user_credit_model(user_id)
-        return await credit_model.spend_credits(user_id, cost, metadata)
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        return await get_database_manager_async_client().spend_credits(
-            user_id, cost, metadata
-        )
 
 
 def get_inputs_from_schema(
@@ -152,7 +121,7 @@ async def execute_block(
         cost, cost_filter = block_usage_cost(block, input_data)
         has_cost = cost > 0
         if has_cost:
-            balance = await _get_credits(user_id)
+            balance = await credit_db().get_credits(user_id)
             if balance < cost:
                 return ErrorResponse(
                     message=(
@@ -173,7 +142,7 @@ async def execute_block(
         # Charge credits for block execution
         if has_cost:
             try:
-                await _spend_credits(
+                await credit_db().spend_credits(
                     user_id=user_id,
                     cost=cost,
                     metadata=UsageTransactionMetadata(
@@ -216,7 +185,7 @@ async def execute_block(
     except Exception as e:
         logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
-            message=f"Failed to execute block: {e}",
+            message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
         )

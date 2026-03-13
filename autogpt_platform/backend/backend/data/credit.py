@@ -1220,6 +1220,20 @@ async def get_user_credit_model(user_id: str) -> UserCreditBase:
         return BetaUserCredit(settings.config.num_user_credits_refill)
 
 
+async def get_credits(user_id: str) -> int:
+    """Get the current credit balance for a user."""
+    credit_model = await get_user_credit_model(user_id)
+    return await credit_model.get_credits(user_id)
+
+
+async def spend_credits(
+    user_id: str, cost: int, metadata: UsageTransactionMetadata
+) -> int:
+    """Spend credits for a user."""
+    credit_model = await get_user_credit_model(user_id)
+    return await credit_model.spend_credits(user_id, cost, metadata)
+
+
 def get_block_costs() -> dict[str, list["BlockCost"]]:
     return {block().id: costs for block, costs in BLOCK_COSTS.items()}
 
