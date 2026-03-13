@@ -307,7 +307,10 @@ def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
     Ragged rows (fewer columns than the header) get None for missing values.
     """
     header = parsed[0]
-    return [dict(itertools.zip_longest(header, row)) for row in parsed[1:]]
+    return [
+        {col: (row[i] if i < len(row) else None) for i, col in enumerate(header)}
+        for row in parsed[1:]
+    ]
 
 
 def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
