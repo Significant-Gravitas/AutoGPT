@@ -279,16 +279,18 @@ def _make_sdk_cwd(session_id: str) -> str:
     return cwd
 
 
+_STALE_PROJECT_DIR_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+
+
 def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
     Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
 
-    NOTE: The CLI project directory ``~/.claude/projects/<encoded-cwd>/``
-    is intentionally NOT cleaned up between turns.  The SDK stores
-    tool-result files there that the model may reference in subsequent
-    turns via ``--resume``.  Deleting them causes "file not found" errors
-    when the model tries to re-read truncated tool outputs.
+    Also sweeps stale conversation UUID directories under
+    ``~/.claude/projects/<encoded-cwd>/`` that are older than 24 hours.
+    This prevents unbounded disk growth while preserving tool-result files
+    needed by recent ``--resume`` turns.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
@@ -303,6 +305,42 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
         shutil.rmtree(normalized, ignore_errors=True)
     except OSError:
         pass
+
+    # Sweep stale conversation dirs under the CLI project directory.
+    _sweep_stale_project_dirs()
+
+
+def _sweep_stale_project_dirs() -> None:
+    """Remove conversation UUID dirs older than the TTL threshold.
+
+    The SDK creates ``~/.claude/projects/<encoded-cwd>/<uuid>/`` directories
+    for each conversation.  We keep recent ones (needed by ``--resume``) and
+    remove those older than ``_STALE_PROJECT_DIR_TTL_SECONDS``.
+    """
+    import time
+
+    from backend.copilot.context import _SDK_PROJECTS_DIR
+
+    try:
+        if not os.path.isdir(_SDK_PROJECTS_DIR):
+            return
+        now = time.time()
+        cutoff = now - _STALE_PROJECT_DIR_TTL_SECONDS
+        for encoded_dir in os.scandir(_SDK_PROJECTS_DIR):
+            if not encoded_dir.is_dir(follow_symlinks=False):
+                continue
+            for conv_dir in os.scandir(encoded_dir.path):
+                if not conv_dir.is_dir(follow_symlinks=False):
+                    continue
+                try:
+                    mtime = conv_dir.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    continue
+                if mtime < cutoff:
+                    shutil.rmtree(conv_dir.path, ignore_errors=True)
+                    logger.debug("[SDK] Removed stale project dir: %s", conv_dir.path)
+    except OSError:
+        pass  # Best-effort cleanup
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
@@ -1096,7 +1134,7 @@ async def stream_chat_completion_sdk(
                         and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                         and not is_parallel_continuation
                     ):
-                        if await wait_for_stash(timeout=0.5):
+                        if await wait_for_stash(timeout=2.0):
                             await asyncio.sleep(0)
                         else:
                             logger.warning(

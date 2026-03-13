@@ -104,15 +104,29 @@ def test_is_allowed_local_path_no_sdk_cwd_no_project_dir():
     assert not is_allowed_local_path("/tmp/some-file.txt", sdk_cwd=None)
 
 
-def test_is_allowed_local_path_tool_results_dir():
-    """Files under the tool-results directory for the current project are allowed."""
+def test_is_allowed_local_path_tool_results_with_uuid():
+    """Files under <encoded-cwd>/<uuid>/tool-results/ are allowed."""
     encoded = "test-encoded-dir"
-    tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
-    path = os.path.join(tool_results_dir, "output.txt")
+    conv_uuid = "abc123-conv-uuid"
+    path = os.path.join(
+        _SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results", "output.txt"
+    )
 
     _current_project_dir.set(encoded)
     try:
         assert is_allowed_local_path(path, sdk_cwd=None)
+    finally:
+        _current_project_dir.set("")
+
+
+def test_is_allowed_local_path_tool_results_without_uuid_rejected():
+    """Direct <encoded-cwd>/tool-results/ (no UUID) is rejected."""
+    encoded = "test-encoded-dir"
+    path = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results", "output.txt")
+
+    _current_project_dir.set(encoded)
+    try:
+        assert not is_allowed_local_path(path, sdk_cwd=None)
     finally:
         _current_project_dir.set("")
 

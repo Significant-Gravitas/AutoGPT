@@ -4,6 +4,7 @@ Pure unit tests with no external dependencies (no E2B, no sandbox).
 """
 
 import os
+import shutil
 
 import pytest
 
@@ -73,9 +74,13 @@ class TestResolveSandboxPath:
 
 
 class TestReadLocal:
+    _CONV_UUID = "test-conv-uuid"
+
     def _make_tool_results_file(self, encoded: str, filename: str, content: str) -> str:
-        """Create a tool-results file and return its path."""
-        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
+        """Create a tool-results file under <encoded>/<uuid>/tool-results/."""
+        tool_results_dir = os.path.join(
+            _SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+        )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, filename)
         with open(filepath, "w") as f:
@@ -107,7 +112,9 @@ class TestReadLocal:
     def test_read_nonexistent_tool_results(self):
         """A tool-results path that doesn't exist returns FileNotFoundError."""
         encoded = "-tmp-copilot-e2b-test-nofile"
-        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
+        tool_results_dir = os.path.join(
+            _SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+        )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, "nonexistent.txt")
         token = _current_project_dir.set(encoded)
@@ -117,7 +124,7 @@ class TestReadLocal:
             assert "not found" in result["content"][0]["text"].lower()
         finally:
             _current_project_dir.reset(token)
-            os.rmdir(tool_results_dir)
+            shutil.rmtree(os.path.join(_SDK_PROJECTS_DIR, encoded), ignore_errors=True)
 
     def test_read_traversal_path_blocked(self):
         """A traversal attempt that escapes allowed directories is blocked."""

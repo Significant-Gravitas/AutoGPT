@@ -106,6 +106,12 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
         parent = os.path.dirname(remote)
         if parent and parent != E2B_WORKDIR:
             await sandbox.files.make_dir(parent)
+        # Re-validate path after mkdir — a symlink in the sandbox could
+        # redirect the write target outside /home/user.
+        try:
+            resolve_sandbox_path(remote)
+        except ValueError as exc:
+            return _mcp(str(exc), error=True)
         await sandbox.files.write(remote, content)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)

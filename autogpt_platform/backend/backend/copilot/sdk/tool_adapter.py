@@ -146,7 +146,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         event.set()
 
 
-async def wait_for_stash(timeout: float = 0.5) -> bool:
+async def wait_for_stash(timeout: float = 2.0) -> bool:
     """Wait for a PostToolUse hook to stash tool output.
 
     The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
@@ -176,6 +176,12 @@ async def wait_for_stash(timeout: float = 0.5) -> bool:
         event.clear()
         return True
     except TimeoutError:
+        # Last chance: yield to the event loop once — the hook may have
+        # completed between the timeout and this point.
+        await asyncio.sleep(0)
+        if event.is_set():
+            event.clear()
+            return True
         return False
 
 
