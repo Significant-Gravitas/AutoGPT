@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pydantic
@@ -1101,6 +1102,22 @@ class _DictBlock(pydantic.BaseModel):
     data: dict
 
 
+class _AnyBlock(pydantic.BaseModel):
+    """Simulates a block schema with an Any-typed input (e.g. FindInDictionaryBlock).
+
+    FindInDictionaryBlock.Input has `input: Any`, which produces a JSON schema
+    property with NO "type" key — just {"title": "Input"}.  _adapt_to_schema
+    must still convert tabular data for these fields.
+    """
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    # Use typing.Any explicitly to avoid __future__ annotations turning it into
+    # a string that pydantic can't resolve.
+    input: typing.Any
+    key: str
+
+
 @pytest.mark.asyncio
 async def test_e2e_jsonl_tabular_to_dict_block():
     """JSONL with uniform dicts → dict block: table format is adapted to
@@ -1328,3 +1345,199 @@ async def test_e2e_csv_to_dict_block():
     # Already a dict — coercion is a no-op
     coerce_inputs_to_schema(expanded, _DictBlock)
     assert isinstance(expanded["data"], dict)
+
+
+# ---------------------------------------------------------------------------
+# E2E: Format × Any-typed block (FindInDictionaryBlock-style)
+#
+# FindInDictionaryBlock.Input has `input: Any` — no "type" in JSON schema.
+# _adapt_to_schema must still convert tabular data to list-of-dicts so that
+# FindInDict.run() can do key lookup (its line 195-199 handles list-of-dicts).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_e2e_csv_tabular_to_any_block():
+    """CSV tabular → Any-typed block: tabular [[header],[rows]] converted to
+    list of dicts so FindInDictionaryBlock can do key lookup."""
+    csv_content = "name,color\napple,red\nbanana,yellow"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return csv_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.csv", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Tabular data should be converted to list of dicts for Any-typed fields
+    assert expanded["input"] == [
+        {"name": "apple", "color": "red"},
+        {"name": "banana", "color": "yellow"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_e2e_jsonl_tabular_to_any_block():
+    """JSONL tabular → Any-typed block: tabular converted to list of dicts."""
+    jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return jsonl_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.jsonl", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["input"] == [
+        {"name": "apple", "color": "red"},
+        {"name": "banana", "color": "yellow"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_e2e_tsv_tabular_to_any_block():
+    """TSV tabular → Any-typed block: same as CSV, converted to list of dicts."""
+    tsv_content = "name\tcolor\napple\tred\nbanana\tyellow"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return tsv_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.tsv", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["input"] == [
+        {"name": "apple", "color": "red"},
+        {"name": "banana", "color": "yellow"},
+    ]
+
+
+@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.asyncio
+async def test_e2e_parquet_to_any_block():
+    """Parquet tabular → Any-typed block: converted to list of dicts."""
+    parquet_bytes = _make_parquet_bytes()
+
+    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+        return parquet_bytes
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(side_effect=_resolve_bytes),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.parquet", "key": "Name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["input"] == [
+        {"Name": "Alice", "Score": 90},
+        {"Name": "Bob", "Score": 85},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_e2e_yaml_dict_to_any_block():
+    """YAML dict → Any-typed block: dict passes through unchanged (no conversion
+    needed since FindInDict handles dicts natively)."""
+    yaml_content = "name: Alice\nage: 30"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return yaml_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///config.yaml", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Dict passes through — FindInDict handles dicts natively
+    assert expanded["input"] == {"name": "Alice", "age": 30}
+
+
+@pytest.mark.asyncio
+async def test_e2e_json_object_to_any_block():
+    """JSON object → Any-typed block: dict passes through unchanged."""
+    json_content = '{"name": "apple", "color": "red"}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return json_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.json", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["input"] == {"name": "apple", "color": "red"}
+
+
+@pytest.mark.asyncio
+async def test_e2e_json_array_to_any_block():
+    """JSON array → Any-typed block: list passes through unchanged
+    (FindInDict handles list-of-dicts natively)."""
+    json_content = '[{"name": "apple"}, {"name": "banana"}]'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return json_content
+
+    block_schema = _AnyBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"input": "@@agptfile:workspace:///data.json", "key": "name"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Already a list of dicts — no adaptation needed
+    assert expanded["input"] == [{"name": "apple"}, {"name": "banana"}]

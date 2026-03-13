@@ -291,6 +291,34 @@ async def _infer_format_from_workspace(
         return None
 
 
+def _is_tabular(parsed: Any) -> bool:
+    """Check if parsed data is in tabular format: [[header], [row1], ...]."""
+    return (
+        isinstance(parsed, list)
+        and len(parsed) >= 2
+        and all(isinstance(row, list) for row in parsed)
+        and all(isinstance(h, str) for h in parsed[0])
+    )
+
+
+def _tabular_to_list_of_dicts(parsed: list[list]) -> list[dict[str, Any]]:
+    """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...]."""
+    header = parsed[0]
+    return [
+        {header[i]: row[i] for i in range(len(header)) if i < len(row)}
+        for row in parsed[1:]
+    ]
+
+
+def _tabular_to_column_dict(parsed: list[list]) -> dict[str, list]:
+    """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}."""
+    header = parsed[0]
+    return {
+        header[i]: [row[i] for row in parsed[1:] if i < len(row)]
+        for i in range(len(header))
+    }
+
+
 def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     """Adapt a parsed file value to better fit the target schema type.
 
@@ -311,20 +339,18 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     if isinstance(parsed, dict) and target_type == "array":
         return [parsed]
 
-    # Tabular list → object: convert [[header], [row1], ...] to a column-dict
+    # Tabular list → object: convert to a column-dict
     # {"col1": [val1, val2, ...], "col2": [...]} for meaningful dict lookups.
-    if (
-        isinstance(parsed, list)
-        and target_type == "object"
-        and len(parsed) >= 2
-        and all(isinstance(row, list) for row in parsed)
-    ):
-        header = parsed[0]
-        if all(isinstance(h, str) for h in header):
-            return {
-                header[i]: [row[i] for row in parsed[1:] if i < len(row)]
-                for i in range(len(header))
-            }
+    if target_type == "object" and _is_tabular(parsed):
+        return _tabular_to_column_dict(parsed)
+
+    # Tabular list → Any (no type): convert to list of dicts.
+    # Blocks like FindInDictionaryBlock have `input: Any` which produces
+    # a schema with no "type" key.  Tabular [[header],[rows]] is unusable
+    # for key lookup, but [{col: val}, ...] works with FindInDict's
+    # list-of-dicts branch (line 195-199 in data_manipulation.py).
+    if target_type is None and _is_tabular(parsed):
+        return _tabular_to_list_of_dicts(parsed)
 
     return parsed
 
