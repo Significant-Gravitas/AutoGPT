@@ -1,10 +1,4 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/molecules/Popover/Popover";
-import { ChartBar } from "@phosphor-icons/react";
 import { useUsageLimits } from "./useUsageLimits";
 
 function formatResetTime(resetsAt: Date): string {
@@ -59,7 +53,13 @@ function UsageBar({
   );
 }
 
-function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
+export function UsagePanelContent({
+  usage,
+  showBillingLink = true,
+}: {
+  usage: CoPilotUsageStatus;
+  showBillingLink?: boolean;
+}) {
   const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
 
@@ -92,12 +92,14 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
           resetsAt={usage.weekly.resets_at}
         />
       )}
-      <a
-        href="/profile/credits"
-        className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
-      >
-        Learn more about usage limits
-      </a>
+      {showBillingLink && (
+        <a
+          href="/profile/credits"
+          className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+        >
+          Manage billing &amp; credits
+        </a>
+      )}
     </div>
   );
 }
@@ -105,23 +107,8 @@ function UsagePanelContent({ usage }: { usage: CoPilotUsageStatus }) {
 export function UsageLimits() {
   const { data: usage, isLoading } = useUsageLimits();
 
-  // Don't show if no limits configured or still loading
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          className="rounded p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          aria-label="Usage limits"
-        >
-          <ChartBar className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-4">
-        <UsagePanelContent usage={usage} />
-      </PopoverContent>
-    </Popover>
-  );
+  return <UsagePanelContent usage={usage} />;
 }

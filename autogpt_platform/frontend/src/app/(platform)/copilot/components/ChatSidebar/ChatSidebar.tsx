@@ -18,6 +18,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarTrigger,
   useSidebar,
@@ -37,6 +38,7 @@ import { useCopilotUIStore } from "../../store";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { PulseLoader } from "../PulseLoader/PulseLoader";
+import { UsageLimits } from "../UsageLimits/UsageLimits";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -416,6 +418,11 @@ export function ChatSidebar() {
             </motion.div>
           )}
         </SidebarContent>
+        {!isCollapsed && (
+          <SidebarFooter className="border-t border-zinc-100 px-4 py-3">
+            <UsageLimits />
+          </SidebarFooter>
+        )}
       </Sidebar>
 
       <DeleteChatDialog
