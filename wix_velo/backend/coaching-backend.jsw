@@ -13,7 +13,7 @@
 import { getSecret } from 'wix-secrets-backend';
 import { fetch } from 'wix-fetch';
 
-const API_BASE = 'https://your-api-domain.com'; // ← replace after deploying
+const API_BASE = 'https://auto-gpt-production.up.railway.app';
 
 async function getApiKey() {
   return await getSecret('COACHING_API_KEY');
