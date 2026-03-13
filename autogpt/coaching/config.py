@@ -9,7 +9,9 @@ class CoachingConfig(metaclass=Singleton):
 
     def __init__(self):
         self.coach_name: str = os.getenv("COACHING_COACH_NAME", "Adi Ben Nesher")
-        self.coach_calendly_url: str = os.getenv("COACHING_COACH_CALENDLY_URL", "")
+        self.coach_calendly_url: str = os.getenv(
+            "COACHING_COACH_CALENDLY_URL", "https://calendly.com/abn_consulting/30min"
+        )
         self.alert_red_threshold: int = int(os.getenv("COACHING_ALERT_RED_THRESHOLD", "25"))
         self.alert_yellow_threshold: int = int(os.getenv("COACHING_ALERT_YELLOW_THRESHOLD", "40"))
         self.api_key: str = os.getenv("COACHING_API_KEY", "")
