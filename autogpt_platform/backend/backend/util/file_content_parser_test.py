@@ -213,6 +213,13 @@ class TestParseJsonl:
         assert result[1] == [1, 2]
         assert result[2] == [3, 4]
 
+    def test_single_dict_stays_as_list(self):
+        """Single-line JSONL with one dict → [dict], NOT a table.
+        Tabular detection requires ≥2 dicts to avoid vacuously true all()."""
+        content = '{"a": 1, "b": 2}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [{"a": 1, "b": 2}]
+
     def test_tabular_with_none_values(self):
         """Uniform keys but some null values → table with None cells."""
         content = '{"name":"apple","color":"red"}\n{"name":"banana","color":null}'
