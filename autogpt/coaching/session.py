@@ -17,8 +17,9 @@ from autogpt.coaching.models import (
     WeeklyLog,
 )
 from autogpt.coaching.prompts import SUMMARY_EXTRACTION_PROMPT, build_navigator_system_prompt
-from autogpt.llm_utils import create_chat_completion
-from autogpt.types.openai import Message
+
+# Type alias — replicated here to avoid pulling in the full Auto-GPT stack at import time
+Message = dict  # {"role": str, "content": str}
 
 
 class CoachingSession:
@@ -43,12 +44,14 @@ class CoachingSession:
             {"role": "system", "content": self._system_prompt},
         ] + self.full_message_history
 
+        from autogpt.llm_utils import create_chat_completion  # lazy — keeps coaching importable standalone
         reply = create_chat_completion(messages=messages)
         self.full_message_history.append({"role": "assistant", "content": reply})
         return reply
 
     def extract_summary(self) -> SessionSummary:
         """Ask the LLM to produce a structured JSON summary, then parse it."""
+        from autogpt.llm_utils import create_chat_completion  # lazy import
         extraction_messages: List[Message] = [
             {"role": "system", "content": self._system_prompt},
         ] + self.full_message_history + [

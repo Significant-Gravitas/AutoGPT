@@ -4,8 +4,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from supabase import Client, create_client
-
 from autogpt.coaching.config import coaching_config
 from autogpt.coaching.models import (
     Alert,
@@ -19,7 +17,8 @@ from autogpt.coaching.models import (
 )
 
 
-def _get_client() -> Client:
+def _get_client():
+    from supabase import create_client  # lazy import — only needed at call time
     return create_client(coaching_config.supabase_url, coaching_config.supabase_service_key)
 
 
