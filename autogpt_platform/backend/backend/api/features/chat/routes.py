@@ -53,8 +53,8 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
-from backend.data.understanding import get_business_understanding
 from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 

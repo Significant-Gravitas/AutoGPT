@@ -341,10 +341,11 @@ Form data:
 _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 
-async def extract_business_understanding(
+async def extract_business_understanding_from_tally(
     formatted_text: str,
 ) -> BusinessUnderstandingInput:
-    """Use an LLM to extract structured business understanding from form text.
+    """
+    Use an LLM to extract structured business understanding from form text.
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
@@ -388,8 +389,15 @@ async def extract_business_understanding(
             for p in raw_prompts
             if isinstance(p, str) and len(p.strip().split()) <= 20
         ]
-        cleaned["suggested_prompts"] = valid[:3] if valid else None
+        # This will keep up to 3 suggestions
+        short_prompts = valid[:3] if valid else None
+        if short_prompts:
+            cleaned["suggested_prompts"] = short_prompts
+        else:
+            # We dont want to add a None value suggested_prompts filed
+            cleaned.pop("suggested_prompts", None)
     else:
+        # suggested_prompts must be a list - removing it as its not here
         cleaned.pop("suggested_prompts", None)
 
     return BusinessUnderstandingInput(**cleaned)
@@ -420,7 +428,7 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    return await extract_business_understanding(formatted)
+    return await extract_business_understanding_from_tally(formatted)
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:

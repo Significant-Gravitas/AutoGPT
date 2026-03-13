@@ -50,13 +50,22 @@ export function EmptySession({
     getInputPlaceholder(),
   );
 
+  // Use matchMedia instead of resize event — fires only when crossing
+  // the 500px and 1081px breakpoints defined in getInputPlaceholder(),
+  // rather than dozens of times per second during a window drag.
   useEffect(() => {
-    function handleResize() {
+    function update() {
       setInputPlaceholder(getInputPlaceholder(window.innerWidth));
     }
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const mq500 = window.matchMedia("(min-width: 500px)");
+    const mq1081 = window.matchMedia("(min-width: 1081px)");
+    update();
+    mq500.addEventListener("change", update);
+    mq1081.addEventListener("change", update);
+    return () => {
+      mq500.removeEventListener("change", update);
+      mq1081.removeEventListener("change", update);
+    };
   }, []);
 
   async function handleQuickActionClick(action: string) {
