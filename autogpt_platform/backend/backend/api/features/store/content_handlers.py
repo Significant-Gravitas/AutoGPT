@@ -6,6 +6,7 @@ Each handler knows how to fetch and process its content type for embedding.
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -205,7 +206,14 @@ class BlockHandler(ContentHandler):
                 # Build searchable text from block metadata
                 parts = []
                 if block_instance.name:
-                    parts.append(block_instance.name)
+                    # Split CamelCase names into separate words so that
+                    # lexical search (tsvector) and BM25 can match individual
+                    # terms.  "AITextGeneratorBlock" → "AI Text Generator Block"
+                    split_name = re.sub(
+                        r"([a-z0-9])([A-Z])", r"\1 \2", block_instance.name
+                    )
+                    split_name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split_name)
+                    parts.append(split_name)
                 if block_instance.description:
                     parts.append(block_instance.description)
                 if block_instance.categories:
