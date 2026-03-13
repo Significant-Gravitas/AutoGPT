@@ -331,6 +331,9 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
+- suggested_prompts (list of 5 strings): short action prompts (each under 20 words) that would help \
+this person get started with automating their work. Should be specific to their industry, role, and \
+pain points; actionable and conversational in tone; focused on automation opportunities.
 
 Form data:
 """
@@ -338,10 +341,11 @@ Form data:
 _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 
-async def extract_business_understanding(
+async def extract_business_understanding_from_tally(
     formatted_text: str,
 ) -> BusinessUnderstandingInput:
-    """Use an LLM to extract structured business understanding from form text.
+    """
+    Use an LLM to extract structured business understanding from form text.
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
@@ -351,7 +355,7 @@ async def extract_business_understanding(
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="openai/gpt-4o-mini",
+                model=_settings.config.tally_extraction_llm_model,
                 messages=[
                     {
                         "role": "user",
@@ -376,6 +380,26 @@ async def extract_business_understanding(
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
+
+    # Validate suggested_prompts: filter >20 words, keep top 3
+    raw_prompts = cleaned.get("suggested_prompts", [])
+    if isinstance(raw_prompts, list):
+        valid = [
+            p.strip()
+            for p in raw_prompts
+            if isinstance(p, str) and len(p.strip().split()) <= 20
+        ]
+        # This will keep up to 3 suggestions
+        short_prompts = valid[:3] if valid else None
+        if short_prompts:
+            cleaned["suggested_prompts"] = short_prompts
+        else:
+            # We dont want to add a None value suggested_prompts field
+            cleaned.pop("suggested_prompts", None)
+    else:
+        # suggested_prompts must be a list - removing it as its not here
+        cleaned.pop("suggested_prompts", None)
+
     return BusinessUnderstandingInput(**cleaned)
 
 
@@ -404,7 +428,7 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    return await extract_business_understanding(formatted)
+    return await extract_business_understanding_from_tally(formatted)
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
