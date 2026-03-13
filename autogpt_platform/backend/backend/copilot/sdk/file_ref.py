@@ -301,7 +301,7 @@ def _is_tabular(parsed: Any) -> bool:
     )
 
 
-def _tabular_to_list_of_dicts(parsed: list[list]) -> list[dict[str, Any]]:
+def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
     """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...]."""
     header = parsed[0]
     return [
@@ -310,7 +310,7 @@ def _tabular_to_list_of_dicts(parsed: list[list]) -> list[dict[str, Any]]:
     ]
 
 
-def _tabular_to_column_dict(parsed: list[list]) -> dict[str, list]:
+def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
     """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}."""
     header = parsed[0]
     return {
