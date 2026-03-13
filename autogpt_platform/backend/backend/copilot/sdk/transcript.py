@@ -94,7 +94,11 @@ def strip_progress_entries(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if entry.get("type", "") in STRIPPABLE_TYPES and uid:
+        if (
+            entry.get("type", "") in STRIPPABLE_TYPES
+            and uid
+            and not entry.get("isCompactSummary")
+        ):
             stripped_uuids.add(uid)
 
     # Second pass: keep non-stripped entries, reparenting where needed.
@@ -118,7 +122,9 @@ def strip_progress_entries(content: str) -> str:
         if not isinstance(entry, dict):
             result_lines.append(line)
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES:
+        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
+            "isCompactSummary"
+        ):
             continue
         uid = entry.get("uuid", "")
         if uid in reparented:
@@ -537,7 +543,9 @@ def _transcript_to_messages(content: str) -> list[dict]:
         entry = json.loads(line, fallback=None)
         if not isinstance(entry, dict):
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES:
+        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
+            "isCompactSummary"
+        ):
             continue
         msg = entry.get("message", {})
         role = msg.get("role", "")

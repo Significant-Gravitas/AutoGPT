@@ -31,6 +31,7 @@ class TranscriptEntry(BaseModel):
     uuid: str
     parentUuid: str | None
     message: dict[str, Any]
+    isCompactSummary: bool | None = None
 
 
 class TranscriptBuilder:
@@ -78,10 +79,12 @@ class TranscriptBuilder:
                 )
                 continue
 
-            # Load all non-strippable entries (user/assistant/system/etc.)
-            # Skip only STRIPPABLE_TYPES to match strip_progress_entries() behavior
+            # Skip STRIPPABLE_TYPES unless the entry is a compaction summary.
+            # Compaction summaries may have type "summary" but must be preserved
+            # so --resume can reconstruct the compacted conversation.
             entry_type = data.get("type", "")
-            if entry_type in STRIPPABLE_TYPES:
+            is_compact = data.get("isCompactSummary", False)
+            if entry_type in STRIPPABLE_TYPES and not is_compact:
                 continue
 
             entry = TranscriptEntry(
@@ -89,6 +92,7 @@ class TranscriptBuilder:
                 uuid=data.get("uuid") or str(uuid4()),
                 parentUuid=data.get("parentUuid"),
                 message=data.get("message", {}),
+                isCompactSummary=True if is_compact else None,
             )
             self._entries.append(entry)
             self._last_uuid = entry.uuid

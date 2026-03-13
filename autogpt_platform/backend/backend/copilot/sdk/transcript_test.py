@@ -42,6 +42,14 @@ PROGRESS_ENTRY = {
     "data": {"type": "bash_progress", "stdout": "running..."},
 }
 
+COMPACT_SUMMARY = {
+    "type": "summary",
+    "uuid": "cs1",
+    "parentUuid": None,
+    "isCompactSummary": True,
+    "message": {"role": "user", "content": "Summary of previous conversation..."},
+}
+
 VALID_TRANSCRIPT = _make_jsonl(METADATA_LINE, FILE_HISTORY, USER_MSG, ASST_MSG)
 
 
@@ -514,3 +522,68 @@ class TestTranscriptBuilderBasic:
         asst1 = json.loads(lines[1])
         asst2 = json.loads(lines[3])
         assert asst1["message"]["id"] != asst2["message"]["id"]
+
+
+class TestCompactSummaryRoundtrip:
+    """Verify isCompactSummary survives export→reload roundtrip."""
+
+    def test_load_previous_preserves_compact_summary(self):
+        """Compaction summary with type 'summary' should not be stripped."""
+        content = _make_jsonl(COMPACT_SUMMARY, USER_MSG, ASST_MSG)
+        builder = TranscriptBuilder()
+        builder.load_previous(content)
+        # summary type is in STRIPPABLE_TYPES, but isCompactSummary keeps it
+        assert builder.entry_count == 3
+
+    def test_export_reload_preserves_compact_summary(self):
+        """Critical: isCompactSummary must survive to_jsonl → load_previous."""
+        content = _make_jsonl(COMPACT_SUMMARY, USER_MSG, ASST_MSG)
+        builder1 = TranscriptBuilder()
+        builder1.load_previous(content)
+        assert builder1.entry_count == 3
+
+        exported = builder1.to_jsonl()
+        # Verify isCompactSummary is in the exported JSONL
+        first_line = json.loads(exported.strip().split("\n")[0])
+        assert first_line.get("isCompactSummary") is True
+
+        # Reload and verify it's still preserved
+        builder2 = TranscriptBuilder()
+        builder2.load_previous(exported)
+        assert builder2.entry_count == 3
+
+    def test_strip_progress_preserves_compact_summary(self):
+        """strip_progress_entries should keep isCompactSummary entries."""
+        content = _make_jsonl(COMPACT_SUMMARY, USER_MSG, ASST_MSG)
+        stripped = strip_progress_entries(content)
+        entries = [json.loads(line) for line in stripped.strip().split("\n")]
+        types = [e.get("type") for e in entries]
+        assert "summary" in types  # Not stripped despite being in STRIPPABLE_TYPES
+        compact = [e for e in entries if e.get("isCompactSummary")]
+        assert len(compact) == 1
+
+    def test_regular_summary_still_stripped(self):
+        """Non-compact summaries should still be stripped."""
+        regular_summary = {
+            "type": "summary",
+            "uuid": "rs1",
+            "summary": "Session summary",
+        }
+        content = _make_jsonl(regular_summary, USER_MSG, ASST_MSG)
+        stripped = strip_progress_entries(content)
+        entries = [json.loads(line) for line in stripped.strip().split("\n")]
+        types = [e.get("type") for e in entries]
+        assert "summary" not in types
+
+    def test_replace_entries_preserves_compact_summary(self):
+        """replace_entries should preserve isCompactSummary entries."""
+        builder = TranscriptBuilder()
+        builder.append_user("old")
+        content = _make_jsonl(COMPACT_SUMMARY, USER_MSG, ASST_MSG)
+        builder.replace_entries(content)
+        assert builder.entry_count == 3
+
+        # Verify by re-exporting
+        exported = builder.to_jsonl()
+        first = json.loads(exported.strip().split("\n")[0])
+        assert first.get("isCompactSummary") is True
