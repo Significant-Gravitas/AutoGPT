@@ -617,9 +617,10 @@ async def test_http_error_returns_clean_message_with_collapsible_detail():
     assert "404" in response.message
     # Raw HTML body must NOT leak into the user-facing message
     assert "<!doctype" not in response.message
-    # Raw detail goes in the collapsible `error` field
+    # Raw detail (including original body) goes in the collapsible `error` field
     assert response.error is not None
     assert "404" in response.error
+    assert "<!doctype" in response.error.lower()
 
 
 @pytest.mark.asyncio(loop_scope="session")
