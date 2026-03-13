@@ -332,11 +332,24 @@ def _sweep_stale_project_dirs() -> None:
             for conv_dir in os.scandir(encoded_dir.path):
                 if not conv_dir.is_dir(follow_symlinks=False):
                     continue
+                # Use the most recent mtime across the conv dir and its
+                # immediate children (e.g. tool-results/).  A directory's
+                # mtime only updates when its direct entries change, so
+                # we check one level deeper to catch active sessions that
+                # write new files inside tool-results/.
                 try:
-                    mtime = conv_dir.stat(follow_symlinks=False).st_mtime
+                    latest = conv_dir.stat(follow_symlinks=False).st_mtime
+                    for child in os.scandir(conv_dir.path):
+                        try:
+                            latest = max(
+                                latest,
+                                child.stat(follow_symlinks=False).st_mtime,
+                            )
+                        except OSError:
+                            pass
                 except OSError:
                     continue
-                if mtime < cutoff:
+                if latest < cutoff:
                     shutil.rmtree(conv_dir.path, ignore_errors=True)
                     logger.debug("[SDK] Removed stale project dir: %s", conv_dir.path)
     except OSError:

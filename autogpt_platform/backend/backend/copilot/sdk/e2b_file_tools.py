@@ -106,12 +106,21 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
         parent = os.path.dirname(remote)
         if parent and parent != E2B_WORKDIR:
             await sandbox.files.make_dir(parent)
-        # Re-validate path after mkdir — a symlink in the sandbox could
-        # redirect the write target outside /home/user.
-        try:
-            resolve_sandbox_path(remote)
-        except ValueError as exc:
-            return _mcp(str(exc), error=True)
+        # Resolve the canonical parent path inside the sandbox to detect
+        # symlink escapes.  normpath (used by resolve_sandbox_path) only
+        # normalises the string; readlink -f follows actual symlinks.
+        canonical_res = await sandbox.commands.run(
+            f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
+            cwd=E2B_WORKDIR,
+            timeout=5,
+        )
+        canonical_parent = (canonical_res.stdout or "").strip()
+        if not canonical_parent or (
+            canonical_parent != E2B_WORKDIR
+            and not canonical_parent.startswith(E2B_WORKDIR + "/")
+        ):
+            return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
+        remote = os.path.join(canonical_parent, os.path.basename(remote))
         await sandbox.files.write(remote, content)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
