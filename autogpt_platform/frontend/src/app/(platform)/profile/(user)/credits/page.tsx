@@ -30,11 +30,17 @@ function CoPilotUsageSection() {
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
   return (
-    <div className="space-y-4">
+    <div className="my-6 space-y-4">
       <h3 className="text-lg font-medium">CoPilot Usage Limits</h3>
       <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
         <UsagePanelContent usage={usage} showBillingLink={false} />
       </div>
+      <Button
+        className="w-full"
+        onClick={() => (window.location.href = "/copilot")}
+      >
+        Open CoPilot
+      </Button>
     </div>
   );
 }
@@ -255,12 +261,12 @@ export default function CreditsPage() {
               </Button>
             )}
           </form>
+
+          {/* CoPilot Usage Limits */}
+          <CoPilotUsageSection />
         </div>
 
         <div className="my-6 space-y-4">
-          {/* CoPilot Usage Limits */}
-          <CoPilotUsageSection />
-
           {/* Payment Portal */}
           <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
           <p className="text-neutral-600">
