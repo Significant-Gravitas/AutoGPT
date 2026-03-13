@@ -13,7 +13,7 @@ from backend.data.tally import (
     _format_answer,
     _make_tally_client,
     _refresh_cache,
-    extract_business_understanding,
+    extract_business_understanding_from_tally,
     find_submission_by_email,
     format_submission_for_llm,
     mask_email,
@@ -284,6 +284,7 @@ async def test_populate_understanding_full_flow():
         ],
     }
     mock_input = MagicMock()
+    mock_input.suggested_prompts = ["Prompt 1", "Prompt 2", "Prompt 3"]
 
     with (
         patch(
@@ -298,7 +299,7 @@ async def test_populate_understanding_full_flow():
             return_value=(submission, SAMPLE_QUESTIONS),
         ),
         patch(
-            "backend.data.tally.extract_business_understanding",
+            "backend.data.tally.extract_business_understanding_from_tally",
             new_callable=AsyncMock,
             return_value=mock_input,
         ) as mock_extract,
@@ -338,7 +339,7 @@ async def test_populate_understanding_handles_llm_timeout():
             return_value=(submission, SAMPLE_QUESTIONS),
         ),
         patch(
-            "backend.data.tally.extract_business_understanding",
+            "backend.data.tally.extract_business_understanding_from_tally",
             new_callable=AsyncMock,
             side_effect=asyncio.TimeoutError(),
         ),
@@ -393,11 +394,11 @@ def test_extraction_prompt_no_format_placeholders():
     assert single_braces == [], f"Found format placeholders: {single_braces}"
 
 
-# ── extract_business_understanding ────────────────────────────────────────────
+# ── extract_business_understanding_from_tally ────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_extract_business_understanding_success():
+async def test_extract_business_understanding_from_tally_success():
     """Happy path: LLM returns valid JSON that maps to BusinessUnderstandingInput."""
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps(
@@ -406,6 +407,13 @@ async def test_extract_business_understanding_success():
             "business_name": "Acme Corp",
             "industry": "Technology",
             "pain_points": ["manual reporting"],
+            "suggested_prompts": [
+                "Automate weekly reports",
+                "Set up invoice processing",
+                "Create a customer onboarding flow",
+                "Track project deadlines automatically",
+                "Send follow-up emails after meetings",
+            ],
         }
     )
     mock_response = MagicMock()
@@ -415,16 +423,56 @@ async def test_extract_business_understanding_success():
     mock_client.chat.completions.create.return_value = mock_response
 
     with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
-        result = await extract_business_understanding("Q: Name?\nA: Alice")
+        result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
     assert result.business_name == "Acme Corp"
     assert result.industry == "Technology"
     assert result.pain_points == ["manual reporting"]
+    # suggested_prompts validated and sliced to top 3
+    assert result.suggested_prompts == [
+        "Automate weekly reports",
+        "Set up invoice processing",
+        "Create a customer onboarding flow",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_extract_business_understanding_filters_nulls():
+async def test_extract_business_understanding_from_tally_filters_long_prompts():
+    """Prompts exceeding 20 words are excluded and only top 3 are kept."""
+    long_prompt = " ".join(["word"] * 21)
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps(
+        {
+            "user_name": "Alice",
+            "suggested_prompts": [
+                long_prompt,
+                "Short prompt one",
+                long_prompt,
+                "Short prompt two",
+                "Short prompt three",
+                "Short prompt four",
+            ],
+        }
+    )
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+        result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
+
+    assert result.suggested_prompts == [
+        "Short prompt one",
+        "Short prompt two",
+        "Short prompt three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_extract_business_understanding_from_tally_filters_nulls():
     """Null values from LLM should be excluded from the result."""
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps(
@@ -437,7 +485,7 @@ async def test_extract_business_understanding_filters_nulls():
     mock_client.chat.completions.create.return_value = mock_response
 
     with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
-        result = await extract_business_understanding("Q: Name?\nA: Alice")
+        result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
     assert result.business_name is None
@@ -445,7 +493,7 @@ async def test_extract_business_understanding_filters_nulls():
 
 
 @pytest.mark.asyncio
-async def test_extract_business_understanding_invalid_json():
+async def test_extract_business_understanding_from_tally_invalid_json():
     """Invalid JSON from LLM should raise JSONDecodeError."""
     mock_choice = MagicMock()
     mock_choice.message.content = "not valid json {"
@@ -459,11 +507,11 @@ async def test_extract_business_understanding_invalid_json():
         patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
         pytest.raises(json.JSONDecodeError),
     ):
-        await extract_business_understanding("Q: Name?\nA: Alice")
+        await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
 
 @pytest.mark.asyncio
-async def test_extract_business_understanding_timeout():
+async def test_extract_business_understanding_from_tally_timeout():
     """LLM timeout should propagate as asyncio.TimeoutError."""
     mock_client = AsyncMock()
     mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
@@ -473,7 +521,7 @@ async def test_extract_business_understanding_timeout():
         patch("backend.data.tally._LLM_TIMEOUT", 0.001),
         pytest.raises(asyncio.TimeoutError),
     ):
-        await extract_business_understanding("Q: Name?\nA: Alice")
+        await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────
