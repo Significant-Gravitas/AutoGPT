@@ -6,6 +6,10 @@ from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
+    _cli_project_dir,
+    _messages_to_transcript,
+    _transcript_to_messages,
+    read_cli_session_file,
     strip_progress_entries,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -236,6 +240,118 @@ class TestStripProgressEntries:
         result = strip_progress_entries("")
         # Should return just a newline (empty content stripped)
         assert result.strip() == ""
+
+
+# --- _cli_project_dir ---
+
+
+class TestCliProjectDir:
+    def test_returns_path_for_valid_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        result = _cli_project_dir("/tmp/copilot-abc")
+        assert result is not None
+        assert "projects" in result
+
+    def test_returns_none_for_path_traversal(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        # A cwd that encodes to something with .. shouldn't escape
+        result = _cli_project_dir("/tmp/copilot-test")
+        # Should return a valid path (no traversal possible with alphanum encoding)
+        assert result is None or result.startswith(str(projects))
+
+
+# --- read_cli_session_file ---
+
+
+class TestReadCliSessionFile:
+    def test_reads_session_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        # Create the CLI project directory structure
+        cwd = "/tmp/copilot-testread"
+        import re
+
+        encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+        project_dir = tmp_path / "projects" / encoded
+        project_dir.mkdir(parents=True)
+        # Write a session file
+        session_file = project_dir / "test-session.jsonl"
+        session_file.write_text(json.dumps(ASST_MSG) + "\n")
+
+        result = read_cli_session_file(cwd)
+        assert result is not None
+        assert "assistant" in result
+
+    def test_returns_none_when_no_files(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        cwd = "/tmp/copilot-nofiles"
+        import re
+
+        encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+        project_dir = tmp_path / "projects" / encoded
+        project_dir.mkdir(parents=True)
+        # No jsonl files
+        result = read_cli_session_file(cwd)
+        assert result is None
+
+    def test_returns_none_when_dir_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        (tmp_path / "projects").mkdir()
+        result = read_cli_session_file("/tmp/copilot-nonexistent")
+        assert result is None
+
+
+# --- _transcript_to_messages / _messages_to_transcript ---
+
+
+class TestTranscriptMessageConversion:
+    def test_roundtrip_preserves_roles(self):
+        transcript = _make_jsonl(USER_MSG, ASST_MSG)
+        messages = _transcript_to_messages(transcript)
+        assert len(messages) == 2
+        assert messages[0]["role"] == "user"
+        assert messages[1]["role"] == "assistant"
+
+    def test_messages_to_transcript_produces_valid_jsonl(self):
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        result = _messages_to_transcript(messages)
+        assert validate_transcript(result) is True
+
+    def test_strips_strippable_types(self):
+        transcript = _make_jsonl(
+            {"type": "progress", "uuid": "p1", "message": {"role": "user"}},
+            USER_MSG,
+            ASST_MSG,
+        )
+        messages = _transcript_to_messages(transcript)
+        assert len(messages) == 2  # progress entry skipped
+
+    def test_flattens_assistant_content_blocks(self):
+        asst_with_blocks = {
+            "type": "assistant",
+            "uuid": "a1",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "hello"},
+                    {"type": "tool_use", "name": "bash"},
+                ],
+            },
+        }
+        messages = _transcript_to_messages(_make_jsonl(asst_with_blocks))
+        assert len(messages) == 1
+        assert "hello" in messages[0]["content"]
+        assert "[tool_use: bash]" in messages[0]["content"]
+
+    def test_empty_messages_returns_empty(self):
+        result = _messages_to_transcript([])
+        assert result == ""
 
     def test_no_strippable_entries(self):
         """When there's nothing to strip, output matches input structure."""

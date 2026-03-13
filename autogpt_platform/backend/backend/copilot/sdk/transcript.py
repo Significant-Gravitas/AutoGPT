@@ -156,22 +156,27 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
     conversation.  Reading this file lets ``TranscriptBuilder`` replace its
     uncompacted entries with the CLI's compacted version.
     """
-    import glob as glob_mod
+    from pathlib import Path
 
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir or not os.path.isdir(project_dir):
         return None
-    jsonl_files = glob_mod.glob(os.path.join(project_dir, "*.jsonl"))
+    jsonl_files = list(Path(project_dir).glob("*.jsonl"))
     if not jsonl_files:
         logger.debug("[Transcript] No CLI session file in %s", project_dir)
         return None
-    session_file = max(jsonl_files, key=os.path.getmtime)
+    # Pick the most recently modified file (there should only be one per turn).
+    # Resolve + prefix check to prevent symlink escapes.
+    session_file = max(jsonl_files, key=lambda p: p.stat().st_mtime)
+    real_path = str(session_file.resolve())
+    if not real_path.startswith(project_dir + os.sep):
+        logger.warning("[Transcript] Session file escaped project dir: %s", real_path)
+        return None
     try:
-        with open(session_file) as f:
-            content = f.read()
+        content = session_file.read_text()
         logger.info(
             "[Transcript] Read CLI session file: %s (%d bytes)",
-            session_file,
+            real_path,
             len(content),
         )
         return content
