@@ -9,7 +9,10 @@ strings, while blocks expecting strings get the value coerced back via
 Supported formats:
 
 - **JSON** (``.json``) — arrays and objects are promoted; scalars stay as strings
-- **JSON Lines** (``.jsonl``, ``.ndjson``) — each non-empty line parsed as JSON → list
+- **JSON Lines** (``.jsonl``, ``.ndjson``) — each non-empty line parsed as JSON;
+  when all lines are dicts with the same keys (tabular data), output is
+  ``list[list[Any]]`` with a header row, consistent with CSV/Parquet/Excel;
+  otherwise returns a plain ``list`` of parsed values
 - **CSV** (``.csv``) — ``csv.reader`` → ``list[list[str]]``
 - **TSV** (``.tsv``) — tab-delimited → ``list[list[str]]``
 - **YAML** (``.yaml``, ``.yml``) — parsed via PyYAML; containers only
@@ -111,7 +114,17 @@ def _parse_json(content: str) -> Any:
 
 def _parse_jsonl(content: str) -> Any:
     lines = [json.loads(line) for line in content.splitlines() if line.strip()]
-    return lines if lines else content
+    if not lines:
+        return content
+
+    # When every line is a dict with the same keys, convert to table format
+    # (header row + data rows) — consistent with CSV/TSV/Parquet/Excel output.
+    if all(isinstance(obj, dict) for obj in lines):
+        keys = list(lines[0].keys())
+        if keys and all(list(obj.keys()) == keys for obj in lines[1:]):
+            return [keys] + [[obj[k] for k in keys] for obj in lines]
+
+    return lines
 
 
 def _parse_csv(content: str) -> Any:

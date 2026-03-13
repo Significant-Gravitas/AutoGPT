@@ -698,7 +698,7 @@ _FORMAT_SAMPLES: dict[str, tuple[str, str, object]] = {
     "jsonl": (
         ".jsonl",
         '{"a":1}\n{"a":2}',
-        [{"a": 1}, {"a": 2}],
+        [["a"], [1], [2]],  # uniform dicts → table format
     ),
     "yaml": (
         ".yaml",
@@ -1021,3 +1021,222 @@ async def test_e2e_binary_format_to_string_block_raises_error(fmt: str, ext: str
                 session=_make_session(),
                 input_schema=block_schema,
             )
+
+
+# ---------------------------------------------------------------------------
+# E2E: JSONL × block type matrix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_e2e_jsonl_tabular_to_list_block():
+    """JSONL with uniform dicts → list block: table format (header + rows),
+    consistent with CSV/TSV/Parquet/Excel output."""
+    jsonl_content = (
+        '{"name":"apple","color":"red"}\n'
+        '{"name":"banana","color":"yellow"}\n'
+        '{"name":"cherry","color":"red"}'
+    )
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return jsonl_content
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///data.jsonl"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Table format: header row + data rows
+    assert expanded["rows"] == [
+        ["name", "color"],
+        ["apple", "red"],
+        ["banana", "yellow"],
+        ["cherry", "red"],
+    ]
+
+    # After coercion: list[list] fits list annotation perfectly
+    coerce_inputs_to_schema(expanded, _ListBlock)
+    assert expanded["rows"][0] == ["name", "color"]
+
+
+@pytest.mark.asyncio
+async def test_e2e_jsonl_tabular_to_string_block():
+    """JSONL → string block: raw JSONL text, no parsing."""
+    jsonl_content = '{"name":"apple"}\n{"name":"banana"}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return jsonl_content
+
+    block_schema = _StringBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"text": "@@agptfile:workspace:///data.jsonl"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert isinstance(expanded["text"], str)
+    assert expanded["text"] == jsonl_content
+
+    coerce_inputs_to_schema(expanded, _StringBlock)
+    assert expanded["text"] == jsonl_content
+
+
+class _DictBlock(pydantic.BaseModel):
+    """Simulates a block schema with a dict-typed input (e.g. FindInDictionaryBlock)."""
+
+    data: dict
+
+
+@pytest.mark.asyncio
+async def test_e2e_jsonl_tabular_to_dict_block():
+    """JSONL with uniform dicts → dict block: table format is coerced to
+    an indexed dict {0: header, 1: row1, ...}, consistent with CSV."""
+    jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return jsonl_content
+
+    block_schema = _DictBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.jsonl"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Table format from parser
+    assert expanded["data"] == [
+        ["name", "color"],
+        ["apple", "red"],
+        ["banana", "yellow"],
+    ]
+
+    # After coercion to dict: pydantic indexes the list
+    coerce_inputs_to_schema(expanded, _DictBlock)
+    assert isinstance(expanded["data"], dict)
+
+
+@pytest.mark.asyncio
+async def test_e2e_jsonl_heterogeneous_to_list_block():
+    """JSONL with different keys → list block: returns list of dicts (no table)."""
+    jsonl_content = '{"name":"apple"}\n{"color":"red"}\n{"size":3}'
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return jsonl_content
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///data.jsonl"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Heterogeneous dicts stay as list of dicts
+    assert expanded["rows"] == [
+        {"name": "apple"},
+        {"color": "red"},
+        {"size": 3},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# E2E: Parquet × block type matrix (requires pyarrow)
+# ---------------------------------------------------------------------------
+
+_PARQUET_AVAILABLE = True
+try:
+    import pyarrow  # noqa: F401
+except ImportError:
+    _PARQUET_AVAILABLE = False
+
+
+def _make_parquet_bytes() -> bytes:
+    """Create a small parquet file in memory."""
+    import io
+
+    import pandas as pd
+
+    df = pd.DataFrame({"Name": ["Alice", "Bob"], "Score": [90, 85]})
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=False)
+    return buf.getvalue()
+
+
+@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.asyncio
+async def test_e2e_parquet_to_list_block():
+    """Parquet → list block: table format (header + rows)."""
+    parquet_bytes = _make_parquet_bytes()
+
+    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+        return parquet_bytes
+
+    block_schema = _ListBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(side_effect=_resolve_bytes),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"rows": "@@agptfile:workspace:///data.parquet"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    assert expanded["rows"] == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
+
+
+@pytest.mark.skipif(not _PARQUET_AVAILABLE, reason="pyarrow not installed")
+@pytest.mark.asyncio
+async def test_e2e_parquet_to_dict_block():
+    """Parquet → dict block: table format coerced to indexed dict."""
+    parquet_bytes = _make_parquet_bytes()
+
+    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+        return parquet_bytes
+
+    block_schema = _DictBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(side_effect=_resolve_bytes),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.parquet"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Parser returns table format
+    assert expanded["data"] == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
+
+    # After coercion to dict: pydantic indexes the list
+    coerce_inputs_to_schema(expanded, _DictBlock)
+    assert isinstance(expanded["data"], dict)

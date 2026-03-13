@@ -155,20 +155,73 @@ class TestParseJson:
 
 
 class TestParseJsonl:
-    def test_basic(self):
+    def test_tabular_uniform_dicts_to_table_format(self):
+        """JSONL with uniform dict keys → table format (header + rows),
+        consistent with CSV/TSV/Parquet/Excel output."""
+        content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}\n{"name":"cherry","color":"red"}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [
+            ["name", "color"],
+            ["apple", "red"],
+            ["banana", "yellow"],
+            ["cherry", "red"],
+        ]
+
+    def test_tabular_single_key_dicts(self):
+        """JSONL with single-key uniform dicts → table format."""
         content = '{"a": 1}\n{"a": 2}\n{"a": 3}'
         result = parse_file_content(content, "jsonl")
-        assert result == [{"a": 1}, {"a": 2}, {"a": 3}]
+        assert result == [["a"], [1], [2], [3]]
 
-    def test_blank_lines_skipped(self):
+    def test_tabular_blank_lines_skipped(self):
         content = '{"a": 1}\n\n{"a": 2}\n'
         result = parse_file_content(content, "jsonl")
-        assert result == [{"a": 1}, {"a": 2}]
+        assert result == [["a"], [1], [2]]
 
-    def test_mixed_types(self):
+    def test_heterogeneous_dicts_stay_as_list(self):
+        """JSONL with different keys across objects → list of dicts (no table)."""
+        content = '{"name":"apple"}\n{"color":"red"}\n{"size":3}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [{"name": "apple"}, {"color": "red"}, {"size": 3}]
+
+    def test_partially_overlapping_keys_stay_as_list(self):
+        """JSONL dicts with partially overlapping keys → list of dicts."""
+        content = '{"name":"apple","color":"red"}\n{"name":"banana","size":"medium"}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [
+            {"name": "apple", "color": "red"},
+            {"name": "banana", "size": "medium"},
+        ]
+
+    def test_mixed_types_stay_as_list(self):
+        """JSONL with non-dict lines → list of parsed values (no table)."""
         content = '1\n"hello"\n[1,2]\n'
         result = parse_file_content(content, "jsonl")
         assert result == [1, "hello", [1, 2]]
+
+    def test_mixed_dicts_and_non_dicts_stay_as_list(self):
+        """JSONL mixing dicts and non-dicts → list of parsed values."""
+        content = '{"a": 1}\n42\n{"b": 2}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [{"a": 1}, 42, {"b": 2}]
+
+    def test_tabular_preserves_key_order(self):
+        """Table header should follow the key order of the first object."""
+        content = '{"z": 1, "a": 2}\n{"z": 3, "a": 4}'
+        result = parse_file_content(content, "jsonl")
+        assert result[0] == ["z", "a"]  # order from first object
+        assert result[1] == [1, 2]
+        assert result[2] == [3, 4]
+
+    def test_tabular_with_none_values(self):
+        """Uniform keys but some null values → table with None cells."""
+        content = '{"name":"apple","color":"red"}\n{"name":"banana","color":null}'
+        result = parse_file_content(content, "jsonl")
+        assert result == [
+            ["name", "color"],
+            ["apple", "red"],
+            ["banana", None],
+        ]
 
     def test_empty_file_fallback(self):
         result = parse_file_content("", "jsonl")
