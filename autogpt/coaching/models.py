@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
+
+# ── Enums ─────────────────────────────────────────────────────────────────────
 
 class AlertLevel(str, Enum):
     GREEN = "green"
@@ -20,7 +22,86 @@ class NavigationStatus(str, Enum):
     STORMY = "stormy"
 
 
+class OKRStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    ON_HOLD = "on_hold"
+
+
+# ── User / Auth ───────────────────────────────────────────────────────────────
+
+class UserProfile(BaseModel):
+    user_id: str
+    name: str
+    email: str
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    """Called after Wix completes Google OAuth; provides the resolved identity."""
+    google_id: str
+    name: str
+    email: str
+
+
+class AuthResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str
+
+
+# ── OKR Master Plan ───────────────────────────────────────────────────────────
+
+class MasterKeyResult(BaseModel):
+    """A Key Result in the user's ongoing OKR plan (not session-specific)."""
+    kr_id: str
+    objective_id: str
+    description: str
+    status: OKRStatus = OKRStatus.ACTIVE
+    current_pct: int = Field(default=0, ge=0, le=100)
+
+
+class Objective(BaseModel):
+    """A user's objective with its associated key results."""
+    objective_id: str
+    user_id: str
+    title: str
+    description: str = ""
+    status: OKRStatus = OKRStatus.ACTIVE
+    key_results: List[MasterKeyResult] = []
+
+
+class ObjectiveRequest(BaseModel):
+    title: str
+    description: str = ""
+    objective_id: Optional[str] = None  # present → update; absent → create
+
+
+class KeyResultRequest(BaseModel):
+    objective_id: str
+    description: str
+    current_pct: int = Field(default=0, ge=0, le=100)
+    kr_id: Optional[str] = None  # present → update; absent → create
+
+
+class StatusUpdateRequest(BaseModel):
+    status: OKRStatus
+
+
+# ── Session / Weekly Log ──────────────────────────────────────────────────────
+
 class KeyResult(BaseModel):
+    """Session-specific KR snapshot."""
     kr_id: int
     description: str
     status_pct: int  # 0–100
@@ -43,7 +124,7 @@ class KeyResult(BaseModel):
 
 class Obstacle(BaseModel):
     description: str
-    reported_at: datetime = None
+    reported_at: Optional[datetime] = None
     resolved: bool = False
 
     def model_post_init(self, __context) -> None:
@@ -76,11 +157,24 @@ class SessionSummary(BaseModel):
     session_id: str
     client_id: str
     client_name: str
+    user_id: Optional[str] = None
     timestamp: datetime
     weekly_log: WeeklyLog
     alerts: Alert
     summary_for_coach: str
+    okr_changes: List[Dict[str, Any]] = []  # structured OKR mutations to apply
 
+
+# ── History ───────────────────────────────────────────────────────────────────
+
+class PastSession(BaseModel):
+    session_id: str
+    timestamp: str
+    alert_level: str
+    summary_for_coach: str
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
 
 class ClientStatus(BaseModel):
     client_id: str
