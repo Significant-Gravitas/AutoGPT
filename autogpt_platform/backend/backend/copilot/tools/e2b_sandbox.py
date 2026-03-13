@@ -162,7 +162,7 @@ async def get_or_create_sandbox(
 
         # We hold the slot — create the sandbox.
         try:
-            lifecycle = SandboxLifecycle(on_timeout=on_timeout)
+            lifecycle: SandboxLifecycle = {"on_timeout": on_timeout}
             if auto_resume and on_timeout == "pause":
                 lifecycle["auto_resume"] = True
             sandbox = await AsyncSandbox.create(
