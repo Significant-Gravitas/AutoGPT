@@ -1,7 +1,6 @@
 beautifulsoup4>=4.12.2
 colorama==0.4.6
 distro==1.8.0
-openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
@@ -44,8 +43,6 @@ mkdocs
 pymdown-extensions
 
 
-# OpenAI and Generic plugins import
-openapi-python-client==0.13.4
 
 # Items below this point will not be included in the Docker Image
 

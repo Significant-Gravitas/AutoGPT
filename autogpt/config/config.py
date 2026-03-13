@@ -2,7 +2,6 @@
 import os
 from typing import List
 
-import openai
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
@@ -38,7 +37,6 @@ class Config(metaclass=Singleton):
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
 
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -50,9 +48,6 @@ class Config(metaclass=Singleton):
 
         if self.use_azure:
             self.load_azure_config()
-            openai.api_type = self.openai_api_type
-            openai.api_base = self.openai_api_base
-            openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -218,10 +213,6 @@ class Config(metaclass=Singleton):
         """Set the browse_website command chunk max length value."""
         self.browse_chunk_max_length = value
 
-    def set_openai_api_key(self, value: str) -> None:
-        """Set the OpenAI API key value."""
-        self.openai_api_key = value
-
     def set_elevenlabs_api_key(self, value: str) -> None:
         """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
@@ -267,14 +258,3 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key() -> None:
-    """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    cfg = Config()
-    if not cfg.openai_api_key:
-        print(
-            Fore.RED
-            + "Please set your OpenAI API key in .env or as an environment variable."
-            + Fore.RESET
-        )
-        print("You can get your key from https://platform.openai.com/account/api-keys")
-        exit(1)
