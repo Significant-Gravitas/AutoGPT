@@ -15,6 +15,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from backend.util import json
 
@@ -163,13 +164,17 @@ def read_cli_session_file(sdk_cwd: str) -> str | None:
 
     Returns the file content, or ``None`` if not found.
     """
-    import glob
-
     project_dir = _cli_project_dir(sdk_cwd)
     if not project_dir or not os.path.isdir(project_dir):
         return None
 
-    jsonl_files = glob.glob(os.path.join(project_dir, "*.jsonl"))
+    # Validate glob results don't escape project_dir via symlinks
+    resolved_base = Path(project_dir).resolve()
+    jsonl_files = [
+        str(p)
+        for p in Path(project_dir).glob("*.jsonl")
+        if p.resolve().is_relative_to(resolved_base)
+    ]
     if not jsonl_files:
         logger.debug("[Transcript] No CLI session file found in %s", project_dir)
         return None

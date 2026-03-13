@@ -6,6 +6,8 @@ from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
+    _cli_project_dir,
+    read_cli_session_file,
     strip_progress_entries,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -282,3 +284,88 @@ class TestStripProgressEntries:
         lines = result.strip().split("\n")
         asst_entry = json.loads(lines[-1])
         assert asst_entry["parentUuid"] == "u1"  # reparented
+
+
+# --- read_cli_session_file ---
+
+
+class TestReadCliSessionFile:
+    def test_no_matching_files_returns_none(self, tmp_path, monkeypatch):
+        """read_cli_session_file returns None when no .jsonl files exist."""
+        # Create a project dir with no jsonl files
+        project_dir = tmp_path / "projects" / "encoded-cwd"
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._cli_project_dir",
+            lambda sdk_cwd: str(project_dir),
+        )
+        assert read_cli_session_file("/fake/cwd") is None
+
+    def test_one_jsonl_file_returns_content(self, tmp_path, monkeypatch):
+        """read_cli_session_file returns the content of a single .jsonl file."""
+        project_dir = tmp_path / "projects" / "encoded-cwd"
+        project_dir.mkdir(parents=True)
+        jsonl_file = project_dir / "session.jsonl"
+        jsonl_file.write_text("line1\nline2\n")
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._cli_project_dir",
+            lambda sdk_cwd: str(project_dir),
+        )
+        result = read_cli_session_file("/fake/cwd")
+        assert result == "line1\nline2\n"
+
+    def test_symlink_escaping_project_dir_is_skipped(self, tmp_path, monkeypatch):
+        """read_cli_session_file skips symlinks that escape the project dir."""
+        project_dir = tmp_path / "projects" / "encoded-cwd"
+        project_dir.mkdir(parents=True)
+
+        # Create a file outside the project dir
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        outside_file = outside / "evil.jsonl"
+        outside_file.write_text("should not be read\n")
+
+        # Symlink from inside project_dir to outside file
+        symlink = project_dir / "evil.jsonl"
+        symlink.symlink_to(outside_file)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._cli_project_dir",
+            lambda sdk_cwd: str(project_dir),
+        )
+        # The symlink target resolves outside project_dir, so it should be skipped
+        result = read_cli_session_file("/fake/cwd")
+        assert result is None
+
+
+# --- _cli_project_dir ---
+
+
+class TestCliProjectDir:
+    def test_returns_none_for_path_traversal(self, tmp_path, monkeypatch):
+        """_cli_project_dir returns None when the computed path escapes projects base."""
+        # Set up a config dir where "projects" is a symlink pointing outside
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        # Create a projects dir that resolves to one location
+        projects_dir = config_dir / "projects"
+        projects_dir.mkdir()
+
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        # Use os.path.realpath patching: make the final project_dir resolve
+        # outside of projects_base
+        original_realpath = os.path.realpath
+
+        def fake_realpath(p):
+            result = original_realpath(p)
+            # If the result is under projects dir and contains the encoded cwd,
+            # return an escaped path
+            projects_real = original_realpath(str(projects_dir))
+            if result.startswith(projects_real + os.sep) and "-evil-cwd" in result:
+                return "/etc/evil"
+            return result
+
+        monkeypatch.setattr("os.path.realpath", fake_realpath)
+        result = _cli_project_dir("/evil/cwd")
+        assert result is None
