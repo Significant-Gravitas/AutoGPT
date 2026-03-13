@@ -11,6 +11,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = """\
 
+### Tool priority: blocks before MCP
+When a user asks for an integration (Google Sheets, Gmail, Slack, etc.), always
+search for platform blocks first using `find_block` before considering MCP.
+The platform has 480+ built-in blocks covering Google Workspace, social media,
+databases, and more. Only fall back to `run_mcp_tool` when no matching blocks
+exist and the service is in the known MCP servers list.
+
 ### Sharing files with the user
 After saving a file to the persistent workspace with `write_workspace_file`,
 share it with the user by embedding the `download_url` from the response in
