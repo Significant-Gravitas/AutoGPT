@@ -469,20 +469,6 @@ async def download_transcript(
     )
 
 
-async def delete_transcript(user_id: str, session_id: str) -> None:
-    """Delete transcript from bucket storage (e.g. after resume failure)."""
-    from backend.util.workspace_storage import get_workspace_storage
-
-    storage = await get_workspace_storage()
-    path = _build_storage_path(user_id, session_id, storage)
-
-    try:
-        await storage.delete(path)
-        logger.info(f"[Transcript] Deleted transcript for session {session_id}")
-    except Exception as e:
-        logger.warning(f"[Transcript] Failed to delete transcript: {e}")
-
-
 # ---------------------------------------------------------------------------
 # Transcript compaction
 # ---------------------------------------------------------------------------
