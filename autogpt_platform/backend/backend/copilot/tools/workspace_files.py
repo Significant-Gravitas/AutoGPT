@@ -341,6 +341,8 @@ class ListWorkspaceFilesTool(BaseTool):
                 "limit": {
                     "type": "integer",
                     "description": "Max files to return (default 50, max 100).",
+                    "minimum": 1,
+                    "maximum": 100,
                 },
                 "include_all_sessions": {
                     "type": "boolean",

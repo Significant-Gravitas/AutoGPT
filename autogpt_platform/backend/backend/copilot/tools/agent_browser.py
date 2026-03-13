@@ -424,6 +424,7 @@ class BrowserNavigateTool(BaseTool):
                 "wait_for": {
                     "type": "string",
                     "enum": ["networkidle", "load", "domcontentloaded"],
+                    "default": "networkidle",
                     "description": "Navigation completion strategy (default: networkidle).",
                 },
             },
@@ -544,6 +545,8 @@ class BrowserActTool(BaseTool):
     def description(self) -> str:
         return (
             "Interact with the current browser page using @ref IDs from the snapshot. "
+            "Actions: click, dblclick, fill, type, scroll, hover, press, "
+            "check, uncheck, select, wait, back, forward, reload. "
             "fill clears field first; type appends. "
             "wait accepts CSS selector or milliseconds (e.g. '1000')."
         )
@@ -584,6 +587,7 @@ class BrowserActTool(BaseTool):
                 "direction": {
                     "type": "string",
                     "enum": ["up", "down", "left", "right"],
+                    "default": "down",
                     "description": "Scroll direction (default: down).",
                 },
             },
@@ -732,7 +736,9 @@ class BrowserScreenshotTool(BaseTool):
     def description(self) -> str:
         return (
             "Screenshot the current browser page and save to workspace. "
-            "annotate=true overlays @ref labels on elements."
+            "annotate=true overlays @ref labels on elements. "
+            "After calling, immediately call read_workspace_file with the returned "
+            "file_id to display the image inline."
         )
 
     @property
@@ -742,10 +748,12 @@ class BrowserScreenshotTool(BaseTool):
             "properties": {
                 "annotate": {
                     "type": "boolean",
+                    "default": True,
                     "description": "Overlay @ref labels (default: true).",
                 },
                 "filename": {
                     "type": "string",
+                    "default": "screenshot.png",
                     "description": "Workspace filename (default: screenshot.png).",
                 },
             },

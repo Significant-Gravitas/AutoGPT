@@ -23,6 +23,13 @@ Pass large file content to tools by reference: `@@agptfile:<uri>[<start>-<end>]`
 - `/absolute/path` — local/sandbox files
 - `[start-end]` — optional 1-indexed line range
 
+Examples:
+```
+@@agptfile:workspace://abc123
+@@agptfile:workspace://abc123[10-50]
+@@agptfile:/tmp/copilot-<session>/output.py[1-80]
+```
+
 **Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).
 
 ### Sub-agent tasks

@@ -44,7 +44,8 @@ class RunBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a block. Get block_id from find_block first. "
+            "Execute a block. MUST call find_block first to get block_id — "
+            "do NOT guess or make up block IDs. "
             "Call with empty input_data to see schema, then with data to execute."
         )
 
