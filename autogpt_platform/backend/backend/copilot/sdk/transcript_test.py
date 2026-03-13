@@ -1,12 +1,16 @@
 """Unit tests for JSONL transcript management utilities."""
 
 import os
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
     _cli_project_dir,
+    delete_transcript,
     read_cli_session_file,
     strip_progress_entries,
     validate_transcript,
@@ -343,29 +347,80 @@ class TestReadCliSessionFile:
 
 class TestCliProjectDir:
     def test_returns_none_for_path_traversal(self, tmp_path, monkeypatch):
-        """_cli_project_dir returns None when the computed path escapes projects base."""
-        # Set up a config dir where "projects" is a symlink pointing outside
+        """_cli_project_dir returns None when the project dir symlink escapes projects base."""
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        # Create a projects dir that resolves to one location
         projects_dir = config_dir / "projects"
         projects_dir.mkdir()
 
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
 
-        # Use os.path.realpath patching: make the final project_dir resolve
-        # outside of projects_base
-        original_realpath = os.path.realpath
+        # Create a symlink inside projects/ that points outside of it.
+        # _cli_project_dir encodes the cwd as all-alnum-hyphens, so use a
+        # cwd whose encoded form matches the symlink name we create.
+        evil_target = tmp_path / "escaped"
+        evil_target.mkdir()
 
-        def fake_realpath(p):
-            result = original_realpath(p)
-            # If the result is under projects dir and contains the encoded cwd,
-            # return an escaped path
-            projects_real = original_realpath(str(projects_dir))
-            if result.startswith(projects_real + os.sep) and "-evil-cwd" in result:
-                return "/etc/evil"
-            return result
+        # The encoded form of "/evil/cwd" is "-evil-cwd"
+        symlink_path = projects_dir / "-evil-cwd"
+        symlink_path.symlink_to(evil_target)
 
-        monkeypatch.setattr("os.path.realpath", fake_realpath)
         result = _cli_project_dir("/evil/cwd")
         assert result is None
+
+
+# --- delete_transcript ---
+
+
+class TestDeleteTranscript:
+    @pytest.mark.asyncio
+    async def test_deletes_both_jsonl_and_meta(self):
+        """delete_transcript removes both the .jsonl and .meta.json files."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock()
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            await delete_transcript("user-123", "session-456")
+
+        assert mock_storage.delete.call_count == 2
+        paths = [call.args[0] for call in mock_storage.delete.call_args_list]
+        assert any(p.endswith(".jsonl") for p in paths)
+        assert any(p.endswith(".meta.json") for p in paths)
+
+    @pytest.mark.asyncio
+    async def test_continues_on_jsonl_delete_failure(self):
+        """If .jsonl delete fails, .meta.json delete is still attempted."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(
+            side_effect=[Exception("jsonl delete failed"), None]
+        )
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            # Should not raise
+            await delete_transcript("user-123", "session-456")
+
+        assert mock_storage.delete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_handles_meta_delete_failure(self):
+        """If .meta.json delete fails, no exception propagates."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(
+            side_effect=[None, Exception("meta delete failed")]
+        )
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            # Should not raise
+            await delete_transcript("user-123", "session-456")

@@ -478,14 +478,34 @@ async def download_transcript(
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
-    """Delete transcript from bucket storage (e.g. after resume failure)."""
-    from backend.util.workspace_storage import get_workspace_storage
+    """Delete transcript and its metadata from bucket storage.
+
+    Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
+    so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
+    """
+    from backend.util.workspace_storage import (
+        GCSWorkspaceStorage,
+        get_workspace_storage,
+    )
 
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
 
     try:
         await storage.delete(path)
-        logger.info(f"[Transcript] Deleted transcript for session {session_id}")
+        logger.info("[Transcript] Deleted transcript for session %s", session_id)
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to delete transcript: {e}")
+        logger.warning("[Transcript] Failed to delete transcript: %s", e)
+
+    # Also delete the companion .meta.json to avoid orphaned metadata.
+    try:
+        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+        if isinstance(storage, GCSWorkspaceStorage):
+            blob = f"workspaces/{mwid}/{mfid}/{mfname}"
+            meta_path = f"gcs://{storage.bucket_name}/{blob}"
+        else:
+            meta_path = f"local://{mwid}/{mfid}/{mfname}"
+        await storage.delete(meta_path)
+        logger.info("[Transcript] Deleted metadata for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete metadata: %s", e)

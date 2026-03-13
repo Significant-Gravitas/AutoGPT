@@ -76,7 +76,6 @@ from .tool_adapter import (
 )
 from .transcript import (
     cleanup_cli_project_dir,
-    delete_transcript,
     download_transcript,
     read_cli_session_file,
     upload_transcript,
@@ -708,7 +707,6 @@ async def stream_chat_completion_sdk(
     ended_with_stream_error = False
     e2b_sandbox = None
     use_resume = False
-    skip_transcript_upload = False
     resume_file: str | None = None
     transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
@@ -1048,33 +1046,6 @@ async def stream_chat_completion_sdk(
                             exc_info=True,
                         )
                         ended_with_stream_error = True
-
-                        # "Prompt is too long" means the resumed transcript
-                        # exceeded the model's context window.  Delete the
-                        # oversized transcript so the next turn falls back to
-                        # the compression-based _build_query_message path.
-                        if (
-                            "prompt is too long" in str(stream_err).lower()
-                            and use_resume
-                            and user_id
-                        ):
-                            # Set before await so cancellation during delete
-                            # cannot allow re-upload of an oversized transcript.
-                            skip_transcript_upload = True
-                            logger.warning(
-                                "%s Prompt too long with --resume — deleting "
-                                "oversized transcript for session %s",
-                                log_prefix,
-                                session_id,
-                            )
-                            try:
-                                await delete_transcript(user_id, session_id)
-                            except Exception as del_err:
-                                logger.warning(
-                                    "%s Failed to delete oversized transcript: %s",
-                                    log_prefix,
-                                    del_err,
-                                )
 
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
@@ -1456,19 +1427,14 @@ async def stream_chat_completion_sdk(
         # This MUST run in finally so the transcript is uploaded even when
         # the streaming loop raises an exception.
         # The transcript represents the COMPLETE active context (atomic).
-        if (
-            config.claude_agent_use_resume
-            and user_id
-            and session is not None
-            and not skip_transcript_upload
-        ):
+        if config.claude_agent_use_resume and user_id and session is not None:
             try:
                 # Prefer the CLI's own session file — it reflects any
                 # mid-stream compaction the CLI performed.  Fall back to
                 # TranscriptBuilder output when the CLI file isn't available
                 # (e.g. the process was killed before writing it).
                 cli_transcript = read_cli_session_file(sdk_cwd) if sdk_cwd else None
-                if cli_transcript:
+                if cli_transcript and validate_transcript(cli_transcript):
                     transcript_content = cli_transcript
                     logger.info(
                         "%s Using CLI session file for transcript upload (%d bytes)",
@@ -1476,10 +1442,24 @@ async def stream_chat_completion_sdk(
                         len(cli_transcript),
                     )
                 else:
+                    if cli_transcript:
+                        # CLI file exists but is invalid (partially flushed).
+                        logger.warning(
+                            "%s CLI session file found but invalid "
+                            "(%d bytes), falling back to TranscriptBuilder",
+                            log_prefix,
+                            len(cli_transcript),
+                        )
+                    else:
+                        logger.info(
+                            "%s CLI session file not available, using "
+                            "TranscriptBuilder",
+                            log_prefix,
+                        )
+                    cli_transcript = None
                     transcript_content = transcript_builder.to_jsonl()
                     logger.info(
-                        "%s CLI session file not available, using "
-                        "TranscriptBuilder (%d bytes)",
+                        "%s TranscriptBuilder output: %d bytes",
                         log_prefix,
                         len(transcript_content) if transcript_content else 0,
                     )
