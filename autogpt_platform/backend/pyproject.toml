@@ -93,7 +93,7 @@ posthog = "^7.6.0"
 fpdf2 = "^2.8.6"
 langsmith = "^0.7.7"
 openpyxl = "^3.1.5"
-pyarrow = ">=14.0.0"
+pyarrow = "^23.0.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

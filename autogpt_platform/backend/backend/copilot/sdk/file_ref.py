@@ -148,7 +148,7 @@ async def read_file_bytes(
             )
         except FileNotFoundError:
             raise ValueError(f"File not found: {plain}")
-        except Exception as exc:
+        except (PermissionError, OSError) as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
 
     if is_allowed_local_path(plain, get_sdk_cwd()):
@@ -158,7 +158,7 @@ async def read_file_bytes(
                 return fh.read()
         except FileNotFoundError:
             raise ValueError(f"File not found: {plain}")
-        except Exception as exc:
+        except OSError as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
 
     sandbox = get_current_sandbox()
@@ -307,10 +307,7 @@ def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
     Ragged rows (fewer columns than the header) get None for missing values.
     """
     header = parsed[0]
-    return [
-        {header[i]: (row[i] if i < len(row) else None) for i in range(len(header))}
-        for row in parsed[1:]
-    ]
+    return [dict(itertools.zip_longest(header, row)) for row in parsed[1:]]
 
 
 def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
@@ -321,8 +318,8 @@ def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
     """
     header = parsed[0]
     return {
-        header[i]: [row[i] if i < len(row) else None for row in parsed[1:]]
-        for i in range(len(header))
+        col: [row[i] if i < len(row) else None for row in parsed[1:]]
+        for i, col in enumerate(header)
     }
 
 
