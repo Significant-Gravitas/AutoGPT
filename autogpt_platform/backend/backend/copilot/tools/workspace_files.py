@@ -2,6 +2,7 @@
 
 import base64
 import logging
+import mimetypes
 import os
 from typing import Any, Optional
 
@@ -314,7 +315,7 @@ def _read_local_tool_result(
         file_id="local",
         name=os.path.basename(path),
         path=path,
-        mime_type="application/json",
+        mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
         content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("utf-8"),
         message=(
             f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "

@@ -107,7 +107,7 @@ def test_is_allowed_local_path_no_sdk_cwd_no_project_dir():
 def test_is_allowed_local_path_tool_results_with_uuid():
     """Files under <encoded-cwd>/<uuid>/tool-results/ are allowed."""
     encoded = "test-encoded-dir"
-    conv_uuid = "abc123-conv-uuid"
+    conv_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     path = os.path.join(
         _SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results", "output.txt"
     )

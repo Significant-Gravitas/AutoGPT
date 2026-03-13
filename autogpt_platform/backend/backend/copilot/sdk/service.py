@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
@@ -29,6 +30,7 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
+from backend.copilot.context import _SDK_PROJECTS_DIR
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -316,6 +318,22 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
     await asyncio.to_thread(_sync_cleanup)
 
 
+def _latest_mtime(dir_path: str) -> float:
+    """Return the most recent mtime of *dir_path* and its immediate children.
+
+    A directory's mtime only updates when its direct entries change, so we
+    check one level deeper to catch active sessions that write new files
+    inside sub-directories like ``tool-results/``.
+    """
+    latest = os.stat(dir_path, follow_symlinks=False).st_mtime
+    for child in os.scandir(dir_path):
+        try:
+            latest = max(latest, child.stat(follow_symlinks=False).st_mtime)
+        except OSError:
+            pass
+    return latest
+
+
 def _sweep_stale_project_dirs() -> None:
     """Remove conversation UUID dirs older than the TTL threshold.
 
@@ -323,41 +341,24 @@ def _sweep_stale_project_dirs() -> None:
     for each conversation.  We keep recent ones (needed by ``--resume``) and
     remove those older than ``_STALE_PROJECT_DIR_TTL_SECONDS``.
     """
-    import time
-
-    from backend.copilot.context import _SDK_PROJECTS_DIR
-
     try:
         if not os.path.isdir(_SDK_PROJECTS_DIR):
             return
-        now = time.time()
-        cutoff = now - _STALE_PROJECT_DIR_TTL_SECONDS
+        cutoff = time.time() - _STALE_PROJECT_DIR_TTL_SECONDS
         for encoded_dir in os.scandir(_SDK_PROJECTS_DIR):
             if not encoded_dir.is_dir(follow_symlinks=False):
                 continue
             for conv_dir in os.scandir(encoded_dir.path):
                 if not conv_dir.is_dir(follow_symlinks=False):
                     continue
-                # Use the most recent mtime across the conv dir and its
-                # immediate children (e.g. tool-results/).  A directory's
-                # mtime only updates when its direct entries change, so
-                # we check one level deeper to catch active sessions that
-                # write new files inside tool-results/.
                 try:
-                    latest = conv_dir.stat(follow_symlinks=False).st_mtime
-                    for child in os.scandir(conv_dir.path):
-                        try:
-                            latest = max(
-                                latest,
-                                child.stat(follow_symlinks=False).st_mtime,
-                            )
-                        except OSError:
-                            pass
+                    if _latest_mtime(conv_dir.path) < cutoff:
+                        shutil.rmtree(conv_dir.path, ignore_errors=True)
+                        logger.debug(
+                            "[SDK] Removed stale project dir: %s", conv_dir.path
+                        )
                 except OSError:
                     continue
-                if latest < cutoff:
-                    shutil.rmtree(conv_dir.path, ignore_errors=True)
-                    logger.debug("[SDK] Removed stale project dir: %s", conv_dir.path)
     except OSError:
         pass  # Best-effort cleanup
 

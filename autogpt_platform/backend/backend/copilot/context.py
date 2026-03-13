@@ -115,7 +115,11 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
             relative = resolved[len(project_dir) + 1 :]
             parts = relative.split(os.sep)
             # Require exactly: [<uuid>, "tool-results", <file>, ...]
-            if len(parts) >= 3 and parts[1] == "tool-results":
+            if (
+                len(parts) >= 3
+                and re.match(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", parts[0])
+                and parts[1] == "tool-results"
+            ):
                 return True
 
     return False

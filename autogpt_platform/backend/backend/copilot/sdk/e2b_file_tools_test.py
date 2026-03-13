@@ -74,7 +74,7 @@ class TestResolveSandboxPath:
 
 
 class TestReadLocal:
-    _CONV_UUID = "test-conv-uuid"
+    _CONV_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
     def _make_tool_results_file(self, encoded: str, filename: str, content: str) -> str:
         """Create a tool-results file under <encoded>/<uuid>/tool-results/."""
