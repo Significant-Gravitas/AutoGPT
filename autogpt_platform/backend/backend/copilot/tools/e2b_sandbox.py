@@ -21,9 +21,11 @@ Lifecycle
 Cost control
 ------------
 Sandboxes are created with a configurable ``on_timeout`` lifecycle action
-(default: ``"pause"``).  The explicit per-turn ``pause_sandbox()`` call is the
-primary mechanism; the lifecycle setting is a safety net.  Paused sandboxes are
-free.
+(default: ``"pause"``) and ``auto_resume`` (default: ``True``).  The explicit
+per-turn ``pause_sandbox()`` call is the primary mechanism; the lifecycle
+timeout is a safety net (default: 5 min).  ``auto_resume`` ensures that paused
+sandboxes wake transparently on SDK activity, making the aggressive safety-net
+timeout safe.  Paused sandboxes are free.
 
 The sandbox_id is stored in Redis.  The same key doubles as a creation lock:
 a ``"creating"`` sentinel value is written with a short TTL while a new sandbox
@@ -108,6 +110,7 @@ async def get_or_create_sandbox(
     timeout: int,
     template: str = "base",
     on_timeout: Literal["kill", "pause"] = "pause",
+    auto_resume: bool = True,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -116,9 +119,11 @@ async def get_or_create_sandbox(
     removes the need for a separate lock key.
 
     *timeout* controls how long the e2b sandbox may run continuously before
-    the ``on_timeout`` lifecycle rule fires (default: 3 h).
+    the ``on_timeout`` lifecycle rule fires (default: 5 min).
     *on_timeout* controls what happens on timeout: ``"pause"`` (default, free)
     or ``"kill"``.
+    *auto_resume* enables automatic sandbox wake-up on SDK activity when the
+    sandbox is paused.  Only valid when *on_timeout* is ``"pause"``.
     """
     redis = await get_redis_async()
     key = _sandbox_key(session_id)
@@ -156,11 +161,14 @@ async def get_or_create_sandbox(
 
         # We hold the slot — create the sandbox.
         try:
+            lifecycle: dict = {"on_timeout": on_timeout}
+            if auto_resume and on_timeout == "pause":
+                lifecycle["auto_resume"] = True
             sandbox = await AsyncSandbox.create(
                 template=template,
                 api_key=api_key,
                 timeout=timeout,
-                lifecycle={"on_timeout": on_timeout},
+                lifecycle=lifecycle,
             )
             try:
                 await _set_stored_sandbox_id(session_id, sandbox.sandbox_id)
