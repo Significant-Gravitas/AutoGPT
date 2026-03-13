@@ -970,6 +970,7 @@ async def stream_chat_completion_sdk(
         for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
             if _query_attempt > 0:
                 _prompt_too_long = False
+                stream_completed = False
                 logger.info(
                     "%s Prompt-too-long retry attempt %d/%d",
                     log_prefix,
@@ -1010,7 +1011,7 @@ async def stream_chat_completion_sdk(
                         transcript_caused_error = True
                 else:
                     logger.warning(
-                        "%s No transcript to compact, using DB fallback",
+                        "%s Dropping transcript, using DB fallback",
                         log_prefix,
                     )
                     transcript_builder = TranscriptBuilder()
