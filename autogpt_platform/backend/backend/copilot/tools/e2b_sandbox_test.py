@@ -157,7 +157,7 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         mock_cls.create.assert_awaited_once()
-        # Verify lifecycle param is set (auto_resume defaults to True)
+        # Verify lifecycle: pause + auto_resume enabled
         _, kwargs = mock_cls.create.call_args
         assert kwargs.get("lifecycle") == {
             "on_timeout": "pause",
@@ -167,7 +167,7 @@ class TestGetOrCreateSandbox:
         redis.set.assert_awaited()
 
     def test_create_with_on_timeout_kill(self):
-        """on_timeout='kill' is passed through; auto_resume omitted for kill."""
+        """on_timeout='kill' disables auto_resume automatically."""
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
@@ -182,28 +182,10 @@ class TestGetOrCreateSandbox:
             )
 
         _, kwargs = mock_cls.create.call_args
-        assert kwargs.get("lifecycle") == {"on_timeout": "kill"}
-
-    def test_create_with_auto_resume_disabled(self):
-        """auto_resume=False omits auto_resume from lifecycle config."""
-        new_sb = _mock_sandbox("sb-new")
-        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
-        with (
-            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
-            _patch_redis(redis),
-        ):
-            mock_cls.create = AsyncMock(return_value=new_sb)
-            asyncio.run(
-                get_or_create_sandbox(
-                    _SESSION_ID,
-                    _API_KEY,
-                    timeout=_TIMEOUT,
-                    auto_resume=False,
-                )
-            )
-
-        _, kwargs = mock_cls.create.call_args
-        assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
+        assert kwargs.get("lifecycle") == {
+            "on_timeout": "kill",
+            "auto_resume": False,
+        }
 
     def test_create_failure_releases_slot(self):
         """If sandbox creation fails, the Redis creation slot is deleted."""

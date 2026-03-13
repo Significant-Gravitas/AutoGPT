@@ -111,7 +111,6 @@ async def get_or_create_sandbox(
     timeout: int,
     template: str = "base",
     on_timeout: Literal["kill", "pause"] = "pause",
-    auto_resume: bool = True,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for *session_id* or create a new one.
 
@@ -122,9 +121,8 @@ async def get_or_create_sandbox(
     *timeout* controls how long the e2b sandbox may run continuously before
     the ``on_timeout`` lifecycle rule fires (default: 5 min).
     *on_timeout* controls what happens on timeout: ``"pause"`` (default, free)
-    or ``"kill"``.
-    *auto_resume* enables automatic sandbox wake-up on SDK activity when the
-    sandbox is paused.  Only valid when *on_timeout* is ``"pause"``.
+    or ``"kill"``.  When ``"pause"``, ``auto_resume`` is enabled so paused
+    sandboxes wake transparently on SDK activity.
     """
     redis = await get_redis_async()
     key = _sandbox_key(session_id)
@@ -162,9 +160,10 @@ async def get_or_create_sandbox(
 
         # We hold the slot — create the sandbox.
         try:
-            lifecycle: SandboxLifecycle = {"on_timeout": on_timeout}
-            if auto_resume and on_timeout == "pause":
-                lifecycle["auto_resume"] = True
+            lifecycle = SandboxLifecycle(
+                on_timeout=on_timeout,
+                auto_resume=on_timeout == "pause",
+            )
             sandbox = await AsyncSandbox.create(
                 template=template,
                 api_key=api_key,

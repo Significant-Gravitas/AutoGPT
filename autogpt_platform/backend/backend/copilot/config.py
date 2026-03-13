@@ -124,11 +124,6 @@ class ChatConfig(BaseSettings):
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
-    e2b_sandbox_auto_resume: bool = Field(
-        default=True,
-        description="Enable E2B auto-resume: paused sandboxes wake on SDK activity. "
-        "Allows aggressive safety-net timeouts without risking stale sandboxes.",
-    )
 
     @property
     def e2b_active(self) -> bool:
