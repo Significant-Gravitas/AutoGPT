@@ -42,6 +42,7 @@ import logging
 from typing import Any, Awaitable, Callable, Literal
 
 from e2b import AsyncSandbox
+from e2b.sandbox.sandbox_api import SandboxLifecycle
 
 from backend.data.redis_client import get_redis_async
 
@@ -161,7 +162,7 @@ async def get_or_create_sandbox(
 
         # We hold the slot — create the sandbox.
         try:
-            lifecycle: dict = {"on_timeout": on_timeout}
+            lifecycle = SandboxLifecycle(on_timeout=on_timeout)
             if auto_resume and on_timeout == "pause":
                 lifecycle["auto_resume"] = True
             sandbox = await AsyncSandbox.create(
