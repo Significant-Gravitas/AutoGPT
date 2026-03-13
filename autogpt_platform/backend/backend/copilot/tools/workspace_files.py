@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
+    get_sdk_cwd,
+    is_allowed_local_path,
     resolve_sandbox_path,
 )
 from backend.copilot.model import ChatSession
@@ -281,6 +283,47 @@ class WorkspaceFileContentResponse(ToolResponseBase):
     content_base64: str
 
 
+def _read_local_tool_result(
+    path: str,
+    char_offset: int,
+    char_length: Optional[int],
+    session_id: str,
+) -> ToolResponseBase:
+    """Read an SDK tool-result file from local disk.
+
+    This is a fallback for when the model mistakenly calls
+    ``read_workspace_file`` with an SDK tool-result path that only exists on
+    the host filesystem, not in cloud workspace storage.
+    """
+    expanded = os.path.realpath(os.path.expanduser(path))
+    try:
+        with open(expanded, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
+    except Exception as exc:
+        return ErrorResponse(
+            message=f"Error reading {path}: {exc}", session_id=session_id
+        )
+
+    total_chars = len(text)
+    end = char_offset + char_length if char_length is not None else total_chars
+    slice_text = text[char_offset:end]
+
+    return WorkspaceFileContentResponse(
+        file_id="local",
+        name=os.path.basename(path),
+        path=path,
+        mime_type="application/json",
+        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("utf-8"),
+        message=(
+            f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
+            f"of {total_chars:,} total from local tool-result {os.path.basename(path)}"
+        ),
+        session_id=session_id,
+    )
+
+
 class WorkspaceFileMetadataResponse(ToolResponseBase):
     """Response containing workspace file metadata and download URL (prevents context bloat)."""
 
@@ -539,6 +582,13 @@ class ReadWorkspaceFileTool(BaseTool):
             manager = await get_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
+                # Fallback: if the path is an SDK tool-result on local disk,
+                # read it directly instead of failing.  The model sometimes
+                # calls read_workspace_file for these paths by mistake.
+                if path and is_allowed_local_path(path, get_sdk_cwd()):
+                    return _read_local_tool_result(
+                        path, char_offset, char_length, session_id
+                    )
                 return resolved
             target_file_id, file_info = resolved
 

@@ -75,7 +75,6 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
-    cleanup_cli_project_dir,
     download_transcript,
     upload_transcript,
     validate_transcript,
@@ -283,11 +282,13 @@ def _make_sdk_cwd(session_id: str) -> str:
 def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up:
-    - ``~/.claude/projects/<encoded-cwd>/`` — CLI session transcripts and
-      tool-result files.  Each SDK turn uses a unique cwd, so this directory
-      is safe to remove entirely.
-    - ``/tmp/copilot-<session>/`` — the ephemeral working directory.
+    Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
+
+    NOTE: The CLI project directory ``~/.claude/projects/<encoded-cwd>/``
+    is intentionally NOT cleaned up between turns.  The SDK stores
+    tool-result files there that the model may reference in subsequent
+    turns via ``--resume``.  Deleting them causes "file not found" errors
+    when the model tries to re-read truncated tool outputs.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
@@ -296,9 +297,6 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
-
-    # Clean the CLI's project directory (transcripts + tool-results).
-    cleanup_cli_project_dir(cwd)
 
     # Clean up the temp cwd directory itself.
     try:

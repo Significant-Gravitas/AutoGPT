@@ -87,7 +87,10 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/tool-results/`` (SDK tool-results)
+    - Files under any ``tool-results/`` directory within
+      ``~/.claude/projects/<encoded-cwd>/``.  The SDK may nest tool-results
+      under a conversation UUID, e.g.
+      ``<encoded-cwd>/<conversation-uuid>/tool-results/<file>``.
     """
     if not path:
         return False
@@ -106,10 +109,14 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     encoded = _current_project_dir.get("")
     if encoded:
-        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
-        if resolved == tool_results_dir or resolved.startswith(
-            tool_results_dir + os.sep
-        ):
-            return True
+        project_dir = os.path.join(_SDK_PROJECTS_DIR, encoded)
+        # Allow any tool-results/ directory under the project dir, at any
+        # nesting depth (the SDK may insert a conversation UUID between the
+        # project dir and tool-results/).
+        if resolved.startswith(project_dir + os.sep):
+            relative = resolved[len(project_dir) + 1 :]
+            parts = relative.split(os.sep)
+            if "tool-results" in parts:
+                return True
 
     return False
