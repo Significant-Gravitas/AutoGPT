@@ -12,11 +12,11 @@ from backend.data.tally import (
     _build_email_index,
     _format_answer,
     _make_tally_client,
-    _mask_email,
     _refresh_cache,
     extract_business_understanding,
     find_submission_by_email,
     format_submission_for_llm,
+    mask_email,
     populate_understanding_from_tally,
 )
 
@@ -248,7 +248,7 @@ async def test_populate_understanding_skips_no_api_key():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -291,7 +291,7 @@ async def test_populate_understanding_full_flow():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -331,7 +331,7 @@ async def test_populate_understanding_handles_llm_timeout():
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.find_submission_by_email",
             new_callable=AsyncMock,
@@ -356,13 +356,13 @@ async def test_populate_understanding_handles_llm_timeout():
 
 
 def test_mask_email():
-    assert _mask_email("alice@example.com") == "a***e@example.com"
-    assert _mask_email("ab@example.com") == "a***@example.com"
-    assert _mask_email("a@example.com") == "a***@example.com"
+    assert mask_email("alice@example.com") == "a***e@example.com"
+    assert mask_email("ab@example.com") == "a***@example.com"
+    assert mask_email("a@example.com") == "a***@example.com"
 
 
 def test_mask_email_invalid():
-    assert _mask_email("no-at-sign") == "***"
+    assert mask_email("no-at-sign") == "***"
 
 
 # ── Prompt construction (curly-brace safety) ─────────────────────────────────
@@ -492,7 +492,7 @@ async def test_refresh_cache_full_fetch():
     submissions = SAMPLE_SUBMISSIONS
 
     with (
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.get_redis_async",
             new_callable=AsyncMock,
@@ -540,7 +540,7 @@ async def test_refresh_cache_incremental_fetch():
     new_submissions = [SAMPLE_SUBMISSIONS[0]]  # Just Alice
 
     with (
-        patch("backend.data.tally.Settings", return_value=mock_settings),
+        patch("backend.data.tally._settings", mock_settings),
         patch(
             "backend.data.tally.get_redis_async",
             new_callable=AsyncMock,
