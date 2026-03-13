@@ -18,7 +18,7 @@ class CoachingConfig(metaclass=Singleton):
         self.supabase_url: str = os.getenv("SUPABASE_URL", "")
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
         # Claude LLM settings
-        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "claude-sonnet-4-6")
+        self.llm_model: str = os.getenv("COACHING_LLM_MODEL", "claude-haiku-4-5-20251001")
         self.llm_temperature: float = float(os.getenv("COACHING_LLM_TEMPERATURE", "0.7"))
 
     def validate(self) -> None:
