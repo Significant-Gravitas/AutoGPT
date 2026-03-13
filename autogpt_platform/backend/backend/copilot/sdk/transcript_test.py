@@ -657,3 +657,243 @@ class TestTranscriptBuilderLoadPreviousCompacted:
         builder = TranscriptBuilder()
         builder.load_previous(content)
         assert builder.entry_count == 1  # Only the assistant entry
+
+
+# --- End-to-end compaction flow (simulates service.py) ---
+
+
+class TestCompactionFlowIntegration:
+    """Simulate the full compaction flow as it happens in service.py:
+
+    1. TranscriptBuilder loads a previous transcript (download)
+    2. New messages are appended (user query + assistant response)
+    3. CompactionTracker fires (PreCompact hook → emit_start → emit_end)
+    4. read_compacted_entries reads the CLI session file
+    5. TranscriptBuilder.replace_entries syncs with CLI state
+    6. Final to_jsonl() produces the correct output (upload)
+    """
+
+    def test_full_compaction_roundtrip(self, tmp_path, monkeypatch):
+        """Full roundtrip: load → append → compact → replace → export."""
+        # Setup: create a CLI session file with pre-compact + compaction entries
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        # Simulate a transcript with old messages, then a compaction summary
+        old_user = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "old question"},
+        }
+        old_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {"role": "assistant", "content": "old answer"},
+        }
+        compact_summary = {
+            "type": "summary",
+            "uuid": "cs1",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "compacted summary of conversation"},
+        }
+        post_compact_asst = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "cs1",
+            "message": {"role": "assistant", "content": "response after compaction"},
+        }
+        session_file = session_dir / "session.jsonl"
+        session_file.write_text(
+            _make_jsonl(old_user, old_asst, compact_summary, post_compact_asst)
+        )
+
+        # Step 1: TranscriptBuilder loads previous transcript (simulates download)
+        # The previous transcript would have the OLD entries (pre-compaction)
+        previous_transcript = _make_jsonl(old_user, old_asst)
+        builder = TranscriptBuilder()
+        builder.load_previous(previous_transcript)
+        assert builder.entry_count == 2
+
+        # Step 2: New messages appended during the current query
+        builder.append_user("new question")
+        builder.append_assistant([{"type": "text", "text": "new answer"}])
+        assert builder.entry_count == 4
+
+        # Step 3: read_compacted_entries reads the CLI session file
+        compacted = read_compacted_entries(str(session_file))
+        assert compacted is not None
+        assert len(compacted) == 2  # compact_summary + post_compact_asst
+        assert compacted[0]["isCompactSummary"] is True
+
+        # Step 4: replace_entries syncs builder with CLI state
+        builder.replace_entries(compacted)
+        assert builder.entry_count == 2  # Only compacted entries now
+
+        # Step 5: Append post-compaction messages (continuing the stream)
+        builder.append_user("follow-up question")
+        assert builder.entry_count == 3
+
+        # Step 6: Export and verify
+        output = builder.to_jsonl()
+        entries = [json.loads(line) for line in output.strip().split("\n")]
+        assert len(entries) == 3
+        # First entry is the compaction summary
+        assert entries[0]["type"] == "summary"
+        assert entries[0]["uuid"] == "cs1"
+        # Second is the post-compact assistant
+        assert entries[1]["uuid"] == "a2"
+        # Third is our follow-up, parented to the last compacted entry
+        assert entries[2]["type"] == "user"
+        assert entries[2]["parentUuid"] == "a2"
+
+    def test_compaction_preserves_chain_across_multiple_compactions(
+        self, tmp_path, monkeypatch
+    ):
+        """Two compactions: first compacts old history, second compacts the first."""
+        config_dir = tmp_path / "config"
+        projects_dir = config_dir / "projects"
+        session_dir = projects_dir / "proj"
+        session_dir.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+        # First compaction
+        first_summary = {
+            "type": "summary",
+            "uuid": "cs1",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "first summary"},
+        }
+        mid_asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "cs1",
+            "message": {"role": "assistant", "content": "mid response"},
+        }
+        # Second compaction (compacts the first summary + mid_asst)
+        second_summary = {
+            "type": "summary",
+            "uuid": "cs2",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "second summary"},
+        }
+        final_asst = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "cs2",
+            "message": {"role": "assistant", "content": "final response"},
+        }
+
+        session_file = session_dir / "session.jsonl"
+        session_file.write_text(
+            _make_jsonl(first_summary, mid_asst, second_summary, final_asst)
+        )
+
+        # read_compacted_entries should find the LAST summary
+        compacted = read_compacted_entries(str(session_file))
+        assert compacted is not None
+        assert len(compacted) == 2  # second_summary + final_asst
+        assert compacted[0]["uuid"] == "cs2"
+
+        # Apply to builder
+        builder = TranscriptBuilder()
+        builder.append_user("old stuff")
+        builder.append_assistant([{"type": "text", "text": "old response"}])
+        builder.replace_entries(compacted)
+        assert builder.entry_count == 2
+
+        # New message chains correctly
+        builder.append_user("after second compaction")
+        output = builder.to_jsonl()
+        entries = [json.loads(line) for line in output.strip().split("\n")]
+        assert entries[-1]["parentUuid"] == "a2"
+
+    def test_strip_progress_preserves_compact_summaries(self):
+        """strip_progress_entries doesn't strip isCompactSummary entries
+        even though their type is 'summary' (in STRIPPABLE_TYPES)."""
+        compact_summary = {
+            "type": "summary",
+            "uuid": "cs1",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "compacted"},
+        }
+        regular_summary = {"type": "summary", "uuid": "s1", "message": {"content": "x"}}
+        progress = {"type": "progress", "uuid": "p1", "data": {"stdout": "..."}}
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "hi"},
+        }
+
+        content = _make_jsonl(compact_summary, regular_summary, progress, user)
+        stripped = strip_progress_entries(content)
+        stripped_entries = [
+            json.loads(line) for line in stripped.strip().split("\n") if line.strip()
+        ]
+
+        uuids = [e.get("uuid") for e in stripped_entries]
+        # compact_summary kept, regular_summary stripped, progress stripped, user kept
+        assert "cs1" in uuids  # compact summary preserved
+        assert "s1" not in uuids  # regular summary stripped
+        assert "p1" not in uuids  # progress stripped
+        assert "u1" in uuids  # user kept
+
+    def test_builder_load_then_replace_then_export_roundtrip(self):
+        """Load a compacted transcript, replace with new compaction, export.
+        Simulates two consecutive turns with compaction each time."""
+        # Turn 1: load compacted transcript
+        compact1 = {
+            "type": "summary",
+            "uuid": "cs1",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "summary v1"},
+        }
+        asst1 = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "cs1",
+            "message": {"role": "assistant", "content": "response 1"},
+        }
+        builder = TranscriptBuilder()
+        builder.load_previous(_make_jsonl(compact1, asst1))
+        assert builder.entry_count == 2
+
+        # Turn 1: append new messages
+        builder.append_user("question")
+        builder.append_assistant([{"type": "text", "text": "answer"}])
+        assert builder.entry_count == 4
+
+        # Turn 1: compaction fires — replace with new compacted state
+        compact2 = {
+            "type": "summary",
+            "uuid": "cs2",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "summary v2"},
+        }
+        asst2 = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "cs2",
+            "message": {"role": "assistant", "content": "continuing"},
+        }
+        builder.replace_entries([compact2, asst2])
+        assert builder.entry_count == 2
+
+        # Export (this goes to cloud storage for next turn's download)
+        output = builder.to_jsonl()
+        lines = [json.loads(line) for line in output.strip().split("\n")]
+        assert lines[0]["uuid"] == "cs2"
+        assert lines[0]["type"] == "summary"
+        assert lines[1]["uuid"] == "a2"
+
+        # Turn 2: fresh builder loads the exported transcript
+        builder2 = TranscriptBuilder()
+        builder2.load_previous(output)
+        assert builder2.entry_count == 2
+        builder2.append_user("turn 2 question")
+        output2 = builder2.to_jsonl()
+        lines2 = [json.loads(line) for line in output2.strip().split("\n")]
+        assert lines2[-1]["parentUuid"] == "a2"
