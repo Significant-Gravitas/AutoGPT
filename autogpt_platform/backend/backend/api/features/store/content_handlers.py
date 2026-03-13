@@ -267,7 +267,7 @@ class BlockHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning(f"Failed to process block {block_id}: {e}")
+                logger.warning("Failed to process block %s: %s", block_id, e)
                 continue
 
         return items
