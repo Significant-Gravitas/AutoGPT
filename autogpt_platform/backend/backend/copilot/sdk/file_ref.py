@@ -341,9 +341,19 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
 
     target_type = prop_schema.get("type")
 
-    # Dict → array: wrap in a single-element list so the block gets [dict]
-    # instead of pydantic flattening keys/values into a flat list.
+    # Dict → array: extract list values from the dict instead of wrapping
+    # the whole dict (which causes pydantic to coerce dict → list of tuples).
     if isinstance(parsed, dict) and target_type == "array":
+        items_type = (prop_schema.get("items") or {}).get("type")
+        if items_type == "array":
+            # Target is List[List[Any]] — extract list-typed values from the
+            # dict as inner lists.  E.g. YAML {"fruits": [{...},...]}} with
+            # ConcatenateLists (List[List[Any]]) → [[{...},...]].
+            list_values = [v for v in parsed.values() if isinstance(v, list)]
+            if list_values:
+                return list_values
+        # Fallback: wrap in a single-element list so the block gets [dict]
+        # instead of pydantic flattening keys/values into a flat list.
         return [parsed]
 
     # Tabular list → object: convert to a column-dict

@@ -1102,6 +1102,12 @@ class _DictBlock(pydantic.BaseModel):
     data: dict
 
 
+class _ListOfListsBlock(pydantic.BaseModel):
+    """Simulates a block schema with List[List[Any]] (e.g. ConcatenateListsBlock)."""
+
+    lists: list[list]
+
+
 class _AnyBlock(pydantic.BaseModel):
     """Simulates a block schema with an Any-typed input (e.g. FindInDictionaryBlock).
 
@@ -1311,6 +1317,101 @@ async def test_e2e_toml_dict_to_list_block():
         )
 
     assert expanded["rows"] == [{"name": "test", "count": 42}]
+
+
+# ---------------------------------------------------------------------------
+# E2E: YAML/TOML dict → List[List[Any]] block (ConcatenateListsBlock-style)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_e2e_yaml_dict_with_list_value_to_concat_block():
+    """YAML dict with a list value → List[List[Any]] block: extracts list
+    values from the dict as inner lists, not wrapping the whole dict."""
+    yaml_content = "fruits:\n  - name: apple\n  - name: banana\n  - name: cherry"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return yaml_content
+
+    block_schema = _ListOfListsBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"lists": "@@agptfile:workspace:///data.yaml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # List values extracted from dict — fruits list becomes an inner list
+    assert expanded["lists"] == [
+        [{"name": "apple"}, {"name": "banana"}, {"name": "cherry"}]
+    ]
+
+    # Coercion should preserve it
+    coerce_inputs_to_schema(expanded, _ListOfListsBlock)
+    assert len(expanded["lists"]) == 1
+    assert len(expanded["lists"][0]) == 3
+
+
+@pytest.mark.asyncio
+async def test_e2e_toml_dict_with_list_value_to_concat_block():
+    """TOML dict with a list value → List[List[Any]] block: extracts list
+    values, ignoring scalar values like 'title'."""
+    toml_content = (
+        'title = "Fruits"\n'
+        "[[fruits]]\n"
+        'name = "apple"\n'
+        "[[fruits]]\n"
+        'name = "banana"\n'
+    )
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return toml_content
+
+    block_schema = _ListOfListsBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"lists": "@@agptfile:workspace:///data.toml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # Only list-typed values extracted — "title" (str) is excluded
+    assert expanded["lists"] == [[{"name": "apple"}, {"name": "banana"}]]
+
+
+@pytest.mark.asyncio
+async def test_e2e_yaml_flat_dict_to_concat_block():
+    """YAML flat dict (no list values) → List[List[Any]]: fallback to [dict]."""
+    yaml_content = "name: Alice\nage: 30"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return yaml_content
+
+    block_schema = _ListOfListsBlock.model_json_schema()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        expanded = await expand_file_refs_in_args(
+            {"lists": "@@agptfile:workspace:///config.yaml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
+
+    # No list values in dict — fallback to wrapping as [dict]
+    assert expanded["lists"] == [{"name": "Alice", "age": 30}]
 
 
 # ---------------------------------------------------------------------------
