@@ -33,11 +33,8 @@ logger = logging.getLogger(__name__)
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
 
-
-def _looks_like_html(text: str) -> bool:
-    """Detect if an error body is an HTML page rather than a plain-text message."""
-    lower = text.lower()
-    return "<!doctype" in lower or "<html" in lower or "</html>" in lower
+# Status codes where the URL almost certainly doesn't host an MCP server
+_NOT_MCP_STATUS_CODES = {404, 405, 406}
 
 
 def _service_name(host: str) -> str:
@@ -191,22 +188,22 @@ class RunMCPToolTool(BaseTool):
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
             logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
-            # Sanitize error: strip HTML bodies (e.g. raw 404 pages) to avoid
-            # dumping entire HTML documents into the agent/user-facing message.
-            error_body = str(e)
-            if _looks_like_html(error_body):
+
+            host = server_host(server_url)
+            if e.status_code in _NOT_MCP_STATUS_CODES:
                 error_msg = (
-                    f"MCP server at {server_host(server_url)} returned HTTP "
-                    f"{e.status_code}. "
+                    f"No MCP server found at {host} (HTTP {e.status_code}). "
                     "This URL does not appear to host an MCP server."
                 )
             else:
-                error_msg = (
-                    f"MCP server returned HTTP {e.status_code}: " f"{error_body[:200]}"
-                )
+                error_msg = f"MCP server at {host} returned HTTP {e.status_code}."
             return ErrorResponse(
                 message=error_msg,
                 session_id=session_id,
+                # Raw HTTP detail goes in `error` so the frontend can
+                # render it in a collapsible/de-emphasised block instead
+                # of dumping the full body (which may be an HTML page).
+                error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 
         except MCPClientError as e:

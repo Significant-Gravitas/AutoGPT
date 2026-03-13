@@ -20,7 +20,11 @@ Use these URLs directly without asking the user:
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
 | Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
 
-For other services, search the MCP registry at https://registry.modelcontextprotocol.io/.
+For other services, search the MCP registry API:
+```
+GET https://registry.modelcontextprotocol.io/v0/servers?q=<search_term>
+```
+Each result includes a `remotes` array with the exact server URL to use.
 
 ### Important: Check blocks first
 
@@ -33,7 +37,7 @@ Only use `run_mcp_tool` when:
 - You searched `find_block` first and found no matching blocks
 
 **Never guess or construct MCP server URLs.** Only use URLs from the known servers list above
-or discovered via the MCP registry at https://registry.modelcontextprotocol.io/.
+or from the `remotes[].url` field in MCP registry search results.
 
 ### Authentication
 
