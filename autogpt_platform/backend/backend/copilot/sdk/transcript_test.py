@@ -1,12 +1,16 @@
 """Unit tests for JSONL transcript management utilities."""
 
 import os
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
     _cli_project_dir,
+    delete_transcript,
     read_cli_session_file,
     read_compacted_entries,
     strip_progress_entries,
@@ -365,6 +369,63 @@ class TestCliProjectDir:
 
         result = _cli_project_dir("/evil/cwd")
         assert result is None
+
+
+# --- delete_transcript ---
+
+
+class TestDeleteTranscript:
+    @pytest.mark.asyncio
+    async def test_deletes_both_jsonl_and_meta(self):
+        """delete_transcript removes both the .jsonl and .meta.json files."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock()
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            await delete_transcript("user-123", "session-456")
+
+        assert mock_storage.delete.call_count == 2
+        paths = [call.args[0] for call in mock_storage.delete.call_args_list]
+        assert any(p.endswith(".jsonl") for p in paths)
+        assert any(p.endswith(".meta.json") for p in paths)
+
+    @pytest.mark.asyncio
+    async def test_continues_on_jsonl_delete_failure(self):
+        """If .jsonl delete fails, .meta.json delete is still attempted."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(
+            side_effect=[Exception("jsonl delete failed"), None]
+        )
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            # Should not raise
+            await delete_transcript("user-123", "session-456")
+
+        assert mock_storage.delete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_handles_meta_delete_failure(self):
+        """If .meta.json delete fails, no exception propagates."""
+        mock_storage = AsyncMock()
+        mock_storage.delete = AsyncMock(
+            side_effect=[None, Exception("meta delete failed")]
+        )
+
+        with patch(
+            "backend.util.workspace_storage.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            # Should not raise
+            await delete_transcript("user-123", "session-456")
 
 
 # --- read_compacted_entries ---

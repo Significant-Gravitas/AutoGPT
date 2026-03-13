@@ -555,8 +555,34 @@ async def download_transcript(
     )
 
 
+async def delete_transcript(user_id: str, session_id: str) -> None:
+    """Delete transcript and its metadata from bucket storage.
+
+    Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
+    so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
+    """
+    from backend.util.workspace_storage import get_workspace_storage
+
+    storage = await get_workspace_storage()
+    path = _build_storage_path(user_id, session_id, storage)
+
+    try:
+        await storage.delete(path)
+        logger.info("[Transcript] Deleted transcript for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete transcript: %s", e)
+
+    # Also delete the companion .meta.json to avoid orphaned metadata.
+    try:
+        meta_path = _build_meta_storage_path(user_id, session_id, storage)
+        await storage.delete(meta_path)
+        logger.info("[Transcript] Deleted metadata for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete metadata: %s", e)
+
+
 # ---------------------------------------------------------------------------
-# Transcript compaction
+# Transcript compaction — LLM summarization for prompt-too-long recovery
 # ---------------------------------------------------------------------------
 
 # JSONL protocol values used in transcript serialization.
@@ -672,9 +698,9 @@ def _messages_to_transcript(messages: list[dict]) -> str:
 async def _run_compression(
     messages: list[dict],
     model: str,
-    cfg: "ChatConfig",
+    cfg: ChatConfig,
     log_prefix: str,
-) -> "CompressResult":
+) -> CompressResult:
     """Run LLM-based compression with truncation fallback."""
     import openai
 
