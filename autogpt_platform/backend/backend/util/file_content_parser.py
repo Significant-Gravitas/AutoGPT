@@ -38,7 +38,6 @@ from collections.abc import Callable
 from posixpath import splitext
 from typing import Any
 
-import pandas as pd
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -102,14 +101,21 @@ def infer_format(uri: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _parse_json(content: str) -> Any:
-    parsed = json.loads(content)
-    # Only promote containers.  Scalar JSON values (strings, numbers,
-    # booleans, null) stay as the raw string so that e.g. a file containing
-    # just ``"42"`` doesn't silently become an int.
+def _parse_container(parser: Callable[[str], Any], content: str) -> list | dict | str:
+    """Parse *content* and return the result only if it is a container (list/dict).
+
+    Scalar values (strings, numbers, booleans, None) are discarded and the
+    original *content* string is returned instead.  This prevents e.g. a JSON
+    file containing just ``"42"`` from silently becoming an int.
+    """
+    parsed = parser(content)
     if isinstance(parsed, (list, dict)):
         return parsed
     return content
+
+
+def _parse_json(content: str) -> list | dict | str:
+    return _parse_container(json.loads, content)
 
 
 def _parse_jsonl(content: str) -> Any:
@@ -145,11 +151,8 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     return content
 
 
-def _parse_yaml(content: str) -> Any:
-    parsed = yaml.safe_load(content)
-    if isinstance(parsed, (list, dict)):
-        return parsed
-    return content
+def _parse_yaml(content: str) -> list | dict | str:
+    return _parse_container(yaml.safe_load, content)
 
 
 def _parse_toml(content: str) -> Any:
@@ -178,10 +181,12 @@ def _is_nan(cell: Any) -> bool:
     ``pd.isna()`` on a list/dict returns a boolean array which raises
     ``ValueError`` in a boolean context.  Guard with a scalar check first.
     """
+    import pandas as pd
+
     return bool(pd.api.types.is_scalar(cell) and pd.isna(cell))
 
 
-def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
+def _df_to_rows(df: Any) -> list[list[Any]]:
     """Convert a DataFrame to ``list[list[Any]]`` with a header row.
 
     NaN values are replaced with ``None`` so the result is JSON-serializable.
@@ -195,12 +200,16 @@ def _df_to_rows(df: pd.DataFrame) -> list[list[Any]]:
     return [header] + rows
 
 
-def _parse_parquet(content: bytes) -> Any:
+def _parse_parquet(content: bytes) -> list[list[Any]]:
+    import pandas as pd
+
     df = pd.read_parquet(io.BytesIO(content))
     return _df_to_rows(df)
 
 
-def _parse_xlsx(content: bytes) -> Any:
+def _parse_xlsx(content: bytes) -> list[list[Any]]:
+    import pandas as pd
+
     df = pd.read_excel(io.BytesIO(content))
     return _df_to_rows(df)
 
@@ -251,7 +260,6 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
         tomllib.TOMLDecodeError,
         ValueError,
         UnicodeDecodeError,
-        pd.errors.ParserError,
         ImportError,
         OSError,
     ):

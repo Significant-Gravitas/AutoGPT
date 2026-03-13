@@ -247,9 +247,15 @@ async def test_expand_ref_error_surfaces_inline():
 
 @pytest.mark.asyncio
 async def test_expand_args_flat():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve_always),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref._infer_format_from_workspace",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {"content": "@@agptfile:workspace://abc123", "other": 42},
@@ -262,9 +268,15 @@ async def test_expand_args_flat():
 
 @pytest.mark.asyncio
 async def test_expand_args_nested_dict():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve_always),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref._infer_format_from_workspace",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {"outer": {"inner": "@@agptfile:workspace://nested"}},
@@ -276,9 +288,15 @@ async def test_expand_args_nested_dict():
 
 @pytest.mark.asyncio
 async def test_expand_args_list():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve_always),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref._infer_format_from_workspace",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {
@@ -385,9 +403,15 @@ async def test_bare_ref_unknown_extension_falls_back_to_string():
     async def _resolve(ref, *a, **kw):  # noqa: ARG001
         return "plain text content"
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref._infer_format_from_workspace",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {"data": "@@agptfile:workspace:///readme.txt"},

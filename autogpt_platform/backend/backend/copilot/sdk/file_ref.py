@@ -31,12 +31,17 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
+import csv
 import itertools
+import json
 import logging
 import os
 import re
+import tomllib
 from dataclasses import dataclass
 from typing import Any
+
+import yaml
 
 from backend.copilot.context import (
     get_current_sandbox,
@@ -179,6 +184,28 @@ async def read_file_bytes(
     )
 
 
+def _to_str(content: str | bytes) -> str:
+    """Decode *content* to a string if it is bytes, otherwise return as-is."""
+    if isinstance(content, str):
+        return content
+    return content.decode("utf-8", errors="replace")
+
+
+def _check_content_size(content: str | bytes) -> None:
+    """Raise :class:`FileRefExpansionError` if *content* exceeds the byte limit.
+
+    For ``bytes``, the length is the byte count directly.  For ``str``,
+    we encode to UTF-8 first because multi-byte characters (e.g. emoji)
+    mean the byte size can be up to 4x the character count.
+    """
+    size = len(content) if isinstance(content, bytes) else len(content.encode("utf-8"))
+    if size > _MAX_BARE_REF_BYTES:
+        raise FileRefExpansionError(
+            f"File too large for structured parsing "
+            f"({size} bytes, limit {_MAX_BARE_REF_BYTES})"
+        )
+
+
 async def resolve_file_ref(
     ref: FileRef,
     user_id: str | None,
@@ -186,9 +213,7 @@ async def resolve_file_ref(
 ) -> str:
     """Resolve a :class:`FileRef` to its text content."""
     raw = await read_file_bytes(ref.uri, user_id, session)
-    return _apply_line_range(
-        raw.decode("utf-8", errors="replace"), ref.start_line, ref.end_line
-    )
+    return _apply_line_range(_to_str(raw), ref.start_line, ref.end_line)
 
 
 async def expand_file_refs_in_string(
@@ -372,6 +397,80 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     return parsed
 
 
+async def _expand_bare_ref(
+    ref: FileRef,
+    fmt: str | None,
+    user_id: str | None,
+    session: ChatSession,
+    prop_schema: dict[str, Any] | None,
+) -> Any:
+    """Resolve and parse a bare ``@@agptfile:`` reference.
+
+    This is the structured-parsing path: the file is read, optionally parsed
+    according to *fmt*, and adapted to the target *prop_schema*.
+
+    Raises :class:`FileRefExpansionError` on resolution or parsing failure.
+    """
+    try:
+        if fmt is not None and fmt in BINARY_FORMATS:
+            # Binary formats need raw bytes, not UTF-8 text.
+            # Line ranges are meaningless for binary formats
+            # (parquet/xlsx) — ignore them and parse full bytes.
+            content: str | bytes = await read_file_bytes(ref.uri, user_id, session)
+        else:
+            content = await resolve_file_ref(ref, user_id, session)
+    except ValueError as exc:
+        raise FileRefExpansionError(str(exc)) from exc
+
+    _check_content_size(content)
+
+    # When the schema declares this parameter as "string",
+    # return raw file content — don't parse into a structured
+    # type that would need json.dumps() serialisation.
+    expect_string = (prop_schema or {}).get("type") == "string"
+    if expect_string:
+        if isinstance(content, bytes):
+            raise FileRefExpansionError(
+                f"Cannot use {fmt} file as text input: "
+                f"binary formats (parquet, xlsx) must be passed "
+                f"to a block that accepts structured data (list/object), "
+                f"not a string-typed parameter."
+            )
+        return content
+
+    if fmt is not None:
+        # Use strict mode for binary formats so we surface the
+        # actual error (e.g. missing pyarrow/openpyxl, corrupt
+        # file) instead of silently returning garbled bytes.
+        strict = fmt in BINARY_FORMATS
+        try:
+            parsed = parse_file_content(content, fmt, strict=strict)
+        except (
+            json.JSONDecodeError,
+            csv.Error,
+            yaml.YAMLError,
+            tomllib.TOMLDecodeError,
+            ValueError,
+            UnicodeDecodeError,
+            ImportError,
+            OSError,
+        ) as exc:
+            raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
+        # Normalize bytes fallback to str so tools never
+        # receive raw bytes when parsing fails.
+        if isinstance(parsed, bytes):
+            parsed = _to_str(parsed)
+        return _adapt_to_schema(parsed, prop_schema)
+
+    # Unknown format — return as plain string, but apply
+    # the same per-ref character limit used by inline refs
+    # to prevent injecting unexpectedly large content.
+    text = _to_str(content)
+    if len(text) > _MAX_EXPAND_CHARS:
+        text = text[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
+    return text
+
+
 async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
@@ -415,95 +514,16 @@ async def expand_file_refs_in_args(
         *,
         prop_schema: dict[str, Any] | None = None,
     ) -> Any:
-        expect_string = (prop_schema or {}).get("type") == "string"
-
         if isinstance(value, str):
-            # Check for a bare file reference first — enables structured parsing.
             ref = parse_file_ref(value)
             if ref is not None:
                 fmt = infer_format(ref.uri)
-
                 # Workspace URIs by ID (workspace://abc123) have no extension.
                 # When the MIME fragment is also missing, fall back to the
                 # workspace file manager's metadata for format detection.
                 if fmt is None and ref.uri.startswith("workspace://"):
                     fmt = await _infer_format_from_workspace(ref.uri, user_id, session)
-
-                try:
-                    if fmt is not None and fmt in BINARY_FORMATS:
-                        # Binary formats need raw bytes, not UTF-8 text.
-                        # Line ranges are meaningless for binary formats
-                        # (parquet/xlsx) — ignore them and parse full bytes.
-                        raw = await read_file_bytes(ref.uri, user_id, session)
-                        if len(raw) > _MAX_BARE_REF_BYTES:
-                            raise FileRefExpansionError(
-                                f"File too large for structured parsing "
-                                f"({len(raw)} bytes, limit {_MAX_BARE_REF_BYTES})"
-                            )
-                        content: str | bytes = raw
-                    else:
-                        content = await resolve_file_ref(ref, user_id, session)
-                except ValueError as exc:
-                    raise FileRefExpansionError(str(exc)) from exc
-
-                # Guard against oversized content before parsing.
-                if isinstance(content, bytes):
-                    content_size = len(content)
-                else:
-                    # len() on str returns character count, but multi-byte
-                    # UTF-8 chars (e.g. emoji) mean byte size can be up to
-                    # 4x the character count.  Use the actual encoded byte
-                    # length for an accurate guard.
-                    content_size = len(content.encode("utf-8"))
-                if content_size > _MAX_BARE_REF_BYTES:
-                    raise FileRefExpansionError(
-                        f"File too large for structured parsing "
-                        f"({content_size} bytes, limit {_MAX_BARE_REF_BYTES})"
-                    )
-
-                # When the schema declares this parameter as "string",
-                # return raw file content — don't parse into a structured
-                # type that would need json.dumps() serialisation.
-                if expect_string:
-                    if isinstance(content, bytes):
-                        # Binary formats (parquet/xlsx) decoded to string
-                        # produce garbled output — reject with a clear error.
-                        raise FileRefExpansionError(
-                            f"Cannot use {fmt} file as text input: "
-                            f"binary formats (parquet, xlsx) must be passed "
-                            f"to a block that accepts structured data (list/object), "
-                            f"not a string-typed parameter."
-                        )
-                    return content
-
-                if fmt is not None:
-                    # Use strict mode for binary formats so we surface the
-                    # actual error (e.g. missing pyarrow/openpyxl, corrupt
-                    # file) instead of silently returning garbled bytes.
-                    strict = fmt in BINARY_FORMATS
-                    try:
-                        parsed = parse_file_content(content, fmt, strict=strict)
-                    except Exception as exc:
-                        raise FileRefExpansionError(
-                            f"Failed to parse {fmt} file: {exc}"
-                        ) from exc
-                    # Normalize bytes fallback to str so tools never
-                    # receive raw bytes when parsing fails.
-                    if isinstance(parsed, bytes):
-                        parsed = parsed.decode("utf-8", errors="replace")
-                    return _adapt_to_schema(parsed, prop_schema)
-
-                # Unknown format — return as plain string, but apply
-                # the same per-ref character limit used by inline refs
-                # to prevent injecting unexpectedly large content.
-                text = (
-                    content
-                    if isinstance(content, str)
-                    else content.decode("utf-8", errors="replace")
-                )
-                if len(text) > _MAX_EXPAND_CHARS:
-                    text = text[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
-                return text
+                return await _expand_bare_ref(ref, fmt, user_id, session, prop_schema)
 
             # Not a bare ref — do normal inline expansion.
             return await expand_file_refs_in_string(
