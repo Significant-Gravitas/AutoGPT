@@ -22,7 +22,10 @@ class CreateAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves."
+        return (
+            "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves. "
+            "Before calling, search for existing agents with find_library_agent."
+        )
 
     @property
     def requires_auth(self) -> bool:
@@ -45,6 +48,7 @@ class CreateAgentTool(BaseTool):
                 "save": {
                     "type": "boolean",
                     "description": "Save the agent (default: true). False for preview.",
+                    "default": True,
                 },
                 "folder_id": {
                     "type": "string",

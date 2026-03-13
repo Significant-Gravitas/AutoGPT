@@ -73,6 +73,7 @@ class WebFetchTool(BaseTool):
                 "extract_text": {
                     "type": "boolean",
                     "description": "Extract text from HTML (default: true).",
+                    "default": True,
                 },
             },
             "required": ["url"],

@@ -65,6 +65,7 @@ class FindBlockTool(BaseTool):
                 "include_schemas": {
                     "type": "boolean",
                     "description": "Include full input/output schemas (for agent JSON generation).",
+                    "default": False,
                 },
             },
             "required": ["query"],

@@ -57,6 +57,7 @@ class BashExecTool(BaseTool):
                 "timeout": {
                     "type": "integer",
                     "description": "Max seconds (default 30, max 120).",
+                    "default": 30,
                 },
             },
             "required": ["command"],

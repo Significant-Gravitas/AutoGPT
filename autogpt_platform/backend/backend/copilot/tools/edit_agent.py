@@ -22,7 +22,10 @@ class EditAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Edit an existing agent. Validates, auto-fixes, and saves."
+        return (
+            "Edit an existing agent. Validates, auto-fixes, and saves. "
+            "Before calling, search for existing agents with find_library_agent."
+        )
 
     @property
     def requires_auth(self) -> bool:
@@ -49,6 +52,7 @@ class EditAgentTool(BaseTool):
                 "save": {
                     "type": "boolean",
                     "description": "Save changes (default: true). False for preview.",
+                    "default": True,
                 },
             },
             "required": ["agent_id", "agent_json"],
