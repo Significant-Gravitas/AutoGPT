@@ -26,6 +26,12 @@ class CoachingConfig(metaclass=Singleton):
         # Full callback URL — must match exactly what is registered in Google Cloud Console
         # Example: https://your-app.railway.app/auth/google/callback
         self.google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "")
+        # Telegram bot
+        self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        # Demo page — separate key so the main API key isn't exposed in the browser
+        self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
+        # Public URL of this service (used to build the demo page's API_BASE)
+        self.public_url: str = os.getenv("RAILWAY_PUBLIC_DOMAIN", os.getenv("PUBLIC_URL", ""))
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""

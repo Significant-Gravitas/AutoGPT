@@ -1,19 +1,26 @@
 """FastAPI application for the ABN Consulting AI Co-Navigator."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from datetime import date
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests as http_requests
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from autogpt.coaching.config import coaching_config
+
+logger = logging.getLogger(__name__)
 from autogpt.coaching.dashboard import build_dashboard
 from autogpt.coaching.models import (
     AuthResponse,
@@ -46,16 +53,37 @@ from autogpt.coaching.storage import (
     upsert_objective,
 )
 
+# ── Telegram bot lifespan ─────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    telegram_task = None
+    if coaching_config.telegram_bot_token:
+        from autogpt.coaching.telegram_bot import run_polling
+        telegram_task = asyncio.create_task(
+            run_polling(coaching_config.telegram_bot_token)
+        )
+        logger.info("Telegram bot started")
+    yield
+    if telegram_task:
+        telegram_task.cancel()
+        try:
+            await telegram_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
     title="ABN Consulting AI Co-Navigator",
     description="Executive change management coaching API",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://www.ben-nesher.com", "https://*.wix.com", "https://*.wixsite.com", "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -410,3 +438,106 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 @app.get("/health", summary="Health check")
 def health() -> dict:
     return {"status": "ok", "service": "ABN Co-Navigator API"}
+
+
+# ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────
+
+# Simple in-memory rate limit: max 20 demo sessions per IP per day
+_demo_counts: Dict[str, int] = defaultdict(int)
+_demo_date: date = date.today()
+_DEMO_DAILY_LIMIT = 20
+
+# Separate session store so demo sessions are isolated from authenticated ones
+_demo_sessions: Dict[str, CoachingSession] = {}
+
+
+def _check_demo_key(x_demo_key: str = Header(default="")) -> None:
+    """Validate the demo key (injected into the demo page by the server)."""
+    if not coaching_config.demo_key:
+        return  # demo key not configured — open access (acceptable for demos)
+    if x_demo_key != coaching_config.demo_key:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Invalid demo key.")
+
+
+def _check_demo_rate(request: Request) -> None:
+    global _demo_date, _demo_counts
+    today = date.today()
+    if today != _demo_date:
+        _demo_date = today
+        _demo_counts.clear()
+    ip = request.client.host if request.client else "unknown"
+    _demo_counts[ip] += 1
+    if _demo_counts[ip] > _DEMO_DAILY_LIMIT:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Demo limit reached. Please book a real session!")
+
+
+class DemoStartRequest(BaseModel):
+    name: str
+
+
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+def demo_page(request: Request) -> HTMLResponse:
+    """Serve the interactive demo chat page (embeddable in Wix via iframe)."""
+    from autogpt.coaching.demo_ui import DEMO_HTML
+    base_url = coaching_config.public_url
+    if not base_url:
+        base_url = str(request.base_url).rstrip("/")
+    html = DEMO_HTML.format(
+        api_base=base_url,
+        demo_key=coaching_config.demo_key,
+        coach_name=coaching_config.coach_name,
+        calendly_url=coaching_config.coach_calendly_url,
+    )
+    return HTMLResponse(content=html)
+
+
+@app.post("/demo/session/start", summary="Start a demo coaching session")
+def demo_start(
+    req: DemoStartRequest,
+    request: Request,
+    _key: None = Depends(_check_demo_key),
+) -> dict:
+    _check_demo_rate(request)
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Name is required.")
+    session = CoachingSession(client_id=f"demo_{name[:20]}", client_name=name)
+    _demo_sessions[session.session_id] = session
+    opening = session.open()
+    return {"session_id": session.session_id, "message": opening}
+
+
+@app.post("/demo/session/{session_id}/message", summary="Send a message in a demo session")
+def demo_message(
+    session_id: str,
+    req: MessageRequest,
+    _key: None = Depends(_check_demo_key),
+) -> dict:
+    session = _demo_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Demo session not found.")
+    reply = session.chat(req.message)
+    return {"session_id": session_id, "reply": reply}
+
+
+@app.post("/demo/session/{session_id}/end", summary="End a demo session and return summary")
+def demo_end(
+    session_id: str,
+    _key: None = Depends(_check_demo_key),
+) -> SessionSummary:
+    session = _demo_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Demo session not found.")
+    summary = session.extract_summary()
+    # Save to Supabase so coach can see demo engagement (best-effort)
+    try:
+        save_session(summary)
+    except Exception:
+        logger.warning("Could not persist demo session %s to Supabase", session_id)
+    del _demo_sessions[session_id]
+    return summary
