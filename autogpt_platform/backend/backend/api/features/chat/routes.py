@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, Field, field_validator
@@ -235,9 +235,10 @@ async def list_sessions(
 
 @router.post(
     "/sessions",
+    dependencies=[Security(auth.requires_user)],
 )
 async def create_session(
-    user_id: Annotated[str, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -356,7 +357,7 @@ async def update_session_title_route(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str | None, Security(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -437,7 +438,7 @@ async def get_copilot_usage(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str | None, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -482,7 +483,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str | None = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -506,6 +507,9 @@ async def stream_chat_post(
     """
     import asyncio
     import time
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
 
     stream_start_time = time.perf_counter()
     log_meta = {"component": "ChatStream", "session_id": session_id}
@@ -773,7 +777,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str | None = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.

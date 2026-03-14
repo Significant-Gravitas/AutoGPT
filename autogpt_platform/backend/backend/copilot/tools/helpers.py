@@ -8,8 +8,8 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, workspace_db
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.utils import block_usage_cost
@@ -123,9 +123,12 @@ async def execute_block(
         #  between the balance check and the post-execution charge.
         cost, cost_filter = block_usage_cost(block, input_data)
         has_cost = cost > 0
-        credits = credit_db()
+        # Resolve the credit model once and reuse for both the balance
+        # check and the post-execution charge to avoid redundant
+        # LaunchDarkly flag evaluations.
+        credit_model = await get_user_credit_model(user_id)
         if has_cost:
-            balance = await credits.get_credits(user_id)
+            balance = await credit_model.get_credits(user_id)
             if balance < cost:
                 return ErrorResponse(
                     message=(
@@ -146,7 +149,7 @@ async def execute_block(
         # Charge credits for block execution
         if has_cost:
             try:
-                await credits.spend_credits(
+                await credit_model.spend_credits(
                     user_id=user_id,
                     cost=cost,
                     metadata=UsageTransactionMetadata(
@@ -160,17 +163,25 @@ async def execute_block(
                         reason="copilot_block_execution",
                     ),
                 )
-            except InsufficientBalanceError:
+            except InsufficientBalanceError as e:
                 # Concurrent spend drained balance after our pre-check passed.
                 # Block already executed (with possible side effects), so return
                 # its output but log the billing leak for monitoring.
-                logger.warning(
-                    "BILLING_LEAK: Post-exec credit charge failed for block %s "
-                    "(cost=%d, user=%s, node_exec=%s)",
-                    block.name,
-                    cost,
-                    user_id[:8],
+                logger.error(
+                    "BILLING_LEAK: block executed but credit charge failed — "
+                    "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+                    user_id,
+                    block_id,
                     node_exec_id,
+                    cost,
+                    e,
+                    extra={
+                        "json_fields": {
+                            "billing_leak": True,
+                            "user_id": user_id,
+                            "cost": str(cost),
+                        }
+                    },
                 )
 
         return BlockOutputResponse(

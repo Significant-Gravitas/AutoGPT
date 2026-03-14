@@ -145,6 +145,11 @@ async def check_rate_limit(
 
     Fails open: if Redis is unavailable, allows the request.
     """
+    # Short-circuit: when both limits are 0 (unlimited) skip the Redis
+    # round-trip entirely.
+    if daily_token_limit <= 0 and weekly_token_limit <= 0:
+        return
+
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -158,6 +163,7 @@ async def check_rate_limit(
         logger.warning("Redis unavailable for rate limit check, allowing request")
         return
 
+    # Worst-case overshoot: N concurrent requests × ~15K tokens each.
     if daily_token_limit > 0 and daily_used >= daily_token_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
@@ -192,6 +198,11 @@ async def record_token_usage(
         cache_read_tokens: Tokens served from prompt cache (10% cost).
         cache_creation_tokens: Tokens written to prompt cache (25% cost).
     """
+    prompt_tokens = max(0, prompt_tokens)
+    completion_tokens = max(0, completion_tokens)
+    cache_read_tokens = max(0, cache_read_tokens)
+    cache_creation_tokens = max(0, cache_creation_tokens)
+
     weighted_input = (
         prompt_tokens
         + round(cache_creation_tokens * 0.25)
@@ -219,7 +230,10 @@ async def record_token_usage(
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
-        pipe = redis.pipeline(transaction=False)
+        # Use transaction=True (MULTI/EXEC) so that each incrby+expire
+        # pair is atomic. With transaction=False a crash between incrby
+        # and expire could leave a key without a TTL, leaking memory.
+        pipe = redis.pipeline(transaction=True)
 
         # Daily counter (expires at next midnight UTC)
         d_key = _daily_key(user_id, now=now)

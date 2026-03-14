@@ -1,4 +1,4 @@
-"""Tests for chat API routes: session title update, file attachment validation, usage, and suggested prompts."""
+"""Tests for chat API routes: session title update, file attachment validation, usage, rate limiting, and suggested prompts."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
@@ -250,6 +250,77 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
     call_kwargs = mock_prisma.find_many.call_args[1]
     assert call_kwargs["where"]["workspaceId"] == "my-workspace-id"
     assert call_kwargs["where"]["isDeleted"] is False
+
+
+# ─── Rate limit → 429 ─────────────────────────────────────────────────
+
+
+def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockFixture):
+    """When check_rate_limit raises RateLimitExceeded for daily limit the endpoint returns 429."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    # Ensure the rate-limit branch is entered by setting a non-zero limit.
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_token_limit", 50000)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("daily", datetime.now(UTC) + timedelta(hours=1)),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 429
+    assert "daily" in response.json()["detail"].lower()
+
+
+def test_stream_chat_returns_429_on_weekly_rate_limit(mocker: pytest_mock.MockFixture):
+    """When check_rate_limit raises RateLimitExceeded for weekly limit the endpoint returns 429."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_token_limit", 50000)
+    resets_at = datetime.now(UTC) + timedelta(days=3)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("weekly", resets_at),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 429
+    detail = response.json()["detail"].lower()
+    assert "weekly" in detail
+    assert "resets in" in detail
+
+
+def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockFixture):
+    """The 429 response detail should include the human-readable reset time."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_token_limit", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_token_limit", 50000)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded(
+            "daily", datetime.now(UTC) + timedelta(hours=2, minutes=30)
+        ),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert "2h" in detail
+    assert "Resets in" in detail
 
 
 # ─── Usage endpoint ───────────────────────────────────────────────────

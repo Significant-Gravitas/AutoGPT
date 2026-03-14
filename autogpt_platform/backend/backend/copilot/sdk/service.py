@@ -40,13 +40,11 @@ from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
-    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
 )
 from ..prompting import get_sdk_supplement
-from ..rate_limit import record_token_usage
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -63,6 +61,7 @@ from ..service import (
     _generate_session_title,
     _is_langfuse_configured,
 )
+from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.workspace_files import get_manager
@@ -1389,12 +1388,13 @@ async def stream_chat_completion_sdk(
         # rate-limit recording even if an exception interrupts between here
         # and the finally block.
         if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
+            # total_tokens = prompt (uncached input) + completion (output).
+            # Cache tokens are tracked separately and excluded from total
+            # so that the semantics match the baseline path (OpenRouter)
+            # which folds cache into prompt_tokens. Keeping total_tokens
+            # = prompt + completion everywhere makes cross-path comparisons
+            # and session-level aggregation consistent.
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
             yield StreamUsage(
                 promptTokens=turn_prompt_tokens,
                 completionTokens=turn_completion_tokens,
@@ -1470,49 +1470,16 @@ async def stream_chat_completion_sdk(
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
-            if session is not None:
-                session.usage.append(
-                    Usage(
-                        prompt_tokens=turn_prompt_tokens,
-                        completion_tokens=turn_completion_tokens,
-                        total_tokens=total_tokens,
-                        cache_read_tokens=turn_cache_read_tokens,
-                        cache_creation_tokens=turn_cache_creation_tokens,
-                    )
-                )
-            logger.info(
-                "%s Turn usage: uncached=%d, cache_read=%d, cache_create=%d, "
-                "output=%d, total=%d, cost_usd=%s",
-                log_prefix,
-                turn_prompt_tokens,
-                turn_cache_read_tokens,
-                turn_cache_creation_tokens,
-                turn_completion_tokens,
-                total_tokens,
-                turn_cost_usd,
-            )
-        if user_id and (turn_prompt_tokens > 0 or turn_completion_tokens > 0):
-            try:
-                await record_token_usage(
-                    user_id=user_id,
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    cache_read_tokens=turn_cache_read_tokens,
-                    cache_creation_tokens=turn_cache_creation_tokens,
-                )
-            except Exception as usage_err:
-                logger.warning(
-                    "%s Failed to record token usage: %s",
-                    log_prefix,
-                    usage_err,
-                )
+        await persist_and_record_usage(
+            session=session,
+            user_id=user_id,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            cache_read_tokens=turn_cache_read_tokens,
+            cache_creation_tokens=turn_cache_creation_tokens,
+            log_prefix=log_prefix,
+            cost_usd=turn_cost_usd,
+        )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

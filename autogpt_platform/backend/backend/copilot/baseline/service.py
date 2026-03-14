@@ -18,13 +18,11 @@ from langfuse import propagate_attributes
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
-    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
 )
 from backend.copilot.prompting import get_baseline_supplement
-from backend.copilot.rate_limit import record_token_usage
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -46,6 +44,7 @@ from backend.copilot.service import (
     client,
     config,
 )
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
@@ -460,37 +459,17 @@ async def stream_chat_completion_baseline(
                 turn_completion_tokens,
             )
 
-        # Emit token usage and update session for persistence
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = turn_prompt_tokens + turn_completion_tokens
-            session.usage.append(
-                Usage(
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    total_tokens=total_tokens,
-                )
-            )
-            logger.info(
-                "[Baseline] Turn usage: prompt=%d, completion=%d, total=%d",
-                turn_prompt_tokens,
-                turn_completion_tokens,
-                total_tokens,
-            )
-            # Record for rate limiting counters
-            # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we cannot
-            # break out cache_read/cache_creation weights. Users on the baseline
-            # path may be slightly over-counted vs the SDK path.
-            if user_id:
-                try:
-                    await record_token_usage(
-                        user_id=user_id,
-                        prompt_tokens=turn_prompt_tokens,
-                        completion_tokens=turn_completion_tokens,
-                    )
-                except Exception as usage_err:
-                    logger.warning(
-                        "[Baseline] Failed to record token usage: %s", usage_err
-                    )
+        # Persist token usage to session and record for rate limiting.
+        # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we
+        # cannot break out cache_read/cache_creation weights. Users on the
+        # baseline path may be slightly over-counted vs the SDK path.
+        await persist_and_record_usage(
+            session=session,
+            user_id=user_id,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            log_prefix="[Baseline]",
+        )
 
         # Persist assistant response
         if assistant_text:

@@ -101,7 +101,10 @@ class ChatSessionInfo(BaseModel):
             prisma_session.successfulAgentSchedules, default={}
         )
 
-        # Calculate usage from token counts
+        # Calculate usage from token counts.
+        # NOTE: Per-turn cache_read_tokens / cache_creation_tokens breakdown
+        # is lost after persistence — the DB only stores aggregate prompt and
+        # completion totals. This is a known limitation.
         usage = []
         if prisma_session.totalPromptTokens or prisma_session.totalCompletionTokens:
             usage.append(
