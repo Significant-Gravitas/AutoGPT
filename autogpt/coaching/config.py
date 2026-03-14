@@ -30,8 +30,12 @@ class CoachingConfig(metaclass=Singleton):
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
         # Demo page — separate key so the main API key isn't exposed in the browser
         self.demo_key: str = os.getenv("COACHING_DEMO_KEY", "")
-        # Public URL of this service (used to build the demo page's API_BASE)
-        self.public_url: str = os.getenv("RAILWAY_PUBLIC_DOMAIN", os.getenv("PUBLIC_URL", ""))
+        # Public URL of this service (used to build the demo page's API_BASE).
+        # RAILWAY_PUBLIC_DOMAIN is the bare domain, e.g. cnbot.up.railway.app
+        _domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+        if _domain and not _domain.startswith("http"):
+            _domain = f"https://{_domain}"
+        self.public_url: str = _domain or os.getenv("PUBLIC_URL", "")
 
     def validate(self) -> None:
         """Raise if required env vars are missing."""
