@@ -672,7 +672,7 @@ def _transcript_to_messages(content: str) -> list[dict]:
 def _messages_to_transcript(messages: list[dict]) -> str:
     """Convert compressed message dicts back to JSONL transcript format."""
     lines: list[str] = []
-    last_uuid: str | None = None
+    last_uuid: str = ""  # root entry uses empty string, not null
     for msg in messages:
         role = msg.get("role", "user")
         entry_type = "assistant" if role == "assistant" else "user"

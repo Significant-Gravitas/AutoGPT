@@ -202,13 +202,20 @@ async def _iter_sdk_messages(
 ) -> AsyncGenerator[Any, None]:
     """Yield SDK messages with heartbeat-based timeouts.
 
+    Uses an explicit async iterator with non-cancelling heartbeats.
+
+    CRITICAL: we must NOT cancel ``__anext__()`` mid-flight — doing so
+    (via ``asyncio.timeout`` or ``wait_for``) corrupts the SDK's internal
+    anyio memory stream, causing ``StopAsyncIteration`` on the next call
+    and silently dropping all in-flight tool results.  Instead, wrap
+    ``__anext__()`` in a ``Task`` and use ``asyncio.wait()`` with a
+    timeout.  On timeout we yield a heartbeat sentinel but keep the Task
+    alive so it can deliver the next message.
+
     Yields ``None`` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
     On stream end (``StopAsyncIteration``), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
-
-    The ``finally`` block cancels any pending ``__anext__`` task so the
-    caller does not need to manage the task lifecycle.
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
@@ -1102,6 +1109,7 @@ async def stream_chat_completion_sdk(
                     transcript_builder.append_user(content=current_message)
 
                 async for sdk_msg in _iter_sdk_messages(client):
+                    # Heartbeat sentinel — refresh lock and keep SSE alive
                     if sdk_msg is None:
                         await lock.refresh()
                         for ev in compaction.emit_start_if_ready():
@@ -1120,6 +1128,7 @@ async def stream_chat_completion_sdk(
                         len(adapter.resolved_tool_calls),
                     )
 
+                    # Log AssistantMessage API errors (e.g. invalid_request)
                     sdk_error = getattr(sdk_msg, "error", None)
                     if isinstance(sdk_msg, AssistantMessage) and sdk_error:
                         logger.error(
@@ -1131,8 +1140,19 @@ async def stream_chat_completion_sdk(
                             str(sdk_msg.content)[:500],
                         )
 
-                    # Wait for PostToolUse hook stash (race-condition fix).
-                    # Skip for parallel tool continuations (all ToolUseBlocks).
+                    # Race-condition fix: SDK hooks (PostToolUse) are
+                    # executed asynchronously via start_soon() — the next
+                    # message can arrive before the hook stashes output.
+                    # wait_for_stash() awaits an asyncio.Event signaled by
+                    # stash_pending_tool_output(), completing as soon as
+                    # the hook finishes (typically <1ms).  The sleep(0)
+                    # after lets any remaining concurrent hooks complete.
+                    #
+                    # Skip for parallel tool continuations: when the SDK
+                    # sends parallel tool calls as separate
+                    # AssistantMessages (each containing only
+                    # ToolUseBlocks), we must NOT wait/flush — the prior
+                    # tools are still executing concurrently.
                     is_parallel_continuation = isinstance(
                         sdk_msg, AssistantMessage
                     ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
@@ -1152,6 +1172,7 @@ async def stream_chat_completion_sdk(
                                 - len(adapter.resolved_tool_calls),
                             )
 
+                    # Log ResultMessage details for debugging
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
                             "%s Received: ResultMessage %s "
@@ -1173,7 +1194,8 @@ async def stream_chat_completion_sdk(
                                 sdk_msg.result or "(no error message provided)",
                             )
 
-                    # Sync TranscriptBuilder with CLI after compaction
+                    # Emit compaction end if SDK finished compacting.
+                    # Sync TranscriptBuilder with the CLI's active context.
                     compact_result = await compaction.emit_end_if_ready(session)
                     for ev in compact_result.events:
                         yield ev
@@ -1189,6 +1211,7 @@ async def stream_chat_completion_sdk(
                             )
                             entries_replaced = True
 
+                    # --- Dispatch adapter responses ---
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
                             continue
@@ -1280,8 +1303,12 @@ async def stream_chat_completion_sdk(
                         elif isinstance(response, StreamFinish):
                             stream_completed = True
 
-                    # Append assistant entry AFTER convert_message so
-                    # stashed tool results come first (required API order).
+                    # Append assistant entry AFTER convert_message so that
+                    # any stashed tool results from the previous turn are
+                    # recorded first, preserving the required API order:
+                    # assistant(tool_use) → tool_result → assistant(text).
+                    # Skip if replace_entries just ran — the CLI session
+                    # file already contains this message.
                     if isinstance(sdk_msg, AssistantMessage) and not entries_replaced:
                         transcript_builder.append_assistant(
                             content_blocks=_format_sdk_content_blocks(sdk_msg.content),

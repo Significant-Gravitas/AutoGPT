@@ -326,7 +326,7 @@ class TestMessagesToTranscript:
         result = _messages_to_transcript(messages)
         lines = result.strip().split("\n")
         entries = [json.loads(line) for line in lines]
-        assert entries[0]["parentUuid"] is None
+        assert entries[0]["parentUuid"] == ""
         assert entries[1]["parentUuid"] == entries[0]["uuid"]
         assert entries[2]["parentUuid"] == entries[1]["uuid"]
 
