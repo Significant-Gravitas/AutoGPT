@@ -12,7 +12,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import openai
 from claude_agent_sdk import (
@@ -102,7 +102,7 @@ _PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
     "request too large",
     "maximum context length",
     "context_length_exceeded",
-    "max_tokens",
+    "max_tokens_exceeded",
     "input is too long",
     "content length exceeds",
 )
@@ -125,20 +125,27 @@ def _is_prompt_too_long(err: BaseException) -> bool:
     return False
 
 
+class ReducedContext(NamedTuple):
+    builder: TranscriptBuilder
+    use_resume: bool
+    resume_file: str | None
+    transcript_lost: bool
+    tried_compaction: bool
+
+
 async def _reduce_context(
     transcript_content: str,
     tried_compaction: bool,
     session_id: str,
     sdk_cwd: str,
     log_prefix: str,
-) -> tuple[TranscriptBuilder, bool, str | None, bool, bool]:
+) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
     On the first retry, compacts the transcript via LLM summarization.
     On subsequent retries (or if compaction fails), drops the transcript
     entirely so the query is rebuilt from DB messages only.
 
-    Returns ``(builder, use_resume, resume_file, transcript_lost, tried_compaction)``.
     ``transcript_lost`` is True when the transcript was dropped (caller
     should set ``transcript_caused_error``).
     """
@@ -155,13 +162,13 @@ async def _reduce_context(
             tb.load_previous(compacted, log_prefix=log_prefix)
             resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
             if resume_file:
-                return tb, True, resume_file, False, True
+                return ReducedContext(tb, True, resume_file, False, True)
             logger.warning("%s Failed to write compacted transcript", log_prefix)
         logger.warning("%s Compaction failed, dropping transcript", log_prefix)
 
     # Subsequent retry or compaction failed: drop transcript entirely
     logger.warning("%s Dropping transcript, rebuilding from DB messages", log_prefix)
-    return TranscriptBuilder(), False, None, True, True
+    return ReducedContext(TranscriptBuilder(), False, None, True, True)
 
 
 def _setup_langfuse_otel() -> None:
@@ -249,13 +256,13 @@ async def _iter_sdk_messages(
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
+
+    async def _next_msg() -> Any:
+        return await msg_iter.__anext__()
+
     try:
         while True:
             if pending_task is None:
-
-                async def _next_msg() -> Any:
-                    return await msg_iter.__anext__()
-
                 pending_task = asyncio.create_task(_next_msg())
 
             done, _ = await asyncio.wait({pending_task}, timeout=_HEARTBEAT_INTERVAL)
@@ -1415,27 +1422,25 @@ async def stream_chat_completion_sdk(
                     _MAX_STREAM_ATTEMPTS,
                 )
 
-                (
-                    transcript_builder,
-                    use_resume,
-                    resume_file,
-                    transcript_lost,
-                    _tried_compaction,
-                ) = await _reduce_context(
+                ctx = await _reduce_context(
                     transcript_content,
                     _tried_compaction,
                     session_id,
                     sdk_cwd,
                     log_prefix,
                 )
+                transcript_builder = ctx.builder
+                use_resume = ctx.use_resume
+                resume_file = ctx.resume_file
+                _tried_compaction = ctx.tried_compaction
                 transcript_msg_count = 0
-                if transcript_lost:
+                if ctx.transcript_lost:
                     transcript_caused_error = True
 
                 # Rebuild SDK options and query for the reduced context
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
-                if use_resume and resume_file:
-                    sdk_options_kwargs_retry["resume"] = resume_file
+                if ctx.use_resume and ctx.resume_file:
+                    sdk_options_kwargs_retry["resume"] = ctx.resume_file
                 elif "resume" in sdk_options_kwargs_retry:
                     del sdk_options_kwargs_retry["resume"]
                 options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs

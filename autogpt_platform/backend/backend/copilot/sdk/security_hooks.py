@@ -89,7 +89,9 @@ def _validate_tool_access(
     for pattern in DANGEROUS_PATTERNS:
         if re.search(pattern, input_str, re.IGNORECASE):
             logger.warning(
-                f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
+                "Blocked dangerous pattern in tool input: %s in %s",
+                pattern,
+                tool_name,
             )
             return _deny(
                 "[SECURITY] Input contains a blocked pattern. "
@@ -183,7 +185,9 @@ def create_security_hooks(
                     )
                 if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
-                        f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
+                        "[SDK] Task limit reached (%d), user=%s",
+                        max_subtasks,
+                        user_id,
                     )
                     return cast(
                         SyncHookJSONOutput,
@@ -284,8 +288,11 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             error = input_data.get("error", "Unknown error")
             logger.warning(
-                f"[SDK] Tool failed: {tool_name}, error={error}, "
-                f"user={user_id}, tool_use_id={tool_use_id}"
+                "[SDK] Tool failed: %s, error=%s, user=%s, tool_use_id=%s",
+                tool_name,
+                str(error).replace("\n", "").replace("\r", ""),
+                user_id,
+                tool_use_id,
             )
 
             _release_task_slot(tool_name, tool_use_id)
@@ -315,8 +322,7 @@ def create_security_hooks(
                 .replace("\r", "")
             )
             logger.info(
-                "[SDK] Context compaction triggered: %s, user=%s, "
-                "transcript_path=%s",
+                "[SDK] Context compaction triggered: %s, user=%s, transcript_path=%s",
                 trigger,
                 user_id,
                 transcript_path,
