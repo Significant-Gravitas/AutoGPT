@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
@@ -25,8 +24,10 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+from opentelemetry import context as otel_context_api
+from opentelemetry import trace as otel_trace_api
+from opentelemetry.context import Token
 from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
@@ -86,6 +87,69 @@ from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def _attach_otel_propagation(
+    *,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    trace_name: str | None = None,
+    tags: list[str] | None = None,
+    metadata: dict[str, str] | None = None,
+) -> Token:
+    """Attach OTel context with Langfuse propagation attributes.
+
+    Unlike ``langfuse.propagate_attributes`` (a generator-based context
+    manager), this function attaches the context **directly** and returns
+    the token.  The caller is responsible for detaching via
+    ``otel_context_api.detach(token)`` — but may safely skip detach if the
+    scope is about to end (e.g. async-generator teardown).
+
+    This avoids the cross-task ``ValueError`` that occurs when the
+    generator's ``finally`` block calls ``detach()`` from a different
+    ``contextvars.Context`` after anyio task-group cancellation.
+
+    Uses only public OpenTelemetry APIs (``set_value``, ``set_attribute``)
+    to avoid coupling to Langfuse private internals.
+    """
+    # Langfuse span attribute keys (public, stable constants).
+    _SPAN_KEYS: dict[str, str] = {
+        "user_id": "user.id",
+        "session_id": "session.id",
+        "trace_name": "langfuse.trace.name",
+        "tags": "langfuse.trace.tags",
+    }
+
+    context = otel_context_api.get_current()
+    span = otel_trace_api.get_current_span()
+
+    attrs: dict[str, str | list[str] | None] = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "trace_name": trace_name,
+        "tags": tags,
+    }
+
+    for key, value in attrs.items():
+        if value is None:
+            continue
+        # Store in OTel context for child-span propagation.
+        context = otel_context_api.set_value(
+            f"langfuse.propagated.{key}", value, context=context
+        )
+        # Set on the current span so Langfuse picks it up.
+        if span.is_recording() and (span_key := _SPAN_KEYS.get(key)):
+            span.set_attribute(span_key, value)
+
+    if metadata:
+        context = otel_context_api.set_value(
+            "langfuse.propagated.metadata", metadata, context=context
+        )
+        if span.is_recording():
+            for k, v in metadata.items():
+                span.set_attribute(f"langfuse.trace.metadata.{k}", v)
+
+    return otel_context_api.attach(context=context)
 
 
 def _setup_langfuse_otel() -> None:
@@ -732,8 +796,8 @@ async def stream_chat_completion_sdk(
         )
         return
 
-    # OTEL context manager — initialized inside the try and cleaned up in finally.
-    _otel_ctx: Any = None
+    # OTEL context token — initialized inside the try and detached in finally.
+    _otel_token: Token | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -797,7 +861,7 @@ async def stream_chat_completion_sdk(
                 )
             except Exception as transcript_err:
                 logger.warning(
-                    "%s Transcript download failed, continuing without " "--resume: %s",
+                    "%s Transcript download failed, continuing without --resume: %s",
                     log_prefix,
                     transcript_err,
                 )
@@ -820,7 +884,7 @@ async def stream_chat_completion_sdk(
             is_valid = validate_transcript(dl.content)
             dl_lines = dl.content.strip().split("\n") if dl.content else []
             logger.info(
-                "%s Downloaded transcript: %dB, %d lines, " "msg_count=%d, valid=%s",
+                "%s Downloaded transcript: %dB, %d lines, msg_count=%d, valid=%s",
                 log_prefix,
                 len(dl.content),
                 len(dl_lines),
@@ -908,7 +972,11 @@ async def stream_chat_completion_sdk(
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
-        _otel_ctx = propagate_attributes(
+        #
+        # We attach the context directly (not via a generator-based context
+        # manager) to avoid cross-task ValueError during cancellation.
+        # See SECRT-2121.
+        _otel_token = _attach_otel_propagation(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-sdk",
@@ -918,7 +986,6 @@ async def stream_chat_completion_sdk(
                 "conversation_turn": str(turn),
             },
         )
-        _otel_ctx.__enter__()
 
         async with ClaudeSDKClient(options=options) as client:
             current_message = message or ""
@@ -1054,8 +1121,7 @@ async def stream_chat_completion_sdk(
                         break
 
                     logger.info(
-                        "%s Received: %s %s "
-                        "(unresolved=%d, current=%d, resolved=%d)",
+                        "%s Received: %s %s (unresolved=%d, current=%d, resolved=%d)",
                         log_prefix,
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
@@ -1404,12 +1470,17 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
-        # --- Close OTEL context ---
-        if _otel_ctx is not None:
+        # --- Detach OTEL context ---
+        # Detach is best-effort: during cross-task cancellation (anyio task
+        # group teardown), the contextvars.Context may have changed, making
+        # the token invalid.  This is harmless — the context is about to be
+        # garbage-collected anyway.  See SECRT-2121.
+        if _otel_token is not None:
             try:
-                _otel_ctx.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("OTEL context teardown failed", exc_info=True)
+                otel_context_api.detach(_otel_token)
+            except ValueError:
+                # Cross-task cancellation changed contextvars.Context; harmless.
+                logger.debug("%s OTEL detach skipped (different context)", log_prefix)
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
