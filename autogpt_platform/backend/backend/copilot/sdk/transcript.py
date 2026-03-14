@@ -13,8 +13,10 @@ filesystem for self-hosted) — no DB column needed.
 import logging
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from backend.util import json
 
@@ -82,7 +84,11 @@ def strip_progress_entries(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if entry.get("type", "") in STRIPPABLE_TYPES and uid:
+        if (
+            entry.get("type", "") in STRIPPABLE_TYPES
+            and uid
+            and not entry.get("isCompactSummary")
+        ):
             stripped_uuids.add(uid)
 
     # Second pass: keep non-stripped entries, reparenting where needed.
@@ -106,7 +112,9 @@ def strip_progress_entries(content: str) -> str:
         if not isinstance(entry, dict):
             result_lines.append(line)
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES:
+        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
+            "isCompactSummary"
+        ):
             continue
         uid = entry.get("uuid", "")
         if uid in reparented:
@@ -135,6 +143,173 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 
 
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+
+
+def _projects_base() -> str:
+    """Return the resolved path to the CLI's projects directory."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    return os.path.realpath(os.path.join(config_dir, "projects"))
+
+
+def _cli_project_dir(sdk_cwd: str) -> str | None:
+    """Return the CLI's project directory for a given working directory.
+
+    Returns ``None`` if the path would escape the projects base.
+    """
+    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+    projects_base = _projects_base()
+    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
+
+    if not project_dir.startswith(projects_base + os.sep):
+        logger.warning(
+            "[Transcript] Project dir escaped projects base: %s", project_dir
+        )
+        return None
+    return project_dir
+
+
+def _safe_glob_jsonl(project_dir: str) -> list[Path]:
+    """Glob ``*.jsonl`` files, filtering out symlinks that escape the directory."""
+    try:
+        resolved_base = Path(project_dir).resolve()
+    except OSError as e:
+        logger.warning("[Transcript] Failed to resolve project dir: %s", e)
+        return []
+
+    result: list[Path] = []
+    for candidate in Path(project_dir).glob("*.jsonl"):
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_relative_to(resolved_base):
+                result.append(resolved)
+        except (OSError, RuntimeError) as e:
+            logger.debug(
+                "[Transcript] Skipping invalid CLI session candidate %s: %s",
+                candidate,
+                e,
+            )
+    return result
+
+
+def read_compacted_entries(transcript_path: str) -> list[dict] | None:
+    """Read compacted entries from the CLI session file after compaction.
+
+    Parses the JSONL file line-by-line, finds the ``isCompactSummary: true``
+    entry, and returns it plus all entries after it.
+
+    The CLI writes the compaction summary BEFORE sending the next message,
+    so the file is guaranteed to be flushed by the time we read it.
+
+    Returns a list of parsed dicts, or ``None`` if the file cannot be read
+    or no compaction summary is found.
+    """
+    if not transcript_path:
+        return None
+
+    projects_base = _projects_base()
+    real_path = os.path.realpath(transcript_path)
+    if not real_path.startswith(projects_base + os.sep):
+        logger.warning(
+            "[Transcript] transcript_path outside projects base: %s", transcript_path
+        )
+        return None
+
+    try:
+        content = Path(real_path).read_text()
+    except OSError as e:
+        logger.warning(
+            "[Transcript] Failed to read session file %s: %s", transcript_path, e
+        )
+        return None
+
+    lines = content.strip().split("\n")
+    compact_idx: int | None = None
+
+    for idx, line in enumerate(lines):
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("isCompactSummary"):
+            compact_idx = idx  # don't break — find the LAST summary
+
+    if compact_idx is None:
+        logger.debug("[Transcript] No compaction summary found in %s", transcript_path)
+        return None
+
+    entries: list[dict] = []
+    for line in lines[compact_idx:]:
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if isinstance(entry, dict):
+            entries.append(entry)
+
+    logger.info(
+        "[Transcript] Read %d compacted entries from %s (summary at line %d)",
+        len(entries),
+        transcript_path,
+        compact_idx + 1,
+    )
+    return entries
+
+
+def read_cli_session_file(sdk_cwd: str) -> str | None:
+    """Read the CLI's own session file, which reflects any compaction.
+
+    The CLI writes its session transcript to
+    ``~/.claude/projects/<encoded_cwd>/<session_id>.jsonl``.
+    Since each SDK turn uses a unique ``sdk_cwd``, there should be
+    exactly one ``.jsonl`` file in that directory.
+
+    Returns the file content, or ``None`` if not found.
+    """
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir or not os.path.isdir(project_dir):
+        return None
+
+    jsonl_files = _safe_glob_jsonl(project_dir)
+    if not jsonl_files:
+        logger.debug("[Transcript] No CLI session file found in %s", project_dir)
+        return None
+
+    # Pick the most recently modified file (should be only one per turn).
+    try:
+        session_file = max(jsonl_files, key=lambda p: p.stat().st_mtime)
+    except OSError as e:
+        logger.warning("[Transcript] Failed to inspect CLI session files: %s", e)
+        return None
+
+    try:
+        content = session_file.read_text()
+        logger.info(
+            "[Transcript] Read CLI session file: %s (%d bytes)",
+            session_file,
+            len(content),
+        )
+        return content
+    except OSError as e:
+        logger.warning("[Transcript] Failed to read CLI session file: %s", e)
+        return None
+
+
+def cleanup_cli_project_dir(sdk_cwd: str) -> None:
+    """Remove the CLI's project directory for a specific working directory.
+
+    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
+    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
+    safe to remove entirely after the transcript has been uploaded.
+    """
+    project_dir = _cli_project_dir(sdk_cwd)
+    if not project_dir:
+        return
+
+    if os.path.isdir(project_dir):
+        shutil.rmtree(project_dir, ignore_errors=True)
+        logger.debug("[Transcript] Cleaned up CLI project dir: %s", project_dir)
+    else:
+        logger.debug("[Transcript] Project dir not found: %s", project_dir)
 
 
 def write_transcript_to_tempfile(
@@ -231,24 +406,27 @@ def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, s
     )
 
 
-def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
-    """Build the full storage path string that ``retrieve()`` expects.
-
-    ``store()`` returns a path like ``gcs://bucket/workspaces/...`` or
-    ``local://workspace_id/file_id/filename``.  Since we use deterministic
-    arguments we can reconstruct the same path for download/delete without
-    having stored the return value.
-    """
+def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
+    """Build a full storage path from (workspace_id, file_id, filename) parts."""
     from backend.util.workspace_storage import GCSWorkspaceStorage
 
-    wid, fid, fname = _storage_path_parts(user_id, session_id)
-
+    wid, fid, fname = parts
     if isinstance(backend, GCSWorkspaceStorage):
         blob = f"workspaces/{wid}/{fid}/{fname}"
         return f"gcs://{backend.bucket_name}/{blob}"
-    else:
-        # LocalWorkspaceStorage returns local://{relative_path}
-        return f"local://{wid}/{fid}/{fname}"
+    return f"local://{wid}/{fid}/{fname}"
+
+
+def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
+    """Build the full storage path string that ``retrieve()`` expects."""
+    return _build_path_from_parts(_storage_path_parts(user_id, session_id), backend)
+
+
+def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> str:
+    """Build the full storage path for the companion .meta.json file."""
+    return _build_path_from_parts(
+        _meta_storage_path_parts(user_id, session_id), backend
+    )
 
 
 async def upload_transcript(
@@ -353,15 +531,7 @@ async def download_transcript(
     message_count = 0
     uploaded_at = 0.0
     try:
-        from backend.util.workspace_storage import GCSWorkspaceStorage
-
-        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
-        if isinstance(storage, GCSWorkspaceStorage):
-            blob = f"workspaces/{mwid}/{mfid}/{mfname}"
-            meta_path = f"gcs://{storage.bucket_name}/{blob}"
-        else:
-            meta_path = f"local://{mwid}/{mfid}/{mfname}"
-
+        meta_path = _build_meta_storage_path(user_id, session_id, storage)
         meta_data = await storage.retrieve(meta_path)
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
@@ -378,7 +548,11 @@ async def download_transcript(
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
-    """Delete transcript from bucket storage (e.g. after resume failure)."""
+    """Delete transcript and its metadata from bucket storage.
+
+    Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
+    so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
+    """
     from backend.util.workspace_storage import get_workspace_storage
 
     storage = await get_workspace_storage()
@@ -386,6 +560,14 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
 
     try:
         await storage.delete(path)
-        logger.info(f"[Transcript] Deleted transcript for session {session_id}")
+        logger.info("[Transcript] Deleted transcript for session %s", session_id)
     except Exception as e:
-        logger.warning(f"[Transcript] Failed to delete transcript: {e}")
+        logger.warning("[Transcript] Failed to delete transcript: %s", e)
+
+    # Also delete the companion .meta.json to avoid orphaned metadata.
+    try:
+        meta_path = _build_meta_storage_path(user_id, session_id, storage)
+        await storage.delete(meta_path)
+        logger.info("[Transcript] Deleted metadata for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete metadata: %s", e)
