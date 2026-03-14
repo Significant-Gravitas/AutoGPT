@@ -285,7 +285,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(resolved) as f:
+        with open(resolved, encoding="utf-8", errors="replace") as f:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.

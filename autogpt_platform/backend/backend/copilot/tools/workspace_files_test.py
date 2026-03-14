@@ -3,6 +3,7 @@
 import base64
 import os
 import shutil
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -437,3 +438,55 @@ class TestReadLocalToolResult:
         finally:
             _current_project_dir.reset(token)
             self._cleanup(encoded)
+
+
+# ---------------------------------------------------------------------------
+# ReadWorkspaceFileTool fallback to _read_local_tool_result
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_data):
+    """When _resolve_file returns ErrorResponse for an allowed local path,
+    ReadWorkspaceFileTool should fall back to _read_local_tool_result."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    # Create a real tool-result file on disk so the fallback can read it.
+    encoded = "-tmp-copilot-fallback-test"
+    conv_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results")
+    os.makedirs(tool_dir, exist_ok=True)
+    filepath = os.path.join(tool_dir, "result.txt")
+    with open(filepath, "w") as f:
+        f.write("fallback content")
+
+    token = _current_project_dir.set(encoded)
+    try:
+        # Mock _resolve_file to return an ErrorResponse (simulating "file not
+        # found in workspace") so the fallback branch is exercised.
+        mock_resolve = AsyncMock(
+            return_value=ErrorResponse(
+                message="File not found at path: result.txt",
+                session_id=session.session_id,
+            )
+        )
+        with patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve):
+            read_tool = ReadWorkspaceFileTool()
+            result = await read_tool._execute(
+                user_id=user.id,
+                session=session,
+                path=filepath,
+            )
+
+        # Should have fallen back to _read_local_tool_result and succeeded.
+        assert isinstance(result, WorkspaceFileContentResponse), (
+            f"Expected fallback to local read, got {type(result).__name__}: "
+            f"{getattr(result, 'message', '')}"
+        )
+        decoded = base64.b64decode(result.content_base64).decode("utf-8")
+        assert decoded == "fallback content"
+        mock_resolve.assert_awaited_once()
+    finally:
+        _current_project_dir.reset(token)
+        shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)

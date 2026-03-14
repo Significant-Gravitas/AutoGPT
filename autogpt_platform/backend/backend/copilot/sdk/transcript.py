@@ -151,7 +151,7 @@ def _projects_base() -> str:
     return os.path.realpath(os.path.join(config_dir, "projects"))
 
 
-_STALE_PROJECT_DIR_SECONDS = 6 * 3600  # 6 hours
+_STALE_PROJECT_DIR_SECONDS = 12 * 3600  # 12 hours — matches max session lifetime
 _MAX_PROJECT_DIRS_TO_SWEEP = 50  # limit per sweep to avoid long pauses
 
 

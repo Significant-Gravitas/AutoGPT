@@ -303,17 +303,22 @@ def _read_local_tool_result(
     Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
     regardless of what the caller has already checked.
     """
+    # TOCTOU: path validated then opened separately. Acceptable because
+    # the tool-results directory is server-controlled, not user-writable.
     expanded = os.path.realpath(os.path.expanduser(path))
+    # Defence-in-depth: re-check with resolved path (caller checked raw path).
     if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
-        return ErrorResponse(message=f"Path not allowed: {path}", session_id=session_id)
+        return ErrorResponse(
+            message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
+        )
     try:
+        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
+        # Pre-read size check prevents loading files far above the cap;
+        # the remaining TOCTOU gap is acceptable for server-controlled paths.
         file_size = os.path.getsize(expanded)
         if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
             return ErrorResponse(
-                message=(
-                    f"File too large ({file_size:,} bytes, "
-                    f"limit {_MAX_LOCAL_TOOL_RESULT_BYTES:,}): {path}"
-                ),
+                message=(f"File too large: {os.path.basename(path)}"),
                 session_id=session_id,
             )
 
@@ -346,7 +351,7 @@ def _read_local_tool_result(
         return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
     except Exception as exc:
         return ErrorResponse(
-            message=f"Error reading {path}: {exc}", session_id=session_id
+            message=f"Error reading file: {type(exc).__name__}", session_id=session_id
         )
 
     return WorkspaceFileContentResponse(

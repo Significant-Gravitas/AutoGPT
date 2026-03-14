@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
@@ -141,6 +142,9 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
+
+_last_sweep_time: float = 0.0
+_SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
@@ -285,9 +289,9 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
 
     Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
 
-    Also sweeps stale CLI project directories (older than 6 h) to prevent
-    unbounded disk growth.  The sweep is best-effort and rate-limited to
-    50 directories per turn.
+    Also sweeps stale CLI project directories (older than 12 h) to prevent
+    unbounded disk growth.  The sweep is best-effort, rate-limited to once
+    every 5 minutes, and capped at 50 directories per sweep.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
@@ -302,7 +306,11 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
     await asyncio.to_thread(shutil.rmtree, normalized, True)
 
     # Best-effort sweep of old project dirs to prevent disk leak.
-    await asyncio.to_thread(cleanup_stale_project_dirs)
+    global _last_sweep_time
+    now = time.time()
+    if now - _last_sweep_time >= _SWEEP_INTERVAL_SECONDS:
+        _last_sweep_time = now
+        await asyncio.to_thread(cleanup_stale_project_dirs)
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
