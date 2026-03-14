@@ -2,25 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install only the coaching module dependencies
-RUN pip install --no-cache-dir \
-    "fastapi>=0.100.0" \
-    "uvicorn[standard]>=0.22.0" \
-    "anthropic>=0.20.0" \
-    "supabase>=2.0.0" \
-    "pydantic>=2.0.0" \
-    "python-dotenv>=1.0.0" \
-    "requests>=2.32.0" \
-    "urllib3>=2.0.0" \
-    "charset-normalizer>=3.0.0" \
-    "slowapi>=0.1.9"
+# Install coaching API dependencies from the dedicated requirements file.
+# Adding a new package: edit requirements.coaching.txt — no Dockerfile changes needed.
+COPY requirements.coaching.txt ./requirements.coaching.txt
+RUN pip install --no-cache-dir -r requirements.coaching.txt
 
-# Copy only what the coaching API needs
+# Copy only what the coaching API needs (keeps image small)
 COPY autogpt/singleton.py ./autogpt/singleton.py
 COPY autogpt/coaching/ ./autogpt/coaching/
 
-# Write a minimal autogpt package init — does NOT load the full autogpt app
-# (avoids OpenAI key checks from cached old images / system packages)
+# Minimal autogpt package init — does NOT load the full AutoGPT app
+# (prevents OpenAI key checks from old cached system packages)
 RUN printf 'from dotenv import load_dotenv\nload_dotenv(override=True)\n' \
     > ./autogpt/__init__.py
 
