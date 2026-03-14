@@ -177,6 +177,9 @@ def _get_enabled_blocks() -> types.MappingProxyType[str, Block[Any, Any]]:
     and their set never changes while the process is running.  The returned
     mapping is wrapped in ``MappingProxyType`` so callers cannot accidentally
     mutate the cached data.
+
+    The cached block instances are lightweight singletons (no heavy resources
+    or open connections), so pinning them for the process lifetime is fine.
     """
     enabled: dict[str, Block[Any, Any]] = {}
     for block_id, block_cls in get_blocks().items():

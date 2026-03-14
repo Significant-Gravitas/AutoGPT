@@ -27,6 +27,16 @@ from backend.api.features.store.text_utils import split_camelcase
         # "ABlock" stays "ABlock" because the algorithm requires the left
         # part of an uppercase run to retain at least 2 uppercase chars.
         ("ABlock", "ABlock"),
+        # Digit-to-uppercase transitions
+        ("Base64Encoder", "Base64 Encoder"),
+        ("UTF8Decoder", "UTF8 Decoder"),
+        # Pure digits — no camelCase boundaries to split
+        ("123", "123"),
+        # Known limitation: single-letter uppercase segments after digits
+        # are not split from the following word.  "3D" is only 1 uppercase
+        # char so the uppercase-run rule cannot fire, producing "3 DRenderer"
+        # rather than the ideal "3D Renderer".
+        ("3DRenderer", "3 DRenderer"),
     ],
 )
 def test_split_camelcase(input_text: str, expected: str):

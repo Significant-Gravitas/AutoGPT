@@ -1,11 +1,5 @@
 """Small text helpers shared across store search modules."""
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-_MAX_CAMELCASE_INPUT_LEN = 500
-
 
 def split_camelcase(text: str) -> str:
     """Split CamelCase into separate words.
@@ -30,13 +24,6 @@ def split_camelcase(text: str) -> str:
         >>> split_camelcase("OAuth2Block")
         'OAuth2 Block'
     """
-    if len(text) > _MAX_CAMELCASE_INPUT_LEN:
-        logger.debug(
-            "split_camelcase: truncating input from %d to %d chars",
-            len(text),
-            _MAX_CAMELCASE_INPUT_LEN,
-        )
-        text = text[:_MAX_CAMELCASE_INPUT_LEN]
     if len(text) <= 1:
         return text
 
