@@ -89,56 +89,7 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
-class RetryStrategy:
-    """Determines what to try next after a streaming error.
-
-    COMPACT_THEN_FALLBACK — compact the transcript first; if that also
-        fails, drop it entirely and rebuild from DB messages.
-    FALLBACK_ONLY — skip compaction (e.g. the transcript file itself is
-        broken), go straight to DB-message rebuild.
-    """
-
-    COMPACT_THEN_FALLBACK = "compact_then_fallback"
-    FALLBACK_ONLY = "fallback_only"
-
-
-# Patterns checked against the full exception chain (lowercased).
-_TRANSCRIPT_ERROR_PATTERNS = (
-    "invalid json",
-    "json decode",
-    "jsondecodeerror",
-    "resume file",
-    "session file",
-    "malformed jsonl",
-)
-
-
-def _classify_error(err: BaseException) -> str:
-    """Classify a streaming error into a :class:`RetryStrategy`.
-
-    Walks the exception chain (``__cause__`` / ``__context__``) so that
-    wrapped errors are detected too.
-
-    * Transcript/JSON parse errors → ``FALLBACK_ONLY`` (compaction won't
-      help if the file itself is broken).
-    * Everything else (prompt-too-long, transient 500s, timeouts, …) →
-      ``COMPACT_THEN_FALLBACK``.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = err
-    err_parts: list[str] = []
-
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        err_parts.append(str(current).lower())
-        current = current.__cause__ or current.__context__
-
-    combined = " ".join(err_parts)
-
-    if any(p in combined for p in _TRANSCRIPT_ERROR_PATTERNS):
-        return RetryStrategy.FALLBACK_ONLY
-
-    return RetryStrategy.COMPACT_THEN_FALLBACK
+_MAX_QUERY_ATTEMPTS = 3
 
 
 async def _retry_with_compacted_transcript(
@@ -1038,32 +989,24 @@ async def stream_chat_completion_sdk(
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
-        _MAX_QUERY_ATTEMPTS = 3
-        _retry_strategy: str | None = None  # set on error, None = no error
-        _last_stream_error: Exception | None = None
+        _stream_error: Exception | None = None
         _compaction_attempted = False
 
         for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
             if _query_attempt > 0:
-                _last_retry_strategy = _retry_strategy
-                _retry_strategy = None
-                _last_stream_error = None
+                _stream_error = None
                 stream_completed = False
 
                 logger.info(
-                    "%s Retry attempt %d/%d (strategy=%s)",
+                    "%s Retry attempt %d/%d",
                     log_prefix,
                     _query_attempt + 1,
                     _MAX_QUERY_ATTEMPTS,
-                    _last_retry_strategy,
                 )
 
-                # Try compaction first (once); after that, drop transcript.
-                if (
-                    _last_retry_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
-                    and transcript_content
-                    and not _compaction_attempted
-                ):
+                # First retry: try compacting the transcript.
+                # Subsequent retries: drop transcript, rebuild from DB.
+                if transcript_content and not _compaction_attempted:
                     _compaction_attempted = True
                     tb, use_resume, resume_file, success = (
                         await _retry_with_compacted_transcript(
@@ -1201,14 +1144,12 @@ async def stream_chat_completion_sdk(
                             )
                             break
                         except Exception as stream_err:
-                            _retry_strategy = _classify_error(stream_err)
-                            _last_stream_error = stream_err
+                            _stream_error = stream_err
                             logger.warning(
-                                "%s Stream error (attempt %d/%d, " "strategy=%s): %s",
+                                "%s Stream error (attempt %d/%d): %s",
                                 log_prefix,
                                 _query_attempt + 1,
                                 _MAX_QUERY_ATTEMPTS,
-                                _retry_strategy,
                                 stream_err,
                                 exc_info=True,
                             )
@@ -1454,7 +1395,7 @@ async def stream_chat_completion_sdk(
                 # On error, skip post-stream processing — the retry loop
                 # will compact / fallback / exhaust attempts.  Roll back any
                 # partial messages appended during the failed attempt.
-                if _retry_strategy is not None:
+                if _stream_error is not None:
                     session.messages = session.messages[:_pre_attempt_msg_count]
                     continue  # next retry attempt
 
@@ -1528,23 +1469,17 @@ async def stream_chat_completion_sdk(
                 break
 
             # All retry attempts exhausted — surface error to the user.
-            if _retry_strategy is not None:
+            if _stream_error is not None:
                 transcript_caused_error = True
                 ended_with_stream_error = True
                 logger.error(
-                    "%s All %d query attempts exhausted (strategy=%s): %s",
+                    "%s All %d query attempts exhausted: %s",
                     log_prefix,
                     _MAX_QUERY_ATTEMPTS,
-                    _retry_strategy,
-                    _last_stream_error,
+                    _stream_error,
                 )
                 yield StreamError(
-                    errorText=(
-                        "The conversation is too long for the model. "
-                        "Please start a new session."
-                        if _retry_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
-                        else f"SDK stream error: {_last_stream_error}"
-                    ),
+                    errorText=f"SDK stream error: {_stream_error}",
                     code="all_attempts_exhausted",
                 )
 

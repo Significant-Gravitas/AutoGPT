@@ -1,4 +1,4 @@
-"""Tests for prompt-too-long retry logic and transcript compaction helpers."""
+"""Tests for retry logic and transcript compaction helpers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import pytest
 
 from backend.util import json
 
-from .service import RetryStrategy, _classify_error
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -18,91 +17,6 @@ from .transcript import (
     compact_transcript,
     validate_transcript,
 )
-
-# ---------------------------------------------------------------------------
-# _classify_error
-# ---------------------------------------------------------------------------
-
-
-class TestClassifyError:
-    """Tests for _classify_error — maps errors to RetryStrategy values."""
-
-    @pytest.mark.parametrize(
-        "error_msg",
-        [
-            "prompt is too long: 250000 tokens > 200000 maximum",
-            "Error: prompt is too long",
-            "context_length_exceeded",
-            "request too large",
-            "Connection timeout",
-            "Authentication failed",
-            "Rate limit exceeded",
-            "Internal server error",
-            "SDK process exited with code 1",
-            "",
-        ],
-    )
-    def test_general_errors_return_compact_then_fallback(self, error_msg: str):
-        """Most errors (including prompt-too-long) → COMPACT_THEN_FALLBACK."""
-        assert (
-            _classify_error(Exception(error_msg)) == RetryStrategy.COMPACT_THEN_FALLBACK
-        )
-
-    @pytest.mark.parametrize(
-        "error_msg",
-        [
-            "invalid json in transcript",
-            "json decode error at position 42",
-            "JSONDecodeError: Expecting value",
-            "failed to read resume file",
-            "session file not found",
-            "malformed jsonl entry",
-        ],
-    )
-    def test_transcript_errors_return_fallback_only(self, error_msg: str):
-        """Transcript/JSON parse errors → FALLBACK_ONLY."""
-        assert _classify_error(Exception(error_msg)) == RetryStrategy.FALLBACK_ONLY
-
-    def test_walks_cause_chain(self):
-        """Walks __cause__ to find transcript errors in wrapped exceptions."""
-        inner = Exception("invalid json in transcript")
-        outer = RuntimeError("SDK process failed")
-        outer.__cause__ = inner
-        assert _classify_error(outer) == RetryStrategy.FALLBACK_ONLY
-
-    def test_walks_context_chain(self):
-        """Walks __context__ for implicit exception chaining."""
-        inner = Exception("json decode error")
-        outer = RuntimeError("during handling")
-        outer.__context__ = inner
-        assert _classify_error(outer) == RetryStrategy.FALLBACK_ONLY
-
-    def test_no_infinite_loop_on_circular_chain(self):
-        """Circular exception chains terminate without hanging."""
-        a = Exception("error a")
-        b = Exception("error b")
-        a.__cause__ = b
-        b.__cause__ = a
-        assert _classify_error(a) == RetryStrategy.COMPACT_THEN_FALLBACK
-
-    def test_deep_chain(self):
-        """Deeply nested exception chain is walked."""
-        bottom = Exception("malformed jsonl")
-        current = bottom
-        for i in range(10):
-            wrapper = RuntimeError(f"layer {i}")
-            wrapper.__cause__ = current
-            current = wrapper
-        assert _classify_error(current) == RetryStrategy.FALLBACK_ONLY
-
-    def test_case_insensitive(self):
-        """Pattern matching is case-insensitive."""
-        assert _classify_error(Exception("INVALID JSON")) == RetryStrategy.FALLBACK_ONLY
-        assert (
-            _classify_error(Exception("Resume File not found"))
-            == RetryStrategy.FALLBACK_ONLY
-        )
-
 
 # ---------------------------------------------------------------------------
 # _flatten_assistant_content
