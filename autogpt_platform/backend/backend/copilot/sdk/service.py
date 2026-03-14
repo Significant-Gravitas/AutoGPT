@@ -864,6 +864,12 @@ async def stream_chat_completion_sdk(
     resume_file: str | None = None
     transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
+    # True when transcript_builder represents a full prefix of session history.
+    # First turn (<=1 prior message) is fully covered even without a download.
+    # Set to True when load_previous succeeds; stays False when download fails
+    # on a session with prior messages, preventing a partial upload that would
+    # mislead _build_query_message into skipping gap reconstruction next turn.
+    _transcript_covers_prefix = True
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -1002,12 +1008,14 @@ async def stream_chat_completion_sdk(
                     )
             else:
                 logger.warning("%s Transcript downloaded but invalid", log_prefix)
+                _transcript_covers_prefix = False
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
                 "%s No transcript available (%d messages in session)",
                 log_prefix,
                 len(session.messages),
             )
+            _transcript_covers_prefix = False
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
@@ -1718,6 +1726,14 @@ async def stream_chat_completion_sdk(
                         "%s Transcript invalid, skipping upload (entries=%d)",
                         log_prefix,
                         entry_count,
+                    )
+                elif not _transcript_covers_prefix:
+                    logger.warning(
+                        "%s Skipping transcript upload — builder does not "
+                        "cover full session prefix (entries=%d, session=%d)",
+                        log_prefix,
+                        entry_count,
+                        len(session.messages),
                     )
                 else:
                     logger.info(
