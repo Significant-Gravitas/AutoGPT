@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir \
     "python-dotenv>=1.0.0" \
     "requests>=2.32.0" \
     "urllib3>=2.0.0" \
-    "charset-normalizer>=3.0.0"
+    "charset-normalizer>=3.0.0" \
+    "slowapi>=0.1.9"
 
 # Copy only what the coaching API needs
 COPY autogpt/singleton.py ./autogpt/singleton.py
