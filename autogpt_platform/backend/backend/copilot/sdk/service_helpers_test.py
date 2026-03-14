@@ -89,6 +89,7 @@ class TestIsPromptTooLong:
             "maximum context length",
             "context_length_exceeded",
             "max_tokens_exceeded",
+            "input tokens exceed",
             "input is too long",
             "content length exceeds",
         ]

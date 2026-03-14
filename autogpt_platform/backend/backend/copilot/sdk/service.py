@@ -103,6 +103,7 @@ _PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
     "request too large",
     "maximum context length",
     "context_length_exceeded",
+    "max_tokens_exceeded",
     "input tokens exceed",
     "input is too long",
     "content length exceeds",
