@@ -118,7 +118,7 @@ class TestScenarioCompactAndRetry:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(original)
+            result = await compact_transcript(original, model="test-model")
 
         assert result is not None
         assert result != original  # Must be different
@@ -172,7 +172,7 @@ class TestScenarioCompactFailsFallback:
                 side_effect=RuntimeError("LLM unavailable"),
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     def test_fresh_builder_after_transcript_drop(self):
@@ -263,7 +263,7 @@ class TestScenarioDoubleFailDBFallback:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
 
         # Compaction succeeded — caller would use this for attempt 2
         assert result is not None
@@ -331,7 +331,7 @@ class TestScenarioCompactionIdentical:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
 
         # Returns None — signals caller to fall through to DB fallback
         assert result is None
@@ -587,7 +587,7 @@ class TestRetryEdgeCases:
                 "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
             )(),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     @pytest.mark.asyncio
@@ -618,7 +618,7 @@ class TestRetryEdgeCases:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
 
         assert result is not None
         assert result != transcript
@@ -726,7 +726,7 @@ class TestRetryStateReset:
                 side_effect=RuntimeError("boom"),
             ),
         ):
-            compacted = await compact_transcript(transcript)
+            compacted = await compact_transcript(transcript, model="test-model")
 
         # compact_transcript returns None on failure
         assert compacted is None

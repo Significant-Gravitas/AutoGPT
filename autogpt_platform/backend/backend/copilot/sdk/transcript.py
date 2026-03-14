@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from backend.copilot.config import ChatConfig
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
@@ -611,8 +610,9 @@ def _flatten_assistant_content(blocks: list) -> str:
             elif btype == "tool_use":
                 parts.append(f"[tool_use: {block.get('name', '?')}]")
             else:
-                # Preserve non-text blocks (e.g. image) as placeholders
-                parts.append(f"[{btype}]")
+                # Preserve non-text blocks (e.g. image) as placeholders.
+                # Use __prefix__ to distinguish from literal user text.
+                parts.append(f"[__{btype}__]")
         elif isinstance(block, str):
             parts.append(block)
     return "\n".join(parts) if parts else ""
@@ -646,9 +646,10 @@ def _flatten_tool_result_content(blocks: list) -> str:
         elif isinstance(block, dict) and block.get("type") == "text":
             str_parts.append(str(block.get("text", "")))
         elif isinstance(block, dict):
-            # Preserve non-text/non-tool_result blocks (e.g. image) as placeholders
+            # Preserve non-text/non-tool_result blocks (e.g. image) as placeholders.
+            # Use __prefix__ to distinguish from literal user text.
             btype = block.get("type", "unknown")
-            str_parts.append(f"[{btype}]")
+            str_parts.append(f"[__{btype}__]")
         elif isinstance(block, str):
             str_parts.append(block)
     return "\n".join(str_parts) if str_parts else ""
@@ -759,7 +760,7 @@ async def _run_compression(
 async def compact_transcript(
     content: str,
     *,
-    model: str = "",
+    model: str,
     log_prefix: str = "[Transcript]",
 ) -> str | None:
     """Compact an oversized JSONL transcript using LLM summarization.
@@ -782,8 +783,6 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
-    if not model:
-        model = ChatConfig().model
     messages = _transcript_to_messages(content)
     if len(messages) < 2:
         logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))

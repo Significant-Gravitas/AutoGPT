@@ -10,6 +10,7 @@ import pytest
 from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
+from .service import _is_prompt_too_long
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -55,7 +56,7 @@ class TestFlattenAssistantContent:
         ]
         result = _flatten_assistant_content(blocks)
         assert "See this image:" in result
-        assert "[image]" in result
+        assert "[__image__]" in result
 
     def test_empty(self):
         assert _flatten_assistant_content([]) == ""
@@ -116,7 +117,7 @@ class TestFlattenToolResultContent:
     def test_unknown_block_type_preserved_as_placeholder(self):
         blocks = [{"type": "image", "source": {"type": "base64", "data": "..."}}]
         result = _flatten_tool_result_content(blocks)
-        assert "[image]" in result
+        assert "[__image__]" in result
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +375,7 @@ class TestCompactTranscript:
                 "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
             )(),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     @pytest.mark.asyncio
@@ -413,7 +414,7 @@ class TestCompactTranscript:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     @pytest.mark.asyncio
@@ -456,7 +457,7 @@ class TestCompactTranscript:
                 return_value=mock_result,
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is not None
         assert validate_transcript(result)
         msgs = _transcript_to_messages(result)
@@ -485,5 +486,67 @@ class TestCompactTranscript:
                 side_effect=RuntimeError("LLM unavailable"),
             ),
         ):
-            result = await compact_transcript(transcript)
+            result = await compact_transcript(transcript, model="test-model")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _is_prompt_too_long
+# ---------------------------------------------------------------------------
+
+
+class TestIsPromptTooLong:
+    """Unit tests for _is_prompt_too_long pattern matching."""
+
+    def test_prompt_is_too_long(self):
+        err = RuntimeError("prompt is too long for model context")
+        assert _is_prompt_too_long(err) is True
+
+    def test_request_too_large(self):
+        err = Exception("request too large: 250000 tokens")
+        assert _is_prompt_too_long(err) is True
+
+    def test_maximum_context_length(self):
+        err = ValueError("maximum context length exceeded")
+        assert _is_prompt_too_long(err) is True
+
+    def test_context_length_exceeded(self):
+        err = Exception("context_length_exceeded")
+        assert _is_prompt_too_long(err) is True
+
+    def test_input_tokens_exceed(self):
+        err = Exception("input tokens exceed the max_tokens limit")
+        assert _is_prompt_too_long(err) is True
+
+    def test_input_is_too_long(self):
+        err = Exception("input is too long for the model")
+        assert _is_prompt_too_long(err) is True
+
+    def test_content_length_exceeds(self):
+        err = Exception("content length exceeds maximum")
+        assert _is_prompt_too_long(err) is True
+
+    def test_unrelated_error_returns_false(self):
+        err = RuntimeError("network timeout")
+        assert _is_prompt_too_long(err) is False
+
+    def test_auth_error_returns_false(self):
+        err = Exception("authentication failed: invalid API key")
+        assert _is_prompt_too_long(err) is False
+
+    def test_chained_exception_detected(self):
+        """Prompt-too-long error wrapped in another exception is detected."""
+        inner = RuntimeError("prompt is too long")
+        outer = Exception("SDK error")
+        outer.__cause__ = inner
+        assert _is_prompt_too_long(outer) is True
+
+    def test_case_insensitive(self):
+        err = Exception("PROMPT IS TOO LONG")
+        assert _is_prompt_too_long(err) is True
+
+    def test_old_max_tokens_exceeded_not_matched(self):
+        """The old broad 'max_tokens_exceeded' pattern was removed.
+        Only 'input tokens exceed' should match now."""
+        err = Exception("max_tokens_exceeded")
+        assert _is_prompt_too_long(err) is False
