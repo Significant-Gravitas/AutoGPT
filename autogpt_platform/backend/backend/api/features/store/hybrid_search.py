@@ -200,8 +200,9 @@ async def unified_hybrid_search(
         query_embedding = await embed_query(query)
     except Exception as e:
         logger.warning(
-            f"Failed to generate query embedding - falling back to lexical-only search: {e}. "
-            "Check that openai_internal_api_key is configured and OpenAI API is accessible."
+            "Failed to generate query embedding - falling back to lexical-only search: %s. "
+            "Check that openai_internal_api_key is configured and OpenAI API is accessible.",
+            e,
         )
         query_embedding = [0.0] * EMBEDDING_DIM
         # Redistribute semantic weight to lexical
@@ -392,7 +393,7 @@ async def unified_hybrid_search(
     for result in results:
         result.pop("total_count", None)
 
-    logger.info(f"Unified hybrid search: {len(results)} results, {total} total")
+    logger.info("Unified hybrid search: %d results, %d total", len(results), total)
 
     return results, total
 
@@ -481,7 +482,8 @@ async def hybrid_search(
         query_embedding = await embed_query(query)
     except Exception as e:
         logger.warning(
-            f"Failed to generate query embedding - falling back to lexical-only search: {e}"
+            "Failed to generate query embedding - falling back to lexical-only search: %s",
+            e,
         )
         query_embedding = [0.0] * EMBEDDING_DIM
         total_non_semantic = (
@@ -721,7 +723,9 @@ async def hybrid_search(
         result.pop("total_count", None)
         result.pop("searchable_text", None)
 
-    logger.info(f"Hybrid search (store agents): {len(results)} results, {total} total")
+    logger.info(
+        "Hybrid search (store agents): %d results, %d total", len(results), total
+    )
 
     return results, total
 
@@ -805,15 +809,20 @@ async def _log_vector_error_diagnostics(error: Exception) -> None:
             diagnostics["pgvector_extension"] = f"Error: {e}"
 
         logger.error(
-            f"Vector type error diagnostics:\n"
-            f"  Error: {error}\n"
-            f"  search_path: {diagnostics.get('search_path')}\n"
-            f"  current_schema: {diagnostics.get('current_schema')}\n"
-            f"  user_info: {diagnostics.get('user_info')}\n"
-            f"  pgvector_extension: {diagnostics.get('pgvector_extension')}"
+            "Vector type error diagnostics:\n"
+            "  Error: %s\n"
+            "  search_path: %s\n"
+            "  current_schema: %s\n"
+            "  user_info: %s\n"
+            "  pgvector_extension: %s",
+            error,
+            diagnostics.get("search_path"),
+            diagnostics.get("current_schema"),
+            diagnostics.get("user_info"),
+            diagnostics.get("pgvector_extension"),
         )
     except Exception as diag_error:
-        logger.error(f"Failed to collect vector error diagnostics: {diag_error}")
+        logger.error("Failed to collect vector error diagnostics: %s", diag_error)
 
 
 # Backward compatibility alias - HybridSearchWeights maps to StoreAgentSearchWeights

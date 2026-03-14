@@ -370,7 +370,7 @@ class DocumentationHandler(ContentHandler):
             # If no title found, use filename
             return file_path.stem.replace("-", " ").replace("_", " ").title()
         except Exception as e:
-            logger.warning(f"Failed to read title from {file_path}: {e}")
+            logger.warning("Failed to read title from %s: %s", file_path, e)
             return file_path.stem.replace("-", " ").replace("_", " ").title()
 
     def _chunk_markdown_by_headings(
@@ -390,7 +390,7 @@ class DocumentationHandler(ContentHandler):
         try:
             content = file_path.read_text(encoding="utf-8")
         except Exception as e:
-            logger.warning(f"Failed to read {file_path}: {e}")
+            logger.warning("Failed to read %s: %s", file_path, e)
             return []
 
         lines = content.split("\n")
@@ -515,7 +515,7 @@ class DocumentationHandler(ContentHandler):
         docs_root = self._get_docs_root()
 
         if not docs_root.exists():
-            logger.warning(f"Documentation root not found: {docs_root}")
+            logger.warning("Documentation root not found: %s", docs_root)
             return []
 
         # Find all .md and .mdx files
@@ -591,7 +591,7 @@ class DocumentationHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning(f"Failed to process section {content_id}: {e}")
+                logger.warning("Failed to process section %s: %s", content_id, e)
                 continue
 
         return items
