@@ -283,6 +283,39 @@ async def test_block_handler_get_stats_skips_broken():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_block_handler_handles_none_name():
+    """When block.name is None the fallback display name logic is used."""
+    handler = BlockHandler()
+
+    blocks = {
+        "none-name-block": _make_block_class(
+            name="placeholder",  # will be overridden to None below
+            description="A block with no name",
+        ),
+    }
+    # Override the name to None after construction so _make_block_class
+    # doesn't interfere with the mock wiring.
+    blocks["none-name-block"].return_value.name = None
+
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
+        with patch(
+            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            return_value=[],
+        ):
+            items = await handler.get_missing_items(batch_size=10)
+
+            assert len(items) == 1
+            # display_name should be "" because block.name is None
+            # searchable_text should still contain the description
+            assert "A block with no name" in items[0].searchable_text
+            # metadata["name"] falls back to block.name (None) when
+            # display_name is empty — the ``or`` in ``display_name or block.name``
+            assert items[0].metadata["name"] is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_handler_handles_empty_attributes():
     """Test BlockHandler handles blocks with empty/falsy attribute values."""
     handler = BlockHandler()

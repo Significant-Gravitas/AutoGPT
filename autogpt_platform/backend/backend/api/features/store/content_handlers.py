@@ -180,6 +180,13 @@ def _get_enabled_blocks() -> types.MappingProxyType[str, Block[Any, Any]]:
 
     The cached block instances are lightweight singletons (no heavy resources
     or open connections), so pinning them for the process lifetime is fine.
+
+    .. note::
+
+       No TTL is needed here, unlike the upstream ``get_blocks()`` which uses
+       a 1-hour TTL because it queries DB-backed block metadata.  This layer
+       only caches in-memory class instances that are defined at import time
+       and are immutable for the life of the process.
     """
     enabled: dict[str, Block[Any, Any]] = {}
     for block_id, block_cls in get_blocks().items():
