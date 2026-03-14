@@ -355,7 +355,7 @@ async def test_expand_args_raises_on_file_ref_error():
 
 
 # ---------------------------------------------------------------------------
-# Bare-ref structured parsing (infer_format + parse_file_content)
+# Bare-ref structured parsing (infer_format_from_uri + parse_file_content)
 # ---------------------------------------------------------------------------
 
 

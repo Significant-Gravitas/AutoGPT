@@ -51,7 +51,7 @@ from backend.util.file_content_parser import (
     BINARY_FORMATS,
     MIME_TO_FORMAT,
     PARSE_EXCEPTIONS,
-    infer_format,
+    infer_format_from_uri,
     parse_file_content,
 )
 from backend.util.type import MediaFileType
@@ -341,7 +341,7 @@ async def _infer_format_from_workspace(
             return None
         # Try MIME type first, then filename extension.
         mime = (info.mime_type or "").split(";", 1)[0].strip().lower()
-        return MIME_TO_FORMAT.get(mime) or infer_format(info.name)
+        return MIME_TO_FORMAT.get(mime) or infer_format_from_uri(info.name)
     except (ValueError, FileNotFoundError, OSError, PermissionError):
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
         return None
@@ -570,6 +570,15 @@ async def expand_file_refs_in_args(
         *,
         prop_schema: dict[str, Any] | None = None,
     ) -> Any:
+        """Recursively expand a single argument value.
+
+        Strings are checked for ``@@agptfile:`` references and expanded
+        (bare refs get structured parsing; embedded refs get inline
+        substitution).  Dicts and lists are traversed recursively,
+        threading the corresponding sub-schema from *prop_schema* so
+        that nested fields also receive correct type-aware expansion.
+        Non-string scalars pass through unchanged.
+        """
         if isinstance(value, str):
             ref = parse_file_ref(value)
             if ref is not None:
@@ -578,7 +587,7 @@ async def expand_file_refs_in_args(
                 if _is_media_file_field(prop_schema):
                     return ref.uri
 
-                fmt = infer_format(ref.uri)
+                fmt = infer_format_from_uri(ref.uri)
                 # Workspace URIs by ID (workspace://abc123) have no extension.
                 # When the MIME fragment is also missing, fall back to the
                 # workspace file manager's metadata for format detection.

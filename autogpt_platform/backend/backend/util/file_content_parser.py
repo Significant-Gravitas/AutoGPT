@@ -108,7 +108,7 @@ PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
 )
 
 
-def infer_format(uri: str) -> str | None:
+def infer_format_from_uri(uri: str) -> str | None:
     """Return a format label based on URI extension or MIME fragment.
 
     Returns ``None`` when the format cannot be determined — the caller should
@@ -125,7 +125,16 @@ def infer_format(uri: str) -> str | None:
     #    Strip the fragment first so ".json#mime" doesn't confuse splitext.
     path = uri.split("#")[0].split("?")[0]
     _, ext = splitext(path)
-    return _EXT_TO_FORMAT.get(ext.lower())
+    fmt = _EXT_TO_FORMAT.get(ext.lower())
+    if fmt is not None:
+        return fmt
+
+    # Legacy .xls is not supported — map it so callers can produce a
+    # user-friendly error instead of returning garbled binary.
+    if ext.lower() == ".xls":
+        return "xls"
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +293,12 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
     Unrecognised formats or type mismatches (e.g. text for a binary format)
     still return *content* unchanged without raising.
     """
+    if fmt == "xls":
+        return (
+            "[Unsupported format] Legacy .xls files are not supported. "
+            "Please re-save the file as .xlsx (Excel 2007+) and upload again."
+        )
+
     try:
         if fmt in BINARY_FORMATS:
             parser = _BINARY_PARSERS.get(fmt)

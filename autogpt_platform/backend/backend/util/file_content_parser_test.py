@@ -7,12 +7,12 @@ import pytest
 
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
-    infer_format,
+    infer_format_from_uri,
     parse_file_content,
 )
 
 # ---------------------------------------------------------------------------
-# infer_format
+# infer_format_from_uri
 # ---------------------------------------------------------------------------
 
 
@@ -20,88 +20,93 @@ class TestInferFormat:
     # --- extension-based ---
 
     def test_json_extension(self):
-        assert infer_format("/home/user/data.json") == "json"
+        assert infer_format_from_uri("/home/user/data.json") == "json"
 
     def test_jsonl_extension(self):
-        assert infer_format("/tmp/events.jsonl") == "jsonl"
+        assert infer_format_from_uri("/tmp/events.jsonl") == "jsonl"
 
     def test_ndjson_extension(self):
-        assert infer_format("/tmp/events.ndjson") == "jsonl"
+        assert infer_format_from_uri("/tmp/events.ndjson") == "jsonl"
 
     def test_csv_extension(self):
-        assert infer_format("workspace:///reports/sales.csv") == "csv"
+        assert infer_format_from_uri("workspace:///reports/sales.csv") == "csv"
 
     def test_tsv_extension(self):
-        assert infer_format("/home/user/data.tsv") == "tsv"
+        assert infer_format_from_uri("/home/user/data.tsv") == "tsv"
 
     def test_yaml_extension(self):
-        assert infer_format("/home/user/config.yaml") == "yaml"
+        assert infer_format_from_uri("/home/user/config.yaml") == "yaml"
 
     def test_yml_extension(self):
-        assert infer_format("/home/user/config.yml") == "yaml"
+        assert infer_format_from_uri("/home/user/config.yml") == "yaml"
 
     def test_toml_extension(self):
-        assert infer_format("/home/user/config.toml") == "toml"
+        assert infer_format_from_uri("/home/user/config.toml") == "toml"
 
     def test_parquet_extension(self):
-        assert infer_format("/data/table.parquet") == "parquet"
+        assert infer_format_from_uri("/data/table.parquet") == "parquet"
 
     def test_xlsx_extension(self):
-        assert infer_format("/data/spreadsheet.xlsx") == "xlsx"
+        assert infer_format_from_uri("/data/spreadsheet.xlsx") == "xlsx"
 
-    def test_xls_extension_not_supported(self):
-        # Legacy .xls requires xlrd which we don't bundle.
-        assert infer_format("/data/old_spreadsheet.xls") is None
+    def test_xls_extension_returns_xls_label(self):
+        # Legacy .xls is mapped so callers can produce a helpful error.
+        assert infer_format_from_uri("/data/old_spreadsheet.xls") == "xls"
 
     def test_case_insensitive(self):
-        assert infer_format("/data/FILE.JSON") == "json"
-        assert infer_format("/data/FILE.CSV") == "csv"
+        assert infer_format_from_uri("/data/FILE.JSON") == "json"
+        assert infer_format_from_uri("/data/FILE.CSV") == "csv"
 
     def test_unicode_filename(self):
-        assert infer_format("/home/user/\u30c7\u30fc\u30bf.json") == "json"
-        assert infer_format("/home/user/\u00e9t\u00e9.csv") == "csv"
+        assert infer_format_from_uri("/home/user/\u30c7\u30fc\u30bf.json") == "json"
+        assert infer_format_from_uri("/home/user/\u00e9t\u00e9.csv") == "csv"
 
     def test_unknown_extension(self):
-        assert infer_format("/home/user/readme.txt") is None
+        assert infer_format_from_uri("/home/user/readme.txt") is None
 
     def test_no_extension(self):
-        assert infer_format("workspace://abc123") is None
+        assert infer_format_from_uri("workspace://abc123") is None
 
     # --- MIME-based ---
 
     def test_mime_json(self):
-        assert infer_format("workspace://abc123#application/json") == "json"
+        assert infer_format_from_uri("workspace://abc123#application/json") == "json"
 
     def test_mime_csv(self):
-        assert infer_format("workspace://abc123#text/csv") == "csv"
+        assert infer_format_from_uri("workspace://abc123#text/csv") == "csv"
 
     def test_mime_tsv(self):
-        assert infer_format("workspace://abc123#text/tab-separated-values") == "tsv"
+        assert (
+            infer_format_from_uri("workspace://abc123#text/tab-separated-values")
+            == "tsv"
+        )
 
     def test_mime_ndjson(self):
-        assert infer_format("workspace://abc123#application/x-ndjson") == "jsonl"
+        assert (
+            infer_format_from_uri("workspace://abc123#application/x-ndjson") == "jsonl"
+        )
 
     def test_mime_yaml(self):
-        assert infer_format("workspace://abc123#application/x-yaml") == "yaml"
+        assert infer_format_from_uri("workspace://abc123#application/x-yaml") == "yaml"
 
     def test_mime_xlsx(self):
         uri = "workspace://abc123#application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        assert infer_format(uri) == "xlsx"
+        assert infer_format_from_uri(uri) == "xlsx"
 
     def test_mime_parquet(self):
         assert (
-            infer_format("workspace://abc123#application/vnd.apache.parquet")
+            infer_format_from_uri("workspace://abc123#application/vnd.apache.parquet")
             == "parquet"
         )
 
     def test_unknown_mime(self):
-        assert infer_format("workspace://abc123#text/plain") is None
+        assert infer_format_from_uri("workspace://abc123#text/plain") is None
 
     # --- MIME takes precedence over extension ---
 
     def test_mime_overrides_extension(self):
         # .txt extension but JSON MIME → json
-        assert infer_format("workspace:///file.txt#application/json") == "json"
+        assert infer_format_from_uri("workspace:///file.txt#application/json") == "json"
 
 
 # ---------------------------------------------------------------------------
@@ -335,8 +340,8 @@ class TestParseYaml:
     def test_invalid_yaml_fallback(self):
         content = ":\n  :\n    invalid: - -"
         result = parse_file_content(content, "yaml")
-        # Either parses or falls back — should not raise.
-        assert result is not None
+        # Malformed YAML should fall back to the original string, not raise.
+        assert result == content
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +410,25 @@ class TestParseParquet:
         """Empty binary input should return the empty bytes, not crash."""
         result = parse_file_content(b"", "parquet")
         assert result == b""
+
+    def test_nan_replaced_with_none(self):
+        """NaN values in Parquet must become None for JSON serializability."""
+        import math
+
+        import pandas as pd
+
+        df = pd.DataFrame({"A": [1.0, float("nan"), 3.0], "B": ["x", None, "z"]})
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        result = parse_file_content(buf.getvalue(), "parquet")
+        # Row with NaN in float col → None
+        assert result[2][0] is None  # float NaN → None
+        assert result[2][1] is None  # str None → None
+        # Ensure no NaN leaks
+        for row in result[1:]:
+            for cell in row:
+                if isinstance(cell, float):
+                    assert not math.isnan(cell), f"NaN leaked: {row}"
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +523,7 @@ class TestBinaryFormats:
 
 class TestMimeMapping:
     def test_application_yaml(self):
-        assert infer_format("workspace://abc123#application/yaml") == "yaml"
+        assert infer_format_from_uri("workspace://abc123#application/yaml") == "yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -531,3 +555,66 @@ class TestOpenpyxlFallback:
         """Invalid xlsx bytes should fall back gracefully in non-strict mode."""
         result = parse_file_content(b"not xlsx bytes", "xlsx")
         assert result == b"not xlsx bytes"
+
+
+# ---------------------------------------------------------------------------
+# Header-only CSV
+# ---------------------------------------------------------------------------
+
+
+class TestHeaderOnlyCsv:
+    def test_header_only_csv_returns_header_row(self):
+        """CSV with only a header row (no data rows) should return [[header]]."""
+        content = "Name,Score"
+        result = parse_file_content(content, "csv")
+        assert result == [["Name", "Score"]]
+
+    def test_header_only_csv_with_trailing_newline(self):
+        content = "Name,Score\n"
+        result = parse_file_content(content, "csv")
+        assert result == [["Name", "Score"]]
+
+
+# ---------------------------------------------------------------------------
+# Binary format + line range (line range ignored for binary formats)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
+class TestBinaryFormatLineRange:
+    def test_parquet_ignores_line_range(self):
+        """Binary formats should parse the full file regardless of line range.
+
+        Line ranges are meaningless for binary formats (parquet/xlsx) — the
+        caller (file_ref._expand_bare_ref) passes raw bytes and the parser
+        should return the complete structured data.
+        """
+        import pandas as pd
+
+        df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        # parse_file_content itself doesn't take a line range — this tests
+        # that the full content is parsed even though the bytes could have
+        # been truncated upstream (it's not, by design).
+        result = parse_file_content(buf.getvalue(), "parquet")
+        assert result == [["A", "B"], [1, 4], [2, 5], [3, 6]]
+
+
+# ---------------------------------------------------------------------------
+# Legacy .xls UX
+# ---------------------------------------------------------------------------
+
+
+class TestXlsFallback:
+    def test_xls_returns_helpful_error_string(self):
+        """Uploading a .xls file should produce a helpful error, not garbled binary."""
+        result = parse_file_content(b"\xd0\xcf\x11\xe0garbled", "xls")
+        assert isinstance(result, str)
+        assert ".xlsx" in result
+        assert "not supported" in result.lower()
+
+    def test_xls_with_string_content(self):
+        result = parse_file_content("some text", "xls")
+        assert isinstance(result, str)
+        assert ".xlsx" in result
