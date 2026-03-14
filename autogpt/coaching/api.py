@@ -437,7 +437,7 @@ def get_dashboard(_: str = Depends(verify_api_key)) -> CoachDashboard:
 
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    return {"status": "ok", "service": "ABN Co-Navigator API"}
+    return {"status": "ok", "service": "ABN Co-Navigator API", "version": "2.1.0", "features": ["demo", "telegram"]}
 
 
 # ── Demo endpoints (no API key — rate limited by IP) ─────────────────────────

@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# v2.1.0 – demo page + telegram bot
+LABEL version="2.1.0"
+
 WORKDIR /app
 
 # Install only the coaching module dependencies
