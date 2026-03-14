@@ -1,12 +1,13 @@
 beautifulsoup4>=4.12.2
 colorama==0.4.6
 distro==1.8.0
-openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
-requests
+requests>=2.31.0
+urllib3>=2.0.0
+charset-normalizer>=3.0.0
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
@@ -24,6 +25,15 @@ click
 spacy>=3.0.0,<4.0.0
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
 
+## ABN Consulting AI Co-Navigator
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0.0
+supabase>=2.0.0
+anthropic>=0.20.0
+slowapi>=0.1.9
+python-telegram-bot>=20.0
+
 ##Dev
 coverage
 flake8
@@ -37,8 +47,6 @@ mkdocs
 pymdown-extensions
 
 
-# OpenAI and Generic plugins import
-openapi-python-client==0.13.4
 
 # Items below this point will not be included in the Docker Image
 
