@@ -1,40 +1,24 @@
-# 'dev' or 'release' container build
-ARG BUILD_TYPE=dev
+FROM python:3.11-slim
 
-# Use an official Python base image from the Docker Hub
-FROM python:3.10-slim AS autogpt-base
-
-# Install browsers
-RUN apt-get update && apt-get install -y \
-    chromium-driver firefox-esr \
-    ca-certificates
-
-# Install utilities
-RUN apt-get install -y curl jq wget git
-
-# Set environment variables
-ENV PIP_NO_CACHE_DIR=yes \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Install the required python packages globally
-ENV PATH="$PATH:/root/.local/bin"
-COPY requirements.txt .
-
-# Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt"]
-
-# dev build -> include everything
-FROM autogpt-base as autogpt-dev
-RUN pip install --no-cache-dir -r requirements.txt
 WORKDIR /app
-ONBUILD COPY . ./
 
-# release build -> include bare minimum
-FROM autogpt-base as autogpt-release
-RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
-	pip install --no-cache-dir -r requirements.txt
-WORKDIR /app
-ONBUILD COPY autogpt/ ./autogpt
+# Install only the coaching module dependencies
+RUN pip install --no-cache-dir \
+    "fastapi>=0.100.0" \
+    "uvicorn[standard]>=0.22.0" \
+    "anthropic>=0.20.0" \
+    "supabase>=2.0.0" \
+    "pydantic>=2.0.0" \
+    "python-dotenv>=1.0.0" \
+    "requests>=2.32.0" \
+    "urllib3>=2.0.0" \
+    "charset-normalizer>=3.0.0"
 
-FROM autogpt-${BUILD_TYPE} AS auto-gpt
+# Copy only the coaching module and singleton helper
+COPY autogpt/__init__.py ./autogpt/__init__.py
+COPY autogpt/singleton.py ./autogpt/singleton.py
+COPY autogpt/coaching/ ./autogpt/coaching/
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "uvicorn autogpt.coaching.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

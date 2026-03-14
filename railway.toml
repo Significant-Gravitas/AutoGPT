@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.coaching"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
