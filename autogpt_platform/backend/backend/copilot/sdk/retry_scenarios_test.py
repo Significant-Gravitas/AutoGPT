@@ -104,7 +104,7 @@ def _mock_compress_result(
 class TestScenarioNormalFlow:
     """When no error occurs, no retry logic fires."""
 
-    def test_max_query_attempts_is_three(self):
+    def test_max_attempts_is_three(self):
         """Verify the constant is 3 (compact + DB fallback + exhaustion)."""
         assert _MAX_STREAM_ATTEMPTS == 3
 
@@ -239,12 +239,12 @@ class TestScenarioNoTranscriptFallback:
         """When transcript_content is empty, attempt 2 goes straight to DB
         fallback (the else branch in the retry logic)."""
         # This scenario verifies the state transitions:
-        # _query_attempt == 1, transcript_content == "" → else branch
+        # _attempt == 1, transcript_content == "" → else branch
         transcript_content = ""
-        _query_attempt = 1
+        _attempt = 1
 
         # Simulate the retry logic decision
-        if _query_attempt == 1 and transcript_content:
+        if _attempt == 1 and transcript_content:
             path = "compact"
         else:
             path = "db_fallback"
@@ -300,9 +300,9 @@ class TestScenarioDoubleFailDBFallback:
         assert validate_transcript(result)
 
         # If attempt 2 also fails, attempt 3 skips compaction:
-        _query_attempt = 2
+        _attempt = 2
         transcript_content = result  # Still set from earlier
-        if _query_attempt == 1 and transcript_content:
+        if _attempt == 1 and transcript_content:
             path = "compact"
         else:
             path = "db_fallback"
@@ -322,7 +322,7 @@ class TestScenarioAllAttemptsExhausted:
         _stream_error: Exception | None = None
         transcript_caused_error = False
 
-        for _query_attempt in range(_MAX_STREAM_ATTEMPTS):
+        for _attempt in range(_MAX_STREAM_ATTEMPTS):
             _stream_error = Exception("some error")
 
         # After loop: check exhaustion
@@ -372,7 +372,7 @@ class TestScenarioCompactionIdentical:
         transcript_content = "some transcript content"
         compacted = transcript_content  # Identical!
 
-        # Simulate the retry decision at _query_attempt == 1
+        # Simulate the retry decision at _attempt == 1
         use_compacted = (
             compacted
             and compacted != transcript_content
@@ -464,8 +464,8 @@ class TestRetryStateMachine:
         attempts_made = 0
         _tried_compaction = False
 
-        for _query_attempt in range(min(_MAX_STREAM_ATTEMPTS, len(attempt_results))):
-            if _query_attempt > 0:
+        for _attempt in range(min(_MAX_STREAM_ATTEMPTS, len(attempt_results))):
+            if _attempt > 0:
                 _stream_error = None
                 stream_completed = False
 
@@ -483,7 +483,7 @@ class TestRetryStateMachine:
                     transcript_caused_error = True
 
             attempts_made += 1
-            result = attempt_results[_query_attempt]
+            result = attempt_results[_attempt]
 
             if result == "error":
                 _stream_error = Exception("simulated error")

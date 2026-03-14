@@ -95,38 +95,43 @@ config = ChatConfig()
 _MAX_STREAM_ATTEMPTS = 3
 
 
-async def _retry_with_compacted_transcript(
+async def _reduce_context(
     transcript_content: str,
+    tried_compaction: bool,
     session_id: str,
     sdk_cwd: str,
     log_prefix: str,
-) -> tuple[TranscriptBuilder, bool, str | None, bool]:
-    """Compact the transcript via LLM summarization and prepare for retry.
+) -> tuple[TranscriptBuilder, bool, str | None, bool, bool]:
+    """Prepare reduced context for a retry attempt.
 
-    Returns ``(transcript_builder, use_resume, resume_file, success)``.
-    On failure, returns a fresh builder with ``use_resume=False``.
+    On the first retry, compacts the transcript via LLM summarization.
+    On subsequent retries (or if compaction fails), drops the transcript
+    entirely so the query is rebuilt from DB messages only.
+
+    Returns ``(builder, use_resume, resume_file, transcript_lost, tried_compaction)``.
+    ``transcript_lost`` is True when the transcript was dropped (caller
+    should set ``transcript_caused_error``).
     """
-    compacted = await compact_transcript(transcript_content, log_prefix=log_prefix)
-    if compacted and compacted != transcript_content and validate_transcript(compacted):
-        logger.info("%s Using compacted transcript for retry", log_prefix)
-        tb = TranscriptBuilder()
-        tb.load_previous(compacted, log_prefix=log_prefix)
-        resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
-        if resume_file:
-            return tb, True, resume_file, True
-        logger.warning("%s Failed to write compacted transcript", log_prefix)
+    # First retry: try compacting
+    if transcript_content and not tried_compaction:
+        compacted = await compact_transcript(transcript_content, log_prefix=log_prefix)
+        if (
+            compacted
+            and compacted != transcript_content
+            and validate_transcript(compacted)
+        ):
+            logger.info("%s Using compacted transcript for retry", log_prefix)
+            tb = TranscriptBuilder()
+            tb.load_previous(compacted, log_prefix=log_prefix)
+            resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
+            if resume_file:
+                return tb, True, resume_file, False, True
+            logger.warning("%s Failed to write compacted transcript", log_prefix)
+        logger.warning("%s Compaction failed, dropping transcript", log_prefix)
 
-    logger.warning("%s Compaction failed, will fall back to DB messages", log_prefix)
-    return TranscriptBuilder(), False, None, False
-
-
-def _retry_without_transcript(log_prefix: str) -> tuple[TranscriptBuilder, bool, None]:
-    """Drop the transcript entirely and rebuild query from DB messages.
-
-    Returns ``(transcript_builder, use_resume, resume_file)``.
-    """
+    # Subsequent retry or compaction failed: drop transcript entirely
     logger.warning("%s Dropping transcript, rebuilding from DB messages", log_prefix)
-    return TranscriptBuilder(), False, None
+    return TranscriptBuilder(), False, None, True, True
 
 
 def _setup_langfuse_otel() -> None:
@@ -997,45 +1002,39 @@ async def stream_chat_completion_sdk(
 
         for _attempt in range(_MAX_STREAM_ATTEMPTS):
             if _attempt > 0:
-                _stream_error = None
-                stream_completed = False
-
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
                     log_prefix,
                     _attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                _stream_error = None
+                stream_completed = False
 
-                # First retry: try compacting the transcript.
-                # Subsequent retries: drop transcript, rebuild from DB.
-                if transcript_content and not _tried_compaction:
-                    _tried_compaction = True
-                    tb, use_resume, resume_file, success = (
-                        await _retry_with_compacted_transcript(
-                            transcript_content, session_id, sdk_cwd, log_prefix
-                        )
-                    )
-                    transcript_builder = tb
-                    transcript_msg_count = 0
-                    if not success:
-                        transcript_caused_error = True
-                else:
-                    transcript_builder, use_resume, resume_file = (
-                        _retry_without_transcript(log_prefix)
-                    )
-                    transcript_msg_count = 0
+                (
+                    transcript_builder,
+                    use_resume,
+                    resume_file,
+                    transcript_lost,
+                    _tried_compaction,
+                ) = await _reduce_context(
+                    transcript_content,
+                    _tried_compaction,
+                    session_id,
+                    sdk_cwd,
+                    log_prefix,
+                )
+                transcript_msg_count = 0
+                if transcript_lost:
                     transcript_caused_error = True
 
-                # Rebuild SDK options with updated resume state
+                # Rebuild SDK options and query for the reduced context
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
                 if use_resume and resume_file:
                     sdk_options_kwargs_retry["resume"] = resume_file
                 elif "resume" in sdk_options_kwargs_retry:
                     del sdk_options_kwargs_retry["resume"]
                 options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
-
-                # Rebuild query with updated resume/transcript state
                 query_message, was_compacted = await _build_query_message(
                     current_message,
                     session,
@@ -1045,7 +1044,6 @@ async def stream_chat_completion_sdk(
                 )
                 if attachments.hint:
                     query_message = f"{query_message}\n\n{attachments.hint}"
-
                 adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
