@@ -1,14 +1,13 @@
 """Small text helpers shared across store search modules."""
 
-import re
-
 _MAX_CAMELCASE_INPUT_LEN = 500
 
 
 def split_camelcase(text: str) -> str:
     """Split CamelCase into separate words.
 
-    Both regex patterns are linear-time (no nested quantifiers).
+    Uses a single-pass character-by-character algorithm to avoid any
+    regex backtracking concerns (guaranteed O(n) time).
 
     Examples::
 
@@ -18,9 +17,29 @@ def split_camelcase(text: str) -> str:
         'OAuth2 Block'
     """
     text = text[:_MAX_CAMELCASE_INPUT_LEN]
-    # Step 1: insert space between lowercase/digit and uppercase: "camelCase" -> "camel Case"
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
-    # Step 2: insert space between uppercase run (2+ chars) and uppercase+lowercase.
-    # Using {2,} instead of + prevents splitting single-char sequences like "OAuth2Block".
-    text = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", text)
-    return text
+    if len(text) <= 1:
+        return text
+
+    parts: list[str] = []
+    prev = 0
+    for i in range(1, len(text)):
+        # Insert split between lowercase/digit and uppercase: "camelCase" -> "camel|Case"
+        if (text[i - 1].islower() or text[i - 1].isdigit()) and text[i].isupper():
+            parts.append(text[prev:i])
+            prev = i
+        # Insert split between uppercase run (2+ chars) and uppercase+lowercase:
+        # "AIText" -> "AI|Text".  Requires at least 3 consecutive uppercase chars
+        # before the lowercase so that the left part keeps 2+ uppercase chars
+        # (mirrors the original regex r"([A-Z]{2,})([A-Z][a-z])").
+        elif (
+            i >= 2
+            and text[i - 2].isupper()
+            and text[i - 1].isupper()
+            and text[i].islower()
+            and (i - 1 - prev) >= 2  # left part must retain at least 2 upper chars
+        ):
+            parts.append(text[prev : i - 1])
+            prev = i - 1
+
+    parts.append(text[prev:])
+    return " ".join(parts)
