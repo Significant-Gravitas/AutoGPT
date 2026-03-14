@@ -88,29 +88,89 @@ from .transcript_builder import TranscriptBuilder
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
-_PROMPT_TOO_LONG_PATTERNS = (
-    "prompt is too long",
-    "prompt_too_long",
-    "context_length_exceeded",
-    "request too large",
+
+class RetryStrategy:
+    """Determines what to try next after a streaming error.
+
+    COMPACT_THEN_FALLBACK — try Plan B (compact transcript), then Plan C (DB).
+    FALLBACK_ONLY         — skip compaction, go straight to Plan C (DB).
+    """
+
+    COMPACT_THEN_FALLBACK = "compact_then_fallback"
+    FALLBACK_ONLY = "fallback_only"
+
+
+# Patterns checked against the full exception chain (lowercased).
+_TRANSCRIPT_ERROR_PATTERNS = (
+    "invalid json",
+    "json decode",
+    "jsondecodeerror",
+    "resume file",
+    "session file",
+    "malformed jsonl",
 )
 
 
-def _is_prompt_too_long(err: BaseException) -> bool:
-    """Return True if *err* indicates the prompt exceeds the model's limit.
+def _classify_error(err: BaseException) -> str:
+    """Classify a streaming error into a :class:`RetryStrategy`.
 
     Walks the exception chain (``__cause__`` / ``__context__``) so that
-    wrapped errors (e.g. ``RuntimeError`` wrapping an API error) are
-    detected too.
+    wrapped errors are detected too.
+
+    * Transcript/JSON parse errors → ``FALLBACK_ONLY`` (compaction won't
+      help if the file itself is broken).
+    * Everything else (prompt-too-long, transient 500s, timeouts, …) →
+      ``COMPACT_THEN_FALLBACK``.
     """
     seen: set[int] = set()
     current: BaseException | None = err
+    err_parts: list[str] = []
+
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if any(p in str(current).lower() for p in _PROMPT_TOO_LONG_PATTERNS):
-            return True
+        err_parts.append(str(current).lower())
         current = current.__cause__ or current.__context__
-    return False
+
+    combined = " ".join(err_parts)
+
+    if any(p in combined for p in _TRANSCRIPT_ERROR_PATTERNS):
+        return RetryStrategy.FALLBACK_ONLY
+
+    return RetryStrategy.COMPACT_THEN_FALLBACK
+
+
+async def _apply_plan_b(
+    transcript_content: str,
+    session_id: str,
+    sdk_cwd: str,
+    log_prefix: str,
+) -> tuple[TranscriptBuilder, bool, str | None, bool]:
+    """Plan B: compact the transcript via LLM summarization.
+
+    Returns ``(transcript_builder, use_resume, resume_file, success)``.
+    On failure, returns a fresh builder with ``use_resume=False``.
+    """
+    compacted = await compact_transcript(transcript_content, log_prefix=log_prefix)
+    if compacted and compacted != transcript_content and validate_transcript(compacted):
+        logger.info("%s Plan B — using compacted transcript", log_prefix)
+        tb = TranscriptBuilder()
+        tb.load_previous(compacted, log_prefix=log_prefix)
+        resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
+        if resume_file:
+            return tb, True, resume_file, True
+        logger.warning("%s Plan B — failed to write compacted transcript", log_prefix)
+
+    logger.warning("%s Plan B — compaction failed, will try Plan C", log_prefix)
+    return TranscriptBuilder(), False, None, False
+
+
+def _apply_plan_c(log_prefix: str) -> tuple[TranscriptBuilder, bool, None]:
+    """Plan C: drop transcript entirely, rely on DB message history.
+
+    Returns ``(transcript_builder, use_resume, resume_file)``.
+    """
+    logger.warning("%s Plan C — dropping transcript, using DB fallback", log_prefix)
+    return TranscriptBuilder(), False, None
 
 
 def _setup_langfuse_otel() -> None:
@@ -977,70 +1037,46 @@ async def stream_chat_completion_sdk(
             query_message = f"{query_message}\n\n{attachments.hint}"
 
         _MAX_QUERY_ATTEMPTS = 3
-        _prompt_too_long = False
+        _retry_strategy: str | None = None  # set on error, None = no error
+        _last_stream_error: Exception | None = None
+        _plan_c_applied = False
 
         for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
             if _query_attempt > 0:
-                _prompt_too_long = False
+                _last_retry_strategy = _retry_strategy
+                _retry_strategy = None
+                _last_stream_error = None
                 stream_completed = False
+
                 logger.info(
-                    "%s Prompt-too-long retry attempt %d/%d",
+                    "%s Retry attempt %d/%d (strategy=%s)",
                     log_prefix,
                     _query_attempt + 1,
                     _MAX_QUERY_ATTEMPTS,
+                    _last_retry_strategy,
                 )
-                if _query_attempt == 1 and transcript_content:
-                    compacted = await compact_transcript(
-                        transcript_content, log_prefix=log_prefix
+
+                # Decide: Plan B (compact) or Plan C (DB fallback)?
+                if (
+                    _last_retry_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
+                    and transcript_content
+                    and not _plan_c_applied
+                ):
+                    tb, use_resume, resume_file, success = await _apply_plan_b(
+                        transcript_content, session_id, sdk_cwd, log_prefix
                     )
-                    if (
-                        compacted
-                        and compacted != transcript_content
-                        and validate_transcript(compacted)
-                    ):
-                        logger.info(
-                            "%s Using compacted transcript for retry",
-                            log_prefix,
-                        )
-                        transcript_builder = TranscriptBuilder()
-                        transcript_builder.load_previous(
-                            compacted, log_prefix=log_prefix
-                        )
-                        resume_file = write_transcript_to_tempfile(
-                            compacted, session_id, sdk_cwd
-                        )
-                        if not resume_file:
-                            logger.warning(
-                                "%s Failed to write compacted transcript, "
-                                "dropping transcript",
-                                log_prefix,
-                            )
-                            transcript_builder = TranscriptBuilder()
-                            use_resume = False
-                            transcript_caused_error = True
-                        else:
-                            use_resume = True
-                        transcript_msg_count = 0
-                    else:
-                        logger.warning(
-                            "%s Compaction failed, dropping transcript",
-                            log_prefix,
-                        )
-                        transcript_builder = TranscriptBuilder()
-                        use_resume = False
-                        resume_file = None
-                        transcript_msg_count = 0
+                    transcript_builder = tb
+                    transcript_msg_count = 0
+                    if not success:
                         transcript_caused_error = True
+                        _plan_c_applied = True
                 else:
-                    logger.warning(
-                        "%s Dropping transcript, using DB fallback",
-                        log_prefix,
+                    transcript_builder, use_resume, resume_file = _apply_plan_c(
+                        log_prefix
                     )
-                    transcript_builder = TranscriptBuilder()
-                    use_resume = False
-                    resume_file = None
                     transcript_msg_count = 0
                     transcript_caused_error = True
+                    _plan_c_applied = True
 
                 # Rebuild SDK options with updated resume state
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
@@ -1162,28 +1198,17 @@ async def stream_chat_completion_sdk(
                             )
                             break
                         except Exception as stream_err:
-                            if _is_prompt_too_long(stream_err):
-                                logger.warning(
-                                    "%s Prompt too long (attempt %d/%d): %s",
-                                    log_prefix,
-                                    _query_attempt + 1,
-                                    _MAX_QUERY_ATTEMPTS,
-                                    stream_err,
-                                )
-                                _prompt_too_long = True
-                            else:
-                                logger.error(
-                                    "%s Stream error from SDK: %s",
-                                    log_prefix,
-                                    stream_err,
-                                    exc_info=True,
-                                )
-                                ended_with_stream_error = True
-
-                                yield StreamError(
-                                    errorText=f"SDK stream error: {stream_err}",
-                                    code="sdk_stream_error",
-                                )
+                            _retry_strategy = _classify_error(stream_err)
+                            _last_stream_error = stream_err
+                            logger.warning(
+                                "%s Stream error (attempt %d/%d, " "strategy=%s): %s",
+                                log_prefix,
+                                _query_attempt + 1,
+                                _MAX_QUERY_ATTEMPTS,
+                                _retry_strategy,
+                                stream_err,
+                                exc_info=True,
+                            )
                             break
 
                         logger.info(
@@ -1423,13 +1448,12 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                             )
 
-                # On prompt-too-long, skip post-stream processing — the retry
-                # loop will either compact and retry, or exhaust attempts.
-                # Roll back any partial messages appended during the failed
-                # attempt to prevent duplicates on retry.
-                if _prompt_too_long:
+                # On error, skip post-stream processing — the retry loop
+                # will compact / fallback / exhaust attempts.  Roll back any
+                # partial messages appended during the failed attempt.
+                if _retry_strategy is not None:
                     session.messages = session.messages[:_pre_attempt_msg_count]
-                    continue  # goes to next iteration of for _query_attempt
+                    continue  # next retry attempt
 
                 # Safety net: if tools are still unresolved after the
                 # streaming loop (e.g. StopAsyncIteration before ResultMessage,
@@ -1496,22 +1520,29 @@ async def stream_chat_completion_sdk(
                 ) and not has_appended_assistant:
                     session.messages.append(assistant_response)
 
-                # If we reach here, the stream completed normally (no
-                # prompt-too-long).  The _prompt_too_long case is handled
-                # by the `continue` after the inner finally block.
+                # Stream completed normally — exit the retry loop.
+                # Errors are handled by the `continue` above.
                 break
 
-            if _prompt_too_long:
+            # All retry attempts exhausted — surface error to the user.
+            if _retry_strategy is not None:
                 transcript_caused_error = True
+                ended_with_stream_error = True
                 logger.error(
-                    "%s All %d query attempts exhausted — prompt too long",
+                    "%s All %d query attempts exhausted (strategy=%s): %s",
                     log_prefix,
                     _MAX_QUERY_ATTEMPTS,
+                    _retry_strategy,
+                    _last_stream_error,
                 )
                 yield StreamError(
-                    errorText="The conversation is too long for the model. "
-                    "Please start a new session.",
-                    code="prompt_too_long",
+                    errorText=(
+                        "The conversation is too long for the model. "
+                        "Please start a new session."
+                        if _retry_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
+                        else f"SDK stream error: {_last_stream_error}"
+                    ),
+                    code="all_attempts_exhausted",
                 )
 
         # Transcript upload is handled exclusively in the finally block

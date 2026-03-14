@@ -1,17 +1,17 @@
-"""Integration tests for the try-compact-retry loop scenarios.
+"""Integration tests for the retry/fallback loop scenarios.
 
 These tests exercise the retry decision logic end-to-end by simulating
 the state transitions that happen in ``stream_chat_completion_sdk`` when
-the SDK raises prompt-too-long errors.
+the SDK raises streaming errors.
 
-Scenario matrix (from the design doc):
+Scenario matrix:
   1. Normal flow — no error, no retry
-  2. Prompt-too-long → compact succeeds → retry succeeds
-  3. Prompt-too-long → compact fails → DB fallback succeeds
-  4. Prompt-too-long → no transcript → DB fallback succeeds
-  5. Prompt-too-long → compact succeeds → retry fails → DB fallback succeeds
-  6. All 3 attempts exhausted → StreamError(prompt_too_long)
-  7. Non-prompt-too-long error → no retry, StreamError(sdk_stream_error)
+  2. Error → compact succeeds → retry succeeds
+  3. Error → compact fails → DB fallback succeeds
+  4. Error → no transcript → DB fallback succeeds
+  5. Error × 2 → attempt 3 DB fallback succeeds
+  6. All 3 attempts exhausted → StreamError(all_attempts_exhausted)
+  7. Transcript parse error → skip compact, DB fallback directly
   8. Compaction returns identical content → treated as compact failure → DB fallback
   9. transcript_caused_error → finally skips upload
 """
@@ -25,7 +25,7 @@ import pytest
 
 from backend.util import json
 
-from .service import _is_prompt_too_long
+from .service import RetryStrategy, _classify_error
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -98,19 +98,22 @@ def _mock_compress_result(
 
 
 class TestScenarioNormalFlow:
-    """When no prompt-too-long error occurs, no retry logic fires."""
+    """When no error occurs, no retry logic fires."""
 
-    def test_is_prompt_too_long_returns_false_for_normal_errors(self):
-        """Normal SDK errors should not trigger retry."""
-        normal_errors = [
+    def test_general_errors_get_compact_then_fallback(self):
+        """General SDK errors should get COMPACT_THEN_FALLBACK strategy."""
+        general_errors = [
             "Connection refused",
             "SDK process exited with code 1",
             "Authentication failed",
             "Rate limit exceeded",
             "Internal server error",
+            "prompt is too long",
         ]
-        for msg in normal_errors:
-            assert _is_prompt_too_long(Exception(msg)) is False, msg
+        for msg in general_errors:
+            assert (
+                _classify_error(Exception(msg)) == RetryStrategy.COMPACT_THEN_FALLBACK
+            ), msg
 
 
 # ---------------------------------------------------------------------------
@@ -319,46 +322,42 @@ class TestScenarioDoubleFailDBFallback:
 
 
 class TestScenarioAllAttemptsExhausted:
-    """All 3 attempts hit prompt-too-long — final StreamError is emitted."""
+    """All 3 attempts fail — final StreamError is emitted."""
 
     def test_exhaustion_state_variables(self):
         """Verify the state after exhausting all retry attempts."""
-        # Simulate the retry loop state
         _MAX_QUERY_ATTEMPTS = 3
-        _prompt_too_long = False
+        _retry_strategy: str | None = None
         transcript_caused_error = False
 
         for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
-            # Every attempt hits prompt-too-long
-            _prompt_too_long = True
-            # The `continue` in real code skips post-processing
+            _retry_strategy = RetryStrategy.COMPACT_THEN_FALLBACK
 
         # After loop: check exhaustion
-        assert _prompt_too_long is True
-        # In the real code, this sets transcript_caused_error = True
+        assert _retry_strategy is not None
         transcript_caused_error = True
         assert transcript_caused_error is True
 
 
 # ---------------------------------------------------------------------------
-# Scenario 7: Non-prompt-too-long error — no retry
+# Scenario 7: Transcript parse error → skip compact, DB fallback directly
 # ---------------------------------------------------------------------------
 
 
-class TestScenarioNonPromptError:
-    """A non-prompt-too-long SDK error yields StreamError immediately,
-    no retry."""
+class TestScenarioTranscriptParseError:
+    """Transcript/JSON parse errors skip compaction and go straight to
+    DB fallback (FALLBACK_ONLY strategy)."""
 
-    def test_generic_errors_not_retried(self):
-        """Verify _is_prompt_too_long rejects generic errors."""
-        generic_errors = [
-            Exception("SDK process exited with code 1"),
-            RuntimeError("Connection reset"),
-            ValueError("Invalid argument"),
-            Exception("context_length is 4096"),  # partial match
+    def test_transcript_errors_get_fallback_only(self):
+        """Verify transcript parse errors return FALLBACK_ONLY."""
+        transcript_errors = [
+            Exception("invalid json in line 5"),
+            RuntimeError("json decode error"),
+            ValueError("malformed jsonl entry"),
+            Exception("failed to read resume file"),
         ]
-        for err in generic_errors:
-            assert _is_prompt_too_long(err) is False, str(err)
+        for err in transcript_errors:
+            assert _classify_error(err) == RetryStrategy.FALLBACK_ONLY, str(err)
 
 
 # ---------------------------------------------------------------------------
@@ -477,55 +476,66 @@ class TestRetryStateMachine:
         attempt_results: list[str],
         transcript_content: str = "some_content",
         compact_result: str | None = "compacted_content",
+        error_strategy: str = RetryStrategy.COMPACT_THEN_FALLBACK,
     ) -> dict:
         """Simulate the retry loop and return final state.
 
         Args:
             attempt_results: List of outcomes per attempt.
                 "success" = stream completes normally
-                "prompt_too_long" = prompt-too-long error
+                "error"   = streaming error
             transcript_content: Initial transcript content ("" = none)
             compact_result: Result of compact_transcript (None = failure)
+            error_strategy: RetryStrategy for errors
         """
         _MAX_QUERY_ATTEMPTS = 3
-        _prompt_too_long = False
+        _retry_strategy: str | None = None
         transcript_caused_error = False
         use_resume = bool(transcript_content)
         stream_completed = False
         attempts_made = 0
+        _plan_c_applied = False
 
         for _query_attempt in range(min(_MAX_QUERY_ATTEMPTS, len(attempt_results))):
             if _query_attempt > 0:
-                _prompt_too_long = False
+                _last_strategy = _retry_strategy
+                _retry_strategy = None
                 stream_completed = False
 
-                if _query_attempt == 1 and transcript_content:
+                # Plan B or Plan C?
+                if (
+                    _last_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
+                    and transcript_content
+                    and not _plan_c_applied
+                ):
                     if compact_result and compact_result != transcript_content:
                         use_resume = True
                     else:
                         use_resume = False
                         transcript_caused_error = True
+                        _plan_c_applied = True
                 else:
                     use_resume = False
                     transcript_caused_error = True
+                    _plan_c_applied = True
 
             attempts_made += 1
             result = attempt_results[_query_attempt]
 
-            if result == "prompt_too_long":
-                _prompt_too_long = True
+            if result == "error":
+                _retry_strategy = error_strategy
                 continue  # skip post-stream
 
             # Stream succeeded
             stream_completed = True
             break
 
-        if _prompt_too_long:
+        if _retry_strategy is not None:
             transcript_caused_error = True
 
         return {
             "attempts_made": attempts_made,
-            "prompt_too_long": _prompt_too_long,
+            "retry_strategy": _retry_strategy,
             "transcript_caused_error": transcript_caused_error,
             "stream_completed": stream_completed,
             "use_resume": use_resume,
@@ -535,7 +545,7 @@ class TestRetryStateMachine:
         """Scenario 1: Success on first attempt."""
         state = self._simulate_retry_loop(["success"])
         assert state["attempts_made"] == 1
-        assert state["prompt_too_long"] is False
+        assert state["retry_strategy"] is None
         assert state["transcript_caused_error"] is False
         assert state["stream_completed"] is True
         assert state["use_resume"] is True
@@ -543,12 +553,12 @@ class TestRetryStateMachine:
     def test_compact_and_retry_succeeds(self):
         """Scenario 2: Fail, compact, succeed on attempt 2."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "success"],
+            ["error", "success"],
             transcript_content="original",
             compact_result="compacted",
         )
         assert state["attempts_made"] == 2
-        assert state["prompt_too_long"] is False
+        assert state["retry_strategy"] is None
         assert state["transcript_caused_error"] is False
         assert state["stream_completed"] is True
         assert state["use_resume"] is True  # compacted transcript used
@@ -556,12 +566,12 @@ class TestRetryStateMachine:
     def test_compact_fails_db_fallback_succeeds(self):
         """Scenario 3: Fail, compact fails, DB fallback succeeds."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "success"],
+            ["error", "success"],
             transcript_content="original",
             compact_result=None,  # compact fails
         )
         assert state["attempts_made"] == 2
-        assert state["prompt_too_long"] is False
+        assert state["retry_strategy"] is None
         assert state["transcript_caused_error"] is True  # DB fallback
         assert state["stream_completed"] is True
         assert state["use_resume"] is False
@@ -569,11 +579,11 @@ class TestRetryStateMachine:
     def test_no_transcript_db_fallback_succeeds(self):
         """Scenario 4: No transcript, DB fallback on attempt 2."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "success"],
+            ["error", "success"],
             transcript_content="",  # no transcript
         )
         assert state["attempts_made"] == 2
-        assert state["prompt_too_long"] is False
+        assert state["retry_strategy"] is None
         assert state["transcript_caused_error"] is True
         assert state["stream_completed"] is True
         assert state["use_resume"] is False
@@ -581,12 +591,12 @@ class TestRetryStateMachine:
     def test_double_fail_db_fallback_succeeds(self):
         """Scenario 5: Fail, compact succeeds but retry fails, DB fallback."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "prompt_too_long", "success"],
+            ["error", "error", "success"],
             transcript_content="original",
             compact_result="compacted",
         )
         assert state["attempts_made"] == 3
-        assert state["prompt_too_long"] is False
+        assert state["retry_strategy"] is None
         assert state["transcript_caused_error"] is True
         assert state["stream_completed"] is True
         assert state["use_resume"] is False  # dropped for attempt 3
@@ -594,19 +604,19 @@ class TestRetryStateMachine:
     def test_all_attempts_exhausted(self):
         """Scenario 6: All 3 attempts fail."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "prompt_too_long", "prompt_too_long"],
+            ["error", "error", "error"],
             transcript_content="original",
             compact_result="compacted",
         )
         assert state["attempts_made"] == 3
-        assert state["prompt_too_long"] is True
+        assert state["retry_strategy"] is not None
         assert state["transcript_caused_error"] is True
         assert state["stream_completed"] is False
 
     def test_compact_identical_triggers_db_fallback(self):
         """Scenario 8: Compaction returns identical content."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "success"],
+            ["error", "success"],
             transcript_content="original",
             compact_result="original",  # Same as input!
         )
@@ -617,13 +627,25 @@ class TestRetryStateMachine:
     def test_no_transcript_all_exhausted(self):
         """No transcript + all attempts fail."""
         state = self._simulate_retry_loop(
-            ["prompt_too_long", "prompt_too_long", "prompt_too_long"],
+            ["error", "error", "error"],
             transcript_content="",
         )
         assert state["attempts_made"] == 3
-        assert state["prompt_too_long"] is True
+        assert state["retry_strategy"] is not None
         assert state["transcript_caused_error"] is True
         assert state["stream_completed"] is False
+
+    def test_fallback_only_skips_compact(self):
+        """FALLBACK_ONLY strategy skips Plan B, goes straight to Plan C."""
+        state = self._simulate_retry_loop(
+            ["error", "success"],
+            transcript_content="original",
+            compact_result="compacted",  # would succeed, but should be skipped
+            error_strategy=RetryStrategy.FALLBACK_ONLY,
+        )
+        assert state["attempts_made"] == 2
+        assert state["transcript_caused_error"] is True
+        assert state["use_resume"] is False  # Plan C, not Plan B
 
 
 # ---------------------------------------------------------------------------
@@ -634,35 +656,36 @@ class TestRetryStateMachine:
 class TestRetryEdgeCases:
     """Edge cases for the retry logic components."""
 
-    def test_is_prompt_too_long_with_nested_exception(self):
-        """Chained exception with prompt-too-long in __cause__ is detected."""
-        inner = Exception("prompt is too long: 250000 > 200000")
+    def test_classify_error_with_nested_exception(self):
+        """Chained exception with transcript error in __cause__ is detected."""
+        inner = Exception("invalid json in transcript")
         outer = RuntimeError("SDK error")
         outer.__cause__ = inner
-        # Walks the exception chain to find prompt-too-long in __cause__
-        assert _is_prompt_too_long(outer) is True
-        assert _is_prompt_too_long(inner) is True
+        assert _classify_error(outer) == RetryStrategy.FALLBACK_ONLY
+        assert _classify_error(inner) == RetryStrategy.FALLBACK_ONLY
 
-    def test_is_prompt_too_long_with_context_exception(self):
-        """Chained exception with prompt-too-long in __context__ is detected."""
-        inner = Exception("context_length_exceeded")
+    def test_classify_error_with_context_exception(self):
+        """Chained exception via __context__ is detected."""
+        inner = Exception("json decode error")
         outer = RuntimeError("wrapper")
         outer.__context__ = inner
-        assert _is_prompt_too_long(outer) is True
+        assert _classify_error(outer) == RetryStrategy.FALLBACK_ONLY
 
-    def test_is_prompt_too_long_no_infinite_loop(self):
+    def test_classify_error_no_infinite_loop(self):
         """Circular exception chain doesn't cause infinite loop."""
         a = Exception("error a")
         b = Exception("error b")
         a.__cause__ = b
         b.__cause__ = a  # circular
-        assert _is_prompt_too_long(a) is False
+        assert _classify_error(a) == RetryStrategy.COMPACT_THEN_FALLBACK
 
-    def test_is_prompt_too_long_case_insensitive(self):
+    def test_classify_error_case_insensitive(self):
         """Pattern matching must be case-insensitive."""
-        assert _is_prompt_too_long(Exception("PROMPT IS TOO LONG")) is True
-        assert _is_prompt_too_long(Exception("Prompt_Too_Long")) is True
-        assert _is_prompt_too_long(Exception("CONTEXT_LENGTH_EXCEEDED")) is True
+        assert _classify_error(Exception("INVALID JSON")) == RetryStrategy.FALLBACK_ONLY
+        assert (
+            _classify_error(Exception("RESUME FILE missing"))
+            == RetryStrategy.FALLBACK_ONLY
+        )
 
     @pytest.mark.asyncio
     async def test_compact_transcript_with_single_message(self):
