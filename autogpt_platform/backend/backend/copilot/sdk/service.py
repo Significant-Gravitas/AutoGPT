@@ -89,10 +89,40 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
-# On any streaming error the SDK query is retried with progressively
+# On context-size errors the SDK query is retried with progressively
 # less context: (1) original transcript → (2) compacted transcript →
 # (3) no transcript (DB messages only).
+# Non-context errors (network, auth, rate-limit) are NOT retried.
 _MAX_STREAM_ATTEMPTS = 3
+
+# Patterns that indicate the prompt/request exceeds the model's context limit.
+# Matched case-insensitively against the full exception chain.
+_PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
+    "prompt is too long",
+    "request too large",
+    "maximum context length",
+    "context_length_exceeded",
+    "max_tokens",
+    "input is too long",
+    "content length exceeds",
+)
+
+
+def _is_prompt_too_long(err: BaseException) -> bool:
+    """Return True if *err* indicates the prompt exceeds the model's limit.
+
+    Walks the exception chain (``__cause__`` / ``__context__``) so that
+    wrapped errors are detected too.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        msg = str(current).lower()
+        if any(p in msg for p in _PROMPT_TOO_LONG_PATTERNS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 async def _reduce_context(
@@ -392,7 +422,7 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     """
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
+        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
         return
 
     # Clean the CLI's project directory (transcripts + tool-results).
@@ -486,7 +516,7 @@ async def _compress_messages(
                 client=client,
             )
     except Exception as e:
-        logger.warning(f"[SDK] Context compression with LLM failed: {e}")
+        logger.warning("[SDK] Context compression with LLM failed: %s", e)
         # Fall back to truncation-only (no LLM summarization)
         result = await compress_context(
             messages=messages_dict,
@@ -819,7 +849,7 @@ async def stream_chat_completion_sdk(
     if lock_owner != stream_id:
         # Another stream is active
         logger.warning(
-            f"{log_prefix} Session already has an active stream: {lock_owner}"
+            "%s Session already has an active stream: %s", log_prefix, lock_owner
         )
         yield StreamError(
             errorText="Another stream is already active for this session. "
@@ -940,7 +970,7 @@ async def stream_chat_completion_sdk(
                         f"msg_count={transcript_msg_count})"
                     )
             else:
-                logger.warning(f"{log_prefix} Transcript downloaded but invalid")
+                logger.warning("%s Transcript downloaded but invalid", log_prefix)
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
                 f"{log_prefix} No transcript available "
@@ -1438,19 +1468,27 @@ async def stream_chat_completion_sdk(
                 raise
             except Exception as e:
                 stream_err = e
+                is_context_error = _is_prompt_too_long(e)
                 logger.warning(
-                    "%s Stream error (attempt %d/%d): %s",
+                    "%s Stream error (attempt %d/%d, context_error=%s): %s",
                     log_prefix,
                     _attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
+                    is_context_error,
                     stream_err,
                     exc_info=True,
                 )
                 session.messages = session.messages[:_pre_attempt_msg_count]
+                if not is_context_error:
+                    # Non-context errors (network, auth, rate-limit) should
+                    # not trigger compaction — surface the error immediately.
+                    ended_with_stream_error = True
+                    break
                 continue
         else:
             # All retry attempts exhausted (loop ended without break)
-            transcript_caused_error = True
+            # transcript_caused_error is already set by _reduce_context
+            # when the transcript was dropped (transcript_lost=True).
             ended_with_stream_error = True
             logger.error(
                 "%s All %d query attempts exhausted: %s",
@@ -1458,6 +1496,8 @@ async def stream_chat_completion_sdk(
                 _MAX_STREAM_ATTEMPTS,
                 stream_err,
             )
+
+        if ended_with_stream_error and stream_err is not None:
             yield StreamError(
                 errorText=f"SDK stream error: {stream_err}",
                 code="all_attempts_exhausted",
@@ -1620,6 +1660,6 @@ async def _update_title_async(
         )
         if title and user_id:
             await update_session_title(session_id, user_id, title, only_if_empty=True)
-            logger.debug(f"[SDK] Generated title for {session_id}: {title}")
+            logger.debug("[SDK] Generated title for %s: %s", session_id, title)
     except Exception as e:
-        logger.warning(f"[SDK] Failed to update session title: {e}")
+        logger.warning("[SDK] Failed to update session title: %s", e)

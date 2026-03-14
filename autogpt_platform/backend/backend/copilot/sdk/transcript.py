@@ -12,6 +12,7 @@ filesystem for self-hosted) — no DB column needed.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -333,7 +334,7 @@ def write_transcript_to_tempfile(
     # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
     real_cwd = os.path.realpath(cwd)
     if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning(f"[Transcript] cwd outside sandbox: {cwd}")
+        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
         return None
 
     try:
@@ -343,17 +344,17 @@ def write_transcript_to_tempfile(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
         )
         if not jsonl_path.startswith(real_cwd):
-            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
+            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
             return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
+        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
         return jsonl_path
 
     except OSError as e:
-        logger.warning(f"[Transcript] Failed to write resume file: {e}")
+        logger.warning("[Transcript] Failed to write resume file: %s", e)
         return None
 
 
@@ -500,11 +501,14 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
+        logger.warning("%s Failed to write metadata: %s", log_prefix, e)
 
     logger.info(
-        f"{log_prefix} Uploaded {len(encoded)}B "
-        f"(stripped from {len(content)}B, msg_count={message_count})"
+        "%s Uploaded %dB (stripped from %dB, msg_count=%d)",
+        log_prefix,
+        len(encoded),
+        len(content),
+        message_count,
     )
 
 
@@ -527,10 +531,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug(f"{log_prefix} No transcript in storage")
+        logger.debug("%s No transcript in storage", log_prefix)
         return None
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
+        logger.warning("%s Failed to download transcript: %s", log_prefix, e)
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -545,7 +549,9 @@ async def download_transcript(
     except (FileNotFoundError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
+    logger.info(
+        "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count
+    )
     return TranscriptDownload(
         content=content,
         message_count=message_count,
@@ -590,7 +596,15 @@ ENTRY_TYPE_MESSAGE = "message"
 
 
 def _flatten_assistant_content(blocks: list) -> str:
-    """Flatten assistant content blocks into a single plain-text string."""
+    """Flatten assistant content blocks into a single plain-text string.
+
+    Structured ``tool_use`` blocks are converted to ``[tool_use: name]``
+    placeholders.  This is intentional: ``compress_context`` requires plain
+    text for token counting and LLM summarization.  The structural loss is
+    acceptable because compaction only runs when the original transcript was
+    already too large for the model — a summarized plain-text version is
+    better than no context at all.
+    """
     parts: list[str] = []
     for block in blocks:
         if isinstance(block, dict):
@@ -613,6 +627,9 @@ def _flatten_tool_result_content(blocks: list) -> str:
     Handles nested tool_result structures, text blocks, and raw strings.
     Uses ``json.dumps`` as fallback for dict blocks without a ``text`` key
     or where ``text`` is ``None``.
+
+    Like ``_flatten_assistant_content``, structured blocks (images, nested
+    tool results) are reduced to text representations for compression.
     """
     str_parts: list[str] = []
     for block in blocks:
@@ -701,6 +718,9 @@ def _messages_to_transcript(messages: list[dict]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+_COMPACTION_TIMEOUT_SECONDS = 60
+
+
 async def _run_compression(
     messages: list[dict],
     model: str,
@@ -712,13 +732,19 @@ async def _run_compression(
     If no client is configured or the LLM call fails, falls back to
     truncation-based compression which drops older messages without
     summarization.
+
+    A 60-second timeout prevents a hung LLM call from blocking the
+    retry path indefinitely.
     """
     client = get_openai_client()
     if client is None:
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
         return await compress_context(messages=messages, model=model, client=None)
     try:
-        return await compress_context(messages=messages, model=model, client=client)
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=client),
+            timeout=_COMPACTION_TIMEOUT_SECONDS,
+        )
     except Exception as e:
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await compress_context(messages=messages, model=model, client=None)
