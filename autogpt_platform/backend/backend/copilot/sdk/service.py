@@ -197,6 +197,50 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
+async def _iter_sdk_messages(
+    client: ClaudeSDKClient,
+) -> AsyncGenerator[Any, None]:
+    """Yield SDK messages with heartbeat-based timeouts.
+
+    Yields ``None`` on heartbeat timeout (caller should refresh locks and
+    emit heartbeat events).  Yields the raw SDK message otherwise.
+    On stream end (``StopAsyncIteration``), the generator returns normally.
+    Any other exception from the SDK propagates to the caller.
+
+    The ``finally`` block cancels any pending ``__anext__`` task so the
+    caller does not need to manage the task lifecycle.
+    """
+    msg_iter = client.receive_response().__aiter__()
+    pending_task: asyncio.Task[Any] | None = None
+    try:
+        while True:
+            if pending_task is None:
+
+                async def _next_msg() -> Any:
+                    return await msg_iter.__anext__()
+
+                pending_task = asyncio.create_task(_next_msg())
+
+            done, _ = await asyncio.wait({pending_task}, timeout=_HEARTBEAT_INTERVAL)
+
+            if not done:
+                yield None  # heartbeat sentinel
+                continue
+
+            pending_task = None
+            try:
+                yield done.pop().result()
+            except StopAsyncIteration:
+                return
+    finally:
+        if pending_task is not None and not pending_task.done():
+            pending_task.cancel()
+            try:
+                await pending_task
+            except (asyncio.CancelledError, StopAsyncIteration):
+                pass
+
+
 def _resolve_sdk_model() -> str | None:
     """Resolve the model name for the Claude Agent SDK CLI.
 
@@ -1050,6 +1094,11 @@ async def stream_chat_completion_sdk(
 
             # Save message count so we can rollback partial messages on retry
             _pre_attempt_msg_count = len(session.messages)
+            assistant_response = ChatMessage(role="assistant", content="")
+            accumulated_tool_calls: list[dict[str, Any]] = []
+            has_appended_assistant = False
+            has_tool_results = False
+            ended_with_stream_error = False
 
             async with ClaudeSDKClient(options=options) as client:
                 logger.info(
@@ -1084,9 +1133,6 @@ async def stream_chat_completion_sdk(
                     await client._transport.write(  # noqa: SLF001
                         json.dumps(user_msg) + "\n"
                     )
-                    # Capture raw user message in transcript (not the
-                    # engineered query_message which may include context
-                    # wrappers from _build_query_message).
                     transcript_builder.append_user(
                         content=[
                             *attachments.image_blocks,
@@ -1095,66 +1141,17 @@ async def stream_chat_completion_sdk(
                     )
                 else:
                     await client.query(query_message, session_id=session_id)
-                    # Capture actual user message in transcript (not the engineered query)
-                    # query_message may include context wrappers, but transcript needs raw input
                     transcript_builder.append_user(content=current_message)
 
-                assistant_response = ChatMessage(role="assistant", content="")
-                accumulated_tool_calls: list[dict[str, Any]] = []
-                has_appended_assistant = False
-                has_tool_results = False
-                ended_with_stream_error = False
-                # Use an explicit async iterator with non-cancelling heartbeats.
-                # CRITICAL: we must NOT cancel __anext__() mid-flight — doing so
-                # (via asyncio.timeout or wait_for) corrupts the SDK's internal
-                # anyio memory stream, causing StopAsyncIteration on the next
-                # call and silently dropping all in-flight tool results.
-                # Instead, wrap __anext__() in a Task and use asyncio.wait()
-                # with a timeout.  On timeout we emit a heartbeat but keep the
-                # Task alive so it can deliver the next message.
-                msg_iter = client.receive_response().__aiter__()
-                pending_task: asyncio.Task[Any] | None = None
                 try:
-                    while not stream_completed:
-                        if pending_task is None:
-
-                            async def _next_msg() -> Any:
-                                return await msg_iter.__anext__()
-
-                            pending_task = asyncio.create_task(_next_msg())
-
-                        done, _ = await asyncio.wait(
-                            {pending_task}, timeout=_HEARTBEAT_INTERVAL
-                        )
-
-                        if not done:
+                    async for sdk_msg in _iter_sdk_messages(client):
+                        # Heartbeat sentinel — refresh lock and keep SSE alive
+                        if sdk_msg is None:
                             await lock.refresh()
                             for ev in compaction.emit_start_if_ready():
                                 yield ev
                             yield StreamHeartbeat()
                             continue
-
-                        # Task completed — get result
-                        pending_task = None
-                        try:
-                            sdk_msg = done.pop().result()
-                        except StopAsyncIteration:
-                            logger.info(
-                                "%s Stream ended normally (StopAsyncIteration)",
-                                log_prefix,
-                            )
-                            break
-                        except Exception as stream_err:
-                            _stream_error = stream_err
-                            logger.warning(
-                                "%s Stream error (attempt %d/%d): %s",
-                                log_prefix,
-                                _attempt + 1,
-                                _MAX_STREAM_ATTEMPTS,
-                                stream_err,
-                                exc_info=True,
-                            )
-                            break
 
                         logger.info(
                             "%s Received: %s %s "
@@ -1169,7 +1166,6 @@ async def stream_chat_completion_sdk(
                         )
 
                         # Log AssistantMessage API errors (e.g. invalid_request)
-                        # so we can debug Anthropic API 400s surfaced by the CLI.
                         sdk_error = getattr(sdk_msg, "error", None)
                         if isinstance(sdk_msg, AssistantMessage) and sdk_error:
                             logger.error(
@@ -1181,23 +1177,11 @@ async def stream_chat_completion_sdk(
                                 str(sdk_msg.content)[:500],
                             )
 
-                        # Race-condition fix: SDK hooks (PostToolUse) are
-                        # executed asynchronously via start_soon() — the next
-                        # message can arrive before the hook stashes output.
-                        # wait_for_stash() awaits an asyncio.Event signaled by
-                        # stash_pending_tool_output(), completing as soon as
-                        # the hook finishes (typically <1ms).  The sleep(0)
-                        # after lets any remaining concurrent hooks complete.
-                        #
-                        # Skip for parallel tool continuations: when the SDK
-                        # sends parallel tool calls as separate
-                        # AssistantMessages (each containing only
-                        # ToolUseBlocks), we must NOT wait/flush — the prior
-                        # tools are still executing concurrently.
+                        # Wait for PostToolUse hook stash (race-condition fix).
+                        # Skip for parallel tool continuations (all ToolUseBlocks).
                         is_parallel_continuation = isinstance(
                             sdk_msg, AssistantMessage
                         ) and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
-
                         if (
                             adapter.has_unresolved_tool_calls
                             and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
@@ -1227,7 +1211,10 @@ async def stream_chat_completion_sdk(
                                 len(adapter.current_tool_calls),
                                 len(adapter.resolved_tool_calls),
                             )
-                            if sdk_msg.subtype in ("error", "error_during_execution"):
+                            if sdk_msg.subtype in (
+                                "error",
+                                "error_during_execution",
+                            ):
                                 logger.error(
                                     "%s SDK execution failed with error: %s",
                                     log_prefix,
@@ -1235,14 +1222,10 @@ async def stream_chat_completion_sdk(
                                 )
 
                         # Emit compaction end if SDK finished compacting.
-                        # When compaction ends, sync TranscriptBuilder with the
-                        # CLI's active context so they stay identical.
+                        # Sync TranscriptBuilder with the CLI's active context.
                         compact_result = await compaction.emit_end_if_ready(session)
                         for ev in compact_result.events:
                             yield ev
-                        # After replace_entries, skip append_assistant for this
-                        # sdk_msg — the CLI session file already contains it,
-                        # so appending again would create a duplicate.
                         entries_replaced = False
                         if compact_result.just_ended:
                             compacted = await asyncio.to_thread(
@@ -1255,11 +1238,11 @@ async def stream_chat_completion_sdk(
                                 )
                                 entries_replaced = True
 
+                        # --- Dispatch adapter responses ---
                         for response in adapter.convert_message(sdk_msg):
                             if isinstance(response, StreamStart):
                                 continue
 
-                            # Log tool events for debugging
                             if isinstance(
                                 response,
                                 (
@@ -1279,7 +1262,6 @@ async def stream_chat_completion_sdk(
                                     extra,
                                 )
 
-                            # Log errors being sent to frontend
                             if isinstance(response, StreamError):
                                 logger.error(
                                     "%s Sending error to frontend: %s (code=%s)",
@@ -1292,8 +1274,6 @@ async def stream_chat_completion_sdk(
 
                             if isinstance(response, StreamTextDelta):
                                 delta = response.delta or ""
-                                # After tool results, start a new assistant
-                                # message for the post-tool text.
                                 if has_tool_results and has_appended_assistant:
                                     assistant_response = ChatMessage(
                                         role="assistant", content=delta
@@ -1352,12 +1332,8 @@ async def stream_chat_completion_sdk(
                             elif isinstance(response, StreamFinish):
                                 stream_completed = True
 
-                        # Append assistant entry AFTER convert_message so that
-                        # any stashed tool results from the previous turn are
-                        # recorded first, preserving the required API order:
-                        # assistant(tool_use) → tool_result → assistant(text).
-                        # Skip if replace_entries just ran — the CLI session
-                        # file already contains this message.
+                        # Append assistant entry AFTER convert_message so
+                        # stashed tool results come first (required API order).
                         if (
                             isinstance(sdk_msg, AssistantMessage)
                             and not entries_replaced
@@ -1369,120 +1345,101 @@ async def stream_chat_completion_sdk(
                                 model=sdk_msg.model,
                             )
 
+                        if stream_completed:
+                            break
+
                 except asyncio.CancelledError:
-                    # Task/generator was cancelled (e.g. client disconnect,
-                    # server shutdown).  Log and let the safety-net / finally
-                    # blocks handle cleanup.
                     logger.warning(
                         "%s Streaming loop cancelled (asyncio.CancelledError)",
                         log_prefix,
                     )
                     raise
-                finally:
-                    # Cancel the pending __anext__ task to avoid a leaked
-                    # coroutine.  This is safe even if the task already
-                    # completed.
-                    if pending_task is not None and not pending_task.done():
-                        pending_task.cancel()
-                        try:
-                            await pending_task
-                        except (asyncio.CancelledError, StopAsyncIteration):
-                            # Expected: task was cancelled or exhausted during cleanup
-                            logger.info(
-                                "%s Pending __anext__ task completed during cleanup",
-                                log_prefix,
-                            )
-
-                # On error, skip post-stream processing — the retry loop
-                # will compact / fallback / exhaust attempts.  Roll back any
-                # partial messages appended during the failed attempt.
-                if _stream_error is not None:
-                    session.messages = session.messages[:_pre_attempt_msg_count]
-                    continue  # next retry attempt
-
-                # Safety net: if tools are still unresolved after the
-                # streaming loop (e.g. StopAsyncIteration before ResultMessage,
-                # or SDK not sending UserMessages for built-in tools), flush
-                # them now so the frontend stops showing spinners.
-                if adapter.has_unresolved_tool_calls:
+                except Exception as stream_err:
+                    _stream_error = stream_err
                     logger.warning(
-                        "%s %d unresolved tool(s) after stream loop — "
-                        "flushing as safety net",
+                        "%s Stream error (attempt %d/%d): %s",
                         log_prefix,
-                        len(adapter.current_tool_calls)
-                        - len(adapter.resolved_tool_calls),
-                    )
-                    safety_responses: list[StreamBaseResponse] = []
-                    adapter._flush_unresolved_tool_calls(safety_responses)
-                    for response in safety_responses:
-                        if isinstance(
-                            response,
-                            (StreamToolInputAvailable, StreamToolOutputAvailable),
-                        ):
-                            logger.info(
-                                "%s Safety flush: %s, tool=%s",
-                                log_prefix,
-                                type(response).__name__,
-                                getattr(response, "toolName", "N/A"),
-                            )
-                        if isinstance(response, StreamToolOutputAvailable):
-                            transcript_builder.append_tool_result(
-                                tool_use_id=response.toolCallId,
-                                content=(
-                                    response.output
-                                    if isinstance(response.output, str)
-                                    else json.dumps(response.output, ensure_ascii=False)
-                                ),
-                            )
-                        yield response
-
-                # If the stream ended without a ResultMessage, the SDK
-                # CLI exited unexpectedly or the user stopped execution.
-                # Close any open text/step so chunks are well-formed, and
-                # append a cancellation message so users see feedback.
-                # StreamFinish is published by mark_session_completed in the processor.
-                if not stream_completed and not ended_with_stream_error:
-                    logger.info(
-                        "%s Stream ended without ResultMessage (stopped by user)",
-                        log_prefix,
-                    )
-                    closing_responses: list[StreamBaseResponse] = []
-                    adapter._end_text_if_open(closing_responses)
-                    for r in closing_responses:
-                        yield r
-
-                    # Add "Stopped by user" message so it persists after refresh
-                    # Use COPILOT_SYSTEM_PREFIX so frontend renders it as system message, not assistant
-                    session.messages.append(
-                        ChatMessage(
-                            role="assistant",
-                            content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-                        )
+                        _attempt + 1,
+                        _MAX_STREAM_ATTEMPTS,
+                        stream_err,
+                        exc_info=True,
                     )
 
-                if (
-                    assistant_response.content or assistant_response.tool_calls
-                ) and not has_appended_assistant:
-                    session.messages.append(assistant_response)
-
-                # Stream completed normally — exit the retry loop.
-                # Errors are handled by the `continue` above.
-                break
-
-            # All retry attempts exhausted — surface error to the user.
+            # On error, rollback partial messages and retry
             if _stream_error is not None:
-                transcript_caused_error = True
-                ended_with_stream_error = True
-                logger.error(
-                    "%s All %d query attempts exhausted: %s",
+                session.messages = session.messages[:_pre_attempt_msg_count]
+                continue
+
+            # Safety net: flush unresolved tools so frontend stops spinners
+            if adapter.has_unresolved_tool_calls:
+                logger.warning(
+                    "%s %d unresolved tool(s) after stream loop — "
+                    "flushing as safety net",
                     log_prefix,
-                    _MAX_STREAM_ATTEMPTS,
-                    _stream_error,
+                    len(adapter.current_tool_calls) - len(adapter.resolved_tool_calls),
                 )
-                yield StreamError(
-                    errorText=f"SDK stream error: {_stream_error}",
-                    code="all_attempts_exhausted",
+                safety_responses: list[StreamBaseResponse] = []
+                adapter._flush_unresolved_tool_calls(safety_responses)
+                for response in safety_responses:
+                    if isinstance(
+                        response,
+                        (StreamToolInputAvailable, StreamToolOutputAvailable),
+                    ):
+                        logger.info(
+                            "%s Safety flush: %s, tool=%s",
+                            log_prefix,
+                            type(response).__name__,
+                            getattr(response, "toolName", "N/A"),
+                        )
+                    if isinstance(response, StreamToolOutputAvailable):
+                        transcript_builder.append_tool_result(
+                            tool_use_id=response.toolCallId,
+                            content=(
+                                response.output
+                                if isinstance(response.output, str)
+                                else json.dumps(response.output, ensure_ascii=False)
+                            ),
+                        )
+                    yield response
+
+            # Stream ended without ResultMessage → stopped by user
+            if not stream_completed and not ended_with_stream_error:
+                logger.info(
+                    "%s Stream ended without ResultMessage (stopped by user)",
+                    log_prefix,
                 )
+                closing_responses: list[StreamBaseResponse] = []
+                adapter._end_text_if_open(closing_responses)
+                for r in closing_responses:
+                    yield r
+                session.messages.append(
+                    ChatMessage(
+                        role="assistant",
+                        content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+                    )
+                )
+
+            if (
+                assistant_response.content or assistant_response.tool_calls
+            ) and not has_appended_assistant:
+                session.messages.append(assistant_response)
+
+            break  # Stream completed — exit retry loop
+
+        # All retry attempts exhausted — surface error to the user.
+        if _stream_error is not None:
+            transcript_caused_error = True
+            ended_with_stream_error = True
+            logger.error(
+                "%s All %d query attempts exhausted: %s",
+                log_prefix,
+                _MAX_STREAM_ATTEMPTS,
+                _stream_error,
+            )
+            yield StreamError(
+                errorText=f"SDK stream error: {_stream_error}",
+                code="all_attempts_exhausted",
+            )
 
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
