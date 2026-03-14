@@ -184,10 +184,12 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
+            host = server_host(server_url)
+            logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
-                message=f"MCP server returned HTTP {e.status_code}: {e}",
+                message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
+                error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 
         except MCPClientError as e:
