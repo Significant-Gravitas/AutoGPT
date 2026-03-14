@@ -29,6 +29,7 @@ Examples:
 @@agptfile:workspace://abc123
 @@agptfile:workspace://abc123[10-50]
 @@agptfile:workspace:///reports/q1.md
+@@agptfile:/tmp/copilot-<session>/output.py[1-80]
 @@agptfile:/home/user/script.py[1-80]
 ```
 

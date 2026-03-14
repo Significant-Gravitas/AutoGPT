@@ -38,7 +38,7 @@ class SearchDocsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Search platform documentation by keyword."
+        return "Search platform documentation by keyword. Use get_doc_page to read full results."
 
     @property
     def parameters(self) -> dict[str, Any]:

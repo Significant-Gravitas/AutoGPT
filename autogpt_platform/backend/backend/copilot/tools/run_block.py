@@ -46,7 +46,8 @@ class RunBlockTool(BaseTool):
         return (
             "Execute a block. IMPORTANT: Always get block_id from find_block first "
             "— do NOT guess or fabricate IDs. "
-            "Call with empty input_data to see schema, then with data to execute."
+            "Call with empty input_data to see schema, then with data to execute. "
+            "If review_required, use continue_run_block."
         )
 
     @property

@@ -410,6 +410,7 @@ class BrowserNavigateTool(BaseTool):
         return (
             "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
             "for browser_act. Session persists (cookies/auth carry over). "
+            "For static pages, prefer web_fetch. "
             "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify."
         )
 

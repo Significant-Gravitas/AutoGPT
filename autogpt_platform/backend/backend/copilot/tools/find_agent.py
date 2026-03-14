@@ -27,7 +27,7 @@ class FindAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search keywords.",
+                    "description": "Search keywords (single keywords work best).",
                 },
             },
             "required": ["query"],
