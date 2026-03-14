@@ -8,41 +8,17 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from backend.data import db
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db_accessors import workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
-from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.clients import get_database_manager_async_client
-from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.exceptions import BlockError
 from backend.util.type import coerce_inputs_to_schema
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
 
 logger = logging.getLogger(__name__)
-
-
-async def _get_credits(user_id: str) -> int:
-    """Get user credits using the adapter pattern (RPC when Prisma unavailable)."""
-    if not db.is_connected():
-        return await get_database_manager_async_client().get_credits(user_id)
-    credit_model = await get_user_credit_model(user_id)
-    return await credit_model.get_credits(user_id)
-
-
-async def _spend_credits(
-    user_id: str, cost: int, metadata: UsageTransactionMetadata
-) -> int:
-    """Spend user credits using the adapter pattern (RPC when Prisma unavailable)."""
-    if not db.is_connected():
-        return await get_database_manager_async_client().spend_credits(
-            user_id, cost, metadata
-        )
-    credit_model = await get_user_credit_model(user_id)
-    return await credit_model.spend_credits(user_id, cost, metadata)
 
 
 def get_inputs_from_schema(
@@ -139,37 +115,6 @@ async def execute_block(
         # Coerce non-matching data types to the expected input schema.
         coerce_inputs_to_schema(input_data, block.input_schema)
 
-        # Charge credits BEFORE execution to prevent TOCTOU race.
-        # If a concurrent spend drains balance between check and charge,
-        # _spend_credits raises InsufficientBalanceError before any side
-        # effects (API calls, data mutations) happen.
-        cost, cost_filter = block_usage_cost(block, input_data)
-        has_cost = cost > 0
-        if has_cost:
-            try:
-                await _spend_credits(
-                    user_id=user_id,
-                    cost=cost,
-                    metadata=UsageTransactionMetadata(
-                        graph_exec_id=synthetic_graph_id,
-                        graph_id=synthetic_graph_id,
-                        node_id=synthetic_node_id,
-                        node_exec_id=node_exec_id,
-                        block_id=block_id,
-                        block=block.name,
-                        input=cost_filter,
-                        reason="copilot_block_execution",
-                    ),
-                )
-            except InsufficientBalanceError:
-                return ErrorResponse(
-                    message=(
-                        f"Insufficient credits to run '{block.name}'. "
-                        "Please top up your credits to continue."
-                    ),
-                    session_id=session_id,
-                )
-
         # Execute the block and collect outputs
         outputs: dict[str, list[Any]] = defaultdict(list)
         async for output_name, output_data in block.execute(
@@ -188,16 +133,16 @@ async def execute_block(
         )
 
     except BlockError as e:
-        logger.warning("Block execution failed: %s", e)
+        logger.warning(f"Block execution failed: {e}")
         return ErrorResponse(
             message=f"Block execution failed: {e}",
             error=str(e),
             session_id=session_id,
         )
     except Exception as e:
-        logger.error("Unexpected error executing block: %s", e, exc_info=True)
+        logger.error(f"Unexpected error executing block: {e}", exc_info=True)
         return ErrorResponse(
-            message="An internal error occurred while executing the block.",
+            message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
         )

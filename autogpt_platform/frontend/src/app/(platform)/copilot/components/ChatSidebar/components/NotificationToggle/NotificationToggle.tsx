@@ -7,7 +7,6 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Bell, BellRinging, BellSlash } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../../../store";
@@ -49,7 +48,10 @@ export function NotificationToggle() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Notification settings">
+        <button
+          className="rounded p-1 text-black transition-colors hover:bg-zinc-50"
+          aria-label="Notification settings"
+        >
           {!isNotificationsEnabled ? (
             <BellSlash className="!size-5" />
           ) : isSoundEnabled ? (
@@ -57,7 +59,7 @@ export function NotificationToggle() {
           ) : (
             <Bell className="!size-5" />
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-3">
         <div className="flex flex-col gap-3">

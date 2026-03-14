@@ -1,8 +1,14 @@
 "use client";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
+import { DotsThree, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
@@ -86,6 +92,7 @@ export function CopilotPage() {
     // Delete functionality
     sessionToDelete,
     isDeleting,
+    handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
   } = useCopilotPage();
@@ -141,6 +148,38 @@ export function CopilotPage() {
             isUploadingFiles={isUploadingFiles}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
+            headerSlot={
+              isMobile && sessionId ? (
+                <div className="flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="rounded p-1.5 hover:bg-neutral-100"
+                        aria-label="More actions"
+                      >
+                        <DotsThree className="h-5 w-5 text-neutral-600" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          const session = sessions.find(
+                            (s) => s.id === sessionId,
+                          );
+                          if (session) {
+                            handleDeleteClick(session.id, session.title);
+                          }
+                        }}
+                        disabled={isDeleting}
+                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                      >
+                        Delete chat
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : undefined
+            }
           />
         </div>
       </div>

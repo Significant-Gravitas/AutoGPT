@@ -11,8 +11,6 @@ import {
 
 import { RefundModal } from "./RefundModal";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
-import { UsagePanelContent } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
-import { useUsageLimits } from "@/app/(platform)/copilot/components/UsageLimits/useUsageLimits";
 
 import {
   Table,
@@ -22,28 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-
-function CoPilotUsageSection() {
-  const { data: usage, isLoading } = useUsageLimits();
-
-  if (isLoading || !usage) return null;
-  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
-
-  return (
-    <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">CoPilot Usage Limits</h3>
-      <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
-        <UsagePanelContent usage={usage} showBillingLink={false} />
-      </div>
-      <Button
-        className="w-full"
-        onClick={() => (window.location.href = "/copilot")}
-      >
-        Open CoPilot
-      </Button>
-    </div>
-  );
-}
 
 export default function CreditsPage() {
   const api = useBackendAPI();
@@ -261,13 +237,11 @@ export default function CreditsPage() {
               </Button>
             )}
           </form>
-
-          {/* CoPilot Usage Limits */}
-          <CoPilotUsageSection />
         </div>
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
+
           <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
           <p className="text-neutral-600">
             You can manage your cards and see your payment history in the

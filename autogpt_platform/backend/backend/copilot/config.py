@@ -70,18 +70,6 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
-    # Rate limiting — token-based limits per day and per week.
-    # Each CoPilot turn consumes ~10-15K tokens (system prompt + tool schemas + response),
-    # so 2.5M daily allows ~170-250 turns/day which is reasonable for normal use.
-    daily_token_limit: int = Field(
-        default=2_500_000,
-        description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
-    )
-    weekly_token_limit: int = Field(
-        default=12_500_000,
-        description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
-    )
-
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,

@@ -37,7 +37,6 @@ import { useCopilotUIStore } from "../../store";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { PulseLoader } from "../PulseLoader/PulseLoader";
-import { UsageLimits } from "../UsageLimits/UsageLimits";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -257,10 +256,11 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center">
-                  <UsageLimits />
+                <div className="relative left-5 flex items-center gap-1">
                   <NotificationToggle />
-                  <SidebarTrigger />
+                  <div className="relative left-1">
+                    <SidebarTrigger />
+                  </div>
                 </div>
               </div>
               {sessionId ? (

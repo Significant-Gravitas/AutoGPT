@@ -30,6 +30,7 @@ interface Props {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  headerSlot?: React.ReactNode;
   sessionID?: string | null;
 }
 
@@ -101,6 +102,7 @@ export function ChatMessagesContainer({
   status,
   error,
   isLoading,
+  headerSlot,
   sessionID,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
@@ -133,6 +135,7 @@ export function ChatMessagesContainer({
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+        {headerSlot}
         {isLoading && messages.length === 0 && (
           <div
             className="flex flex-1 items-center justify-center"

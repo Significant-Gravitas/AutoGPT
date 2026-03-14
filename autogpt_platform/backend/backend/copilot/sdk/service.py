@@ -40,13 +40,11 @@ from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from ..model import (
     ChatMessage,
     ChatSession,
-    Usage,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
 )
 from ..prompting import get_sdk_supplement
-from ..rate_limit import record_token_usage
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -56,7 +54,6 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
-    StreamUsage,
 )
 from ..service import (
     _build_system_prompt,
@@ -739,14 +736,6 @@ async def stream_chat_completion_sdk(
     _otel_ctx: Any = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
-    # Token usage accumulators — populated from ResultMessage at end of turn
-    turn_prompt_tokens = 0  # uncached input tokens only
-    turn_completion_tokens = 0
-    turn_cache_read_tokens = 0
-    turn_cache_creation_tokens = 0
-    turn_cost_usd: float | None = None
-    total_tokens = 0
-
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
         # Pre-compute the cwd here so the exact working directory path can be
@@ -1123,7 +1112,7 @@ async def stream_chat_completion_sdk(
                                 - len(adapter.resolved_tool_calls),
                             )
 
-                    # Log ResultMessage details and capture token usage
+                    # Log ResultMessage details for debugging
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
                             "%s Received: ResultMessage %s "
@@ -1141,33 +1130,6 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                                 sdk_msg.result or "(no error message provided)",
                             )
-
-                        # Capture token usage from ResultMessage.
-                        # Anthropic reports cached tokens separately:
-                        #   input_tokens = uncached only
-                        #   cache_read_input_tokens = served from cache
-                        #   cache_creation_input_tokens = written to cache
-                        if sdk_msg.usage:
-                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
-                            turn_cache_read_tokens += sdk_msg.usage.get(
-                                "cache_read_input_tokens", 0
-                            )
-                            turn_cache_creation_tokens += sdk_msg.usage.get(
-                                "cache_creation_input_tokens", 0
-                            )
-                            turn_completion_tokens += sdk_msg.usage.get(
-                                "output_tokens", 0
-                            )
-                            logger.info(
-                                "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
-                                log_prefix,
-                                turn_prompt_tokens,
-                                turn_cache_read_tokens,
-                                turn_cache_creation_tokens,
-                                turn_completion_tokens,
-                            )
-                        if sdk_msg.total_cost_usd is not None:
-                            turn_cost_usd = sdk_msg.total_cost_usd
 
                     # Emit compaction end if SDK finished compacting.
                     # When compaction ends, sync TranscriptBuilder with the
@@ -1385,25 +1347,6 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
-        # Emit token usage to the client (must be in try to reach SSE stream).
-        # Session persistence of usage is in finally to stay consistent with
-        # rate-limit recording even if an exception interrupts between here
-        # and the finally block.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            total_tokens = (
-                turn_prompt_tokens
-                + turn_cache_read_tokens
-                + turn_cache_creation_tokens
-                + turn_completion_tokens
-            )
-            yield StreamUsage(
-                promptTokens=turn_prompt_tokens,
-                completionTokens=turn_completion_tokens,
-                totalTokens=total_tokens,
-                cacheReadTokens=turn_cache_read_tokens,
-                cacheCreationTokens=turn_cache_creation_tokens,
-            )
-
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
         # old resume file, then the finally block overwrote it with the
@@ -1467,56 +1410,6 @@ async def stream_chat_completion_sdk(
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
-
-        # --- Persist token usage to session + rate-limit counters ---
-        # Both must live in finally so they stay consistent even when an
-        # exception interrupts the try block after StreamUsage was yielded.
-        # total_tokens is computed once in the try block (for StreamUsage)
-        # and reused here to keep the formula DRY.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
-            if not total_tokens:
-                total_tokens = (
-                    turn_prompt_tokens
-                    + turn_cache_read_tokens
-                    + turn_cache_creation_tokens
-                    + turn_completion_tokens
-                )
-            if session is not None:
-                session.usage.append(
-                    Usage(
-                        prompt_tokens=turn_prompt_tokens,
-                        completion_tokens=turn_completion_tokens,
-                        total_tokens=total_tokens,
-                        cache_read_tokens=turn_cache_read_tokens,
-                        cache_creation_tokens=turn_cache_creation_tokens,
-                    )
-                )
-            logger.info(
-                "%s Turn usage: uncached=%d, cache_read=%d, cache_create=%d, "
-                "output=%d, total=%d, cost_usd=%s",
-                log_prefix,
-                turn_prompt_tokens,
-                turn_cache_read_tokens,
-                turn_cache_creation_tokens,
-                turn_completion_tokens,
-                total_tokens,
-                turn_cost_usd,
-            )
-        if user_id and (turn_prompt_tokens > 0 or turn_completion_tokens > 0):
-            try:
-                await record_token_usage(
-                    user_id=user_id,
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    cache_read_tokens=turn_cache_read_tokens,
-                    cache_creation_tokens=turn_cache_creation_tokens,
-                )
-            except Exception as usage_err:
-                logger.warning(
-                    "%s Failed to record token usage: %s",
-                    log_prefix,
-                    usage_err,
-                )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

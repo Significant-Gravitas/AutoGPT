@@ -2,6 +2,7 @@
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
+import { ReactNode } from "react";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -20,6 +21,7 @@ export interface ChatContainerProps {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
+  headerSlot?: ReactNode;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
@@ -38,6 +40,7 @@ export const ChatContainer = ({
   onSend,
   onStop,
   isUploadingFiles,
+  headerSlot,
   droppedFiles,
   onDroppedFilesConsumed,
 }: ChatContainerProps) => {
@@ -60,6 +63,7 @@ export const ChatContainer = ({
                 status={status}
                 error={error}
                 isLoading={isLoadingSession}
+                headerSlot={headerSlot}
                 sessionID={sessionId}
               />
               <motion.div

@@ -512,10 +512,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
 
-    # ============ Credits ============ #
-    spend_credits = d.spend_credits
-    get_credits = d.get_credits
-
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
     upsert_business_understanding = d.upsert_business_understanding
