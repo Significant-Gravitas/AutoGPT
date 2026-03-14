@@ -68,6 +68,38 @@ class TestIsPromptTooLong:
         err = RuntimeError("prompt is too long")
         assert _is_prompt_too_long(err) is True
 
+    def test_walks_cause_chain(self):
+        """_is_prompt_too_long walks __cause__ to find wrapped errors."""
+        inner = Exception("prompt is too long: 250000 > 200000")
+        outer = RuntimeError("SDK process failed")
+        outer.__cause__ = inner
+        assert _is_prompt_too_long(outer) is True
+
+    def test_walks_context_chain(self):
+        """_is_prompt_too_long walks __context__ for implicit chaining."""
+        inner = Exception("context_length_exceeded")
+        outer = RuntimeError("during handling")
+        outer.__context__ = inner
+        assert _is_prompt_too_long(outer) is True
+
+    def test_no_infinite_loop_on_circular_chain(self):
+        """Circular exception chains terminate without hanging."""
+        a = Exception("error a")
+        b = Exception("error b")
+        a.__cause__ = b
+        b.__cause__ = a
+        assert _is_prompt_too_long(a) is False
+
+    def test_deep_chain(self):
+        """Deeply nested exception chain is walked."""
+        bottom = Exception("request too large")
+        current = bottom
+        for i in range(10):
+            wrapper = RuntimeError(f"layer {i}")
+            wrapper.__cause__ = current
+            current = wrapper
+        assert _is_prompt_too_long(current) is True
+
     def test_patterns_constant_is_tuple(self):
         """Verify the patterns constant exists and is iterable."""
         assert len(_PROMPT_TOO_LONG_PATTERNS) >= 2
@@ -144,6 +176,16 @@ class TestFlattenToolResultContent:
 
     def test_raw_string(self):
         assert _flatten_tool_result_content(["raw"]) == "raw"
+
+    def test_tool_result_with_none_content(self):
+        """tool_result with content=None should produce empty string."""
+        blocks = [{"type": "tool_result", "tool_use_id": "x", "content": None}]
+        assert _flatten_tool_result_content(blocks) == ""
+
+    def test_tool_result_with_empty_list_content(self):
+        """tool_result with content=[] should produce empty string."""
+        blocks = [{"type": "tool_result", "tool_use_id": "x", "content": []}]
+        assert _flatten_tool_result_content(blocks) == ""
 
     def test_empty(self):
         assert _flatten_tool_result_content([]) == ""
@@ -237,6 +279,93 @@ class TestTranscriptToMessages:
         messages = _transcript_to_messages(content)
         assert len(messages) == 1
         assert messages[0]["content"] == "tool output"
+
+    def test_malformed_json_lines_skipped(self):
+        """Malformed JSON lines in transcript are silently skipped."""
+        lines = [
+            _make_entry("user", "user", "Hello"),
+            "this is not valid json",
+            _make_entry("assistant", "assistant", [{"type": "text", "text": "Hi"}]),
+        ]
+        content = "\n".join(lines) + "\n"
+        messages = _transcript_to_messages(content)
+        assert len(messages) == 2
+
+    def test_empty_lines_skipped(self):
+        """Empty lines and whitespace-only lines are skipped."""
+        lines = [
+            _make_entry("user", "user", "Hello"),
+            "",
+            "   ",
+            _make_entry("assistant", "assistant", [{"type": "text", "text": "Hi"}]),
+        ]
+        content = "\n".join(lines) + "\n"
+        messages = _transcript_to_messages(content)
+        assert len(messages) == 2
+
+    def test_unicode_content_preserved(self):
+        """Unicode characters survive transcript roundtrip."""
+        lines = [
+            _make_entry("user", "user", "Hello 你好 🌍"),
+            _make_entry(
+                "assistant",
+                "assistant",
+                [{"type": "text", "text": "Bonjour 日本語 émojis 🎉"}],
+            ),
+        ]
+        content = "\n".join(lines) + "\n"
+        messages = _transcript_to_messages(content)
+        assert messages[0]["content"] == "Hello 你好 🌍"
+        assert messages[1]["content"] == "Bonjour 日本語 émojis 🎉"
+
+    def test_entry_without_role_skipped(self):
+        """Entries with missing role in message are skipped."""
+        entry_no_role = json.dumps(
+            {
+                "type": "user",
+                "uuid": str(uuid4()),
+                "parentUuid": None,
+                "message": {"content": "no role here"},
+            }
+        )
+        lines = [
+            entry_no_role,
+            _make_entry("user", "user", "Hello"),
+        ]
+        content = "\n".join(lines) + "\n"
+        messages = _transcript_to_messages(content)
+        assert len(messages) == 1
+        assert messages[0]["content"] == "Hello"
+
+    def test_tool_use_and_result_pairs(self):
+        """Tool use + tool result pairs are properly flattened."""
+        lines = [
+            _make_entry(
+                "assistant",
+                "assistant",
+                [
+                    {"type": "text", "text": "Let me check."},
+                    {"type": "tool_use", "name": "read_file", "input": {"path": "/x"}},
+                ],
+            ),
+            _make_entry(
+                "user",
+                "user",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "abc",
+                        "content": [{"type": "text", "text": "file contents"}],
+                    }
+                ],
+            ),
+        ]
+        content = "\n".join(lines) + "\n"
+        messages = _transcript_to_messages(content)
+        assert len(messages) == 2
+        assert "Let me check." in messages[0]["content"]
+        assert "[tool_use: read_file]" in messages[0]["content"]
+        assert messages[1]["content"] == "file contents"
 
 
 # ---------------------------------------------------------------------------

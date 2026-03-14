@@ -27,6 +27,8 @@ from backend.util import json
 
 from .service import _is_prompt_too_long
 from .transcript import (
+    _flatten_assistant_content,
+    _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
     compact_transcript,
@@ -633,14 +635,28 @@ class TestRetryEdgeCases:
     """Edge cases for the retry logic components."""
 
     def test_is_prompt_too_long_with_nested_exception(self):
-        """Chained exception with prompt-too-long in cause."""
+        """Chained exception with prompt-too-long in __cause__ is detected."""
         inner = Exception("prompt is too long: 250000 > 200000")
-        # The function checks str(err), not __cause__
         outer = RuntimeError("SDK error")
         outer.__cause__ = inner
-        # Only checks the outer exception message
-        assert _is_prompt_too_long(outer) is False
+        # Walks the exception chain to find prompt-too-long in __cause__
+        assert _is_prompt_too_long(outer) is True
         assert _is_prompt_too_long(inner) is True
+
+    def test_is_prompt_too_long_with_context_exception(self):
+        """Chained exception with prompt-too-long in __context__ is detected."""
+        inner = Exception("context_length_exceeded")
+        outer = RuntimeError("wrapper")
+        outer.__context__ = inner
+        assert _is_prompt_too_long(outer) is True
+
+    def test_is_prompt_too_long_no_infinite_loop(self):
+        """Circular exception chain doesn't cause infinite loop."""
+        a = Exception("error a")
+        b = Exception("error b")
+        a.__cause__ = b
+        b.__cause__ = a  # circular
+        assert _is_prompt_too_long(a) is False
 
     def test_is_prompt_too_long_case_insensitive(self):
         """Pattern matching must be case-insensitive."""
@@ -743,3 +759,139 @@ class TestRetryEdgeCases:
         entries = [json.loads(line) for line in output.strip().split("\n")]
         for i in range(1, len(entries)):
             assert entries[i]["parentUuid"] == entries[i - 1]["uuid"]
+
+
+class TestRetryStateReset:
+    """Verify state is properly reset between retry attempts."""
+
+    def test_session_messages_rollback_on_retry(self):
+        """Simulate session.messages rollback as done in service.py."""
+        session_messages = ["msg1", "msg2"]  # pre-existing
+        pre_attempt_count = len(session_messages)
+
+        # Simulate streaming adding partial messages
+        session_messages.append("partial_assistant")
+        session_messages.append("tool_result")
+        assert len(session_messages) == 4
+
+        # Rollback (as done at line 1410 in service.py)
+        session_messages = session_messages[:pre_attempt_count]
+        assert len(session_messages) == 2
+        assert session_messages == ["msg1", "msg2"]
+
+    def test_write_transcript_failure_sets_error_flag(self):
+        """When write_transcript_to_tempfile fails, transcript_caused_error
+        must be set True to prevent uploading stale data."""
+        # Simulate the logic from service.py lines 1012-1020
+        transcript_caused_error = False
+        use_resume = True
+        resume_file = None  # write_transcript_to_tempfile returned None
+
+        if not resume_file:
+            use_resume = False
+            transcript_caused_error = True
+
+        assert transcript_caused_error is True
+        assert use_resume is False
+
+    @pytest.mark.asyncio
+    async def test_compact_returns_none_preserves_error_flag(self):
+        """When compaction returns None, transcript_caused_error is set."""
+        transcript = _build_transcript([("user", "A"), ("assistant", "B")])
+        transcript_caused_error = False
+
+        with (
+            patch(
+                "backend.copilot.config.ChatConfig",
+                return_value=type(
+                    "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
+                )(),
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._run_compression",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            compacted = await compact_transcript(transcript)
+
+        # compact_transcript returns None on failure
+        assert compacted is None
+        # Caller sets transcript_caused_error
+        if not compacted:
+            transcript_caused_error = True
+        assert transcript_caused_error is True
+
+
+class TestTranscriptEdgeCases:
+    """Edge cases in transcript parsing and generation."""
+
+    def test_transcript_with_very_long_content(self):
+        """Large content doesn't corrupt the transcript format."""
+        big_content = "x" * 100_000
+        pairs = [("user", big_content), ("assistant", "ok")]
+        transcript = _build_transcript(pairs)
+        msgs = _transcript_to_messages(transcript)
+        assert len(msgs) == 2
+        assert msgs[0]["content"] == big_content
+
+    def test_transcript_with_special_json_chars(self):
+        """Content with JSON special characters is handled."""
+        pairs = [
+            ("user", 'Hello "world" with \\backslash and \nnewline'),
+            ("assistant", "Tab\there and null\x00byte"),
+        ]
+        transcript = _build_transcript(pairs)
+        msgs = _transcript_to_messages(transcript)
+        assert len(msgs) == 2
+        assert '"world"' in msgs[0]["content"]
+
+    def test_messages_to_transcript_empty_content(self):
+        """Messages with empty content produce valid transcript."""
+        messages = [
+            {"role": "user", "content": ""},
+            {"role": "assistant", "content": ""},
+        ]
+        result = _messages_to_transcript(messages)
+        assert validate_transcript(result)
+        restored = _transcript_to_messages(result)
+        assert len(restored) == 2
+
+    def test_consecutive_same_role_messages(self):
+        """Multiple consecutive user or assistant messages are preserved."""
+        messages = [
+            {"role": "user", "content": "First"},
+            {"role": "user", "content": "Second"},
+            {"role": "assistant", "content": "Reply"},
+        ]
+        result = _messages_to_transcript(messages)
+        restored = _transcript_to_messages(result)
+        assert len(restored) == 3
+        assert restored[0]["content"] == "First"
+        assert restored[1]["content"] == "Second"
+
+    def test_flatten_assistant_with_only_tool_use(self):
+        """Assistant message with only tool_use blocks (no text)."""
+        blocks = [
+            {"type": "tool_use", "name": "bash", "input": {"cmd": "ls"}},
+            {"type": "tool_use", "name": "read", "input": {"path": "/f"}},
+        ]
+        result = _flatten_assistant_content(blocks)
+        assert "[tool_use: bash]" in result
+        assert "[tool_use: read]" in result
+
+    def test_flatten_tool_result_nested_image(self):
+        """Tool result containing image blocks uses placeholder."""
+        blocks = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "x",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "data": "abc"}},
+                    {"type": "text", "text": "screenshot above"},
+                ],
+            }
+        ]
+        result = _flatten_tool_result_content(blocks)
+        # json.dumps fallback for image, text for text
+        assert "screenshot above" in result

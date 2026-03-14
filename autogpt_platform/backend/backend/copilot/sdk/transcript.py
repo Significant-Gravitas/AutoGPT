@@ -19,16 +19,13 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import openai
 
+from backend.copilot.config import ChatConfig
 from backend.util import json
 from backend.util.prompt import CompressResult, compress_context
-
-if TYPE_CHECKING:
-    from backend.copilot.config import ChatConfig
 
 logger = logging.getLogger(__name__)
 
@@ -621,7 +618,7 @@ def _flatten_tool_result_content(blocks: list) -> str:
     str_parts: list[str] = []
     for block in blocks:
         if isinstance(block, dict) and block.get("type") == "tool_result":
-            inner = block.get("content", "")
+            inner = block.get("content") or ""
             if isinstance(inner, list):
                 for sub in inner:
                     if isinstance(sub, dict):
@@ -722,7 +719,7 @@ async def _run_compression(
             api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
         ) as client:
             return await compress_context(messages=messages, model=model, client=client)
-    except (openai.APIError, openai.APITimeoutError, OSError) as e:
+    except Exception as e:
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await compress_context(messages=messages, model=model, client=None)
 
@@ -738,11 +735,6 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
-    # Local import: ChatConfig is in TYPE_CHECKING for annotations but
-    # needs a runtime import here.  Top-level would create a circular
-    # dependency (config → … → transcript).
-    from backend.copilot.config import ChatConfig
-
     cfg = ChatConfig()
     messages = _transcript_to_messages(content)
     if len(messages) < 2:

@@ -97,9 +97,20 @@ _PROMPT_TOO_LONG_PATTERNS = (
 
 
 def _is_prompt_too_long(err: BaseException) -> bool:
-    """Return True if *err* indicates the prompt exceeds the model's limit."""
-    msg = str(err).lower()
-    return any(p in msg for p in _PROMPT_TOO_LONG_PATTERNS)
+    """Return True if *err* indicates the prompt exceeds the model's limit.
+
+    Walks the exception chain (``__cause__`` / ``__context__``) so that
+    wrapped errors (e.g. ``RuntimeError`` wrapping an API error) are
+    detected too.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if any(p in str(current).lower() for p in _PROMPT_TOO_LONG_PATTERNS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _setup_langfuse_otel() -> None:
@@ -998,7 +1009,17 @@ async def stream_chat_completion_sdk(
                         resume_file = write_transcript_to_tempfile(
                             compacted, session_id, sdk_cwd
                         )
-                        use_resume = bool(resume_file)
+                        if not resume_file:
+                            logger.warning(
+                                "%s Failed to write compacted transcript, "
+                                "dropping transcript",
+                                log_prefix,
+                            )
+                            transcript_builder = TranscriptBuilder()
+                            use_resume = False
+                            transcript_caused_error = True
+                        else:
+                            use_resume = True
                         transcript_msg_count = 0
                     else:
                         logger.warning(
