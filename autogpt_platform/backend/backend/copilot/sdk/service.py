@@ -89,7 +89,10 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
-_MAX_QUERY_ATTEMPTS = 3
+# On any streaming error the SDK query is retried with progressively
+# less context: (1) original transcript → (2) compacted transcript →
+# (3) no transcript (DB messages only).
+_MAX_STREAM_ATTEMPTS = 3
 
 
 async def _retry_with_compacted_transcript(
@@ -990,24 +993,24 @@ async def stream_chat_completion_sdk(
             query_message = f"{query_message}\n\n{attachments.hint}"
 
         _stream_error: Exception | None = None
-        _compaction_attempted = False
+        _tried_compaction = False
 
-        for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
-            if _query_attempt > 0:
+        for _attempt in range(_MAX_STREAM_ATTEMPTS):
+            if _attempt > 0:
                 _stream_error = None
                 stream_completed = False
 
                 logger.info(
-                    "%s Retry attempt %d/%d",
+                    "%s Retrying with reduced context (%d/%d)",
                     log_prefix,
-                    _query_attempt + 1,
-                    _MAX_QUERY_ATTEMPTS,
+                    _attempt + 1,
+                    _MAX_STREAM_ATTEMPTS,
                 )
 
                 # First retry: try compacting the transcript.
                 # Subsequent retries: drop transcript, rebuild from DB.
-                if transcript_content and not _compaction_attempted:
-                    _compaction_attempted = True
+                if transcript_content and not _tried_compaction:
+                    _tried_compaction = True
                     tb, use_resume, resume_file, success = (
                         await _retry_with_compacted_transcript(
                             transcript_content, session_id, sdk_cwd, log_prefix
@@ -1148,8 +1151,8 @@ async def stream_chat_completion_sdk(
                             logger.warning(
                                 "%s Stream error (attempt %d/%d): %s",
                                 log_prefix,
-                                _query_attempt + 1,
-                                _MAX_QUERY_ATTEMPTS,
+                                _attempt + 1,
+                                _MAX_STREAM_ATTEMPTS,
                                 stream_err,
                                 exc_info=True,
                             )
@@ -1475,7 +1478,7 @@ async def stream_chat_completion_sdk(
                 logger.error(
                     "%s All %d query attempts exhausted: %s",
                     log_prefix,
-                    _MAX_QUERY_ATTEMPTS,
+                    _MAX_STREAM_ATTEMPTS,
                     _stream_error,
                 )
                 yield StreamError(

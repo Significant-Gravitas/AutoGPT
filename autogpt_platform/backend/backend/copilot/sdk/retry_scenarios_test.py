@@ -29,7 +29,7 @@ import pytest
 
 from backend.util import json
 
-from .service import _MAX_QUERY_ATTEMPTS
+from .service import _MAX_STREAM_ATTEMPTS
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -106,7 +106,7 @@ class TestScenarioNormalFlow:
 
     def test_max_query_attempts_is_three(self):
         """Verify the constant is 3 (compact + DB fallback + exhaustion)."""
-        assert _MAX_QUERY_ATTEMPTS == 3
+        assert _MAX_STREAM_ATTEMPTS == 3
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +322,7 @@ class TestScenarioAllAttemptsExhausted:
         _stream_error: Exception | None = None
         transcript_caused_error = False
 
-        for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
+        for _query_attempt in range(_MAX_STREAM_ATTEMPTS):
             _stream_error = Exception("some error")
 
         # After loop: check exhaustion
@@ -462,17 +462,17 @@ class TestRetryStateMachine:
         use_resume = bool(transcript_content)
         stream_completed = False
         attempts_made = 0
-        _compaction_attempted = False
+        _tried_compaction = False
 
-        for _query_attempt in range(min(_MAX_QUERY_ATTEMPTS, len(attempt_results))):
+        for _query_attempt in range(min(_MAX_STREAM_ATTEMPTS, len(attempt_results))):
             if _query_attempt > 0:
                 _stream_error = None
                 stream_completed = False
 
                 # First retry: try compacting the transcript.
                 # Subsequent retries: drop transcript, rebuild from DB.
-                if transcript_content and not _compaction_attempted:
-                    _compaction_attempted = True
+                if transcript_content and not _tried_compaction:
+                    _tried_compaction = True
                     if compact_result and compact_result != transcript_content:
                         use_resume = True
                     else:
