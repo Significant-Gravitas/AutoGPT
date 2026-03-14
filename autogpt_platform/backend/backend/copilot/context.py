@@ -114,7 +114,10 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     encoded = _current_project_dir.get("")
     if encoded:
-        project_dir = os.path.join(SDK_PROJECTS_DIR, encoded)
+        project_dir = os.path.realpath(os.path.join(SDK_PROJECTS_DIR, encoded))
+        # Defence-in-depth: ensure project_dir didn't escape the base.
+        if not project_dir.startswith(SDK_PROJECTS_DIR + os.sep):
+            return False
         # Only allow: <encoded-cwd>/<uuid>/tool-results/<file>
         # The SDK always creates a conversation UUID directory between
         # the project dir and tool-results/.
