@@ -41,8 +41,9 @@ class TestIsPromptTooLong:
     def test_context_length_exceeded(self) -> None:
         assert _is_prompt_too_long(Exception("context_length_exceeded")) is True
 
-    def test_max_tokens_exceeded(self) -> None:
-        assert _is_prompt_too_long(Exception("max_tokens_exceeded")) is True
+    def test_max_tokens_exceeded_not_matched(self) -> None:
+        """'max_tokens_exceeded' is intentionally excluded (too broad)."""
+        assert _is_prompt_too_long(Exception("max_tokens_exceeded")) is False
 
     def test_max_tokens_config_error_no_match(self) -> None:
         """'max_tokens must be at least 1' should NOT match."""
@@ -88,7 +89,6 @@ class TestIsPromptTooLong:
             "request too large",
             "maximum context length",
             "context_length_exceeded",
-            "max_tokens_exceeded",
             "input tokens exceed",
             "input is too long",
             "content length exceeds",
