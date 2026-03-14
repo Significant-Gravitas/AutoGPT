@@ -80,6 +80,7 @@ from .tool_adapter import (
 from .transcript import (
     cleanup_cli_project_dir,
     download_transcript,
+    read_compacted_entries,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -1056,6 +1057,7 @@ async def stream_chat_completion_sdk(
                             exc_info=True,
                         )
                         ended_with_stream_error = True
+
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
                             code="sdk_stream_error",
@@ -1167,9 +1169,26 @@ async def stream_chat_completion_sdk(
                         if sdk_msg.total_cost_usd is not None:
                             turn_cost_usd = sdk_msg.total_cost_usd
 
-                    # Emit compaction end if SDK finished compacting
-                    for ev in await compaction.emit_end_if_ready(session):
+                    # Emit compaction end if SDK finished compacting.
+                    # When compaction ends, sync TranscriptBuilder with the
+                    # CLI's active context so they stay identical.
+                    compact_result = await compaction.emit_end_if_ready(session)
+                    for ev in compact_result.events:
                         yield ev
+                    # After replace_entries, skip append_assistant for this
+                    # sdk_msg — the CLI session file already contains it,
+                    # so appending again would create a duplicate.
+                    entries_replaced = False
+                    if compact_result.just_ended:
+                        compacted = await asyncio.to_thread(
+                            read_compacted_entries,
+                            compact_result.transcript_path,
+                        )
+                        if compacted is not None:
+                            transcript_builder.replace_entries(
+                                compacted, log_prefix=log_prefix
+                            )
+                            entries_replaced = True
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
@@ -1256,10 +1275,11 @@ async def stream_chat_completion_sdk(
                                     tool_call_id=response.toolCallId,
                                 )
                             )
-                            transcript_builder.append_tool_result(
-                                tool_use_id=response.toolCallId,
-                                content=content,
-                            )
+                            if not entries_replaced:
+                                transcript_builder.append_tool_result(
+                                    tool_use_id=response.toolCallId,
+                                    content=content,
+                                )
                             has_tool_results = True
 
                         elif isinstance(response, StreamFinish):
@@ -1269,7 +1289,9 @@ async def stream_chat_completion_sdk(
                     # any stashed tool results from the previous turn are
                     # recorded first, preserving the required API order:
                     # assistant(tool_use) → tool_result → assistant(text).
-                    if isinstance(sdk_msg, AssistantMessage):
+                    # Skip if replace_entries just ran — the CLI session
+                    # file already contains this message.
+                    if isinstance(sdk_msg, AssistantMessage) and not entries_replaced:
                         transcript_builder.append_assistant(
                             content_blocks=_format_sdk_content_blocks(sdk_msg.content),
                             model=sdk_msg.model,
@@ -1529,13 +1551,13 @@ async def stream_chat_completion_sdk(
             task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
-        # This MUST run in finally so the transcript is uploaded even when
-        # the streaming loop raises an exception.
-        # The transcript represents the COMPLETE active context (atomic).
+        # TranscriptBuilder is the single source of truth.  It mirrors the
+        # CLI's active context: on compaction, replace_entries() syncs it
+        # with the compacted session file.  No CLI file read needed here.
         if config.claude_agent_use_resume and user_id and session is not None:
             try:
-                # Build complete transcript from captured SDK messages
                 transcript_content = transcript_builder.to_jsonl()
+                entry_count = transcript_builder.entry_count
 
                 if not transcript_content:
                     logger.warning(
@@ -1545,18 +1567,15 @@ async def stream_chat_completion_sdk(
                     logger.warning(
                         "%s Transcript invalid, skipping upload (entries=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                     )
                 else:
                     logger.info(
-                        "%s Uploading complete transcript (entries=%d, bytes=%d)",
+                        "%s Uploading transcript (entries=%d, bytes=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                         len(transcript_content),
                     )
-                    # Shield upload from cancellation - let it complete even if
-                    # the finally block is interrupted. No timeout to avoid race
-                    # conditions where backgrounded uploads overwrite newer transcripts.
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
