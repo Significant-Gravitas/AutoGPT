@@ -1519,7 +1519,8 @@ async def stream_chat_completion_sdk(
 
             try:
                 async for event in _run_stream_attempt(state):
-                    _events_yielded += 1
+                    if not isinstance(event, StreamHeartbeat):
+                        _events_yielded += 1
                     yield event
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
