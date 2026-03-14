@@ -481,11 +481,13 @@ class DemoStartRequest(BaseModel):
 def demo_page(request: Request) -> HTMLResponse:
     """Serve the interactive demo chat page (embeddable in Wix via iframe)."""
     from autogpt.coaching.demo_ui import DEMO_HTML
-    base_url = coaching_config.public_url
-    if not base_url:
-        base_url = str(request.base_url).rstrip("/")
+    # Use empty string so JS fetch() calls use relative paths (e.g. /demo/session/start)
+    # which always resolve correctly regardless of whether the page is served behind a
+    # proxy, Railway internal network, or any other host. Absolute URLs derived from
+    # request.base_url on Railway resolve to the internal address (http://0.0.0.0:8000)
+    # and cause all API calls to fail.
     html = DEMO_HTML.format(
-        api_base=base_url,
+        api_base="",
         demo_key=coaching_config.demo_key,
         coach_name=coaching_config.coach_name,
         calendly_url=coaching_config.coach_calendly_url,
