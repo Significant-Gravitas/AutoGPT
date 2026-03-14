@@ -42,7 +42,7 @@ def _validate_workspace_path(
     Delegates to :func:`is_allowed_local_path` which permits:
     - The SDK working directory (``/tmp/copilot-<session>/``)
     - The current session's tool-results directory
-      (``~/.claude/projects/<encoded-cwd>/tool-results/``)
+      (``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/``)
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:

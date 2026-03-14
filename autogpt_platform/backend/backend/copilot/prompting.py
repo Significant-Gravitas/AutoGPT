@@ -124,8 +124,9 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/`. To read these files,
-always use `read_file` (NOT `read_workspace_file`). `read_workspace_file` reads
-from cloud workspace storage, where SDK tool-results are NOT stored.
+always use `read_file` or `Read` (NOT `read_workspace_file`).
+`read_workspace_file` reads from cloud workspace storage, where SDK
+tool-results are NOT stored.
 {_SHARED_TOOL_NOTES}"""
 
 

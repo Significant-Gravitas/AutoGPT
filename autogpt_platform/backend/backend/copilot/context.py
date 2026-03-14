@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # for sweep operations without depending on a private implementation detail.
 SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
 
-# Compiled UUID-v4 pattern for validating conversation directory names.
+# Compiled UUID pattern for validating conversation directory names.
 # Kept as a module-level constant so the security-relevant pattern is easy
 # to audit in one place and avoids recompilation on every call.
 _UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", re.IGNORECASE)
