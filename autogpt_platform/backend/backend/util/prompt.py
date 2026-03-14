@@ -70,6 +70,9 @@ def _msg_tokens(msg: dict, enc) -> int:
                 # Count tool result tokens
                 tool_call_tokens += _tok_len(item.get("tool_use_id", ""), enc)
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                # Count text block tokens
+                tool_call_tokens += _tok_len(item.get("text", ""), enc)
             elif isinstance(item, dict) and "content" in item:
                 # Other content types with content field
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
@@ -145,10 +148,14 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     if len(ids) <= max_tok:
         return text  # nothing to do
 
+    # Need at least 3 tokens (head + ellipsis + tail) for meaningful truncation
+    mid = enc.encode(" … ")
+    if max_tok < 3:
+        return enc.decode(mid)
+
     # Split the allowance between the two ends:
     head = max_tok // 2 - 1  # -1 for the ellipsis
     tail = max_tok - head - 1
-    mid = enc.encode(" … ")
     return enc.decode(ids[:head] + mid + ids[-tail:])
 
 
@@ -396,7 +403,7 @@ def validate_and_remove_orphan_tool_responses(
 
     if log_warning:
         logger.warning(
-            f"Removing {len(orphan_ids)} orphan tool response(s): {orphan_ids}"
+            "Removing %d orphan tool response(s): %s", len(orphan_ids), orphan_ids
         )
 
     return _remove_orphan_tool_responses(messages, orphan_ids)
@@ -488,8 +495,9 @@ def _ensure_tool_pairs_intact(
         # Some tool_call_ids couldn't be resolved - remove those tool responses
         # This shouldn't happen in normal operation but handles edge cases
         logger.warning(
-            f"Could not find assistant messages for tool_call_ids: {orphan_tool_call_ids}. "
-            "Removing orphan tool responses."
+            "Could not find assistant messages for tool_call_ids: %s. "
+            "Removing orphan tool responses.",
+            orphan_tool_call_ids,
         )
         recent_messages = _remove_orphan_tool_responses(
             recent_messages, orphan_tool_call_ids
@@ -497,8 +505,8 @@ def _ensure_tool_pairs_intact(
 
     if messages_to_prepend:
         logger.info(
-            f"Extended recent messages by {len(messages_to_prepend)} to preserve "
-            f"tool_call/tool_response pairs"
+            "Extended recent messages by %d to preserve tool_call/tool_response pairs",
+            len(messages_to_prepend),
         )
         return messages_to_prepend + recent_messages
 
@@ -686,11 +694,15 @@ async def compress_context(
                     msgs = [summary_msg] + recent_msgs
 
                 logger.info(
-                    f"Context summarized: {original_count} -> {total_tokens()} tokens, "
-                    f"summarized {messages_summarized} messages"
+                    "Context summarized: %d -> %d tokens, summarized %d messages",
+                    original_count,
+                    total_tokens(),
+                    messages_summarized,
                 )
             except Exception as e:
-                logger.warning(f"Summarization failed, continuing with truncation: {e}")
+                logger.warning(
+                    "Summarization failed, continuing with truncation: %s", e
+                )
                 # Fall through to content truncation
 
     # ---- STEP 2: Normalize content ----------------------------------------

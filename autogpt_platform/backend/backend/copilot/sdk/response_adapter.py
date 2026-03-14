@@ -221,12 +221,12 @@ class SDKResponseAdapter:
                 responses.append(StreamFinish())
             else:
                 logger.warning(
-                    f"Unexpected ResultMessage subtype: {sdk_message.subtype}"
+                    "Unexpected ResultMessage subtype: %s", sdk_message.subtype
                 )
                 responses.append(StreamFinish())
 
         else:
-            logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
+            logger.debug("Unhandled SDK message type: %s", type(sdk_message).__name__)
 
         return responses
 

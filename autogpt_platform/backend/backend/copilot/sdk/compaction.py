@@ -198,6 +198,7 @@ class CompactionTracker:
 
     def reset_for_query(self) -> None:
         """Reset per-query state before a new SDK query."""
+        self._compact_start.clear()
         self._done = False
         self._start_emitted = False
         self._tool_call_id = ""

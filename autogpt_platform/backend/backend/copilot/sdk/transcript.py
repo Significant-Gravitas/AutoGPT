@@ -109,7 +109,9 @@ def strip_progress_entries(content: str) -> str:
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
-        while parent in stripped_uuids:
+        seen_parents: set[str] = set()
+        while parent in stripped_uuids and parent not in seen_parents:
+            seen_parents.add(parent)
             parent = uuid_to_parent.get(parent, "")
         if parent != original_parent:
             entry["parentUuid"] = parent
@@ -244,7 +246,7 @@ def write_transcript_to_tempfile(
     # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
     real_cwd = os.path.realpath(cwd)
     if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning(f"[Transcript] cwd outside sandbox: {cwd}")
+        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
         return None
 
     try:
@@ -254,17 +256,17 @@ def write_transcript_to_tempfile(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
         )
         if not jsonl_path.startswith(real_cwd):
-            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
+            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
             return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
+        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
         return jsonl_path
 
     except OSError as e:
-        logger.warning(f"[Transcript] Failed to write resume file: {e}")
+        logger.warning("[Transcript] Failed to write resume file: %s", e)
         return None
 
 
@@ -408,11 +410,14 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
+        logger.warning("%s Failed to write metadata: %s", log_prefix, e)
 
     logger.info(
-        f"{log_prefix} Uploaded {len(encoded)}B "
-        f"(stripped from {len(content)}B, msg_count={message_count})"
+        "%s Uploaded %dB (stripped from %dB, msg_count=%d)",
+        log_prefix,
+        len(encoded),
+        len(content),
+        message_count,
     )
 
 
@@ -435,10 +440,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug(f"{log_prefix} No transcript in storage")
+        logger.debug("%s No transcript in storage", log_prefix)
         return None
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
+        logger.warning("%s Failed to download transcript: %s", log_prefix, e)
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -458,10 +463,14 @@ async def download_transcript(
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except (FileNotFoundError, Exception):
+    except FileNotFoundError:
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+    except Exception as e:
+        logger.debug("%s Failed to load transcript metadata: %s", log_prefix, e)
 
-    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
+    logger.info(
+        "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count
+    )
     return TranscriptDownload(
         content=content,
         message_count=message_count,

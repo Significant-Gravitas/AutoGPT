@@ -301,7 +301,7 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     """
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
+        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
         return
 
     # Clean the CLI's project directory (transcripts + tool-results).
@@ -395,7 +395,7 @@ async def _compress_messages(
                 client=client,
             )
     except Exception as e:
-        logger.warning(f"[SDK] Context compression with LLM failed: {e}")
+        logger.warning("[SDK] Context compression with LLM failed: %s", e)
         # Fall back to truncation-only (no LLM summarization)
         result = await compress_context(
             messages=messages_dict,
@@ -918,7 +918,7 @@ async def stream_chat_completion_sdk(
                         f"msg_count={transcript_msg_count})"
                     )
             else:
-                logger.warning(f"{log_prefix} Transcript downloaded but invalid")
+                logger.warning("%s Transcript downloaded but invalid", log_prefix)
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
                 f"{log_prefix} No transcript available "
@@ -1662,6 +1662,6 @@ async def _update_title_async(
         )
         if title and user_id:
             await update_session_title(session_id, user_id, title, only_if_empty=True)
-            logger.debug(f"[SDK] Generated title for {session_id}: {title}")
+            logger.debug("[SDK] Generated title for %s: %s", session_id, title)
     except Exception as e:
-        logger.warning(f"[SDK] Failed to update session title: {e}")
+        logger.warning("[SDK] Failed to update session title: %s", e)
