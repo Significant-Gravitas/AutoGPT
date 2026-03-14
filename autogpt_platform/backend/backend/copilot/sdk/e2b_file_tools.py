@@ -37,6 +37,11 @@ async def _check_sandbox_symlink_escape(
 
     Returns the canonical parent path, or ``None`` if the path escapes
     ``E2B_WORKDIR``.
+
+    Note: There is an inherent TOCTOU window between this check and the
+    subsequent ``sandbox.files.write()``.  A symlink could theoretically be
+    replaced between the two operations.  This is acceptable in the E2B
+    sandbox model since the sandbox is single-user and ephemeral.
     """
     canonical_res = await sandbox.commands.run(
         f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",

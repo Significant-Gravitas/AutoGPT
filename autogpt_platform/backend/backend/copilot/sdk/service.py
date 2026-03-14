@@ -285,19 +285,24 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
 
     Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
 
-    NOTE: The CLI project directory ``~/.claude/projects/<encoded-cwd>/``
-    is intentionally NOT cleaned up.  The SDK stores tool-result files
-    there that the model may reference in subsequent turns via ``--resume``.
+    Also sweeps stale CLI project directories (older than 6 h) to prevent
+    unbounded disk growth.  The sweep is best-effort and rate-limited to
+    50 directories per turn.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
+    from .transcript import cleanup_stale_project_dirs
+
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
+        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
         return
 
     await asyncio.to_thread(shutil.rmtree, normalized, True)
+
+    # Best-effort sweep of old project dirs to prevent disk leak.
+    await asyncio.to_thread(cleanup_stale_project_dirs)
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:

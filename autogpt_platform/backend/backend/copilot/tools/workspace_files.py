@@ -284,6 +284,9 @@ class WorkspaceFileContentResponse(ToolResponseBase):
     content_base64: str
 
 
+_MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 def _read_local_tool_result(
     path: str,
     char_offset: int,
@@ -304,10 +307,41 @@ def _read_local_tool_result(
     if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
         return ErrorResponse(message=f"Path not allowed: {path}", session_id=session_id)
     try:
-        with open(expanded, encoding="utf-8", errors="replace") as fh:
-            content = fh.read()
-            end = char_offset + char_length if char_length is not None else len(content)
-            slice_text = content[char_offset:end]
+        file_size = os.path.getsize(expanded)
+        if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
+            return ErrorResponse(
+                message=(
+                    f"File too large ({file_size:,} bytes, "
+                    f"limit {_MAX_LOCAL_TOOL_RESULT_BYTES:,}): {path}"
+                ),
+                session_id=session_id,
+            )
+
+        # Detect binary files: try strict UTF-8 first, fall back to
+        # base64-encoding the raw bytes for binary content.
+        with open(expanded, "rb") as fh:
+            raw = fh.read()
+        try:
+            text_content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # Binary file — return raw base64, ignore char_offset/char_length
+            return WorkspaceFileContentResponse(
+                file_id="local",
+                name=os.path.basename(path),
+                path=path,
+                mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
+                content_base64=base64.b64encode(raw).decode("ascii"),
+                message=(
+                    f"Read {file_size:,} bytes (binary) from local tool-result "
+                    f"{os.path.basename(path)}"
+                ),
+                session_id=session_id,
+            )
+
+        end = (
+            char_offset + char_length if char_length is not None else len(text_content)
+        )
+        slice_text = text_content[char_offset:end]
     except FileNotFoundError:
         return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
     except Exception as exc:
@@ -315,16 +349,15 @@ def _read_local_tool_result(
             message=f"Error reading {path}: {exc}", session_id=session_id
         )
 
-    total_bytes = os.path.getsize(expanded)
     return WorkspaceFileContentResponse(
         file_id="local",
         name=os.path.basename(path),
         path=path,
-        mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
-        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("utf-8"),
+        mime_type=mimetypes.guess_type(path)[0] or "text/plain",
+        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("ascii"),
         message=(
             f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
-            f"of ~{total_bytes:,} bytes from local tool-result "
+            f"of {len(text_content):,} chars from local tool-result "
             f"{os.path.basename(path)}"
         ),
         session_id=session_id,

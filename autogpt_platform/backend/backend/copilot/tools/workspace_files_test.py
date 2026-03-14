@@ -2,18 +2,24 @@
 
 import base64
 import os
+import shutil
 
 import pytest
 
+from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.tools._test_data import make_session, setup_test_data
+from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workspace_files import (
+    _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
     WorkspaceDeleteResponse,
+    WorkspaceFileContentResponse,
     WorkspaceFileListResponse,
     WorkspaceWriteResponse,
     WriteWorkspaceFileTool,
+    _read_local_tool_result,
     _resolve_write_content,
     _validate_ephemeral_path,
 )
@@ -325,3 +331,109 @@ async def test_write_workspace_file_source_path(setup_test_data):
     await delete_tool._execute(
         user_id=user.id, session=session, file_id=write_resp.file_id
     )
+
+
+# ---------------------------------------------------------------------------
+# _read_local_tool_result — local disk fallback for SDK tool-result files
+# ---------------------------------------------------------------------------
+
+_CONV_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+
+class TestReadLocalToolResult:
+    """Tests for _read_local_tool_result (local disk fallback)."""
+
+    def _make_tool_result(self, encoded: str, filename: str, content: bytes) -> str:
+        """Create a tool-results file and return its path."""
+        tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, _CONV_UUID, "tool-results")
+        os.makedirs(tool_dir, exist_ok=True)
+        filepath = os.path.join(tool_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(content)
+        return filepath
+
+    def _cleanup(self, encoded: str) -> None:
+        shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
+
+    def test_read_text_file(self):
+        """Read a UTF-8 text tool-result file."""
+        encoded = "-tmp-copilot-local-read-text"
+        path = self._make_tool_result(encoded, "output.txt", b"hello world")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "hello world"
+            assert "text/plain" in result.mime_type
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_read_text_with_offset(self):
+        """Read a slice of a text file using char_offset and char_length."""
+        encoded = "-tmp-copilot-local-read-offset"
+        path = self._make_tool_result(encoded, "data.txt", b"ABCDEFGHIJ")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 3, 4, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "DEFG"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_read_binary_file(self):
+        """Binary files are returned as raw base64."""
+        encoded = "-tmp-copilot-local-read-binary"
+        binary_data = bytes(range(256))
+        path = self._make_tool_result(encoded, "image.png", binary_data)
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64)
+            assert decoded == binary_data
+            assert "binary" in result.message
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_disallowed_path_rejected(self):
+        """Paths not under allowed directories are rejected."""
+        result = _read_local_tool_result("/etc/passwd", 0, None, "s1")
+        assert isinstance(result, ErrorResponse)
+        assert "not allowed" in result.message.lower()
+
+    def test_file_not_found(self):
+        """Missing files return an error."""
+        encoded = "-tmp-copilot-local-read-missing"
+        tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, _CONV_UUID, "tool-results")
+        os.makedirs(tool_dir, exist_ok=True)
+        path = os.path.join(tool_dir, "nope.txt")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, ErrorResponse)
+            assert "not found" in result.message.lower()
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_file_too_large(self, monkeypatch):
+        """Files exceeding the size limit are rejected."""
+        encoded = "-tmp-copilot-local-read-large"
+        # Create a small file but fake os.path.getsize to return a huge value
+        path = self._make_tool_result(encoded, "big.txt", b"small")
+        token = _current_project_dir.set(encoded)
+        monkeypatch.setattr(
+            "os.path.getsize", lambda _: _MAX_LOCAL_TOOL_RESULT_BYTES + 1
+        )
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, ErrorResponse)
+            assert "too large" in result.message.lower()
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
