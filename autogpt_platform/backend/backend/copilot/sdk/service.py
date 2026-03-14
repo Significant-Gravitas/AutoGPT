@@ -1044,6 +1044,9 @@ async def stream_chat_completion_sdk(
                     message_id=message_id, session_id=session_id
                 )
 
+            # Save message count so we can rollback partial messages on retry
+            _pre_attempt_msg_count = len(session.messages)
+
             async with ClaudeSDKClient(options=options) as client:
                 logger.info(
                     "%s Sending query — resume=%s, total_msgs=%d, "
@@ -1401,7 +1404,10 @@ async def stream_chat_completion_sdk(
 
                 # On prompt-too-long, skip post-stream processing — the retry
                 # loop will either compact and retry, or exhaust attempts.
+                # Roll back any partial messages appended during the failed
+                # attempt to prevent duplicates on retry.
                 if _prompt_too_long:
+                    session.messages = session.messages[:_pre_attempt_msg_count]
                     continue  # goes to next iteration of for _query_attempt
 
                 # Safety net: if tools are still unresolved after the
