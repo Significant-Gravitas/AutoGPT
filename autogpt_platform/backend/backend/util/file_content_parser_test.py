@@ -57,6 +57,10 @@ class TestInferFormat:
         assert infer_format("/data/FILE.JSON") == "json"
         assert infer_format("/data/FILE.CSV") == "csv"
 
+    def test_unicode_filename(self):
+        assert infer_format("/home/user/\u30c7\u30fc\u30bf.json") == "json"
+        assert infer_format("/home/user/\u00e9t\u00e9.csv") == "csv"
+
     def test_unknown_extension(self):
         assert infer_format("/home/user/readme.txt") is None
 
@@ -275,6 +279,16 @@ class TestParseCsv:
         result = parse_file_content("", "csv")
         assert result == ""
 
+    def test_utf8_bom(self):
+        """CSV with a UTF-8 BOM should parse correctly (BOM stripped by decode)."""
+        bom = "\ufeff"
+        content = bom + "Name,Score\nAlice,90\nBob,85"
+        result = parse_file_content(content, "csv")
+        # The BOM may be part of the first header cell; ensure rows are still parsed.
+        assert len(result) == 3
+        assert result[1] == ["Alice", "90"]
+        assert result[2] == ["Bob", "85"]
+
 
 # ---------------------------------------------------------------------------
 # parse_file_content — TSV
@@ -387,6 +401,11 @@ class TestParseParquet:
         result = parse_file_content(b"not parquet bytes", "parquet")
         assert result == b"not parquet bytes"
 
+    def test_empty_bytes_fallback(self):
+        """Empty binary input should return the empty bytes, not crash."""
+        result = parse_file_content(b"", "parquet")
+        assert result == b""
+
 
 # ---------------------------------------------------------------------------
 # parse_file_content — Excel (binary)
@@ -414,6 +433,11 @@ class TestParseExcel:
     def test_invalid_bytes_fallback(self):
         result = parse_file_content(b"not xlsx bytes", "xlsx")
         assert result == b"not xlsx bytes"
+
+    def test_empty_bytes_fallback(self):
+        """Empty binary input should return the empty bytes, not crash."""
+        result = parse_file_content(b"", "xlsx")
+        assert result == b""
 
     def test_nan_replaced_with_none(self):
         """NaN values in float columns must become None for JSON serializability."""

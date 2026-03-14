@@ -181,6 +181,7 @@ class FileOperation(StrEnum):
 
 class FileOperationInput(TypedDict):
     path: str
+    # MediaFileType is a str NewType — no runtime breakage for existing callers.
     content: MediaFileType
     operation: FileOperation
 

@@ -160,6 +160,8 @@ async def read_file_bytes(
             raise ValueError(f"File not found: {plain}")
         except (PermissionError, OSError) as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
+        # NOTE: Workspace API does not support pre-read size checks;
+        # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
             raise ValueError(
                 f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
@@ -169,6 +171,7 @@ async def read_file_bytes(
     if is_allowed_local_path(plain, get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(plain))
         try:
+            # TOCTOU: size checked before read; acceptable since paths are server-controlled.
             size = os.path.getsize(resolved)
             if size > _MAX_BARE_REF_BYTES:
                 raise ValueError(
@@ -193,6 +196,8 @@ async def read_file_bytes(
             data = bytes(await sandbox.files.read(remote, format="bytes"))
         except Exception as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
+        # NOTE: E2B sandbox API does not support pre-read size checks;
+        # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
             raise ValueError(
                 f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
@@ -218,7 +223,13 @@ def _check_content_size(content: str | bytes) -> None:
     we encode to UTF-8 first because multi-byte characters (e.g. emoji)
     mean the byte size can be up to 4x the character count.
     """
-    size = len(content) if isinstance(content, bytes) else len(content.encode("utf-8"))
+    if isinstance(content, bytes):
+        size = len(content)
+    else:
+        # Quick upper-bound: each char is at most 4 UTF-8 bytes
+        if len(content) * 4 <= _MAX_BARE_REF_BYTES:
+            return  # guaranteed under limit, skip encoding
+        size = len(content.encode("utf-8"))
     if size > _MAX_BARE_REF_BYTES:
         raise FileRefExpansionError(
             f"File too large for structured parsing "
@@ -334,6 +345,13 @@ async def _infer_format_from_workspace(
     except (ValueError, FileNotFoundError, OSError, PermissionError):
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
         return None
+    except Exception:
+        logger.warning(
+            "unexpected error during workspace metadata lookup for %s",
+            uri,
+            exc_info=True,
+        )
+        return None
 
 
 def _is_tabular(parsed: Any) -> bool:
@@ -405,6 +423,8 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
             return parsed
         # Fallback: wrap in a single-element list so the block gets [dict]
         # instead of pydantic flattening keys/values into a flat list.
+        # Wrapping a non-array dict as [dict] may produce confusing errors for
+        # non-object item types; pydantic validation will reject it downstream.
         return [parsed]
 
     # Tabular list → object: convert to a column-dict

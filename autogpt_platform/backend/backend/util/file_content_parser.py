@@ -42,7 +42,6 @@ from posixpath import splitext
 from typing import Any
 
 import yaml
-from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
 
 logger = logging.getLogger(__name__)
 
@@ -83,19 +82,29 @@ BINARY_FORMATS: frozenset[str] = frozenset({"parquet", "xlsx"})
 # Exception types that can be raised during file content parsing.
 # Shared between ``parse_file_content`` (which catches them in non-strict mode)
 # and ``file_ref._expand_bare_ref`` (which re-raises them as FileRefExpansionError).
-PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    json.JSONDecodeError,
-    csv.Error,
-    yaml.YAMLError,
-    tomllib.TOMLDecodeError,
-    ValueError,
-    UnicodeDecodeError,
-    ImportError,
-    OSError,
-    KeyError,
-    TypeError,
-    zipfile.BadZipFile,
-    OpenpyxlInvalidFile,
+try:
+    from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
+except ImportError:  # openpyxl is optional; only needed for .xlsx parsing
+    OpenpyxlInvalidFile = None  # type: ignore[assignment,misc]
+
+PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
+    filter(
+        None,
+        (
+            json.JSONDecodeError,
+            csv.Error,
+            yaml.YAMLError,
+            tomllib.TOMLDecodeError,
+            ValueError,
+            UnicodeDecodeError,
+            ImportError,
+            OSError,
+            KeyError,
+            TypeError,
+            zipfile.BadZipFile,
+            OpenpyxlInvalidFile,
+        ),
+    )
 )
 
 
@@ -187,6 +196,10 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
 
 
 def _parse_yaml(content: str) -> list | dict | str:
+    # NOTE: YAML anchor/alias expansion can amplify input beyond the 10MB cap.
+    # safe_load prevents code execution; for production hardening consider
+    # a YAML parser with expansion limits (e.g. ruamel.yaml with max_alias_count).
+    # Only the first YAML document is parsed; multi-document files (---) are not supported.
     return _parse_container(yaml.safe_load, content)
 
 
