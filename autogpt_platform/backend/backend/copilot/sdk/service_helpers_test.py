@@ -9,10 +9,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
+from .conftest import build_test_transcript as _build_transcript
 from .service import (
     ReducedContext,
     _is_prompt_too_long,
@@ -99,37 +99,6 @@ class TestIsPromptTooLong:
 # ---------------------------------------------------------------------------
 # _reduce_context
 # ---------------------------------------------------------------------------
-
-
-def _build_transcript(pairs: list[tuple[str, str]]) -> str:
-    from backend.util import json
-
-    lines: list[str] = []
-    last_uuid = ""
-    for role, content in pairs:
-        uid = str(uuid4())
-        entry_type = "assistant" if role == "assistant" else "user"
-        msg: dict = {"role": role, "content": content}
-        if role == "assistant":
-            msg.update(
-                {
-                    "model": "",
-                    "id": f"msg_{uuid4().hex[:24]}",
-                    "type": "message",
-                    "content": [{"type": "text", "text": content}],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": None,
-                }
-            )
-        entry = {
-            "type": entry_type,
-            "uuid": uid,
-            "parentUuid": last_uuid,
-            "message": msg,
-        }
-        lines.append(json.dumps(entry, separators=(",", ":")))
-        last_uuid = uid
-    return "\n".join(lines) + "\n"
 
 
 class TestReduceContext:
@@ -267,7 +236,7 @@ class TestIterSdkMessages:
 
         async def _slow_receive() -> AsyncGenerator[str]:
             await asyncio.sleep(100)  # never completes
-            yield "never"  # noqa: RUF027
+            yield "never"  # pragma: no cover — unreachable, yield makes this an async generator
 
         client.receive_response = _slow_receive
 
@@ -287,7 +256,7 @@ class TestIterSdkMessages:
 
         async def _error_receive() -> AsyncGenerator[str]:
             raise RuntimeError("SDK crash")
-            yield  # noqa: RUF027 — make it an async generator
+            yield  # pragma: no cover — unreachable, yield makes this an async generator
 
         client.receive_response = _error_receive
 

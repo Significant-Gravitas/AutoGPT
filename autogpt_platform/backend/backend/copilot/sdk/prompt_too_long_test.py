@@ -9,6 +9,7 @@ import pytest
 
 from backend.util import json
 
+from .conftest import build_test_transcript as _build_transcript
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -360,36 +361,6 @@ class TestMessagesToTranscript:
 # ---------------------------------------------------------------------------
 # compact_transcript
 # ---------------------------------------------------------------------------
-
-
-def _build_transcript(pairs: list[tuple[str, str]]) -> str:
-    """Build a minimal valid JSONL transcript from (role, content) pairs."""
-    lines: list[str] = []
-    last_uuid = None
-    for role, content in pairs:
-        uid = str(uuid4())
-        entry_type = "assistant" if role == "assistant" else "user"
-        msg: dict = {"role": role, "content": content}
-        if role == "assistant":
-            msg.update(
-                {
-                    "model": "",
-                    "id": f"msg_{uid[:8]}",
-                    "type": "message",
-                    "content": [{"type": "text", "text": content}],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": None,
-                }
-            )
-        entry = {
-            "type": entry_type,
-            "uuid": uid,
-            "parentUuid": last_uuid,
-            "message": msg,
-        }
-        lines.append(json.dumps(entry, separators=(",", ":")))
-        last_uuid = uid
-    return "\n".join(lines) + "\n"
 
 
 class TestCompactTranscript:

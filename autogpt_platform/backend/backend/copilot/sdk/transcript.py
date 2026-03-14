@@ -716,6 +716,7 @@ def _messages_to_transcript(messages: list[dict]) -> str:
 
 
 _COMPACTION_TIMEOUT_SECONDS = 60
+_TRUNCATION_TIMEOUT_SECONDS = 30
 
 
 async def _run_compression(
@@ -731,12 +732,17 @@ async def _run_compression(
     summarization.
 
     A 60-second timeout prevents a hung LLM call from blocking the
-    retry path indefinitely.
+    retry path indefinitely.  The truncation fallback also has a
+    30-second timeout to guard against slow tokenization on very large
+    transcripts.
     """
     client = get_openai_client()
     if client is None:
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
-        return await compress_context(messages=messages, model=model, client=None)
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=None),
+            timeout=_TRUNCATION_TIMEOUT_SECONDS,
+        )
     try:
         return await asyncio.wait_for(
             compress_context(messages=messages, model=model, client=client),
@@ -744,11 +750,16 @@ async def _run_compression(
         )
     except Exception as e:
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
-        return await compress_context(messages=messages, model=model, client=None)
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=None),
+            timeout=_TRUNCATION_TIMEOUT_SECONDS,
+        )
 
 
 async def compact_transcript(
     content: str,
+    *,
+    model: str = "",
     log_prefix: str = "[Transcript]",
 ) -> str | None:
     """Compact an oversized JSONL transcript using LLM summarization.
@@ -771,13 +782,14 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
-    cfg = ChatConfig()
+    if not model:
+        model = ChatConfig().model
     messages = _transcript_to_messages(content)
     if len(messages) < 2:
         logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
         return None
     try:
-        result = await _run_compression(messages, cfg.model, log_prefix)
+        result = await _run_compression(messages, model, log_prefix)
         if not result.was_compacted:
             # Compressor says it's within budget, but the SDK rejected it.
             # Return None so the caller falls through to DB fallback.

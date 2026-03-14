@@ -151,7 +151,9 @@ async def _reduce_context(
     """
     # First retry: try compacting
     if transcript_content and not tried_compaction:
-        compacted = await compact_transcript(transcript_content, log_prefix=log_prefix)
+        compacted = await compact_transcript(
+            transcript_content, model=config.model, log_prefix=log_prefix
+        )
         if (
             compacted
             and compacted != transcript_content
@@ -1099,6 +1101,16 @@ async def stream_chat_completion_sdk(
 
             Yields stream events.  On stream error the exception propagates
             to the caller so the retry loop can rollback and retry.
+
+            Outer-scope variable contract (closure):
+              Reassigned between retries by the retry loop:
+                ``options``, ``query_message``, ``was_compacted``,
+                ``transcript_builder``, ``adapter``, ``use_resume``,
+                ``resume_file``, ``transcript_msg_count``
+              Read-only (unchanged across retries):
+                ``session``, ``session_id``, ``sdk_cwd``, ``log_prefix``,
+                ``compaction``, ``attachments``, ``current_message``,
+                ``file_ids``, ``lock``, ``message_id``, ``e2b_sandbox``
             """
             assistant_response = ChatMessage(role="assistant", content="")
             accumulated_tool_calls: list[dict[str, Any]] = []

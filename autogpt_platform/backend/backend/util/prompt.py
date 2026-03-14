@@ -150,9 +150,11 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
         return text  # nothing to do
 
     # Need at least 3 tokens (head + ellipsis + tail) for meaningful truncation
+    if max_tok < 1:
+        return ""
     mid = enc.encode(" … ")
     if max_tok < 3:
-        return enc.decode(mid)
+        return enc.decode(ids[:max_tok])
 
     # Split the allowance between the two ends:
     head = max_tok // 2 - 1  # -1 for the ellipsis
