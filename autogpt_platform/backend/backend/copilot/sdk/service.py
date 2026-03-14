@@ -92,6 +92,7 @@ _PROMPT_TOO_LONG_PATTERNS = (
     "prompt is too long",
     "prompt_too_long",
     "context_length_exceeded",
+    "request too large",
 )
 
 
@@ -1076,8 +1077,15 @@ async def stream_chat_completion_sdk(
                     await client._transport.write(  # noqa: SLF001
                         json.dumps(user_msg) + "\n"
                     )
-                    # Capture user message in transcript (multimodal)
-                    transcript_builder.append_user(content=content_blocks)
+                    # Capture raw user message in transcript (not the
+                    # engineered query_message which may include context
+                    # wrappers from _build_query_message).
+                    transcript_builder.append_user(
+                        content=[
+                            *attachments.image_blocks,
+                            {"type": "text", "text": current_message},
+                        ]
+                    )
                 else:
                     await client.query(query_message, session_id=session_id)
                     # Capture actual user message in transcript (not the engineered query)

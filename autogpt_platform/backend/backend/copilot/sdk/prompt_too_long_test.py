@@ -37,6 +37,8 @@ class TestIsPromptTooLong:
             "The prompt is too long for this model",
             "PROMPT IS TOO LONG",  # case-insensitive
             "Error: CONTEXT_LENGTH_EXCEEDED",
+            "request too large",  # HTTP 413 from Anthropic API
+            "Request too large for model",
         ],
     )
     def test_detects_prompt_too_long_errors(self, error_msg: str):
@@ -54,7 +56,6 @@ class TestIsPromptTooLong:
             "Network unreachable",
             "SDK process exited with code 1",
             "",
-            "request too large",  # too generic — could be HTTP 413 from proxy
             "context_length is 4096",  # partial match should NOT trigger
         ],
     )
@@ -104,6 +105,15 @@ class TestFlattenAssistantContent:
     def test_raw_strings(self):
         assert _flatten_assistant_content(["hello", "world"]) == "hello\nworld"
 
+    def test_unknown_block_type_preserved_as_placeholder(self):
+        blocks = [
+            {"type": "text", "text": "See this image:"},
+            {"type": "image", "source": {"type": "base64", "data": "..."}},
+        ]
+        result = _flatten_assistant_content(blocks)
+        assert "See this image:" in result
+        assert "[image]" in result
+
     def test_empty(self):
         assert _flatten_assistant_content([]) == ""
 
@@ -149,6 +159,11 @@ class TestFlattenToolResultContent:
         ]
         result = _flatten_tool_result_content(blocks)
         assert "image" in result  # json.dumps fallback
+
+    def test_unknown_block_type_preserved_as_placeholder(self):
+        blocks = [{"type": "image", "source": {"type": "base64", "data": "..."}}]
+        result = _flatten_tool_result_content(blocks)
+        assert "[image]" in result
 
 
 # ---------------------------------------------------------------------------
@@ -353,8 +368,10 @@ class TestCompactTranscript:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_content_when_not_compacted(self):
-        """When compress_context says no compaction needed, returns original."""
+    async def test_returns_none_when_not_compacted(self):
+        """When compress_context says no compaction needed, returns None.
+        The compressor couldn't reduce it, so retrying with the same
+        content would fail identically."""
         transcript = _build_transcript(
             [
                 ("user", "Hello"),
@@ -387,7 +404,7 @@ class TestCompactTranscript:
             ),
         ):
             result = await compact_transcript(transcript)
-        assert result == transcript
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_compacted_transcript(self):
