@@ -121,14 +121,22 @@ def parse_file_ref(text: str) -> FileRef | None:
 
 
 def _apply_line_range(text: str, start: int | None, end: int | None) -> str:
-    """Slice *text* to the requested 1-indexed line range (inclusive)."""
+    """Slice *text* to the requested 1-indexed line range (inclusive).
+
+    When the requested range extends beyond the file, a note is appended
+    so the LLM knows it received the entire remaining content.
+    """
     if start is None and end is None:
         return text
     lines = text.splitlines(keepends=True)
+    total = len(lines)
     s = (start - 1) if start is not None else 0
-    e = end if end is not None else len(lines)
+    e = end if end is not None else total
     selected = list(itertools.islice(lines, s, e))
-    return "".join(selected)
+    result = "".join(selected)
+    if end is not None and end > total:
+        result += f"\n[Note: file has only {total} lines]\n"
+    return result
 
 
 async def read_file_bytes(
@@ -162,6 +170,11 @@ async def read_file_bytes(
     if is_allowed_local_path(plain, get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(plain))
         try:
+            size = os.path.getsize(resolved)
+            if size > _MAX_BARE_REF_BYTES:
+                raise ValueError(
+                    f"File too large ({size} bytes, limit {_MAX_BARE_REF_BYTES})"
+                )
             with open(resolved, "rb") as fh:
                 return fh.read()
         except FileNotFoundError:
@@ -222,7 +235,7 @@ async def resolve_file_ref(
 async def expand_file_refs_in_string(
     text: str,
     user_id: str | None,
-    session: "ChatSession",
+    session: ChatSession,
     *,
     raise_on_error: bool = False,
 ) -> str:
@@ -268,6 +281,9 @@ async def expand_file_refs_in_string(
             if len(content) > _MAX_EXPAND_CHARS:
                 content = content[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
             remaining = _MAX_TOTAL_EXPAND_CHARS - total_chars
+            # remaining == 0 means the budget was exactly exhausted by the
+            # previous ref.  The elif below (len > remaining) won't catch
+            # this since 0 > 0 is false, so we need the <= 0 check.
             if remaining <= 0:
                 content = "[file-ref budget exhausted: total expansion limit reached]"
             elif len(content) > remaining:
@@ -322,6 +338,7 @@ def _is_tabular(parsed: Any) -> bool:
         isinstance(parsed, list)
         and len(parsed) >= 2
         and all(isinstance(row, list) for row in parsed)
+        and len(parsed[0]) >= 1
         and all(isinstance(h, str) for h in parsed[0])
     )
 
@@ -377,6 +394,11 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
             list_values = [v for v in parsed.values() if isinstance(v, list)]
             if list_values:
                 return list_values
+        if items_type == "string":
+            # Target is List[str] — wrapping a dict would give [dict]
+            # which can't coerce to strings.  Return unchanged and let
+            # pydantic surface a clear validation error.
+            return parsed
         # Fallback: wrap in a single-element list so the block gets [dict]
         # instead of pydantic flattening keys/values into a flat list.
         return [parsed]
@@ -435,6 +457,9 @@ async def _expand_bare_ref(
     except ValueError as exc:
         raise FileRefExpansionError(str(exc)) from exc
 
+    # For known formats this rejects files >10 MB before parsing.
+    # For unknown formats _MAX_EXPAND_CHARS (200K chars) below is stricter,
+    # but this check still guards the parsing path which has no char limit.
     _check_content_size(content)
 
     # When the schema declares this parameter as "string",
@@ -491,7 +516,7 @@ async def _expand_bare_ref(
 async def expand_file_refs_in_args(
     args: dict[str, Any],
     user_id: str | None,
-    session: "ChatSession",
+    session: ChatSession,
     *,
     input_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

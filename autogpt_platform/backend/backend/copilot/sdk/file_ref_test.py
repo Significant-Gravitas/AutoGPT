@@ -111,7 +111,8 @@ def test_apply_line_range_single_line():
 
 def test_apply_line_range_beyond_eof():
     result = _apply_line_range(TEXT, 4, 999)
-    assert result == "line4\nline5\n"
+    assert "line4\nline5\n" in result
+    assert "[Note: file has only 5 lines]" in result
 
 
 # ---------------------------------------------------------------------------
@@ -1797,3 +1798,98 @@ async def test_non_media_string_field_still_reads_content():
         )
 
     assert result["text"] == "file content here"
+
+
+# ---------------------------------------------------------------------------
+# _apply_line_range — range exceeds file
+# ---------------------------------------------------------------------------
+
+
+def test_apply_line_range_beyond_eof_note():
+    """When the requested end line exceeds the file, a note is appended."""
+    result = _apply_line_range(TEXT, 4, 999)
+    assert "line4" in result
+    assert "line5" in result
+    assert "[Note: file has only 5 lines]" in result
+
+
+# ---------------------------------------------------------------------------
+# _is_tabular — edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_is_tabular_empty_header():
+    """Empty inner lists should NOT be considered tabular."""
+    from backend.copilot.sdk.file_ref import _is_tabular
+
+    assert _is_tabular([[], []]) is False
+
+
+# ---------------------------------------------------------------------------
+# _adapt_to_schema — non-tabular list + object target
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_adapt_non_tabular_list_to_object_target():
+    """Non-tabular list with object target type passes through unchanged."""
+    json_content = "[1, 2, 3]"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return json_content
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "data": {"type": "object"},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.json"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    # Non-tabular list should pass through unchanged (not adapted)
+    assert result["data"] == [1, 2, 3]
+
+
+# ---------------------------------------------------------------------------
+# _adapt_to_schema — dict → List[str] target should NOT wrap
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_adapt_dict_to_list_str_target_not_wrapped():
+    """Dict with List[str] target should not be wrapped in [dict]."""
+    yaml_content = "key: value"
+
+    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+        return yaml_content
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "data": {"type": "array", "items": {"type": "string"}},
+        },
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///config.yaml"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+
+    # Dict should pass through unchanged, not wrapped in [dict]
+    assert result["data"] == {"key": "value"}

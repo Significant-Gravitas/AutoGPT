@@ -466,3 +466,44 @@ class TestBinaryFormats:
     def test_text_formats_not_binary(self):
         for fmt in ("json", "jsonl", "csv", "tsv", "yaml", "toml"):
             assert fmt not in BINARY_FORMATS
+
+
+# ---------------------------------------------------------------------------
+# MIME mapping
+# ---------------------------------------------------------------------------
+
+
+class TestMimeMapping:
+    def test_application_yaml(self):
+        assert infer_format("workspace://abc123#application/yaml") == "yaml"
+
+
+# ---------------------------------------------------------------------------
+# CSV sniffer fallback
+# ---------------------------------------------------------------------------
+
+
+class TestCsvSnifferFallback:
+    def test_tab_delimited_with_csv_format(self):
+        """Tab-delimited content parsed as csv should use sniffer fallback."""
+        content = "Name\tScore\nAlice\t90\nBob\t85"
+        result = parse_file_content(content, "csv")
+        assert result == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
+
+    def test_sniffer_failure_returns_content(self):
+        """When sniffer fails, single-column falls back to raw content."""
+        content = "Name\nAlice\nBob"
+        result = parse_file_content(content, "csv")
+        assert result == content
+
+
+# ---------------------------------------------------------------------------
+# OpenpyxlInvalidFile fallback
+# ---------------------------------------------------------------------------
+
+
+class TestOpenpyxlFallback:
+    def test_invalid_xlsx_non_strict(self):
+        """Invalid xlsx bytes should fall back gracefully in non-strict mode."""
+        result = parse_file_content(b"not xlsx bytes", "xlsx")
+        assert result == b"not xlsx bytes"

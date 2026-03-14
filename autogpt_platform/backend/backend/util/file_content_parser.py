@@ -21,9 +21,11 @@ Supported formats:
 - **Excel** (``.xlsx``) — via pandas/openpyxl → ``list[list[Any]]`` with header row
   (legacy ``.xls`` is **not** supported — only the modern OOXML format)
 
-All parsers follow the **fallback contract**: if parsing fails for *any* reason,
-the original content is returned unchanged (string for text formats, bytes for
-binary formats).  Callers should never see an exception from this module.
+The **fallback contract** is enforced by :func:`parse_file_content`, not by
+individual parser functions.  If any parser raises, ``parse_file_content``
+catches the exception and returns the original content unchanged (string for
+text formats, bytes for binary formats).  Callers should never see an
+exception from the public API when ``strict=False``.
 """
 
 import csv
@@ -40,6 +42,7 @@ from posixpath import splitext
 from typing import Any
 
 import yaml
+from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ MIME_TO_FORMAT: dict[str, str] = {
     "text/csv": "csv",
     "text/tab-separated-values": "tsv",
     "application/x-yaml": "yaml",
+    "application/yaml": "yaml",
     "text/yaml": "yaml",
     "application/toml": "toml",
     "application/vnd.apache.parquet": "parquet",
@@ -146,7 +150,19 @@ def _parse_tsv(content: str) -> Any:
 def _parse_delimited(content: str, *, delimiter: str) -> Any:
     reader = csv.reader(io.StringIO(content), delimiter=delimiter)
     rows = [row for row in reader if row]
-    # Require ≥1 row and ≥2 columns to qualify as tabular data.
+    if not rows:
+        return content
+    # If the declared delimiter produces only single-column rows, try
+    # sniffing the actual delimiter — catches misidentified files (e.g.
+    # a tab-delimited file with a .csv extension).
+    if len(rows[0]) == 1:
+        try:
+            dialect = csv.Sniffer().sniff(content[:8192])
+            if dialect.delimiter != delimiter:
+                reader = csv.reader(io.StringIO(content), dialect)
+                rows = [row for row in reader if row]
+        except csv.Error:
+            pass
     if rows and len(rows[0]) >= 2:
         return rows
     return content
@@ -266,6 +282,7 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
         KeyError,
         TypeError,
         zipfile.BadZipFile,
+        OpenpyxlInvalidFile,
     ):
         if strict:
             raise
