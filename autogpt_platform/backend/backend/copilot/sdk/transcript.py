@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from backend.copilot.config import ChatConfig
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
@@ -734,8 +735,6 @@ async def compact_transcript(
 
     Returns the compacted JSONL string, or ``None`` on failure.
     """
-    from backend.copilot.config import ChatConfig
-
     cfg = ChatConfig()
     messages = _transcript_to_messages(content)
     if len(messages) < 2:

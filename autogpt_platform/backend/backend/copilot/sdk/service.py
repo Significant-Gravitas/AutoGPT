@@ -1409,7 +1409,8 @@ async def stream_chat_completion_sdk(
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
-            except Exception as stream_err:
+            except Exception as e:
+                stream_err = e
                 logger.warning(
                     "%s Stream error (attempt %d/%d): %s",
                     log_prefix,
