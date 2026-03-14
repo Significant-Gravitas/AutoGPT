@@ -640,11 +640,11 @@ class WriteWorkspaceFileTool(BaseTool):
                 },
                 "content_base64": {
                     "type": "string",
-                    "description": "Base64-encoded binary content.",
+                    "description": "Base64-encoded binary content. Mutually exclusive with content/source_path.",
                 },
                 "source_path": {
                     "type": "string",
-                    "description": "Working directory path to copy to workspace.",
+                    "description": "Working directory path to copy to workspace. Mutually exclusive with content/content_base64.",
                 },
                 "path": {
                     "type": "string",

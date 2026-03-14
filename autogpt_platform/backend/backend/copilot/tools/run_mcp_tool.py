@@ -58,7 +58,8 @@ class RunMCPToolTool(BaseTool):
     def description(self) -> str:
         return (
             "Discover and execute MCP server tools. "
-            "Call with server_url only to list tools, then with tool_name + tool_arguments to execute."
+            "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide first for server URLs and auth."
         )
 
     @property

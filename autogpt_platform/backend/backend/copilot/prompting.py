@@ -30,7 +30,7 @@ Examples:
 @@agptfile:workspace://abc123[10-50]
 @@agptfile:workspace:///reports/q1.md
 @@agptfile:/tmp/copilot-<session>/output.py[1-80]
-@@agptfile:/home/user/script.py[1-80]
+@@agptfile:/home/user/script.py
 ```
 
 **Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).

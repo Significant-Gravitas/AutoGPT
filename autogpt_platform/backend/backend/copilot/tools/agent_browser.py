@@ -411,7 +411,8 @@ class BrowserNavigateTool(BaseTool):
             "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
             "for browser_act. Session persists (cookies/auth carry over). "
             "For static pages, prefer web_fetch. "
-            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify."
+            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify. "
+            "For auth: navigate to login, fill creds with browser_act, then navigate to target."
         )
 
     @property
@@ -550,7 +551,8 @@ class BrowserActTool(BaseTool):
             "Actions: click, dblclick, fill, type, scroll, hover, press, "
             "check, uncheck, select, wait, back, forward, reload. "
             "fill clears field first; type appends. "
-            "wait accepts CSS selector or milliseconds (e.g. '1000')."
+            "wait accepts CSS selector or milliseconds (e.g. '1000'). "
+            "Returns updated snapshot."
         )
 
     @property

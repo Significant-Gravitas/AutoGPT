@@ -51,7 +51,7 @@ class FindBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Search blocks by name or description. Returns block IDs for run_block."
+        return "Search blocks by name or description. Returns block IDs for run_block. Always call this FIRST to get block IDs before using run_block."
 
     @property
     def parameters(self) -> dict[str, Any]:
