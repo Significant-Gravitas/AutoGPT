@@ -107,7 +107,9 @@ def strip_progress_entries(content: str) -> str:
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
-        while parent in stripped_uuids:
+        seen_parents: set[str] = set()
+        while parent in stripped_uuids and parent not in seen_parents:
+            seen_parents.add(parent)
             parent = uuid_to_parent.get(parent, "")
         if parent != original_parent:
             entry["parentUuid"] = parent
@@ -541,8 +543,10 @@ async def download_transcript(
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except Exception:
+    except FileNotFoundError:
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+    except Exception as e:
+        logger.debug("%s Failed to load transcript metadata: %s", log_prefix, e)
 
     logger.info(
         "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count

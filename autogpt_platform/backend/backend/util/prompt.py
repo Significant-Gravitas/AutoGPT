@@ -70,6 +70,10 @@ def _msg_tokens(msg: dict, enc) -> int:
                 # Count tool result tokens
                 tool_call_tokens += _tok_len(item.get("tool_use_id", ""), enc)
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                # Count text block tokens (standard: "text" key, fallback: "content")
+                text_val = item.get("text") or item.get("content", "")
+                tool_call_tokens += _tok_len(text_val, enc)
             elif isinstance(item, dict) and "content" in item:
                 # Other content types with content field
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
@@ -145,10 +149,14 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     if len(ids) <= max_tok:
         return text  # nothing to do
 
+    # Need at least 3 tokens (head + ellipsis + tail) for meaningful truncation
+    mid = enc.encode(" … ")
+    if max_tok < 3:
+        return enc.decode(mid)
+
     # Split the allowance between the two ends:
     head = max_tok // 2 - 1  # -1 for the ellipsis
     tail = max_tok - head - 1
-    mid = enc.encode(" … ")
     return enc.decode(ids[:head] + mid + ids[-tail:])
 
 
@@ -695,11 +703,15 @@ async def compress_context(
                     msgs = [summary_msg] + recent_msgs
 
                 logger.info(
-                    f"Context summarized: {original_count} -> {total_tokens()} tokens, "
-                    f"summarized {messages_summarized} messages"
+                    "Context summarized: %d -> %d tokens, summarized %d messages",
+                    original_count,
+                    total_tokens(),
+                    messages_summarized,
                 )
             except Exception as e:
-                logger.warning(f"Summarization failed, continuing with truncation: {e}")
+                logger.warning(
+                    "Summarization failed, continuing with truncation: %s", e
+                )
                 # Fall through to content truncation
 
     # ---- STEP 2: Normalize content ----------------------------------------
