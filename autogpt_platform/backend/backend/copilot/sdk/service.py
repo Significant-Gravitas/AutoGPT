@@ -92,8 +92,10 @@ config = ChatConfig()
 class RetryStrategy:
     """Determines what to try next after a streaming error.
 
-    COMPACT_THEN_FALLBACK — try Plan B (compact transcript), then Plan C (DB).
-    FALLBACK_ONLY         — skip compaction, go straight to Plan C (DB).
+    COMPACT_THEN_FALLBACK — compact the transcript first; if that also
+        fails, drop it entirely and rebuild from DB messages.
+    FALLBACK_ONLY — skip compaction (e.g. the transcript file itself is
+        broken), go straight to DB-message rebuild.
     """
 
     COMPACT_THEN_FALLBACK = "compact_then_fallback"
@@ -139,37 +141,37 @@ def _classify_error(err: BaseException) -> str:
     return RetryStrategy.COMPACT_THEN_FALLBACK
 
 
-async def _apply_plan_b(
+async def _retry_with_compacted_transcript(
     transcript_content: str,
     session_id: str,
     sdk_cwd: str,
     log_prefix: str,
 ) -> tuple[TranscriptBuilder, bool, str | None, bool]:
-    """Plan B: compact the transcript via LLM summarization.
+    """Compact the transcript via LLM summarization and prepare for retry.
 
     Returns ``(transcript_builder, use_resume, resume_file, success)``.
     On failure, returns a fresh builder with ``use_resume=False``.
     """
     compacted = await compact_transcript(transcript_content, log_prefix=log_prefix)
     if compacted and compacted != transcript_content and validate_transcript(compacted):
-        logger.info("%s Plan B — using compacted transcript", log_prefix)
+        logger.info("%s Using compacted transcript for retry", log_prefix)
         tb = TranscriptBuilder()
         tb.load_previous(compacted, log_prefix=log_prefix)
         resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
         if resume_file:
             return tb, True, resume_file, True
-        logger.warning("%s Plan B — failed to write compacted transcript", log_prefix)
+        logger.warning("%s Failed to write compacted transcript", log_prefix)
 
-    logger.warning("%s Plan B — compaction failed, will try Plan C", log_prefix)
+    logger.warning("%s Compaction failed, will fall back to DB messages", log_prefix)
     return TranscriptBuilder(), False, None, False
 
 
-def _apply_plan_c(log_prefix: str) -> tuple[TranscriptBuilder, bool, None]:
-    """Plan C: drop transcript entirely, rely on DB message history.
+def _retry_without_transcript(log_prefix: str) -> tuple[TranscriptBuilder, bool, None]:
+    """Drop the transcript entirely and rebuild query from DB messages.
 
     Returns ``(transcript_builder, use_resume, resume_file)``.
     """
-    logger.warning("%s Plan C — dropping transcript, using DB fallback", log_prefix)
+    logger.warning("%s Dropping transcript, rebuilding from DB messages", log_prefix)
     return TranscriptBuilder(), False, None
 
 
@@ -1039,7 +1041,7 @@ async def stream_chat_completion_sdk(
         _MAX_QUERY_ATTEMPTS = 3
         _retry_strategy: str | None = None  # set on error, None = no error
         _last_stream_error: Exception | None = None
-        _plan_c_applied = False
+        _compaction_attempted = False
 
         for _query_attempt in range(_MAX_QUERY_ATTEMPTS):
             if _query_attempt > 0:
@@ -1056,27 +1058,28 @@ async def stream_chat_completion_sdk(
                     _last_retry_strategy,
                 )
 
-                # Decide: Plan B (compact) or Plan C (DB fallback)?
+                # Try compaction first (once); after that, drop transcript.
                 if (
                     _last_retry_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
                     and transcript_content
-                    and not _plan_c_applied
+                    and not _compaction_attempted
                 ):
-                    tb, use_resume, resume_file, success = await _apply_plan_b(
-                        transcript_content, session_id, sdk_cwd, log_prefix
+                    _compaction_attempted = True
+                    tb, use_resume, resume_file, success = (
+                        await _retry_with_compacted_transcript(
+                            transcript_content, session_id, sdk_cwd, log_prefix
+                        )
                     )
                     transcript_builder = tb
                     transcript_msg_count = 0
                     if not success:
                         transcript_caused_error = True
-                        _plan_c_applied = True
                 else:
-                    transcript_builder, use_resume, resume_file = _apply_plan_c(
-                        log_prefix
+                    transcript_builder, use_resume, resume_file = (
+                        _retry_without_transcript(log_prefix)
                     )
                     transcript_msg_count = 0
                     transcript_caused_error = True
-                    _plan_c_applied = True
 
                 # Rebuild SDK options with updated resume state
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)

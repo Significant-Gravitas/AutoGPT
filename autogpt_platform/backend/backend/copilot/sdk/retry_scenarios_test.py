@@ -494,7 +494,7 @@ class TestRetryStateMachine:
         use_resume = bool(transcript_content)
         stream_completed = False
         attempts_made = 0
-        _plan_c_applied = False
+        _compaction_attempted = False
 
         for _query_attempt in range(min(_MAX_QUERY_ATTEMPTS, len(attempt_results))):
             if _query_attempt > 0:
@@ -503,21 +503,21 @@ class TestRetryStateMachine:
                 stream_completed = False
 
                 # Plan B or Plan C?
+                # Plan B only tried once; after that, always Plan C.
                 if (
                     _last_strategy == RetryStrategy.COMPACT_THEN_FALLBACK
                     and transcript_content
-                    and not _plan_c_applied
+                    and not _compaction_attempted
                 ):
+                    _compaction_attempted = True
                     if compact_result and compact_result != transcript_content:
                         use_resume = True
                     else:
                         use_resume = False
                         transcript_caused_error = True
-                        _plan_c_applied = True
                 else:
                     use_resume = False
                     transcript_caused_error = True
-                    _plan_c_applied = True
 
             attempts_made += 1
             result = attempt_results[_query_attempt]
