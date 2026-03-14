@@ -80,6 +80,24 @@ MIME_TO_FORMAT: dict[str, str] = {
 # Formats that require raw bytes rather than decoded text.
 BINARY_FORMATS: frozenset[str] = frozenset({"parquet", "xlsx"})
 
+# Exception types that can be raised during file content parsing.
+# Shared between ``parse_file_content`` (which catches them in non-strict mode)
+# and ``file_ref._expand_bare_ref`` (which re-raises them as FileRefExpansionError).
+PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    json.JSONDecodeError,
+    csv.Error,
+    yaml.YAMLError,
+    tomllib.TOMLDecodeError,
+    ValueError,
+    UnicodeDecodeError,
+    ImportError,
+    OSError,
+    KeyError,
+    TypeError,
+    zipfile.BadZipFile,
+    OpenpyxlInvalidFile,
+)
+
 
 def infer_format(uri: str) -> str | None:
     """Return a format label based on URI extension or MIME fragment.
@@ -90,7 +108,7 @@ def infer_format(uri: str) -> str | None:
     # 1. Check MIME fragment  (workspace://abc123#application/json)
     if "#" in uri:
         _, fragment = uri.rsplit("#", 1)
-        fmt = MIME_TO_FORMAT.get(fragment)
+        fmt = MIME_TO_FORMAT.get(fragment.lower())
         if fmt:
             return fmt
 
@@ -270,20 +288,7 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
             content = content.decode("utf-8", errors="replace")
         return parser(content)
 
-    except (
-        json.JSONDecodeError,
-        csv.Error,
-        yaml.YAMLError,
-        tomllib.TOMLDecodeError,
-        ValueError,
-        UnicodeDecodeError,
-        ImportError,
-        OSError,
-        KeyError,
-        TypeError,
-        zipfile.BadZipFile,
-        OpenpyxlInvalidFile,
-    ):
+    except PARSE_EXCEPTIONS:
         if strict:
             raise
         logger.debug("Structured parsing failed for format=%s, falling back", fmt)

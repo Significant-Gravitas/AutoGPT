@@ -31,19 +31,12 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
-import csv
 import itertools
-import json
 import logging
 import os
 import re
-import tomllib
-import zipfile
 from dataclasses import dataclass
 from typing import Any
-
-import yaml
-from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
 
 from backend.copilot.context import (
     get_current_sandbox,
@@ -57,6 +50,7 @@ from backend.util.file import parse_workspace_uri
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
     MIME_TO_FORMAT,
+    PARSE_EXCEPTIONS,
     infer_format,
     parse_file_content,
 )
@@ -157,7 +151,7 @@ async def read_file_bytes(
         manager = await get_workspace_manager(user_id, session.session_id)
         ws = parse_workspace_uri(plain)
         try:
-            return await (
+            data = await (
                 manager.read_file(ws.file_ref)
                 if ws.is_path
                 else manager.read_file_by_id(ws.file_ref)
@@ -166,6 +160,11 @@ async def read_file_bytes(
             raise ValueError(f"File not found: {plain}")
         except (PermissionError, OSError) as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
+        if len(data) > _MAX_BARE_REF_BYTES:
+            raise ValueError(
+                f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
+            )
+        return data
 
     if is_allowed_local_path(plain, get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(plain))
@@ -191,9 +190,14 @@ async def read_file_bytes(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
             ) from exc
         try:
-            return bytes(await sandbox.files.read(remote, format="bytes"))
+            data = bytes(await sandbox.files.read(remote, format="bytes"))
         except Exception as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
+        if len(data) > _MAX_BARE_REF_BYTES:
+            raise ValueError(
+                f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
+            )
+        return data
 
     raise ValueError(
         f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
@@ -483,20 +487,7 @@ async def _expand_bare_ref(
         strict = fmt in BINARY_FORMATS
         try:
             parsed = parse_file_content(content, fmt, strict=strict)
-        except (
-            json.JSONDecodeError,
-            csv.Error,
-            yaml.YAMLError,
-            tomllib.TOMLDecodeError,
-            ValueError,
-            UnicodeDecodeError,
-            ImportError,
-            OSError,
-            KeyError,
-            TypeError,
-            zipfile.BadZipFile,
-            OpenpyxlInvalidFile,
-        ) as exc:
+        except PARSE_EXCEPTIONS as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never
         # receive raw bytes when parsing fails.

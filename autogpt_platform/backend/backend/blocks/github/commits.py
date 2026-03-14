@@ -278,19 +278,11 @@ class GithubMultiFileCommitBlock(Block):
         base_tree_sha = commit_data["tree"]["sha"]
 
         # 3. Build tree entries for each file operation (blobs created concurrently)
-        async def _create_blob(content: str) -> str:
+        async def _create_blob(content: str, encoding: str = "utf-8") -> str:
             blob_url = repo_url + "/git/blobs"
             blob_response = await api.post(
                 blob_url,
-                json={"content": content, "encoding": "utf-8"},
-            )
-            return blob_response.json()["sha"]
-
-        async def _create_binary_blob(b64_content: str) -> str:
-            blob_url = repo_url + "/git/blobs"
-            blob_response = await api.post(
-                blob_url,
-                json={"content": b64_content, "encoding": "base64"},
+                json={"content": content, "encoding": encoding},
             )
             return blob_response.json()["sha"]
 
@@ -312,7 +304,7 @@ class GithubMultiFileCommitBlock(Block):
             else:
                 upsert_files.append((path, file_op.get("content", "")))
 
-        # Create all blobs concurrently.  Data URIs (from store_media_file)
+        # Create all blobs concurrently. Data URIs (from store_media_file)
         # are sent as base64 blobs to preserve binary content.
         if upsert_files:
 
@@ -320,7 +312,7 @@ class GithubMultiFileCommitBlock(Block):
                 parsed = parse_data_uri(content)
                 if parsed is not None:
                     _, b64_payload = parsed
-                    return await _create_binary_blob(b64_payload)
+                    return await _create_blob(b64_payload, encoding="base64")
                 return await _create_blob(content)
 
             blob_shas = await asyncio.gather(
