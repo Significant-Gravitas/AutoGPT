@@ -227,6 +227,7 @@ async def stream_chat_completion_baseline(
     # Token usage accumulators — populated from streaming chunks
     turn_prompt_tokens = 0
     turn_completion_tokens = 0
+    _stream_error = False  # Track whether an error occurred during streaming
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
             # Open a new step for each LLM round
@@ -410,6 +411,7 @@ async def stream_chat_completion_baseline(
             )
 
     except Exception as e:
+        _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         # Close any open text/step before emitting error
@@ -431,7 +433,15 @@ async def stream_chat_completion_baseline(
         # not honour stream_options={"include_usage": True}.
         # Count the full message list (system + history + turn) since
         # each API call sends the complete context window.
-        if turn_prompt_tokens == 0 and turn_completion_tokens == 0:
+        # NOTE: This estimates one round's prompt tokens. Multi-round tool-calling
+        # turns consume prompt tokens on each API call, so the total is underestimated.
+        # Skip fallback when an error occurred and no output was produced —
+        # charging rate-limit tokens for completely failed requests is unfair.
+        if (
+            turn_prompt_tokens == 0
+            and turn_completion_tokens == 0
+            and not (_stream_error and not assistant_text)
+        ):
             from backend.util.prompt import (
                 estimate_token_count,
                 estimate_token_count_str,
@@ -467,6 +477,9 @@ async def stream_chat_completion_baseline(
                 total_tokens,
             )
             # Record for rate limiting counters
+            # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we cannot
+            # break out cache_read/cache_creation weights. Users on the baseline
+            # path may be slightly over-counted vs the SDK path.
             if user_id:
                 try:
                     await record_token_usage(
