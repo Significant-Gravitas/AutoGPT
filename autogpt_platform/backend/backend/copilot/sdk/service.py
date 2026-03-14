@@ -52,6 +52,7 @@ from ..response_model import (
     StreamFinish,
     StreamHeartbeat,
     StreamStart,
+    StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
@@ -1478,6 +1479,7 @@ async def stream_chat_completion_sdk(
                     _attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                yield StreamStatus(message="Optimizing conversation context\u2026")
 
                 ctx = await _reduce_context(
                     transcript_content,

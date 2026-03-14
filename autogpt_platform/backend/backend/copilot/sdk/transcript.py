@@ -656,7 +656,21 @@ def _flatten_tool_result_content(blocks: list) -> str:
 
 
 def _transcript_to_messages(content: str) -> list[dict]:
-    """Convert JSONL transcript entries to message dicts for compress_context."""
+    """Convert JSONL transcript entries to plain message dicts for compression.
+
+    Parses each line of the JSONL *content*, skips strippable metadata entries
+    (progress, file-history-snapshot, etc.), and extracts the ``role`` and
+    flattened ``content`` from the ``message`` field of each remaining entry.
+
+    Structured content blocks (``tool_use``, ``tool_result``, images) are
+    flattened to plain text via ``_flatten_assistant_content`` and
+    ``_flatten_tool_result_content`` so that ``compress_context`` can
+    perform token counting and LLM summarization on uniform strings.
+
+    Returns:
+        A list of ``{"role": str, "content": str}`` dicts suitable for
+        ``compress_context``.
+    """
     messages: list[dict] = []
     for line in content.strip().split("\n"):
         if not line.strip():
@@ -685,7 +699,22 @@ def _transcript_to_messages(content: str) -> list[dict]:
 
 
 def _messages_to_transcript(messages: list[dict]) -> str:
-    """Convert compressed message dicts back to JSONL transcript format."""
+    """Convert compressed message dicts back to JSONL transcript format.
+
+    Rebuilds a minimal JSONL transcript from the ``{"role", "content"}``
+    dicts returned by ``compress_context``.  Each message becomes one JSONL
+    line with a fresh ``uuid`` / ``parentUuid`` chain so the CLI's
+    ``--resume`` flag can reconstruct a valid conversation tree.
+
+    Assistant messages are wrapped in the full ``message`` envelope
+    (``id``, ``model``, ``stop_reason``, structured ``content`` blocks)
+    that the CLI expects.  User messages use the simpler ``{role, content}``
+    form.
+
+    Returns:
+        A newline-terminated JSONL string, or an empty string if *messages*
+        is empty.
+    """
     lines: list[str] = []
     last_uuid: str = ""  # root entry uses empty string, not null
     for msg in messages:

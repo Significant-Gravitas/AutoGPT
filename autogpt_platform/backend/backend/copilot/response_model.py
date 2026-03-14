@@ -43,6 +43,7 @@ class ResponseType(str, Enum):
     ERROR = "error"
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
+    STATUS = "status"
 
 
 class StreamBaseResponse(BaseModel):
@@ -232,3 +233,15 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
+
+
+class StreamStatus(StreamBaseResponse):
+    """Transient status notification shown to the user during long operations.
+
+    Used to provide feedback when the backend performs behind-the-scenes work
+    (e.g., compacting conversation context on a retry) that would otherwise
+    leave the user staring at an unexplained pause.
+    """
+
+    type: ResponseType = ResponseType.STATUS
+    message: str = Field(..., description="Human-readable status message")
