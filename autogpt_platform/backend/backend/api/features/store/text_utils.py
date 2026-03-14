@@ -1,5 +1,9 @@
 """Small text helpers shared across store search modules."""
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _MAX_CAMELCASE_INPUT_LEN = 500
 
 
@@ -9,6 +13,16 @@ def split_camelcase(text: str) -> str:
     Uses a single-pass character-by-character algorithm to avoid any
     regex backtracking concerns (guaranteed O(n) time).
 
+    .. note::
+
+       Only CamelCase boundaries are detected.  Underscores, hyphens, and
+       other non-alpha separators are left as-is (e.g. ``"HTTP_Request"``
+       is **not** converted to ``"HTTP Request"``).
+
+       Single-letter uppercase prefixes are not split from the following
+       word (e.g. ``"ABlock"`` stays ``"ABlock"``).  This matches the
+       original regex behaviour ``([A-Z]{2,})([A-Z][a-z])``.
+
     Examples::
 
         >>> split_camelcase("AITextGeneratorBlock")
@@ -16,7 +30,13 @@ def split_camelcase(text: str) -> str:
         >>> split_camelcase("OAuth2Block")
         'OAuth2 Block'
     """
-    text = text[:_MAX_CAMELCASE_INPUT_LEN]
+    if len(text) > _MAX_CAMELCASE_INPUT_LEN:
+        logger.debug(
+            "split_camelcase: truncating input from %d to %d chars",
+            len(text),
+            _MAX_CAMELCASE_INPUT_LEN,
+        )
+        text = text[:_MAX_CAMELCASE_INPUT_LEN]
     if len(text) <= 1:
         return text
 

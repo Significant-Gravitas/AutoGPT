@@ -11,6 +11,7 @@ import asyncio
 import functools
 import itertools
 import logging
+import types
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -165,14 +166,17 @@ class StoreAgentHandler(ContentHandler):
 
 
 @functools.lru_cache(maxsize=1)
-def _get_enabled_blocks() -> dict[str, Block[Any, Any]]:
+def _get_enabled_blocks() -> types.MappingProxyType[str, Block[Any, Any]]:
     """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
 
     Disabled blocks and blocks that fail to instantiate are silently skipped
     (with a warning log), so callers never need their own try/except loop.
 
-    Results are cached so repeated calls (e.g. get_missing_items + get_stats)
-    don't re-instantiate all blocks.
+    **Caching:** Results are cached for the lifetime of the process via
+    ``lru_cache``.  This is intentional — blocks are registered at import time
+    and their set never changes while the process is running.  The returned
+    mapping is wrapped in ``MappingProxyType`` so callers cannot accidentally
+    mutate the cached data.
     """
     enabled: dict[str, Block[Any, Any]] = {}
     for block_id, block_cls in get_blocks().items():
@@ -183,7 +187,7 @@ def _get_enabled_blocks() -> dict[str, Block[Any, Any]]:
             continue
         if not instance.disabled:
             enabled[block_id] = instance
-    return enabled
+    return types.MappingProxyType(enabled)
 
 
 class BlockHandler(ContentHandler):
@@ -195,6 +199,9 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
+        # to_thread keeps the first (heavy) call off the event loop.  On
+        # subsequent calls the lru_cache makes this a dict lookup, so the
+        # thread-pool overhead is negligible compared to the DB queries below.
         enabled = await asyncio.to_thread(_get_enabled_blocks)
         if not enabled:
             return []

@@ -76,7 +76,7 @@ def test_get_enabled_blocks_filters_disabled():
 
 
 def test_get_enabled_blocks_skips_broken():
-    """Blocks that raise on init are skipped, not crash."""
+    """Blocks that raise on init are skipped without crashing."""
     blocks = {
         "good": _make_block_class(name="Good"),
         "bad": _make_block_class(raise_on_init=RuntimeError("boom")),

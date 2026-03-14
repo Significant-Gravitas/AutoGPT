@@ -36,6 +36,11 @@ def tokenize(text: str) -> list[str]:
 
     CamelCase is split first so "AITextGeneratorBlock" becomes
     ``["ai", "text", "generator", "block"]``.
+
+    ``split_camelcase`` is applied to *all* content types (agents, blocks,
+    docs), not only block names.  For normal prose the function is effectively
+    a no-op (no CamelCase boundaries to split), while for code identifiers
+    that may appear in documentation it improves token coverage.
     """
     if not text:
         return []
