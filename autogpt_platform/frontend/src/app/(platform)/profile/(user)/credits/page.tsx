@@ -24,6 +24,7 @@ import {
 } from "@/components/__legacy__/ui/table";
 
 function CoPilotUsageSection() {
+  const router = useRouter();
   const { data: usage, isLoading } = useUsageLimits();
 
   if (isLoading || !usage) return null;
@@ -35,10 +36,7 @@ function CoPilotUsageSection() {
       <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
         <UsagePanelContent usage={usage} showBillingLink={false} />
       </div>
-      <Button
-        className="w-full"
-        onClick={() => (window.location.href = "/copilot")}
-      >
+      <Button className="w-full" onClick={() => router.push("/copilot")}>
         Open CoPilot
       </Button>
     </div>

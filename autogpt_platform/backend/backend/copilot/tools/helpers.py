@@ -118,10 +118,14 @@ async def execute_block(
         coerce_inputs_to_schema(input_data, block.input_schema)
 
         # Pre-execution credit check
+        # TODO: Replace this check-then-act pattern with an atomic
+        #  reserve-and-charge mechanism to eliminate the TOCTOU race
+        #  between the balance check and the post-execution charge.
         cost, cost_filter = block_usage_cost(block, input_data)
         has_cost = cost > 0
+        credits = credit_db()
         if has_cost:
-            balance = await credit_db().get_credits(user_id)
+            balance = await credits.get_credits(user_id)
             if balance < cost:
                 return ErrorResponse(
                     message=(
@@ -142,7 +146,7 @@ async def execute_block(
         # Charge credits for block execution
         if has_cost:
             try:
-                await credit_db().spend_credits(
+                await credits.spend_credits(
                     user_id=user_id,
                     cost=cost,
                     metadata=UsageTransactionMetadata(
@@ -159,11 +163,14 @@ async def execute_block(
             except InsufficientBalanceError:
                 # Concurrent spend drained balance after our pre-check passed.
                 # Block already executed (with possible side effects), so return
-                # its output. Log the billing leak amount for reconciliation.
+                # its output but log the billing leak for monitoring.
                 logger.warning(
-                    "Post-exec credit charge failed for block %s (cost=%d)",
+                    "BILLING_LEAK: Post-exec credit charge failed for block %s "
+                    "(cost=%d, user=%s, node_exec=%s)",
                     block.name,
                     cost,
+                    user_id[:8],
+                    node_exec_id,
                 )
 
         return BlockOutputResponse(

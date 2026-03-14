@@ -320,6 +320,17 @@ def test_usage_uses_config_limits(
     )
 
 
+def test_usage_rejects_unauthenticated_request() -> None:
+    """GET /usage should return 401 when no valid JWT is provided."""
+    unauthenticated_app = fastapi.FastAPI()
+    unauthenticated_app.include_router(chat_routes.router)
+    unauthenticated_client = fastapi.testclient.TestClient(unauthenticated_app)
+
+    response = unauthenticated_client.get("/usage")
+
+    assert response.status_code == 401
+
+
 # ─── Suggested prompts endpoint ──────────────────────────────────────
 
 

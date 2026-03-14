@@ -64,7 +64,7 @@ def _patch_credit_db(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestExecuteBlockCreditCharging:
     async def test_charges_credits_when_cost_is_positive(self):
         """Block with cost > 0 should call spend_credits after execution."""

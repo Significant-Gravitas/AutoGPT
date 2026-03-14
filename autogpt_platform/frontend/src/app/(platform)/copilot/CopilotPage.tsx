@@ -83,7 +83,7 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
-    // Delete functionality
+    // Delete functionality (available via ChatSidebar context menu on all viewports)
     sessionToDelete,
     isDeleting,
     handleConfirmDelete,

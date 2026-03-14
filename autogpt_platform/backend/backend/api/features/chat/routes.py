@@ -413,17 +413,17 @@ async def get_session(
     )
 
 
-@router.get("/usage")
+@router.get(
+    "/usage",
+    dependencies=[Security(auth.requires_user)],
+)
 async def get_copilot_usage(
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CoPilotUsageStatus:
     """Get CoPilot usage status for the authenticated user.
 
     Returns current token usage vs limits for daily and weekly windows.
     """
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     return await get_usage_status(
         user_id=user_id,
         daily_token_limit=config.daily_token_limit,
