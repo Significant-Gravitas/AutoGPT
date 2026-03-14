@@ -880,3 +880,68 @@ class TestCleanupStaleProjectDirs:
         removed = cleanup_stale_project_dirs()
         assert removed == 0
         assert other.exists()
+
+    def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
+        """A directory exactly at the TTL boundary should NOT be removed."""
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        import time
+
+        # Dir that's exactly at the TTL (age == threshold, not >) — should survive
+        boundary = projects_dir / "-tmp-copilot-boundary"
+        boundary.mkdir()
+        boundary_time = time.time() - _STALE_PROJECT_DIR_SECONDS + 1
+        os.utime(boundary, (boundary_time, boundary_time))
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+        assert boundary.exists()
+
+    def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
+        """Regular files matching the copilot pattern are not removed."""
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        import time
+
+        # Create a regular FILE (not a dir) with the copilot pattern name
+        stale_file = projects_dir / "-tmp-copilot-stale-file"
+        stale_file.write_text("not a dir")
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+        os.utime(stale_file, (old_time, old_time))
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+        assert stale_file.exists()
+
+    def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
+        """If the projects base directory doesn't exist, return 0 gracefully."""
+        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+
+        nonexistent = str(tmp_path / "does-not-exist" / "projects")
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: nonexistent,
+        )
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0

@@ -439,6 +439,93 @@ class TestReadLocalToolResult:
             _current_project_dir.reset(token)
             self._cleanup(encoded)
 
+    def test_offset_beyond_file_length(self):
+        """Offset past end-of-file returns empty content."""
+        encoded = "-tmp-copilot-local-read-past-eof"
+        path = self._make_tool_result(encoded, "short.txt", b"abc")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 999, 10, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == ""
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_zero_length_read(self):
+        """Requesting zero characters returns empty content."""
+        encoded = "-tmp-copilot-local-read-zero-len"
+        path = self._make_tool_result(encoded, "data.txt", b"ABCDEF")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 2, 0, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == ""
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_mime_type_from_json_extension(self):
+        """JSON files get application/json MIME type, not hardcoded text/plain."""
+        encoded = "-tmp-copilot-local-read-json"
+        path = self._make_tool_result(encoded, "result.json", b'{"key": "value"}')
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            assert result.mime_type == "application/json"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_mime_type_from_png_extension(self):
+        """Binary .png files get image/png MIME type via mimetypes."""
+        encoded = "-tmp-copilot-local-read-png-mime"
+        binary_data = bytes(range(256))
+        path = self._make_tool_result(encoded, "chart.png", binary_data)
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            assert result.mime_type == "image/png"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_explicit_sdk_cwd_parameter(self):
+        """The sdk_cwd parameter overrides get_sdk_cwd() for path validation."""
+        encoded = "-tmp-copilot-local-read-sdkcwd"
+        path = self._make_tool_result(encoded, "out.txt", b"content")
+        token = _current_project_dir.set(encoded)
+        try:
+            # Pass sdk_cwd explicitly — should still succeed because the path
+            # is under SDK_PROJECTS_DIR which is always allowed.
+            result = _read_local_tool_result(
+                path, 0, None, "s1", sdk_cwd="/tmp/copilot-test"
+            )
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "content"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_offset_with_no_length_reads_to_end(self):
+        """When char_length is None, read from offset to end of file."""
+        encoded = "-tmp-copilot-local-read-offset-noLen"
+        path = self._make_tool_result(encoded, "data.txt", b"0123456789")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 5, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "56789"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
 
 # ---------------------------------------------------------------------------
 # ReadWorkspaceFileTool fallback to _read_local_tool_result
