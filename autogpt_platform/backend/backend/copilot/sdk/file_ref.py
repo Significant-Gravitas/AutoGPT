@@ -369,10 +369,13 @@ def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
     """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...].
 
     Ragged rows (fewer columns than the header) get None for missing values.
+    Extra values beyond the header length are silently dropped.
     """
     header = parsed[0]
+    n = len(header)
     return [
-        {col: (row[i] if i < len(row) else None) for i, col in enumerate(header)}
+        # Pad short rows with None; trim extra values beyond header length.
+        dict(zip(header, (row + [None] * n)[:n]))
         for row in parsed[1:]
     ]
 
