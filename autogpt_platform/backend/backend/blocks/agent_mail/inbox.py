@@ -1,8 +1,10 @@
 """
 AgentMail Inbox blocks — create, get, list, update, and delete inboxes.
-"""
 
-from typing import Optional
+An Inbox is a fully programmable email account for AI agents. Each inbox gets
+a unique email address and can send, receive, and manage emails via the
+AgentMail API. You can create thousands of inboxes on demand.
+"""
 
 from agentmail import AgentMail
 
@@ -25,37 +27,47 @@ def _client(credentials: APIKeyCredentials) -> AgentMail:
 
 
 class AgentMailCreateInboxBlock(Block):
-    """Creates a new AgentMail inbox with an optional username, domain, and display name."""
+    """
+    Create a new email inbox for an AI agent via AgentMail.
+
+    Each inbox gets a unique email address (e.g. username@agentmail.to).
+    If username and domain are not provided, AgentMail auto-generates them.
+    Use custom domains by specifying the domain field.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         username: str = SchemaField(
-            description="Username part of the email address (optional, auto-generated if empty)",
+            description="Local part of the email address (e.g. 'support' for support@domain.com). Leave empty to auto-generate.",
             default="",
         )
         domain: str = SchemaField(
-            description="Domain for the email address (optional, defaults to agentmail.to)",
+            description="Email domain (e.g. 'mydomain.com'). Defaults to agentmail.to if empty.",
             default="",
         )
         display_name: str = SchemaField(
-            description="Display name for the inbox",
+            description="Friendly name shown in the 'From' field of sent emails (e.g. 'Support Agent')",
             default="",
         )
 
     class Output(BlockSchemaOutput):
-        inbox_id: str = SchemaField(description="The ID of the created inbox")
-        email_address: str = SchemaField(
-            description="The full email address of the inbox"
+        inbox_id: str = SchemaField(
+            description="Unique identifier for the created inbox (also the email address)"
         )
-        result: dict = SchemaField(description="Full inbox object")
+        email_address: str = SchemaField(
+            description="Full email address of the inbox (e.g. support@agentmail.to)"
+        )
+        result: dict = SchemaField(
+            description="Complete inbox object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="7a8ac219-c6ec-4eec-a828-81af283ce04c",
-            description="Create a new AgentMail inbox",
+            description="Create a new email inbox for an AI agent via AgentMail. Each inbox gets a unique address and can send/receive emails.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -82,29 +94,38 @@ class AgentMailCreateInboxBlock(Block):
 
 
 class AgentMailGetInboxBlock(Block):
-    """Retrieves details of an existing AgentMail inbox."""
+    """
+    Retrieve details of an existing AgentMail inbox by its ID or email address.
+
+    Returns the inbox metadata including email address, display name, and
+    configuration. Use this to check if an inbox exists or get its properties.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to retrieve"
+            description="Inbox ID or email address to look up (e.g. 'support@agentmail.to')"
         )
 
     class Output(BlockSchemaOutput):
-        inbox_id: str = SchemaField(description="The inbox ID")
-        email_address: str = SchemaField(description="The email address of the inbox")
-        display_name: str = SchemaField(
-            description="The display name of the inbox", default=""
+        inbox_id: str = SchemaField(description="Unique identifier of the inbox")
+        email_address: str = SchemaField(
+            description="Full email address of the inbox"
         )
-        result: dict = SchemaField(description="Full inbox object")
+        display_name: str = SchemaField(
+            description="Friendly name shown in the 'From' field", default=""
+        )
+        result: dict = SchemaField(
+            description="Complete inbox object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="b858f62b-6c12-4736-aaf2-dbc5a9281320",
-            description="Get an AgentMail inbox by ID",
+            description="Retrieve details of an existing AgentMail inbox including its email address, display name, and configuration.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -124,35 +145,45 @@ class AgentMailGetInboxBlock(Block):
 
 
 class AgentMailListInboxesBlock(Block):
-    """Lists all inboxes in your AgentMail organization."""
+    """
+    List all email inboxes in your AgentMail organization.
+
+    Returns a paginated list of all inboxes with their metadata.
+    Use page_token for pagination when you have many inboxes.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         limit: int = SchemaField(
-            description="Maximum number of inboxes to return",
+            description="Maximum number of inboxes to return per page (1-100)",
             default=20,
             advanced=True,
         )
         page_token: str = SchemaField(
-            description="Pagination token from a previous request",
+            description="Token from a previous response to fetch the next page of results",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        inboxes: list[dict] = SchemaField(description="List of inbox objects")
-        count: int = SchemaField(description="Total number of inboxes returned")
+        inboxes: list[dict] = SchemaField(
+            description="List of inbox objects, each containing inbox_id, email_address, display_name, etc."
+        )
+        count: int = SchemaField(
+            description="Total number of inboxes in your organization"
+        )
         next_page_token: str = SchemaField(
-            description="Token for fetching the next page", default=""
+            description="Token to pass as page_token to get the next page. Empty if no more results.",
+            default="",
         )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="cfd84a06-2121-4cef-8d14-8badf52d22f0",
-            description="List all AgentMail inboxes",
+            description="List all email inboxes in your AgentMail organization with pagination support.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -178,28 +209,35 @@ class AgentMailListInboxesBlock(Block):
 
 
 class AgentMailUpdateInboxBlock(Block):
-    """Updates the display name of an existing AgentMail inbox."""
+    """
+    Update the display name of an existing AgentMail inbox.
+
+    Changes the friendly name shown in the 'From' field when emails are sent
+    from this inbox. The email address itself cannot be changed.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to update"
+            description="Inbox ID or email address to update (e.g. 'support@agentmail.to')"
         )
         display_name: str = SchemaField(
-            description="New display name for the inbox"
+            description="New display name for the inbox (e.g. 'Customer Support Bot')"
         )
 
     class Output(BlockSchemaOutput):
         inbox_id: str = SchemaField(description="The updated inbox ID")
-        result: dict = SchemaField(description="Full updated inbox object")
+        result: dict = SchemaField(
+            description="Complete updated inbox object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="59b49f59-a6d1-4203-94c0-3908adac50b6",
-            description="Update an AgentMail inbox",
+            description="Update the display name of an AgentMail inbox. Changes the 'From' name shown when emails are sent.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -220,24 +258,32 @@ class AgentMailUpdateInboxBlock(Block):
 
 
 class AgentMailDeleteInboxBlock(Block):
-    """Deletes an AgentMail inbox."""
+    """
+    Permanently delete an AgentMail inbox and all its data.
+
+    This removes the inbox, all its messages, threads, and drafts.
+    This action cannot be undone. The email address will no longer
+    receive or send emails.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to delete"
+            description="Inbox ID or email address to permanently delete"
         )
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(description="Whether the deletion was successful")
+        success: bool = SchemaField(
+            description="True if the inbox was successfully deleted"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="ade970ae-8428-4a7b-9278-b52054dbf535",
-            description="Delete an AgentMail inbox",
+            description="Permanently delete an AgentMail inbox and all its messages, threads, and drafts. This action cannot be undone.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,

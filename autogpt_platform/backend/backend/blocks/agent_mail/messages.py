@@ -1,5 +1,9 @@
 """
 AgentMail Message blocks — send, list, get, reply, forward, and update messages.
+
+A Message is an individual email within a Thread. Agents can send new messages
+(which create threads), reply to existing messages, forward them, and manage
+labels for state tracking (e.g. read/unread, campaign tags).
 """
 
 from agentmail import AgentMail
@@ -23,49 +27,67 @@ def _client(credentials: APIKeyCredentials) -> AgentMail:
 
 
 class AgentMailSendMessageBlock(Block):
-    """Sends a new email message from an AgentMail inbox, creating a new thread."""
+    """
+    Send a new email from an AgentMail inbox, automatically creating a new thread.
+
+    Supports plain text and HTML bodies, CC/BCC recipients, and labels for
+    organizing messages (e.g. campaign tracking, state management).
+    Max 50 combined recipients across to, cc, and bcc.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to send from"
+            description="Inbox ID or email address to send from (e.g. 'agent@agentmail.to')"
         )
-        to: str = SchemaField(description="Recipient email address")
-        subject: str = SchemaField(description="Email subject line")
-        text: str = SchemaField(description="Plain text body of the email")
+        to: str = SchemaField(
+            description="Recipient email address (e.g. 'user@example.com')"
+        )
+        subject: str = SchemaField(
+            description="Email subject line"
+        )
+        text: str = SchemaField(
+            description="Plain text body of the email. Always provide this as a fallback for email clients that don't render HTML."
+        )
         html: str = SchemaField(
-            description="HTML body of the email (optional)",
+            description="Rich HTML body of the email. Embed CSS in a <style> tag for best compatibility across email clients.",
             default="",
             advanced=True,
         )
         cc: str = SchemaField(
-            description="CC recipient email address (optional)",
+            description="CC recipient email address for human-in-the-loop oversight",
             default="",
             advanced=True,
         )
         bcc: str = SchemaField(
-            description="BCC recipient email address (optional)",
+            description="BCC recipient email address (hidden from other recipients)",
             default="",
             advanced=True,
         )
         labels: list[str] = SchemaField(
-            description="Labels to apply to the message",
+            description="Labels to tag the message for filtering and state management (e.g. ['outreach', 'q4-campaign'])",
             default_factory=list,
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        message_id: str = SchemaField(description="The ID of the sent message")
-        thread_id: str = SchemaField(description="The thread ID the message belongs to")
-        result: dict = SchemaField(description="Full message object")
+        message_id: str = SchemaField(
+            description="Unique identifier of the sent message"
+        )
+        thread_id: str = SchemaField(
+            description="Thread ID grouping this message and any future replies"
+        )
+        result: dict = SchemaField(
+            description="Complete sent message object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="b67469b2-7748-4d81-a223-4ebd332cca89",
-            description="Send a new email from an AgentMail inbox",
+            description="Send a new email from an AgentMail inbox. Creates a new conversation thread. Supports HTML, CC/BCC, and labels.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -98,43 +120,52 @@ class AgentMailSendMessageBlock(Block):
 
 
 class AgentMailListMessagesBlock(Block):
-    """Lists all messages in an AgentMail inbox, with optional label filtering."""
+    """
+    List all messages in an AgentMail inbox with optional label filtering.
+
+    Returns a paginated list of messages. Use labels to filter (e.g.
+    labels=['unread'] to only get unprocessed messages). Useful for
+    polling workflows or building inbox views.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to list messages from"
+            description="Inbox ID or email address to list messages from"
         )
         limit: int = SchemaField(
-            description="Maximum number of messages to return",
+            description="Maximum number of messages to return per page (1-100)",
             default=20,
             advanced=True,
         )
         page_token: str = SchemaField(
-            description="Pagination token from a previous request",
+            description="Token from a previous response to fetch the next page",
             default="",
             advanced=True,
         )
         labels: list[str] = SchemaField(
-            description="Filter messages by labels (e.g. ['unread'])",
+            description="Only return messages with ALL of these labels (e.g. ['unread'] or ['q4-campaign', 'follow-up'])",
             default_factory=list,
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        messages: list[dict] = SchemaField(description="List of message objects")
+        messages: list[dict] = SchemaField(
+            description="List of message objects with subject, sender, text, html, labels, etc."
+        )
         count: int = SchemaField(description="Number of messages returned")
         next_page_token: str = SchemaField(
-            description="Token for fetching the next page", default=""
+            description="Token for the next page. Empty if no more results.",
+            default="",
         )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="721234df-c7a2-4927-b205-744badbd5844",
-            description="List messages in an AgentMail inbox",
+            description="List messages in an AgentMail inbox. Filter by labels to find unread, campaign-tagged, or categorized messages.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -162,33 +193,50 @@ class AgentMailListMessagesBlock(Block):
 
 
 class AgentMailGetMessageBlock(Block):
-    """Retrieves a specific message from an AgentMail inbox."""
+    """
+    Retrieve a specific email message by ID from an AgentMail inbox.
+
+    Returns the full message including subject, body (text and HTML),
+    sender, recipients, and attachments. Use extracted_text to get
+    only the new reply content without quoted history.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the message belongs to"
         )
-        message_id: str = SchemaField(description="The message ID to retrieve")
+        message_id: str = SchemaField(
+            description="Message ID to retrieve (e.g. '<abc123@agentmail.to>')"
+        )
 
     class Output(BlockSchemaOutput):
-        message_id: str = SchemaField(description="The message ID")
-        thread_id: str = SchemaField(description="The thread ID")
-        subject: str = SchemaField(description="The email subject")
-        text: str = SchemaField(description="Plain text body")
-        extracted_text: str = SchemaField(
-            description="Reply content without quoted history", default=""
+        message_id: str = SchemaField(description="Unique identifier of the message")
+        thread_id: str = SchemaField(
+            description="Thread this message belongs to"
         )
-        html: str = SchemaField(description="HTML body", default="")
-        result: dict = SchemaField(description="Full message object")
+        subject: str = SchemaField(description="Email subject line")
+        text: str = SchemaField(
+            description="Full plain text body (may include quoted reply history)"
+        )
+        extracted_text: str = SchemaField(
+            description="Just the new reply content with quoted history stripped. Best for AI processing.",
+            default="",
+        )
+        html: str = SchemaField(
+            description="HTML body of the email", default=""
+        )
+        result: dict = SchemaField(
+            description="Complete message object with all fields including sender, recipients, attachments, labels"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="2788bdfa-1527-4603-a5e4-a455c05c032f",
-            description="Get a specific message from an AgentMail inbox",
+            description="Retrieve a specific email message by ID. Includes extracted_text for clean reply content without quoted history.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -214,35 +262,48 @@ class AgentMailGetMessageBlock(Block):
 
 
 class AgentMailReplyToMessageBlock(Block):
-    """Replies to an existing message in an AgentMail inbox, keeping it in the same thread."""
+    """
+    Reply to an existing email message, keeping the reply in the same thread.
+
+    The reply is automatically added to the same conversation thread as the
+    original message. Use this for multi-turn agent conversations.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to reply from"
+            description="Inbox ID or email address to send the reply from"
         )
         message_id: str = SchemaField(
-            description="The message ID to reply to"
+            description="Message ID to reply to (e.g. '<abc123@agentmail.to>')"
         )
-        text: str = SchemaField(description="Plain text body of the reply")
+        text: str = SchemaField(
+            description="Plain text body of the reply"
+        )
         html: str = SchemaField(
-            description="HTML body of the reply (optional)",
+            description="Rich HTML body of the reply",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        message_id: str = SchemaField(description="The ID of the reply message")
-        thread_id: str = SchemaField(description="The thread ID")
-        result: dict = SchemaField(description="Full reply message object")
+        message_id: str = SchemaField(
+            description="Unique identifier of the reply message"
+        )
+        thread_id: str = SchemaField(
+            description="Thread ID the reply was added to"
+        )
+        result: dict = SchemaField(
+            description="Complete reply message object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="b9fe53fa-5026-4547-9570-b54ccb487229",
-            description="Reply to a message in an AgentMail inbox",
+            description="Reply to an existing email in the same conversation thread. Use for multi-turn agent conversations.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -269,45 +330,56 @@ class AgentMailReplyToMessageBlock(Block):
 
 
 class AgentMailForwardMessageBlock(Block):
-    """Forwards an existing message from an AgentMail inbox to another recipient."""
+    """
+    Forward an existing email message to a new recipient.
+
+    Sends the original message content to a different email address.
+    Optionally prepend additional text or override the subject line.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to forward from"
+            description="Inbox ID or email address to forward from"
         )
         message_id: str = SchemaField(
-            description="The message ID to forward"
+            description="Message ID to forward"
         )
-        to: str = SchemaField(description="Recipient email address to forward to")
+        to: str = SchemaField(
+            description="Email address to forward the message to"
+        )
         subject: str = SchemaField(
-            description="Override subject line (optional)",
+            description="Override the subject line (defaults to 'Fwd: <original subject>')",
             default="",
             advanced=True,
         )
         text: str = SchemaField(
-            description="Additional plain text to prepend (optional)",
+            description="Additional plain text to prepend before the forwarded content",
             default="",
             advanced=True,
         )
         html: str = SchemaField(
-            description="Additional HTML to prepend (optional)",
+            description="Additional HTML to prepend before the forwarded content",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        message_id: str = SchemaField(description="The ID of the forwarded message")
-        thread_id: str = SchemaField(description="The thread ID")
-        result: dict = SchemaField(description="Full forwarded message object")
+        message_id: str = SchemaField(
+            description="Unique identifier of the forwarded message"
+        )
+        thread_id: str = SchemaField(description="Thread ID of the forward")
+        result: dict = SchemaField(
+            description="Complete forwarded message object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="b70c7e33-5d66-4f8e-897f-ac73a7bfce82",
-            description="Forward a message from an AgentMail inbox",
+            description="Forward an email message to a new recipient. Optionally add extra text or change the subject.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -338,34 +410,44 @@ class AgentMailForwardMessageBlock(Block):
 
 
 class AgentMailUpdateMessageBlock(Block):
-    """Updates labels on a message in an AgentMail inbox (e.g. mark as read)."""
+    """
+    Add or remove labels on an email message for state management.
+
+    Labels are string tags used to track message state (read/unread),
+    categorize messages (billing, support), or tag campaigns (q4-outreach).
+    Common pattern: add 'read' and remove 'unread' after processing a message.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the message belongs to"
         )
-        message_id: str = SchemaField(description="The message ID to update")
+        message_id: str = SchemaField(
+            description="Message ID to update labels on"
+        )
         add_labels: list[str] = SchemaField(
-            description="Labels to add to the message",
+            description="Labels to add (e.g. ['read', 'processed', 'high-priority'])",
             default_factory=list,
         )
         remove_labels: list[str] = SchemaField(
-            description="Labels to remove from the message",
+            description="Labels to remove (e.g. ['unread', 'pending'])",
             default_factory=list,
         )
 
     class Output(BlockSchemaOutput):
         message_id: str = SchemaField(description="The updated message ID")
-        result: dict = SchemaField(description="Full updated message object")
+        result: dict = SchemaField(
+            description="Complete updated message object with current labels"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="694ff816-4c89-4a5e-a552-8c31be187735",
-            description="Update labels on a message in an AgentMail inbox",
+            description="Add or remove labels on an email message. Use for read/unread tracking, campaign tagging, or state management.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,

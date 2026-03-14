@@ -1,6 +1,9 @@
 """
-AgentMail Draft blocks — create, get, list, update, send, delete drafts
-(per-inbox and org-wide).
+AgentMail Draft blocks — create, get, list, update, send, and delete drafts.
+
+A Draft is an unsent message that can be reviewed, edited, and sent later.
+Drafts enable human-in-the-loop review, scheduled sending (via send_at),
+and complex multi-step email composition workflows.
 """
 
 from agentmail import AgentMail
@@ -24,55 +27,66 @@ def _client(credentials: APIKeyCredentials) -> AgentMail:
 
 
 class AgentMailCreateDraftBlock(Block):
-    """Creates a new draft email in an AgentMail inbox, optionally scheduled for later."""
+    """
+    Create a draft email in an AgentMail inbox for review or scheduled sending.
+
+    Drafts let agents prepare emails without sending immediately. Use send_at
+    to schedule automatic sending at a future time (ISO 8601 format).
+    Scheduled drafts are auto-labeled 'scheduled' and can be cancelled by
+    deleting the draft.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address to create the draft in"
+            description="Inbox ID or email address to create the draft in"
         )
-        to: list[str] = SchemaField(description="Recipient email addresses")
+        to: list[str] = SchemaField(
+            description="Recipient email addresses (e.g. ['user@example.com'])"
+        )
         subject: str = SchemaField(
             description="Email subject line", default=""
         )
         text: str = SchemaField(
-            description="Plain text body", default=""
+            description="Plain text body of the draft", default=""
         )
         html: str = SchemaField(
-            description="HTML body (optional)", default="", advanced=True
+            description="Rich HTML body of the draft", default="", advanced=True
         )
         cc: list[str] = SchemaField(
-            description="CC recipients", default_factory=list, advanced=True
+            description="CC recipient email addresses", default_factory=list, advanced=True
         )
         bcc: list[str] = SchemaField(
-            description="BCC recipients", default_factory=list, advanced=True
+            description="BCC recipient email addresses", default_factory=list, advanced=True
         )
         in_reply_to: str = SchemaField(
-            description="Message ID this draft is replying to (optional)",
+            description="Message ID this draft replies to, for threading follow-up drafts",
             default="",
             advanced=True,
         )
         send_at: str = SchemaField(
-            description="ISO 8601 datetime to schedule sending (optional, e.g. 2025-01-15T09:00:00Z)",
+            description="Schedule automatic sending at this ISO 8601 datetime (e.g. '2025-01-15T09:00:00Z'). Leave empty for manual send.",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        draft_id: str = SchemaField(description="The ID of the created draft")
+        draft_id: str = SchemaField(description="Unique identifier of the created draft")
         send_status: str = SchemaField(
-            description="Send status (scheduled, sending, failed, or empty if not scheduled)",
+            description="'scheduled' if send_at was set, empty otherwise. Values: scheduled, sending, failed.",
             default="",
         )
-        result: dict = SchemaField(description="Full draft object")
+        result: dict = SchemaField(
+            description="Complete draft object with all metadata"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="25ac9086-69fd-48b8-b910-9dbe04b8f3bd",
-            description="Create a draft email in an AgentMail inbox",
+            description="Create a draft email for review or scheduled sending. Use send_at for automatic future delivery.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -107,31 +121,41 @@ class AgentMailCreateDraftBlock(Block):
 
 
 class AgentMailGetDraftBlock(Block):
-    """Retrieves a specific draft from an AgentMail inbox."""
+    """
+    Retrieve a specific draft from an AgentMail inbox.
+
+    Returns the draft contents including recipients, subject, body, and
+    scheduled send status. Use this to review a draft before approving it.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the draft belongs to"
         )
-        draft_id: str = SchemaField(description="The draft ID to retrieve")
+        draft_id: str = SchemaField(description="Draft ID to retrieve")
 
     class Output(BlockSchemaOutput):
-        draft_id: str = SchemaField(description="The draft ID")
-        subject: str = SchemaField(description="The draft subject", default="")
-        send_status: str = SchemaField(description="Send status", default="")
-        send_at: str = SchemaField(
-            description="Scheduled send time", default=""
+        draft_id: str = SchemaField(description="Unique identifier of the draft")
+        subject: str = SchemaField(description="Draft subject line", default="")
+        send_status: str = SchemaField(
+            description="Scheduled send status: 'scheduled', 'sending', 'failed', or empty",
+            default="",
         )
-        result: dict = SchemaField(description="Full draft object")
+        send_at: str = SchemaField(
+            description="Scheduled send time (ISO 8601) if set", default=""
+        )
+        result: dict = SchemaField(
+            description="Complete draft object with all fields"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="8e57780d-dc25-43d4-a0f4-1f02877b09fb",
-            description="Get a draft from an AgentMail inbox",
+            description="Retrieve a draft email to review its contents, recipients, and scheduled send status.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -155,43 +179,51 @@ class AgentMailGetDraftBlock(Block):
 
 
 class AgentMailListDraftsBlock(Block):
-    """Lists drafts in an AgentMail inbox, with optional label filtering."""
+    """
+    List all drafts in an AgentMail inbox with optional label filtering.
+
+    Use labels=['scheduled'] to find all drafts queued for future sending.
+    Useful for building approval dashboards or monitoring pending outreach.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address to list drafts from"
         )
         limit: int = SchemaField(
-            description="Maximum number of drafts to return",
+            description="Maximum number of drafts to return per page (1-100)",
             default=20,
             advanced=True,
         )
         page_token: str = SchemaField(
-            description="Pagination token from a previous request",
+            description="Token from a previous response to fetch the next page",
             default="",
             advanced=True,
         )
         labels: list[str] = SchemaField(
-            description="Filter drafts by labels (e.g. ['scheduled'])",
+            description="Filter drafts by labels (e.g. ['scheduled'] for pending sends)",
             default_factory=list,
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        drafts: list[dict] = SchemaField(description="List of draft objects")
+        drafts: list[dict] = SchemaField(
+            description="List of draft objects with subject, recipients, send_status, etc."
+        )
         count: int = SchemaField(description="Number of drafts returned")
         next_page_token: str = SchemaField(
-            description="Token for fetching the next page", default=""
+            description="Token for the next page. Empty if no more results.",
+            default="",
         )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="e84883b7-7c39-4c5c-88e8-0a72b078ea63",
-            description="List drafts in an AgentMail inbox",
+            description="List drafts in an AgentMail inbox. Filter by labels=['scheduled'] to find pending sends.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -219,45 +251,55 @@ class AgentMailListDraftsBlock(Block):
 
 
 class AgentMailUpdateDraftBlock(Block):
-    """Updates an existing draft in an AgentMail inbox (e.g. reschedule send time)."""
+    """
+    Update an existing draft's content, recipients, or scheduled send time.
+
+    Use this to reschedule a draft (change send_at), modify recipients,
+    or edit the subject/body before sending. To cancel a scheduled send,
+    delete the draft instead.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the draft belongs to"
         )
-        draft_id: str = SchemaField(description="The draft ID to update")
+        draft_id: str = SchemaField(description="Draft ID to update")
         to: list[str] = SchemaField(
-            description="Updated recipient list (optional)",
+            description="Updated recipient email addresses (replaces existing list)",
             default_factory=list,
         )
         subject: str = SchemaField(
-            description="Updated subject (optional)", default=""
+            description="Updated subject line", default=""
         )
         text: str = SchemaField(
-            description="Updated plain text body (optional)", default=""
+            description="Updated plain text body", default=""
         )
         html: str = SchemaField(
-            description="Updated HTML body (optional)", default="", advanced=True
+            description="Updated HTML body", default="", advanced=True
         )
         send_at: str = SchemaField(
-            description="Updated scheduled send time as ISO 8601 (optional)",
+            description="Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z')",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
         draft_id: str = SchemaField(description="The updated draft ID")
-        send_status: str = SchemaField(description="Send status", default="")
-        result: dict = SchemaField(description="Full updated draft object")
+        send_status: str = SchemaField(
+            description="Updated send status", default=""
+        )
+        result: dict = SchemaField(
+            description="Complete updated draft object"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="351f6e51-695a-421a-9032-46a587b10336",
-            description="Update a draft in an AgentMail inbox",
+            description="Update a draft's content, recipients, or scheduled send time. Use to reschedule or edit before sending.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -292,29 +334,39 @@ class AgentMailUpdateDraftBlock(Block):
 
 
 class AgentMailSendDraftBlock(Block):
-    """Sends a draft, converting it into a sent message. The draft is deleted after sending."""
+    """
+    Send a draft immediately, converting it into a delivered message.
+
+    The draft is deleted after successful sending and becomes a regular
+    message with a message_id. Use this for human-in-the-loop approval
+    workflows: agent creates draft, human reviews, then this block sends it.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the draft belongs to"
         )
-        draft_id: str = SchemaField(description="The draft ID to send")
+        draft_id: str = SchemaField(description="Draft ID to send now")
 
     class Output(BlockSchemaOutput):
         message_id: str = SchemaField(
-            description="The message ID of the sent email"
+            description="Message ID of the now-sent email (draft is deleted)"
         )
-        thread_id: str = SchemaField(description="The thread ID")
-        result: dict = SchemaField(description="Full sent message object")
+        thread_id: str = SchemaField(
+            description="Thread ID the sent message belongs to"
+        )
+        result: dict = SchemaField(
+            description="Complete sent message object"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="37c39e83-475d-4b3d-843a-d923d001b85a",
-            description="Send a draft from an AgentMail inbox",
+            description="Send a draft immediately, converting it into a delivered message. The draft is deleted after sending.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -336,25 +388,32 @@ class AgentMailSendDraftBlock(Block):
 
 
 class AgentMailDeleteDraftBlock(Block):
-    """Deletes a draft from an AgentMail inbox. Also cancels scheduled sends."""
+    """
+    Delete a draft from an AgentMail inbox. Also cancels any scheduled send.
+
+    If the draft was scheduled with send_at, deleting it cancels the
+    scheduled delivery. This is the way to cancel a scheduled email.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         inbox_id: str = SchemaField(
-            description="The inbox ID or email address"
+            description="Inbox ID or email address the draft belongs to"
         )
-        draft_id: str = SchemaField(description="The draft ID to delete")
+        draft_id: str = SchemaField(description="Draft ID to delete (also cancels scheduled sends)")
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(description="Whether the deletion was successful")
+        success: bool = SchemaField(
+            description="True if the draft was successfully deleted/cancelled"
+        )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="9023eb99-3e2f-4def-808b-d9c584b3d9e7",
-            description="Delete a draft from an AgentMail inbox",
+            description="Delete a draft or cancel a scheduled email. Removes the draft permanently.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -372,35 +431,44 @@ class AgentMailDeleteDraftBlock(Block):
 
 
 class AgentMailListOrgDraftsBlock(Block):
-    """Lists all drafts across the entire organization (org-wide)."""
+    """
+    List all drafts across every inbox in your organization.
+
+    Returns drafts from all inboxes in one query. Perfect for building
+    a central approval dashboard where a human supervisor can review
+    and approve any draft created by any agent.
+    """
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
-            description="AgentMail API credentials"
+            description="AgentMail API key from https://console.agentmail.to"
         )
         limit: int = SchemaField(
-            description="Maximum number of drafts to return",
+            description="Maximum number of drafts to return per page (1-100)",
             default=20,
             advanced=True,
         )
         page_token: str = SchemaField(
-            description="Pagination token from a previous request",
+            description="Token from a previous response to fetch the next page",
             default="",
             advanced=True,
         )
 
     class Output(BlockSchemaOutput):
-        drafts: list[dict] = SchemaField(description="List of draft objects")
+        drafts: list[dict] = SchemaField(
+            description="List of draft objects from all inboxes in the organization"
+        )
         count: int = SchemaField(description="Number of drafts returned")
         next_page_token: str = SchemaField(
-            description="Token for fetching the next page", default=""
+            description="Token for the next page. Empty if no more results.",
+            default="",
         )
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
             id="ed7558ae-3a07-45f5-af55-a25fe88c9971",
-            description="List all drafts across the organization (org-wide)",
+            description="List all drafts across every inbox in your organization. Use for central approval dashboards.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
