@@ -22,11 +22,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import openai
+
 from backend.util import json
+from backend.util.prompt import CompressResult, compress_context
 
 if TYPE_CHECKING:
     from backend.copilot.config import ChatConfig
-    from backend.util.prompt import CompressResult
 
 logger = logging.getLogger(__name__)
 
@@ -596,10 +598,14 @@ def _flatten_assistant_content(blocks: list) -> str:
     parts: list[str] = []
     for block in blocks:
         if isinstance(block, dict):
-            if block.get("type") == "text":
+            btype = block.get("type", "")
+            if btype == "text":
                 parts.append(block.get("text", ""))
-            elif block.get("type") == "tool_use":
+            elif btype == "tool_use":
                 parts.append(f"[tool_use: {block.get('name', '?')}]")
+            else:
+                # Preserve non-text blocks (e.g. image) as placeholders
+                parts.append(f"[{btype}]")
         elif isinstance(block, str):
             parts.append(block)
     return "\n".join(parts) if parts else ""
@@ -629,6 +635,10 @@ def _flatten_tool_result_content(blocks: list) -> str:
                 str_parts.append(str(inner))
         elif isinstance(block, dict) and block.get("type") == "text":
             str_parts.append(str(block.get("text", "")))
+        elif isinstance(block, dict):
+            # Preserve non-text/non-tool_result blocks (e.g. image) as placeholders
+            btype = block.get("type", "unknown")
+            str_parts.append(f"[{btype}]")
         elif isinstance(block, str):
             str_parts.append(block)
     return "\n".join(str_parts) if str_parts else ""
@@ -701,13 +711,12 @@ async def _run_compression(
     cfg: ChatConfig,
     log_prefix: str,
 ) -> CompressResult:
-    """Run LLM-based compression with truncation fallback."""
-    # Local imports: openai is a heavy optional dependency (not needed by most
-    # callers of this module), and compress_context pulls in tiktoken.
-    import openai
+    """Run LLM-based compression with truncation fallback.
 
-    from backend.util.prompt import compress_context
-
+    If the LLM call fails (API error, timeout, network), falls back to
+    truncation-based compression which drops older messages without
+    summarization.
+    """
     try:
         async with openai.AsyncOpenAI(
             api_key=cfg.api_key, base_url=cfg.base_url, timeout=30.0
@@ -742,8 +751,14 @@ async def compact_transcript(
     try:
         result = await _run_compression(messages, cfg.model, cfg, log_prefix)
         if not result.was_compacted:
-            logger.info("%s Transcript already within token budget", log_prefix)
-            return content
+            # Compressor says it's within budget, but the SDK rejected it.
+            # Return None so the caller falls through to DB fallback.
+            logger.warning(
+                "%s Compressor reports within budget but SDK rejected — "
+                "signalling failure",
+                log_prefix,
+            )
+            return None
         logger.info(
             "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
             log_prefix,
