@@ -20,7 +20,24 @@ Use these URLs directly without asking the user:
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
 | Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
 
-For other services, search the MCP registry at https://registry.modelcontextprotocol.io/.
+For other services, search the MCP registry API:
+```http
+GET https://registry.modelcontextprotocol.io/v0/servers?q=<search_term>
+```
+Each result includes a `remotes` array with the exact server URL to use.
+
+### Important: Check blocks first
+
+Before using `run_mcp_tool`, always check if the platform already has blocks for the service
+using `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Google Docs,
+Google Calendar, Gmail, etc.) that work without MCP setup.
+
+Only use `run_mcp_tool` when:
+- The service is in the known hosted MCP servers list above, OR
+- You searched `find_block` first and found no matching blocks
+
+**Never guess or construct MCP server URLs.** Only use URLs from the known servers list above
+or from the `remotes[].url` field in MCP registry search results.
 
 ### Authentication
 

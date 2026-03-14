@@ -581,6 +581,49 @@ async def test_auth_error_with_existing_creds_returns_error():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_http_error_returns_clean_message_with_collapsible_detail():
+    """Non-auth HTTP errors return a clean message with raw detail in the `error` field."""
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=HTTPClientError(
+                    "<!doctype html><html><body>Not Found</body></html>",
+                    status_code=404,
+                )
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                )
+
+    assert isinstance(response, ErrorResponse)
+    assert "404" in response.message
+    # Raw HTML body must NOT leak into the user-facing message
+    assert "<!doctype" not in response.message
+    # Raw detail (including original body) goes in the collapsible `error` field
+    assert response.error is not None
+    assert "404" in response.error
+    assert "<!doctype" in response.error.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_mcp_client_error_returns_error_response():
     """MCPClientError (protocol-level) maps to a clean ErrorResponse."""
     from backend.blocks.mcp.client import MCPClientError
