@@ -382,7 +382,7 @@ class TestDeleteTranscript:
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -402,7 +402,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -420,7 +420,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):

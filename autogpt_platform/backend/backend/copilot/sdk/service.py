@@ -973,15 +973,18 @@ async def stream_chat_completion_sdk(
                     use_resume = True
                     transcript_msg_count = dl.message_count
                     logger.debug(
-                        f"{log_prefix} Using --resume ({len(dl.content)}B, "
-                        f"msg_count={transcript_msg_count})"
+                        "%s Using --resume (%dB, msg_count=%d)",
+                        log_prefix,
+                        len(dl.content),
+                        transcript_msg_count,
                     )
             else:
                 logger.warning("%s Transcript downloaded but invalid", log_prefix)
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
-                f"{log_prefix} No transcript available "
-                f"({len(session.messages)} messages in session)"
+                "%s No transcript available (%d messages in session)",
+                log_prefix,
+                len(session.messages),
             )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)

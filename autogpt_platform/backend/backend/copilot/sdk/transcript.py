@@ -26,6 +26,7 @@ from backend.copilot.config import ChatConfig
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
+from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
 logger = logging.getLogger(__name__)
 
@@ -415,8 +416,6 @@ def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, s
 
 def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
     """Build a full storage path from (workspace_id, file_id, filename) parts."""
-    from backend.util.workspace_storage import GCSWorkspaceStorage
-
     wid, fid, fname = parts
     if isinstance(backend, GCSWorkspaceStorage):
         blob = f"workspaces/{wid}/{fid}/{fname}"
@@ -455,17 +454,15 @@ async def upload_transcript(
         content: Complete JSONL transcript (from TranscriptBuilder).
         message_count: ``len(session.messages)`` at upload time.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     # Strip metadata entries (progress, file-history-snapshot, etc.)
     # Note: SDK-built transcripts shouldn't have these, but strip for safety
     stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
-        entry_types: list[str] = []
-        for line in stripped.strip().split("\n"):
-            entry = json.loads(line, fallback={"type": "INVALID_JSON"})
-            entry_types.append(entry.get("type", "?"))
+        entry_types = [
+            json.loads(line, fallback={"type": "INVALID_JSON"}).get("type", "?")
+            for line in stripped.strip().split("\n")
+        ]
         logger.warning(
             "%s Skipping upload — stripped content not valid "
             "(types=%s, stripped_len=%d, raw_len=%d)",
@@ -522,8 +519,6 @@ async def download_transcript(
     Returns a ``TranscriptDownload`` with the JSONL content and the
     ``message_count`` watermark from the upload, or ``None`` if not found.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
 
@@ -546,7 +541,7 @@ async def download_transcript(
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except (FileNotFoundError, Exception):
+    except Exception:
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
     logger.info(
@@ -565,8 +560,6 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
     Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
     so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
 
