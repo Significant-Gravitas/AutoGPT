@@ -759,6 +759,19 @@ async def compact_transcript(
     Converts transcript entries to plain messages, runs ``compress_context``
     (the same compressor used for pre-query history), and rebuilds JSONL.
 
+    Structured content (``tool_use`` blocks, ``tool_result`` nesting, images)
+    is flattened to plain text for compression.  This matches the fidelity of
+    the Plan C (DB compression) fallback path, where
+    ``_format_conversation_context`` similarly renders tool calls as
+    ``You called tool: name(args)`` and results as ``Tool result: ...``.
+    Neither path preserves structured API content blocks — the compacted
+    context serves as text history for the LLM, which creates proper
+    structured tool calls going forward.
+
+    Images are per-turn attachments loaded from workspace storage by file ID
+    (via ``_prepare_file_attachments``), not part of the conversation history.
+    They are re-attached each turn and are unaffected by compaction.
+
     Returns the compacted JSONL string, or ``None`` on failure.
     """
     cfg = ChatConfig()

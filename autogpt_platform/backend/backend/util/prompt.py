@@ -545,6 +545,14 @@ async def _summarize_messages_llm(
                     "- Actions taken and key decisions made\n"
                     "- Technical specifics (file names, tool outputs, function signatures)\n"
                     "- Errors encountered and resolutions applied\n\n"
+                    "IMPORTANT: Preserve all concrete references verbatim — these are small but "
+                    "critical for continuing the conversation:\n"
+                    "- File paths and directory paths (e.g. /src/app/page.tsx, ./output/result.csv)\n"
+                    "- Image/media file paths from tool outputs\n"
+                    "- URLs, API endpoints, and webhook addresses\n"
+                    "- Resource IDs, session IDs, and identifiers\n"
+                    "- Tool names that were called and their key parameters\n"
+                    "- Environment variables, config keys, and credentials names (not values)\n\n"
                     "Include ONLY the sections below that have relevant content "
                     "(skip sections with nothing to report):\n\n"
                     "## 1. Primary Request and Intent\n"
@@ -552,7 +560,8 @@ async def _summarize_messages_llm(
                     "## 2. Key Technical Concepts\n"
                     "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
                     "## 3. Files and Resources Involved\n"
-                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
+                    "Specific files examined or modified, with relevant snippets and identifiers. "
+                    "Include exact file paths, image paths from tool outputs, and resource URLs.\n\n"
                     "## 4. Errors and Fixes\n"
                     "Problems encountered, error messages, and their resolutions.\n\n"
                     "## 5. All User Messages\n"
@@ -566,7 +575,7 @@ async def _summarize_messages_llm(
             },
             {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
         ],
-        max_tokens=1500,
+        max_tokens=2000,
         temperature=0.3,
     )
 
