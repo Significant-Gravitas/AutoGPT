@@ -165,7 +165,9 @@ def cleanup_stale_project_dirs() -> int:
     growth.
 
     Only directories matching the copilot naming pattern (``-tmp-copilot-``)
-    are considered.  Returns the number of directories removed.
+    are considered.  The 12 h TTL ensures active sessions are never affected,
+    even in multi-tenant deployments where multiple copilot sessions share
+    the same host.  Returns the number of directories removed.
     """
     projects_base = _projects_base()
     if not os.path.isdir(projects_base):

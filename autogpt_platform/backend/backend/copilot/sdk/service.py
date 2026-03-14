@@ -1104,7 +1104,14 @@ async def stream_chat_completion_sdk(
                         and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                         and not is_parallel_continuation
                     ):
+                        # 2.0 s timeout: the original 0.5 s caused frequent
+                        # timeouts under load (parallel tool calls, large
+                        # outputs).  2.0 s gives margin while still failing
+                        # fast when the hook genuinely will not fire.
                         if await wait_for_stash(timeout=2.0):
+                            # Yield once so any callbacks scheduled by the
+                            # stash signal can propagate before we process
+                            # the next SDK message.
                             await asyncio.sleep(0)
                         else:
                             logger.warning(
