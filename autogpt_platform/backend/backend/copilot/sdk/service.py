@@ -1414,6 +1414,7 @@ async def stream_chat_completion_sdk(
         # Retry loop: original → compacted → no transcript
         # ---------------------------------------------------------------
         ended_with_stream_error = False
+        attempts_exhausted = False
         stream_err: Exception | None = None
 
         for _attempt in range(_MAX_STREAM_ATTEMPTS):
@@ -1498,6 +1499,7 @@ async def stream_chat_completion_sdk(
             # transcript_caused_error is already set by _reduce_context
             # when the transcript was dropped (transcript_lost=True).
             ended_with_stream_error = True
+            attempts_exhausted = True
             logger.error(
                 "%s All %d query attempts exhausted: %s",
                 log_prefix,
@@ -1506,9 +1508,16 @@ async def stream_chat_completion_sdk(
             )
 
         if ended_with_stream_error and stream_err is not None:
+            # Use distinct error codes: "all_attempts_exhausted" when all
+            # retries were consumed vs "sdk_stream_error" for non-context
+            # errors that broke the loop immediately (network, auth, etc.).
             yield StreamError(
                 errorText=f"SDK stream error: {stream_err}",
-                code="all_attempts_exhausted",
+                code=(
+                    "all_attempts_exhausted"
+                    if attempts_exhausted
+                    else "sdk_stream_error"
+                ),
             )
 
         if ended_with_stream_error:
