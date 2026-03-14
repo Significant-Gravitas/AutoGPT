@@ -25,3 +25,17 @@ Try the MiniMax provider by selecting any of the following LLM Model names from 
 
 * MiniMax-M2.5
 * MiniMax-M2.5-highspeed
+
+### How It Works
+
+When an AI block is configured with a MiniMax model, AutoGPT routes requests through the OpenAI-compatible MiniMax endpoint (`https://api.minimax.io/v1`) using your configured provider credentials. The block sends the prompt/messages payload and enforces the selected response mode, including standard text, JSON-object output, and tool-calling when enabled.
+
+The block also applies normal runtime safeguards before sending the request: prompt compression for long inputs, output token budgeting against model limits, and explicit empty-response checks. If the provider returns tool calls, AutoGPT maps them into the platform's internal tool-call structure so downstream blocks can execute them consistently.
+
+### Use Case
+
+**Structured extraction at scale:** Convert long documents into validated JSON outputs for downstream automation.
+
+**Agentic workflows with tools:** Let the model choose and invoke tools while preserving consistent tool-call handling in AI blocks.
+
+**Long-context synthesis:** Analyze large multi-message contexts and generate concise summaries or decisions in one pass.
