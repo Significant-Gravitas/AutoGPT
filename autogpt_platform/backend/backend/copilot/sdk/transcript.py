@@ -635,10 +635,15 @@ def _flatten_tool_result_content(blocks: list) -> str:
             if isinstance(inner, list):
                 for sub in inner:
                     if isinstance(sub, dict):
-                        text = sub.get("text")
-                        str_parts.append(
-                            str(text) if text is not None else json.dumps(sub)
-                        )
+                        sub_type = sub.get("type")
+                        if sub_type in ("image", "document"):
+                            # Avoid serializing base64 binary data into
+                            # the compaction input — use a placeholder.
+                            str_parts.append(f"[__{sub_type}__]")
+                        elif sub_type == "text" or sub.get("text") is not None:
+                            str_parts.append(str(sub.get("text", "")))
+                        else:
+                            str_parts.append(json.dumps(sub))
                     else:
                         str_parts.append(str(sub))
             else:
