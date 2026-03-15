@@ -24,14 +24,35 @@ function parseOutput(raw: unknown): SetupRequirementsResponse | null {
   return null;
 }
 
+function parseError(raw: unknown): string | null {
+  try {
+    let parsed: unknown = raw;
+    if (typeof raw === "string") {
+      parsed = JSON.parse(raw);
+    }
+    if (parsed && typeof parsed === "object" && "message" in parsed) {
+      return String((parsed as { message: unknown }).message);
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return null;
+}
+
 export function ConnectIntegrationTool({ part }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
+  const isError = part.state === "output-error";
 
   const output =
     part.state === "output-available"
       ? parseOutput((part as { output?: unknown }).output)
       : null;
+
+  const errorMessage = isError
+    ? (parseError((part as { output?: unknown }).output) ??
+      "Failed to connect integration")
+    : null;
 
   const providerName =
     output?.setup_info?.agent_name ??
@@ -40,15 +61,24 @@ export function ConnectIntegrationTool({ part }: Props) {
 
   const label = isStreaming
     ? `Connecting ${providerName}…`
-    : output
-      ? `Connect ${output.setup_info?.agent_name ?? providerName}`
-      : `Connect ${providerName}`;
+    : isError
+      ? `Failed to connect ${providerName}`
+      : output
+        ? `Connect ${output.setup_info?.agent_name ?? providerName}`
+        : `Connect ${providerName}`;
 
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <MorphingTextAnimation text={label} />
+        <MorphingTextAnimation
+          text={label}
+          className={isError ? "text-red-500" : undefined}
+        />
       </div>
+
+      {isError && errorMessage && (
+        <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
+      )}
 
       {output && (
         <div className="mt-2">
