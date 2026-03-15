@@ -61,6 +61,14 @@ an @@agptfile: expansion), the string will be parsed into the correct type.
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
+
+### GitHub CLI (`gh`)
+- If the user has connected their GitHub account, `GH_TOKEN` is automatically
+  set in the environment — `gh` CLI commands work without any login step.
+- If `gh` fails with an authentication error (e.g. "authentication required"
+  or exit code 4), call `connect_integration(provider="github")` to surface
+  the GitHub credentials setup card so the user can connect their account.
+  Once connected, retry the operation.
 """
 
 

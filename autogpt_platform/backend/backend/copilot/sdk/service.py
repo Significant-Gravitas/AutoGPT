@@ -29,8 +29,10 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import compress_context
 from backend.util.settings import Settings
@@ -170,6 +172,27 @@ def _resolve_sdk_model() -> str | None:
     if "/" in model:
         return model.split("/", 1)[1]
     return model
+
+
+async def _get_github_token_for_user(user_id: str) -> str | None:
+    """Return the user's GitHub access token, or None if not connected.
+
+    Checks the credentials store for any GitHub API key or OAuth token.
+    The first matching credential is returned; preference is given to OAuth
+    tokens since they carry scope information.
+    """
+    store = IntegrationCredentialsStore()
+    try:
+        creds_list = await store.get_creds_by_provider(user_id, "github")
+    except Exception:
+        logger.debug("Failed to fetch GitHub credentials for user %s", user_id)
+        return None
+    for creds in creds_list:
+        if isinstance(creds, OAuth2Credentials):
+            return creds.access_token.get_secret_value()
+        if isinstance(creds, APIKeyCredentials):
+            return creds.api_key.get_secret_value()
+    return None
 
 
 @functools.cache
@@ -854,6 +877,14 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
+        if user_id:
+            gh_token = await _get_github_token_for_user(user_id)
+            if gh_token:
+                # Inject GitHub token so `gh` CLI works without manual auth.
+                # GH_TOKEN is the canonical env var; GITHUB_TOKEN is kept for
+                # tools (e.g. git, actions) that check the legacy name.
+                sdk_env["GH_TOKEN"] = gh_token
+                sdk_env["GITHUB_TOKEN"] = gh_token
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
