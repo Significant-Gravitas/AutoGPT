@@ -52,6 +52,17 @@ def _cache_set(key: tuple[str, str], value: object, ttl: float) -> None:
     _token_cache[key] = (value, time.monotonic() + ttl)
 
 
+def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
+    """Remove the cached entry for *user_id*/*provider*.
+
+    Call this after storing new credentials so that the next
+    ``get_provider_token()`` call performs a fresh DB lookup instead of
+    returning the stale ``_NO_TOKEN`` sentinel, allowing the retry to
+    succeed immediately without waiting for the TTL to expire.
+    """
+    _token_cache.pop((user_id, provider), None)
+
+
 async def get_provider_token(user_id: str, provider: str) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 

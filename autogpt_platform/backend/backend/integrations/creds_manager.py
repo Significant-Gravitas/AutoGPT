@@ -69,7 +69,16 @@ class IntegrationCredentialsManager:
         return self._locks
 
     async def create(self, user_id: str, credentials: Credentials) -> None:
-        return await self.store.add_creds(user_id, credentials)
+        result = await self.store.add_creds(user_id, credentials)
+        # Bust the copilot token cache so that the next bash_exec picks up the
+        # new credential immediately instead of waiting for _NULL_CACHE_TTL.
+        try:
+            from backend.copilot.integration_creds import invalidate_user_provider_cache
+
+            invalidate_user_provider_cache(user_id, credentials.provider)
+        except Exception:
+            pass  # copilot module unavailable (e.g. isolated test env)
+        return result
 
     async def exists(self, user_id: str, credentials_id: str) -> bool:
         return (await self.store.get_creds_by_id(user_id, credentials_id)) is not None
