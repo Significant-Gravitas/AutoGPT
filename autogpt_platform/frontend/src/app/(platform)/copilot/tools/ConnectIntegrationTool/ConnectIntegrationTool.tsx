@@ -51,10 +51,13 @@ export function ConnectIntegrationTool({ part }: Props) {
       "Failed to connect integration")
     : null;
 
+  const rawProvider =
+    (part as { input?: { provider?: string } }).input?.provider ?? "";
   const providerName =
     output?.setup_info?.agent_name ??
-    (part as { input?: { provider?: string } }).input?.provider ??
-    "integration";
+    // Sanitize LLM-controlled provider slug: trim and cap at 64 chars to
+    // prevent runaway text in the DOM.
+    (rawProvider ? rawProvider.trim().slice(0, 64) : "integration");
 
   const label = isStreaming
     ? `Connecting ${providerName}…`

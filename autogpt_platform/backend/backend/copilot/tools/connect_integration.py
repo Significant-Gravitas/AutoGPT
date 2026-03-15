@@ -6,9 +6,9 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
+import functools
 from typing import Any, TypedDict
 
-from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import (
     ErrorResponse,
@@ -28,16 +28,44 @@ class _ProviderInfo(TypedDict):
     scopes: list[str]
 
 
+class _CredentialEntry(TypedDict):
+    """Shape of each entry inside SetupRequirementsResponse.user_readiness.missing_credentials."""
+
+    id: str
+    title: str
+    provider: str
+    provider_name: str
+    type: str
+    types: list[str]
+    scopes: list[str]
+
+
+@functools.lru_cache(maxsize=1)
+def _is_github_oauth_configured() -> bool:
+    """Return True if GitHub OAuth env vars are set.
+
+    Evaluated lazily (not at import time) to avoid triggering Secrets() during
+    module import, which can fail in environments where secrets are not loaded.
+    """
+    from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
+
+    return GITHUB_OAUTH_IS_CONFIGURED
+
+
 # Registry of known providers: name + supported credential types for the UI.
 # When adding a new provider, also add its env var names to
 # backend.copilot.integration_creds.PROVIDER_ENV_VARS.
-_PROVIDER_INFO: dict[str, _ProviderInfo] = {
-    "github": {
-        "name": "GitHub",
-        "types": (["api_key", "oauth2"] if GITHUB_OAUTH_IS_CONFIGURED else ["api_key"]),
-        "scopes": [],
-    },
-}
+def _get_provider_info() -> dict[str, _ProviderInfo]:
+    """Build the provider registry, evaluating OAuth config lazily."""
+    return {
+        "github": {
+            "name": "GitHub",
+            "types": (
+                ["api_key", "oauth2"] if _is_github_oauth_configured() else ["api_key"]
+            ),
+            "scopes": [],
+        },
+    }
 
 
 class ConnectIntegrationTool(BaseTool):
@@ -70,7 +98,7 @@ class ConnectIntegrationTool(BaseTool):
                         "Integration provider slug, e.g. 'github'. "
                         "Must be one of the supported providers."
                     ),
-                    "enum": list(_PROVIDER_INFO.keys()),
+                    "enum": list(_get_provider_info().keys()),
                 },
                 "reason": {
                     "type": "string",
@@ -78,6 +106,7 @@ class ConnectIntegrationTool(BaseTool):
                         "Brief explanation of why the integration is needed, "
                         "shown to the user in the setup card."
                     ),
+                    "maxLength": 500,
                 },
             },
             "required": ["provider"],
@@ -99,11 +128,14 @@ class ConnectIntegrationTool(BaseTool):
         del user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider: str = (kwargs.get("provider") or "").strip().lower()
-        reason: str = (kwargs.get("reason") or "").strip()
+        reason: str = (kwargs.get("reason") or "").strip()[
+            :500
+        ]  # cap LLM-controlled text
 
-        info = _PROVIDER_INFO.get(provider)
+        provider_info = _get_provider_info()
+        info = provider_info.get(provider)
         if not info:
-            supported = ", ".join(f"'{p}'" for p in _PROVIDER_INFO)
+            supported = ", ".join(f"'{p}'" for p in provider_info)
             return ErrorResponse(
                 message=(
                     f"Unknown provider '{provider}'. "
@@ -124,17 +156,16 @@ class ConnectIntegrationTool(BaseTool):
         if reason:
             message_parts.append(reason)
 
-        missing_credentials: dict[str, Any] = {
-            field_key: {
-                "id": field_key,
-                "title": f"{provider_name} Credentials",
-                "provider": provider,
-                "provider_name": provider_name,
-                "type": supported_types[0],
-                "types": supported_types,
-                "scopes": scopes,
-            }
+        credential_entry: _CredentialEntry = {
+            "id": field_key,
+            "title": f"{provider_name} Credentials",
+            "provider": provider,
+            "provider_name": provider_name,
+            "type": supported_types[0],
+            "types": supported_types,
+            "scopes": scopes,
         }
+        missing_credentials: dict[str, _CredentialEntry] = {field_key: credential_entry}
 
         return SetupRequirementsResponse(
             type=ResponseType.SETUP_REQUIREMENTS,

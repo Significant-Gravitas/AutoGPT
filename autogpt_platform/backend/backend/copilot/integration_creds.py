@@ -27,7 +27,10 @@ from typing import cast
 from cachetools import TTLCache
 
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.creds_manager import (
+    IntegrationCredentialsManager,
+    register_creds_changed_hook,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,12 @@ _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
 _CACHE_MAX_SIZE = 10_000
 
 # (user_id, provider) → token string.  TTLCache handles expiry + eviction.
+# Thread-safety note: TTLCache is NOT thread-safe, but that is acceptable here
+# because all callers (get_provider_token, invalidate_user_provider_cache) run
+# exclusively on the asyncio event loop.  There are no await points between a
+# cache read and its corresponding write within any function, so no concurrent
+# coroutine can interleave.  If ThreadPoolExecutor workers are ever added to
+# this path, a threading.RLock should be wrapped around these caches.
 _token_cache: TTLCache[tuple[str, str], str] = TTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
@@ -65,6 +74,17 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     _null_cache.pop(key, None)
 
 
+# Register this module's cache-bust function with the credentials manager so
+# that any create/update/delete operation immediately evicts stale cache
+# entries.  This avoids a lazy import inside creds_manager and eliminates the
+# circular-import risk.
+register_creds_changed_hook(invalidate_user_provider_cache)
+
+# Module-level singleton to avoid re-instantiating IntegrationCredentialsManager
+# on every cache-miss call to get_provider_token().
+_manager = IntegrationCredentialsManager()
+
+
 async def get_provider_token(user_id: str, provider: str) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -81,7 +101,7 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     if cached := _token_cache.get(cache_key):
         return cached
 
-    manager = IntegrationCredentialsManager()
+    manager = _manager
     try:
         creds_list = await manager.store.get_creds_by_provider(user_id, provider)
     except Exception:

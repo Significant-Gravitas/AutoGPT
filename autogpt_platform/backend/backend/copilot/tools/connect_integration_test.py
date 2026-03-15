@@ -108,3 +108,28 @@ class TestConnectIntegrationTool:
 
     def test_requires_auth(self):
         assert ConnectIntegrationTool().requires_auth is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_unauthenticated_user_gets_need_login_response(self):
+        """execute() with user_id=None must return NeedLoginResponse, not the setup card.
+
+        This verifies that the requires_auth guard in BaseTool.execute() fires
+        before _execute() is called, so unauthenticated callers cannot probe
+        which integrations are configured.
+        """
+        import json
+
+        tool = self._make_tool()
+        # Session still needs a user_id string; the None is passed to execute()
+        # to simulate an unauthenticated call.
+        session = make_session(user_id=_TEST_USER_ID)
+        result = await tool.execute(
+            user_id=None,
+            session=session,
+            tool_call_id="test-call-id",
+            provider="github",
+        )
+        raw = result.output
+        output = json.loads(raw) if isinstance(raw, str) else raw
+        assert output.get("type") == "need_login"
+        assert result.success is False

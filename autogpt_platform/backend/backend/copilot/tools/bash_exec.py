@@ -147,7 +147,7 @@ class BashExecTool(BaseTool):
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
-        if user_id:
+        if user_id is not None:
             integration_env = await get_integration_env_vars(user_id)
             envs.update(integration_env)
 

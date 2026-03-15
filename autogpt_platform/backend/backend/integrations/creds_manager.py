@@ -25,19 +25,25 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
-def _bust_copilot_cache(user_id: str, provider: str) -> None:
-    """Remove the copilot token cache entry for *(user_id, provider)*.
+_on_creds_changed: Callable[[str, str], None] | None = None
 
-    Called after create/update/delete so that the next bash_exec command
-    fetches fresh credentials instead of serving a stale TTL-cached value.
-    Silently skipped if the copilot module is not installed.
+
+def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
+    """Register a callback invoked after any credential is created/updated/deleted.
+
+    The callback receives ``(user_id, provider)`` and should be idempotent.
+    Only one hook can be registered at a time; calling this again replaces the
+    previous hook.  Intended to be called once at application startup by the
+    copilot module to bust its token cache without creating an import cycle.
     """
-    try:
-        from backend.copilot.integration_creds import invalidate_user_provider_cache
+    global _on_creds_changed
+    _on_creds_changed = hook
 
-        invalidate_user_provider_cache(user_id, provider)
-    except ImportError:
-        pass  # copilot module not installed (e.g. isolated test env)
+
+def _bust_copilot_cache(user_id: str, provider: str) -> None:
+    """Invoke the registered hook (if any) to bust downstream token caches."""
+    if _on_creds_changed is not None:
+        _on_creds_changed(user_id, provider)
 
 
 class IntegrationCredentialsManager:
@@ -191,9 +197,10 @@ class IntegrationCredentialsManager:
         _bust_copilot_cache(user_id, updated.provider)
 
     async def delete(self, user_id: str, credentials_id: str) -> None:
-        # Read provider before deletion so we know which cache entry to bust.
-        creds = await self.store.get_creds_by_id(user_id, credentials_id)
         async with self._locked(user_id, credentials_id):
+            # Read inside the lock to avoid TOCTOU — another coroutine could
+            # delete the same credential between the read and the delete.
+            creds = await self.store.get_creds_by_id(user_id, credentials_id)
             await self.store.delete_creds_by_id(user_id, credentials_id)
         if creds:
             _bust_copilot_cache(user_id, creds.provider)
