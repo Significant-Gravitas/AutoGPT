@@ -1893,3 +1893,35 @@ async def test_adapt_dict_to_list_str_target_not_wrapped():
 
     # Dict should pass through unchanged, not wrapped in [dict]
     assert result["data"] == {"key": "value"}
+
+
+# ---------------------------------------------------------------------------
+# Binary format + line range behaviour
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_binary_format_ignores_line_range():
+    """Binary bare refs (parquet/xlsx) silently ignore line ranges and
+    parse the full file — line slicing on binary bytes is meaningless."""
+    import io
+
+    import pandas as pd
+
+    df = pd.DataFrame({"A": [1, 2], "B": [3, 4]})
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=False)
+    parquet_bytes = buf.getvalue()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(return_value=parquet_bytes),
+    ):
+        # [1-1] line range is silently ignored; full parquet is parsed.
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.parquet[1-1]"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    # Full 2-row table is returned, not just row 1.
+    assert result["data"] == [["A", "B"], [1, 3], [2, 4]]

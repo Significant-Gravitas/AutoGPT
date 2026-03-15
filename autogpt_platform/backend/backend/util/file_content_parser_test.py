@@ -102,6 +102,10 @@ class TestInferFormat:
     def test_unknown_mime(self):
         assert infer_format_from_uri("workspace://abc123#text/plain") is None
 
+    def test_unknown_mime_falls_through_to_extension(self):
+        # Unknown MIME (text/plain) should fall through to extension-based detection.
+        assert infer_format_from_uri("workspace:///data.csv#text/plain") == "csv"
+
     # --- MIME takes precedence over extension ---
 
     def test_mime_overrides_extension(self):
