@@ -355,15 +355,18 @@ async def _infer_format_from_workspace(
         # Try MIME type first, then filename extension.
         mime = (info.mime_type or "").split(";", 1)[0].strip().lower()
         return MIME_TO_FORMAT.get(mime) or infer_format_from_uri(info.name)
-    except (ValueError, FileNotFoundError, OSError, PermissionError):
+    except (
+        ValueError,
+        FileNotFoundError,
+        OSError,
+        PermissionError,
+        AttributeError,
+        TypeError,
+    ):
+        # Expected failures: bad URI, missing file, permission denied, or
+        # workspace manager returning unexpected types.  Propagate anything
+        # else (e.g. programming errors) so they don't get silently swallowed.
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
-        return None
-    except Exception:
-        logger.warning(
-            "unexpected error during workspace metadata lookup for %s",
-            uri,
-            exc_info=True,
-        )
         return None
 
 
