@@ -254,6 +254,11 @@ async def stream_chat_completion_baseline(
                 # where prompt_tokens already includes cached tokens
                 # (unlike Anthropic's native API). Use += to sum all
                 # tool-call rounds since each API call is independent.
+                # NOTE: stream_options={"include_usage": True} is not
+                # universally supported — some providers (Mistral, Llama
+                # via OpenRouter) always return chunk.usage=None. When
+                # that happens, tokens stay 0 and the tiktoken fallback
+                # below activates. Fail-open: one round is estimated.
                 if chunk.usage:
                     turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     turn_completion_tokens += chunk.usage.completion_tokens or 0
