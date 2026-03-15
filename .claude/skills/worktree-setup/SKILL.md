@@ -1,45 +1,73 @@
 ---
 name: worktree-setup
-description: Set up a new git worktree for parallel development. Creates the worktree, copies .env files, installs dependencies, generates Prisma client, and optionally starts the app (with port conflict resolution) or runs tests. TRIGGER when user asks to set up a worktree, work on a branch in isolation, or needs a separate environment for a branch or PR.
+description: Set up a new git worktree for parallel development. Creates the worktree, copies .env files, installs dependencies, and generates Prisma client. TRIGGER when user asks to set up a worktree, work on a branch in isolation, or needs a separate environment for a branch or PR.
 user-invocable: true
 metadata:
   author: autogpt-team
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Worktree Setup
 
-## Preferred: Use Branchlet
+## Create the worktree
 
-The repo has a `.branchlet.json` config — it handles env file copying, dependency installation, and Prisma generation automatically.
+Convention: `AutoGPT<N>` where N is the next available number.
 
 ```bash
-npm install -g branchlet                                      # install once
-branchlet create -n <name> -s <source-branch> -b <new-branch>
-branchlet list --json   # list all worktrees
+# From an existing branch
+git worktree add /Users/majdyz/Code/AutoGPT<N> <branch-name>
+
+# From a new branch off dev
+git worktree add -b <new-branch> /Users/majdyz/Code/AutoGPT<N> dev
 ```
 
-## Manual Fallback
+Check existing worktrees first: `git worktree list`
 
-If branchlet isn't available:
+## Copy environment files
 
-1. `git worktree add ../<RepoName><N> <branch-name>`
-2. Copy `.env` files: `backend/.env`, `frontend/.env`, `autogpt_platform/.env`, `db/docker/.env`
-3. Install deps:
-   - `cd autogpt_platform/backend && poetry install && poetry run prisma generate`
-   - `cd autogpt_platform/frontend && pnpm install`
+```bash
+ROOT=/Users/majdyz/Code/AutoGPT
+TARGET=/Users/majdyz/Code/AutoGPT<N>
 
-## Running the App
+cp "$ROOT/autogpt_platform/backend/.env" "$TARGET/autogpt_platform/backend/.env"
+cp "$ROOT/autogpt_platform/frontend/.env" "$TARGET/autogpt_platform/frontend/.env"
+cp "$ROOT/autogpt_platform/.env" "$TARGET/autogpt_platform/.env"
+```
 
-Free ports first — backend uses: 8001, 8002, 8003, 8005, 8006, 8007, 8008.
+## Install dependencies
+
+```bash
+cd "$TARGET/autogpt_platform/backend" && poetry install && poetry run prisma generate
+cd "$TARGET/autogpt_platform/frontend" && pnpm install
+```
+
+## Running the app (optional)
+
+Backend uses ports: 8001, 8002, 8003, 8005, 8006, 8007, 8008. Free them first if needed:
 
 ```bash
 for port in 8001 8002 8003 8005 8006 8007 8008; do
   lsof -ti :$port | xargs kill -9 2>/dev/null || true
 done
-cd <worktree>/autogpt_platform/backend && poetry run app
+cd "$TARGET/autogpt_platform/backend" && poetry run app
 ```
 
-## CoPilot Testing Gotcha
+## CoPilot testing
 
-SDK mode spawns a Claude subprocess — **won't work inside Claude Code**. Set `CHAT_USE_CLAUDE_AGENT_SDK=false` in `backend/.env` to use baseline mode.
+SDK mode spawns a Claude subprocess — won't work inside Claude Code. Set `CHAT_USE_CLAUDE_AGENT_SDK=false` in `backend/.env` to use baseline mode.
+
+## Cleanup
+
+```bash
+git worktree remove /Users/majdyz/Code/AutoGPT<N>
+```
+
+## Alternative: Branchlet (optional)
+
+If [branchlet](https://www.npmjs.com/package/branchlet) is installed and `.branchlet.json` is configured, it automates env copying and dependency installation:
+
+```bash
+npm install -g branchlet
+branchlet create -n <name> -s <source-branch> -b <new-branch>
+branchlet list --json
+```

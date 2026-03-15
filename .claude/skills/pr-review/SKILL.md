@@ -1,51 +1,79 @@
 ---
 name: pr-review
-description: Address all open PR review comments systematically. Fetches comments, addresses each one, reacts +1/-1, and replies when clarification is needed. Keeps iterating until all comments are addressed and CI is green. TRIGGER when user shares a PR URL, asks to address review comments, fix PR feedback, or respond to reviewer comments.
+description: Review a pull request for code quality, bugs, security, and architecture. Reads the diff, analyzes changes, and provides structured feedback. TRIGGER when user asks to review a PR, review code changes, or do a code review. NOT for addressing existing comments (use /babysit-pr for that).
 user-invocable: true
 metadata:
   author: autogpt-team
   version: "1.0.0"
 ---
 
-# PR Review Comment Workflow
+# PR Review
 
-## Steps
+Review a pull request and provide structured feedback on code quality, bugs, and architecture.
 
-1. **Find PR**: `gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT`
-2. **Fetch comments** (all three sources):
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` (top-level reviews)
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` (inline review comments)
-   - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` (PR conversation comments)
-3. **Skip** comments already reacted to by PR author
-4. **For each unreacted comment**:
-   - Read referenced code, make the fix (or reply if you disagree/need info)
-   - **Inline review comments** (`pulls/{N}/comments`):
-     - React: `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` (or `-1`)
-     - Reply: `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="..."`
-   - **PR conversation comments** (`issues/{N}/comments`):
-     - React: `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` (or `-1`)
-     - No threaded replies — post a new issue comment if needed
-   - **Top-level reviews**: no reaction API — address in code, reply via issue comment if needed
-5. **Include autogpt-reviewer bot fixes** too
-6. **Format**: `cd autogpt_platform/backend && poetry run format`, `cd autogpt_platform/frontend && pnpm format`
-7. **Commit & push**
-8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI
-9. **Stay productive while CI runs** — don't idle. In priority order:
-   - Run any pending local tests (`poetry run pytest`, e2e, etc.) and fix failures
-   - Address any remaining comments
-   - Only poll `gh pr checks {N}` as the last resort when there's truly nothing left to do
-10. **If CI fails** — fix, go back to step 6
-11. **Re-fetch comments again** after CI is green — address anything that appeared while CI was running
-12. **Done** only when: all comments reacted AND CI is green.
+## Get the PR diff
 
-## CRITICAL: Do Not Stop
+```bash
+# If PR number provided:
+gh pr diff {N}
 
-**Loop is: address → format → commit → push → re-check comments → run local tests → wait CI → re-check comments → repeat.**
+# If on the branch:
+gh pr diff
+```
 
-Never idle. If CI is running and you have nothing to address, run local tests. Waiting on CI is the last resort.
+Also read the PR description for context:
+```bash
+gh pr view {N}
+```
+
+## Review checklist
+
+For each changed file, evaluate:
+
+### Correctness
+- Logic errors, off-by-one, missing edge cases
+- Race conditions (TOCTOU in file access, credit charging, etc.)
+- Error handling gaps — are exceptions caught at the right level?
+- Async correctness — missing `await`, unclosed resources
+
+### Security
+- Input validation at system boundaries (user input, external APIs)
+- No command injection, XSS, SQL injection
+- Secrets not hardcoded or logged
+- File path sanitization (use `os.path.basename()` for error messages)
+
+### Code quality (apply /code-style rules)
+- Python: top-level imports, no duck typing, Pydantic models, list comprehensions, early returns
+- Frontend: function declarations, no unnecessary `useCallback`/`useMemo`, Tailwind only, Phosphor icons only
+- No linter suppressors (`# type: ignore`, `# noqa`, `// @ts-ignore`)
+- Lazy logging with `%s` format (not f-strings in log calls)
+
+### Architecture
+- DRY — duplicated logic that should be extracted
+- Single responsibility — functions doing too much
+- API design — `Security()` vs `Depends()` for auth in FastAPI OpenAPI spec
+- SSE protocol — `data:` lines for parsed events, `: comment` lines for heartbeats/status
+- Redis operations — use `transaction=True` for pipeline atomicity
+
+### Testing
+- Are edge cases tested?
+- Test files colocated (`*_test.py` for backend, `__tests__/` for frontend)
+- Mocks target the right module path (where the symbol is used, not where defined)
+- No mocking of internals — mock at boundaries
+
+## Output format
+
+Provide feedback in three tiers:
+1. **Blockers** — Must fix before merge (bugs, security issues, broken functionality)
+2. **Should Fix** — Important improvements (code quality, missing tests, race conditions)
+3. **Nice to Have** — Minor suggestions (naming, style, documentation)
+
+For each item: file path, line number, description, and suggested fix.
 
 ## Rules
 
-- One todo per comment
-- For inline review comments: reply on existing threads. For PR conversation comments: post a new issue comment (API doesn't support threaded replies)
-- React to every comment: +1 addressed, -1 disagreed (with explanation)
+- Read the actual code, not just the diff — context matters
+- Check that test mocks match the actual module paths after refactoring
+- Flag `dark:` CSS classes if the design system handles dark mode
+- Flag `<a>` tags that should be `<Link>` for Next.js routing
+- If the PR touches SSE/streaming code, verify the protocol format
