@@ -15,16 +15,22 @@ __all__ = [
     "create_copilot_mcp_server",
 ]
 
+# Dispatch table for PEP 562 lazy imports.  Each entry is a (module, attr)
+# pair so new exports can be added without touching __getattr__ itself.
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "stream_chat_completion_sdk": (".service", "stream_chat_completion_sdk"),
+    "create_copilot_mcp_server": (".tool_adapter", "create_copilot_mcp_server"),
+}
+
 
 def __getattr__(name: str) -> Any:
-    if name == "stream_chat_completion_sdk":
-        from .service import stream_chat_completion_sdk
+    entry = _LAZY_IMPORTS.get(name)
+    if entry is not None:
+        module_path, attr = entry
+        import importlib
 
-        globals()["stream_chat_completion_sdk"] = stream_chat_completion_sdk
-        return stream_chat_completion_sdk
-    if name == "create_copilot_mcp_server":
-        from .tool_adapter import create_copilot_mcp_server
-
-        globals()["create_copilot_mcp_server"] = create_copilot_mcp_server
-        return create_copilot_mcp_server
+        module = importlib.import_module(module_path, package=__name__)
+        value = getattr(module, attr)
+        globals()[name] = value
+        return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

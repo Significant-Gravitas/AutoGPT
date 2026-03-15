@@ -1832,7 +1832,12 @@ def test_is_tabular_empty_header():
 
 @pytest.mark.asyncio
 async def test_adapt_non_tabular_list_to_object_target():
-    """Non-tabular list with object target type passes through unchanged."""
+    """Non-tabular list with object target type raises FileRefExpansionError.
+
+    A plain list (e.g. [1, 2, 3] from a JSON file) cannot be meaningfully
+    coerced to an object-typed field.  We raise explicitly rather than passing
+    the value through unchanged, which would let pydantic silently mangle it.
+    """
     json_content = "[1, 2, 3]"
 
     async def _resolve(ref, *a, **kw):  # noqa: ARG001
@@ -1845,19 +1850,19 @@ async def test_adapt_non_tabular_list_to_object_target():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=_resolve),
+        ),
+        pytest.raises(FileRefExpansionError, match="non-tabular list"),
     ):
-        result = await expand_file_refs_in_args(
+        await expand_file_refs_in_args(
             {"data": "@@agptfile:workspace:///data.json"},
             user_id="u1",
             session=_make_session(),
             input_schema=schema,
         )
-
-    # Non-tabular list should pass through unchanged (not adapted)
-    assert result["data"] == [1, 2, 3]
 
 
 # ---------------------------------------------------------------------------

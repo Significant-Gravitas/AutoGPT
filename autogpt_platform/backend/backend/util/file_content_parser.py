@@ -82,38 +82,58 @@ BINARY_FORMATS: frozenset[str] = frozenset({"parquet", "xlsx"})
 # Exception types that can be raised during file content parsing.
 # Shared between ``parse_file_content`` (which catches them in non-strict mode)
 # and ``file_ref._expand_bare_ref`` (which re-raises them as FileRefExpansionError).
-try:
-    from openpyxl.utils.exceptions import InvalidFileException as OpenpyxlInvalidFile
-except ImportError:  # openpyxl is optional; only needed for .xlsx parsing
-    OpenpyxlInvalidFile = None  # type: ignore[assignment,misc]
+#
+# Optional-dependency exception types are loaded via a helper that raises
+# ``ImportError`` at *parse time* rather than silently becoming ``None`` here.
+# This ensures mypy sees clean types and missing deps surface as real errors.
 
-try:
-    from pyarrow import ArrowException as _ArrowException
-except ImportError:  # pyarrow is optional; only needed for .parquet parsing
-    _ArrowException = None  # type: ignore[assignment,misc]
+
+def _load_openpyxl_exception() -> type[Exception]:
+    """Return openpyxl's InvalidFileException, raising ImportError if absent."""
+    from openpyxl.utils.exceptions import InvalidFileException  # noqa: PLC0415
+
+    return InvalidFileException
+
+
+def _load_arrow_exception() -> type[Exception]:
+    """Return pyarrow's ArrowException, raising ImportError if absent."""
+    from pyarrow import ArrowException  # noqa: PLC0415
+
+    return ArrowException
+
+
+def _optional_exc(loader: "Callable[[], type[Exception]]") -> "type[Exception] | None":
+    """Return the exception class from *loader*, or ``None`` if the dep is absent."""
+    try:
+        return loader()
+    except ImportError:
+        return None
+
+
+_OpenpyxlInvalidFile = _optional_exc(_load_openpyxl_exception)
+_ArrowException = _optional_exc(_load_arrow_exception)
 
 PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
-    filter(
-        None,
-        (
-            json.JSONDecodeError,
-            csv.Error,
-            yaml.YAMLError,
-            tomllib.TOMLDecodeError,
-            ValueError,
-            UnicodeDecodeError,
-            ImportError,
-            OSError,
-            KeyError,
-            TypeError,
-            zipfile.BadZipFile,
-            OpenpyxlInvalidFile,
-            # ArrowException covers ArrowIOError and ArrowCapacityError which
-            # do not inherit from standard exceptions; ArrowInvalid/ArrowTypeError
-            # already map to ValueError/TypeError but this catches the rest.
-            _ArrowException,
-        ),
+    exc
+    for exc in (
+        json.JSONDecodeError,
+        csv.Error,
+        yaml.YAMLError,
+        tomllib.TOMLDecodeError,
+        ValueError,
+        UnicodeDecodeError,
+        ImportError,
+        OSError,
+        KeyError,
+        TypeError,
+        zipfile.BadZipFile,
+        _OpenpyxlInvalidFile,
+        # ArrowException covers ArrowIOError and ArrowCapacityError which
+        # do not inherit from standard exceptions; ArrowInvalid/ArrowTypeError
+        # already map to ValueError/TypeError but this catches the rest.
+        _ArrowException,
     )
+    if exc is not None
 )
 
 
@@ -178,7 +198,9 @@ def _parse_jsonl(content: str) -> Any:
     # Require ≥2 dicts so a single-line JSONL stays as [dict] (not a table).
     if len(lines) >= 2 and all(isinstance(obj, dict) for obj in lines):
         keys = list(lines[0].keys())
-        if keys and all(list(obj.keys()) == keys for obj in lines[1:]):
+        # Cache as tuple to avoid O(n×k) list allocations in the all() call.
+        keys_tuple = tuple(keys)
+        if keys and all(tuple(obj.keys()) == keys_tuple for obj in lines[1:]):
             return [keys] + [[obj[k] for k in keys] for obj in lines]
 
     return lines
@@ -192,11 +214,21 @@ def _parse_tsv(content: str) -> Any:
     return _parse_delimited(content, delimiter="\t")
 
 
+def _row_has_content(row: list[str]) -> bool:
+    """Return True when *row* contains at least one non-empty cell.
+
+    ``csv.reader`` never yields ``[]`` — truly blank lines yield ``[""]``.
+    This predicate filters those out consistently across the initial read
+    and the sniffer-fallback re-read.
+    """
+    return any(cell for cell in row)
+
+
 def _parse_delimited(content: str, *, delimiter: str) -> Any:
     reader = csv.reader(io.StringIO(content), delimiter=delimiter)
     # csv.reader never yields [] — blank lines yield [""]. Filter out
     # rows where every cell is empty (i.e. truly blank lines).
-    rows = [row for row in reader if any(cell for cell in row)]
+    rows = [row for row in reader if _row_has_content(row)]
     if not rows:
         return content
     # If the declared delimiter produces only single-column rows, try
@@ -207,7 +239,7 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
             dialect = csv.Sniffer().sniff(content[:8192])
             if dialect.delimiter != delimiter:
                 reader = csv.reader(io.StringIO(content), dialect)
-                rows = [row for row in reader if row]
+                rows = [row for row in reader if _row_has_content(row)]
         except csv.Error:
             pass
     if rows and len(rows[0]) >= 2:
@@ -219,7 +251,13 @@ def _parse_yaml(content: str) -> list | dict | str:
     # NOTE: YAML anchor/alias expansion can amplify input beyond the 10MB cap.
     # safe_load prevents code execution; for production hardening consider
     # a YAML parser with expansion limits (e.g. ruamel.yaml with max_alias_count).
-    # Only the first YAML document is parsed; multi-document files (---) are not supported.
+    if "\n---" in content or content.startswith("---\n"):
+        # Multi-document YAML: only the first document is parsed; the rest
+        # are silently ignored by yaml.safe_load.  Warn so callers are aware.
+        logger.warning(
+            "Multi-document YAML detected (--- separator); "
+            "only the first document will be parsed."
+        )
     return _parse_container(yaml.safe_load, content)
 
 
@@ -278,7 +316,9 @@ def _parse_parquet(content: bytes) -> list[list[Any]]:
 def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
-    df = pd.read_excel(io.BytesIO(content))
+    # Explicitly specify openpyxl engine; the default engine varies by pandas
+    # version and does not support legacy .xls (which is excluded by our format map).
+    df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
     return _df_to_rows(df)
 
 

@@ -174,14 +174,16 @@ async def read_file_bytes(
     if is_allowed_local_path(plain, get_sdk_cwd()):
         resolved = os.path.realpath(os.path.expanduser(plain))
         try:
-            # TOCTOU: size checked before read; acceptable since paths are server-controlled.
-            size = os.path.getsize(resolved)
-            if size > _MAX_BARE_REF_BYTES:
-                raise ValueError(
-                    f"File too large ({size} bytes, limit {_MAX_BARE_REF_BYTES})"
-                )
+            # Read with a one-byte overshoot to detect files that exceed the limit
+            # without a separate os.path.getsize call (avoids TOCTOU race).
             with open(resolved, "rb") as fh:
-                return fh.read()
+                data = fh.read(_MAX_BARE_REF_BYTES + 1)
+            if len(data) > _MAX_BARE_REF_BYTES:
+                raise ValueError(
+                    f"File too large (>{_MAX_BARE_REF_BYTES} bytes, "
+                    f"limit {_MAX_BARE_REF_BYTES})"
+                )
+            return data
         except FileNotFoundError:
             raise ValueError(f"File not found: {plain}")
         except OSError as exc:
@@ -220,7 +222,12 @@ def _to_str(content: str | bytes) -> str:
 
 
 def _check_content_size(content: str | bytes) -> None:
-    """Raise :class:`FileRefExpansionError` if *content* exceeds the byte limit.
+    """Raise :class:`ValueError` if *content* exceeds the byte limit.
+
+    Raises ``ValueError`` (not ``FileRefExpansionError``) so that the caller
+    (``_expand_bare_ref``) can unify all resolution errors into a single
+    ``except ValueError`` → ``FileRefExpansionError`` handler, keeping the
+    error-flow consistent with ``read_file_bytes`` and ``resolve_file_ref``.
 
     For ``bytes``, the length is the byte count directly.  For ``str``,
     we encode to UTF-8 first because multi-byte characters (e.g. emoji)
@@ -244,7 +251,7 @@ def _check_content_size(content: str | bytes) -> None:
             # might push byte count over. Encode to get exact size.
             size = len(content.encode("utf-8"))
     if size > _MAX_BARE_REF_BYTES:
-        raise FileRefExpansionError(
+        raise ValueError(
             f"File too large for structured parsing "
             f"({size} bytes, limit {_MAX_BARE_REF_BYTES})"
         )
@@ -410,6 +417,47 @@ def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
     }
 
 
+def _adapt_dict_to_array(parsed: dict, prop_schema: dict[str, Any]) -> Any:
+    """Adapt a parsed dict to an array-typed field.
+
+    Extracts list-valued entries when the target item type is ``array``,
+    passes through unchanged when item type is ``string`` (lets pydantic error),
+    or wraps in ``[parsed]`` as a fallback.
+    """
+    items_type = (prop_schema.get("items") or {}).get("type")
+    if items_type == "array":
+        # Target is List[List[Any]] — extract list-typed values from the
+        # dict as inner lists.  E.g. YAML {"fruits": [{...},...]}} with
+        # ConcatenateLists (List[List[Any]]) → [[{...},...]].
+        list_values = [v for v in parsed.values() if isinstance(v, list)]
+        if list_values:
+            return list_values
+    if items_type == "string":
+        # Target is List[str] — wrapping a dict would give [dict]
+        # which can't coerce to strings.  Return unchanged and let
+        # pydantic surface a clear validation error.
+        return parsed
+    # Fallback: wrap in a single-element list so the block gets [dict]
+    # instead of pydantic flattening keys/values into a flat list.
+    return [parsed]
+
+
+def _adapt_list_to_object(parsed: list) -> Any:
+    """Adapt a parsed list to an object-typed field.
+
+    Converts tabular lists to column-dicts; raises for non-tabular lists.
+    """
+    if _is_tabular(parsed):
+        return _tabular_to_column_dict(parsed)
+    # Non-tabular list (e.g. a plain Python list from a YAML file) cannot
+    # be meaningfully coerced to an object.  Raise explicitly so callers
+    # get a clear error rather than pydantic silently wrapping the list.
+    raise FileRefExpansionError(
+        "Cannot adapt a non-tabular list to an object-typed field. "
+        "Expected a tabular structure ([[header], [row1], ...]) or a dict."
+    )
+
+
 def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
     """Adapt a parsed file value to better fit the target schema type.
 
@@ -425,32 +473,13 @@ def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
 
     target_type = prop_schema.get("type")
 
-    # Dict → array: extract list values from the dict instead of wrapping
-    # the whole dict (which causes pydantic to coerce dict → list of tuples).
+    # Dict → array: delegate to helper.
     if isinstance(parsed, dict) and target_type == "array":
-        items_type = (prop_schema.get("items") or {}).get("type")
-        if items_type == "array":
-            # Target is List[List[Any]] — extract list-typed values from the
-            # dict as inner lists.  E.g. YAML {"fruits": [{...},...]}} with
-            # ConcatenateLists (List[List[Any]]) → [[{...},...]].
-            list_values = [v for v in parsed.values() if isinstance(v, list)]
-            if list_values:
-                return list_values
-        if items_type == "string":
-            # Target is List[str] — wrapping a dict would give [dict]
-            # which can't coerce to strings.  Return unchanged and let
-            # pydantic surface a clear validation error.
-            return parsed
-        # Fallback: wrap in a single-element list so the block gets [dict]
-        # instead of pydantic flattening keys/values into a flat list.
-        # Wrapping a non-array dict as [dict] may produce confusing errors for
-        # non-object item types; pydantic validation will reject it downstream.
-        return [parsed]
+        return _adapt_dict_to_array(parsed, prop_schema)
 
-    # Tabular list → object: convert to a column-dict
-    # {"col1": [val1, val2, ...], "col2": [...]} for meaningful dict lookups.
-    if isinstance(parsed, list) and target_type == "object" and _is_tabular(parsed):
-        return _tabular_to_column_dict(parsed)
+    # List → object: delegate to helper (raises for non-tabular lists).
+    if isinstance(parsed, list) and target_type == "object":
+        return _adapt_list_to_object(parsed)
 
     # Tabular list → Any (no type): convert to list of dicts.
     # Blocks like FindInDictionaryBlock have `input: Any` which produces
@@ -514,7 +543,12 @@ async def _expand_bare_ref(
     # For known formats this rejects files >10 MB before parsing.
     # For unknown formats _MAX_EXPAND_CHARS (200K chars) below is stricter,
     # but this check still guards the parsing path which has no char limit.
-    _check_content_size(content)
+    # _check_content_size raises ValueError, which we unify here just like
+    # resolution errors above.
+    try:
+        _check_content_size(content)
+    except ValueError as exc:
+        raise FileRefExpansionError(str(exc)) from exc
 
     # When the schema declares this parameter as "string",
     # return raw file content — don't parse into a structured

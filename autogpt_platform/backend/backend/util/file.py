@@ -444,6 +444,14 @@ def is_media_file_ref(value: str) -> bool:
     formats accepted by :func:`store_media_file`.  Plain text content
     (e.g. source code, filenames) returns False.
 
+    Known limitation: HTTP(S) URL detection is heuristic.  Any string that
+    starts with ``http://`` or ``https://`` is treated as a media URL, even
+    if it appears as a URL inside source-code comments or documentation.
+    Blocks that produce source code or Markdown as output may therefore
+    trigger false positives.  Callers that need higher precision should
+    inspect the string further (e.g. verify the URL is reachable or has a
+    media-friendly extension).
+
     Note: this does *not* match local file paths, which are ambiguous
     (could be filenames or actual paths).  Blocks that need to resolve
     local paths should check for them separately.
