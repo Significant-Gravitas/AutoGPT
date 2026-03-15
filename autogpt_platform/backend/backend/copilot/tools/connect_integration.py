@@ -21,8 +21,9 @@ from backend.copilot.tools.models import (
 
 from .base import BaseTool
 
-# Registry of known providers: name + supported credential types.
-# Extend this dict when adding support for new integrations.
+# Registry of known providers: name + supported credential types for the UI.
+# When adding a new provider, also add its env var names to
+# backend.copilot.integration_creds.PROVIDER_ENV_VARS.
 _PROVIDER_INFO: dict[str, dict[str, Any]] = {
     "github": {
         "name": "GitHub",

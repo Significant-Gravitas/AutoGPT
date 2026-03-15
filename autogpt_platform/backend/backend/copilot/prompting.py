@@ -63,8 +63,9 @@ an @@agptfile: expansion), the string will be parsed into the correct type.
   All tasks must run in the foreground.
 """
 
-# SDK-only notes — not shown in baseline mode, which has no subprocess or gh CLI.
-_SDK_TOOL_NOTES = """
+# E2B-only notes — E2B has full internet access so gh CLI works there.
+# Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
+_E2B_TOOL_NOTES = """
 ### GitHub CLI (`gh`)
 - If the user has connected their GitHub account, `GH_TOKEN` is automatically
   set in the environment — `gh` CLI commands work without any login step.
@@ -84,6 +85,7 @@ def _build_storage_supplement(
     storage_system_1_persistence: list[str],
     file_move_name_1_to_2: str,
     file_move_name_2_to_1: str,
+    extra_notes: str = "",
 ) -> str:
     """Build storage/filesystem supplement for a specific environment.
 
@@ -98,6 +100,7 @@ def _build_storage_supplement(
         storage_system_1_persistence: List of persistence behavior descriptions
         file_move_name_1_to_2: Direction label for primary→persistent
         file_move_name_2_to_1: Direction label for persistent→primary
+        extra_notes: Environment-specific notes appended after shared notes
     """
     # Format lists as bullet points with proper indentation
     characteristics = "\n".join(f"   - {c}" for c in storage_system_1_characteristics)
@@ -131,12 +134,16 @@ def _build_storage_supplement(
 
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
-{_SHARED_TOOL_NOTES}{_SDK_TOOL_NOTES}"""
+{_SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
 def _get_local_storage_supplement(cwd: str) -> str:
-    """Local ephemeral storage (files lost between turns)."""
+    """Local ephemeral storage (files lost between turns).
+
+    Network is isolated (bubblewrap --unshare-net), so internet-dependent CLIs
+    like gh will not work — no integration env-var notes are included.
+    """
     return _build_storage_supplement(
         working_dir=cwd,
         sandbox_type="in a network-isolated sandbox",
@@ -154,7 +161,11 @@ def _get_local_storage_supplement(cwd: str) -> str:
 
 
 def _get_cloud_sandbox_supplement() -> str:
-    """Cloud persistent sandbox (files survive across turns in session)."""
+    """Cloud persistent sandbox (files survive across turns in session).
+
+    E2B has full internet access, so integration tokens (GH_TOKEN etc.) are
+    injected per command in bash_exec — include the CLI guidance notes.
+    """
     return _build_storage_supplement(
         working_dir="/home/user",
         sandbox_type="in a cloud sandbox with full internet access",
@@ -169,6 +180,7 @@ def _get_cloud_sandbox_supplement() -> str:
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
+        extra_notes=_E2B_TOOL_NOTES,
     )
 
 

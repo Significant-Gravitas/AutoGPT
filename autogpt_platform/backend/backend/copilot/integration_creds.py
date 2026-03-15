@@ -4,8 +4,12 @@ Provides token retrieval for connected integrations so that copilot tools
 (e.g. bash_exec) can inject auth tokens into the execution environment without
 hitting the database on every command.
 
-Only non-None tokens are cached — a user who just connected an account will
-have their token picked up on the very next command, with no TTL wait.
+Cache semantics:
+- Token found → cached for _TOKEN_CACHE_TTL (5 min).  Avoids repeated DB hits
+  for users who have credentials and are running many bash commands.
+- No credentials found → cached for _NULL_CACHE_TTL (60 s).  Avoids a DB hit
+  on every E2B command for users who haven't connected an account yet, while
+  still picking up a newly-connected account within one minute.
 """
 
 import logging
@@ -19,12 +23,16 @@ logger = logging.getLogger(__name__)
 
 # Maps provider slug → env var names to inject when the provider is connected.
 # Add new providers here when adding integration support.
+# NOTE: keep in sync with connect_integration._PROVIDER_INFO — both registries
+# must be updated when adding a new provider.
 PROVIDER_ENV_VARS: dict[str, list[str]] = {
     "github": ["GH_TOKEN", "GITHUB_TOKEN"],
 }
 
-_TOKEN_CACHE_TTL = 300.0  # seconds
-# (user_id, provider) → (token, monotonic expiry)
+_TOKEN_CACHE_TTL = 300.0  # seconds — for found tokens
+_NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
+_SENTINEL = ""  # cached value meaning "no credentials found"
+# (user_id, provider) → (token_or_sentinel, monotonic expiry)
 _token_cache: dict[tuple[str, str], tuple[str, float]] = {}
 
 
@@ -32,8 +40,10 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
     OAuth2 tokens are preferred (refreshed if needed); API keys are the fallback.
-    Results are cached per ``(user_id, provider)`` for :data:`_TOKEN_CACHE_TTL`
-    seconds so repeated calls within a session do not hit the database.
+    Found tokens are cached for _TOKEN_CACHE_TTL (5 min).  "Not connected" results
+    are cached for _NULL_CACHE_TTL (60 s) to avoid a DB hit on every bash_exec
+    command for users who haven't connected yet, while still picking up a
+    newly-connected account within one minute.
     """
     now = time.monotonic()
     cache_key = (user_id, provider)
@@ -41,7 +51,7 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     if cached is not None:
         token, expires_at = cached
         if now < expires_at:
-            return token
+            return token or None  # _SENTINEL ("") → None
         del _token_cache[cache_key]
 
     manager = IntegrationCredentialsManager()
@@ -75,6 +85,8 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
             _token_cache[cache_key] = (token, now + _TOKEN_CACHE_TTL)
             return token
 
+    # No credentials found — cache the sentinel to avoid repeated DB hits.
+    _token_cache[cache_key] = (_SENTINEL, now + _NULL_CACHE_TTL)
     return None
 
 

@@ -54,7 +54,7 @@ export function ConnectIntegrationTool({ part }: Props) {
         <div className="mt-2">
           <SetupRequirementsCard
             output={output}
-            credentialsLabel="Integration credentials"
+            credentialsLabel={`${output.setup_info?.agent_name ?? providerName} credentials`}
             retryInstruction="I've connected my account. Please continue."
           />
         </div>
