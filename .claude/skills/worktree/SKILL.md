@@ -12,30 +12,40 @@ metadata:
 
 ## Create the worktree
 
-If a name is provided as argument, use it. Otherwise, check `git worktree list` and pick the next `AutoGPT<N>`.
+Derive paths from the git toplevel. If a name is provided as argument, use it. Otherwise, check `git worktree list` and pick the next `AutoGPT<N>`.
 
 ```bash
+ROOT=$(git rev-parse --show-toplevel)
+PARENT=$(dirname "$ROOT")
+
 # From an existing branch
-git worktree add /Users/majdyz/Code/<NAME> <branch-name>
+git worktree add "$PARENT/<NAME>" <branch-name>
 
 # From a new branch off dev
-git worktree add -b <new-branch> /Users/majdyz/Code/<NAME> dev
+git worktree add -b <new-branch> "$PARENT/<NAME>" dev
 ```
 
 ## Copy environment files
 
-```bash
-ROOT=/Users/majdyz/Code/AutoGPT
-TARGET=/Users/majdyz/Code/<NAME>
+Copy `.env` from the root worktree. Falls back to `.env.default` if `.env` doesn't exist.
 
-cp "$ROOT/autogpt_platform/backend/.env" "$TARGET/autogpt_platform/backend/.env"
-cp "$ROOT/autogpt_platform/frontend/.env" "$TARGET/autogpt_platform/frontend/.env"
-cp "$ROOT/autogpt_platform/.env" "$TARGET/autogpt_platform/.env"
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+TARGET="$(dirname "$ROOT")/<NAME>"
+
+for envpath in autogpt_platform/backend autogpt_platform/frontend autogpt_platform; do
+  if [ -f "$ROOT/$envpath/.env" ]; then
+    cp "$ROOT/$envpath/.env" "$TARGET/$envpath/.env"
+  elif [ -f "$ROOT/$envpath/.env.default" ]; then
+    cp "$ROOT/$envpath/.env.default" "$TARGET/$envpath/.env"
+  fi
+done
 ```
 
 ## Install dependencies
 
 ```bash
+TARGET="$(dirname "$(git rev-parse --show-toplevel)")/<NAME>"
 cd "$TARGET/autogpt_platform/backend" && poetry install && poetry run prisma generate
 cd "$TARGET/autogpt_platform/frontend" && pnpm install
 ```
@@ -58,7 +68,7 @@ SDK mode spawns a Claude subprocess — won't work inside Claude Code. Set `CHAT
 ## Cleanup
 
 ```bash
-git worktree remove /Users/majdyz/Code/<NAME>
+git worktree remove "$(dirname "$(git rev-parse --show-toplevel)")/<NAME>"
 ```
 
 ## Alternative: Branchlet (optional)

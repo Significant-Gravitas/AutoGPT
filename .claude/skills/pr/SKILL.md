@@ -108,7 +108,7 @@ For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 
 ### The loop
 
-```
+```text
 address comments → format → commit → push
 → re-check comments → fix new ones → push
 → wait for CI → re-check comments after CI settles
