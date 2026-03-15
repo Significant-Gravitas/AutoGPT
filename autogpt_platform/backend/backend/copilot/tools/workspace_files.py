@@ -27,6 +27,10 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+# Sentinel file_id used when a tool-result file is read directly from the local
+# host filesystem (rather than from workspace storage).
+_LOCAL_TOOL_RESULT_FILE_ID = "local"
+
 
 async def _resolve_write_content(
     content_text: str | None,
@@ -331,7 +335,7 @@ def _read_local_tool_result(
         except UnicodeDecodeError:
             # Binary file — return raw base64, ignore char_offset/char_length
             return WorkspaceFileContentResponse(
-                file_id="local",
+                file_id=_LOCAL_TOOL_RESULT_FILE_ID,
                 name=os.path.basename(path),
                 path=path,
                 mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",

@@ -177,7 +177,7 @@ def cleanup_stale_project_dirs() -> int:
     removed = 0
 
     try:
-        entries = sorted(Path(projects_base).iterdir(), key=lambda p: p.name)
+        entries = Path(projects_base).iterdir()
     except OSError as e:
         logger.warning("[Transcript] Failed to list projects dir: %s", e)
         return 0

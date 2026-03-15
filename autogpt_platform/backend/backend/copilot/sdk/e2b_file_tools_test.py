@@ -5,12 +5,18 @@ Pure unit tests with no external dependencies (no E2B, no sandbox).
 
 import os
 import shutil
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 
-from .e2b_file_tools import _read_local, resolve_sandbox_path
+from .e2b_file_tools import (
+    _check_sandbox_symlink_escape,
+    _read_local,
+    resolve_sandbox_path,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_sandbox_path — sandbox path normalisation & boundary enforcement
@@ -156,3 +162,66 @@ class TestReadLocal:
         """Without _current_project_dir set, all paths are blocked."""
         result = _read_local("/tmp/anything.txt", offset=0, limit=10)
         assert result["isError"] is True
+
+
+# ---------------------------------------------------------------------------
+# _check_sandbox_symlink_escape — symlink escape detection
+# ---------------------------------------------------------------------------
+
+
+def _make_sandbox(stdout: str, exit_code: int = 0) -> SimpleNamespace:
+    """Build a minimal sandbox mock whose commands.run returns a fixed result."""
+    run_result = SimpleNamespace(stdout=stdout, exit_code=exit_code)
+    commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+    return SimpleNamespace(commands=commands)
+
+
+class TestCheckSandboxSymlinkEscape:
+    @pytest.mark.asyncio
+    async def test_canonical_path_within_workdir_returns_path(self):
+        """When readlink -f resolves to a path inside /home/user, returns it."""
+        sandbox = _make_sandbox(stdout="/home/user/src\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
+        assert result == "/home/user/src"
+
+    @pytest.mark.asyncio
+    async def test_workdir_itself_returns_workdir(self):
+        """When readlink -f resolves to /home/user exactly, returns /home/user."""
+        sandbox = _make_sandbox(stdout="/home/user\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user")
+        assert result == "/home/user"
+
+    @pytest.mark.asyncio
+    async def test_symlink_escape_returns_none(self):
+        """When readlink -f resolves outside /home/user (symlink escape), returns None."""
+        sandbox = _make_sandbox(stdout="/etc\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/evil")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_nonzero_exit_code_returns_none(self):
+        """A non-zero exit code from readlink -f returns None."""
+        sandbox = _make_sandbox(stdout="", exit_code=1)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_empty_stdout_returns_none(self):
+        """Empty stdout from readlink (e.g. path doesn't exist yet) returns None."""
+        sandbox = _make_sandbox(stdout="", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_prefix_collision_returns_none(self):
+        """/home/user-evil does not satisfy the startswith check."""
+        sandbox = _make_sandbox(stdout="/home/user-evil\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user-evil")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_deeply_nested_path_within_workdir(self):
+        """Deep nested paths inside /home/user are allowed."""
+        sandbox = _make_sandbox(stdout="/home/user/a/b/c/d\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/a/b/c/d")
+        assert result == "/home/user/a/b/c/d"
