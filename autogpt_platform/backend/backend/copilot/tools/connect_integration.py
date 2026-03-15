@@ -6,7 +6,7 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
-from typing import Any
+from typing import Any, TypedDict
 
 from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
 from backend.copilot.model import ChatSession
@@ -21,10 +21,17 @@ from backend.copilot.tools.models import (
 
 from .base import BaseTool
 
+
+class _ProviderInfo(TypedDict):
+    name: str
+    types: list[str]
+    scopes: list[str]
+
+
 # Registry of known providers: name + supported credential types for the UI.
 # When adding a new provider, also add its env var names to
 # backend.copilot.integration_creds.PROVIDER_ENV_VARS.
-_PROVIDER_INFO: dict[str, dict[str, Any]] = {
+_PROVIDER_INFO: dict[str, _ProviderInfo] = {
     "github": {
         "name": "GitHub",
         "types": (["api_key", "oauth2"] if GITHUB_OAUTH_IS_CONFIGURED else ["api_key"]),
