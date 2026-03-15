@@ -2,7 +2,9 @@
 Tests for content handlers (blocks, store agents, documentation).
 """
 
+import types
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,8 +104,6 @@ def test_get_enabled_blocks_cached():
 
 def test_get_enabled_blocks_returns_immutable_mapping():
     """The returned mapping is a MappingProxyType — mutation raises TypeError."""
-    import types
-
     blocks = {"b1": _make_block_class(name="B1")}
     with patch(
         "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
@@ -111,7 +111,8 @@ def test_get_enabled_blocks_returns_immutable_mapping():
         result = _get_enabled_blocks()
     assert isinstance(result, types.MappingProxyType)
     with pytest.raises(TypeError):
-        result["new_key"] = object()  # type: ignore[index]
+        result_any: Any = result
+        result_any["new_key"] = object()
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +233,7 @@ async def test_block_handler_get_missing_items_splits_camelcase():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_block_handler_get_missing_items_batch_size_zero():
-    """batch_size=0 returns an empty list without querying the database."""
+    """batch_size=0 returns an empty list; the DB is still queried to find missing IDs."""
     handler = BlockHandler()
 
     blocks = {"b1": _make_block_class(name="B1")}
