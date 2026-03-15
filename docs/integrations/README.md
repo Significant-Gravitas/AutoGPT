@@ -617,9 +617,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
 | [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
-| [Joy Discover Agents](block-integrations/joy.md#joy-discover-agents) | Discover trusted agents from the Joy network |
-| [Joy Should Trust](block-integrations/joy.md#joy-should-trust) | Simple trust gate for agent verification |
-| [Joy Trust Verify](block-integrations/joy.md#joy-trust-verify) | Verify an agent's trustworthiness using the Joy trust network |
+| [Joy Discover Agents](block-integrations/misc.md#joy-discover-agents) | Discover trusted agents from the Joy network |
+| [Joy Should Trust](block-integrations/misc.md#joy-should-trust) | Simple trust gate for agent verification |
+| [Joy Trust Verify](block-integrations/misc.md#joy-trust-verify) | Verify an agent's trustworthiness using the Joy trust network |
 
 ## CRM Services
 
@@ -635,7 +635,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [Joy Trust Verify](block-integrations/joy.md#joy-trust-verify) | Verify an agent's trustworthiness using the Joy trust network |
+| [Joy Trust Verify](block-integrations/misc.md#joy-trust-verify) | Verify an agent's trustworthiness using the Joy trust network |
 | [Nvidia Deepfake Detect](block-integrations/nvidia/deepfake.md#nvidia-deepfake-detect) | Detects potential deepfakes in images using Nvidia's AI API |
 
 ## Issue Tracking
