@@ -34,9 +34,7 @@ class JoyTrustVerifyBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        agent_id: str = SchemaField(
-            description="Joy agent ID to verify (e.g., 'ag_xxx')"
-        )
+        agent_id: str = SchemaField(description="Joy agent ID to verify (e.g., 'ag_xxx')")
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
@@ -47,24 +45,12 @@ class JoyTrustVerifyBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        is_trusted: bool = SchemaField(
-            description="Whether the agent meets trust criteria"
-        )
-        trust_score: float = SchemaField(
-            description="Agent's trust score (0.0-2.0)"
-        )
-        vouch_count: int = SchemaField(
-            description="Number of vouches the agent has received"
-        )
-        verified: bool = SchemaField(
-            description="Whether the agent has a verified badge"
-        )
-        capabilities: list = SchemaField(
-            description="List of agent capabilities"
-        )
-        error: str = SchemaField(
-            description="Error message if verification failed"
-        )
+        is_trusted: bool = SchemaField(description="Whether the agent meets trust criteria")
+        trust_score: float = SchemaField(description="Agent's trust score (0.0-2.0)")
+        vouch_count: int = SchemaField(description="Number of vouches the agent has received")
+        verified: bool = SchemaField(description="Whether the agent has a verified badge")
+        capabilities: list = SchemaField(description="List of agent capabilities")
+        error: str = SchemaField(description="Error message if verification failed")
 
     def __init__(self):
         super().__init__(
@@ -157,29 +143,17 @@ class JoyDiscoverAgentsBlock(Block):
             description="Capability to search for (e.g., 'github', 'email', 'code')",
             default="",
         )
-        query: str = SchemaField(
-            description="Free text search query",
-            default="",
-        )
+        query: str = SchemaField(description="Free text search query", default="")
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
         )
-        limit: int = SchemaField(
-            description="Maximum number of agents to return",
-            default=10,
-        )
+        limit: int = SchemaField(description="Maximum number of agents to return", default=10)
 
     class Output(BlockSchemaOutput):
-        agents: list = SchemaField(
-            description="List of trusted agents matching criteria"
-        )
-        count: int = SchemaField(
-            description="Number of agents found"
-        )
-        error: str = SchemaField(
-            description="Error message if discovery failed"
-        )
+        agents: list = SchemaField(description="List of trusted agents matching criteria")
+        count: int = SchemaField(description="Number of agents found")
+        error: str = SchemaField(description="Error message if discovery failed")
 
     def __init__(self):
         super().__init__(
@@ -294,21 +268,15 @@ class JoyShouldTrustBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        agent_id: str = SchemaField(
-            description="Joy agent ID to check (e.g., 'ag_xxx')"
-        )
+        agent_id: str = SchemaField(description="Joy agent ID to check (e.g., 'ag_xxx')")
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
         )
 
     class Output(BlockSchemaOutput):
-        trusted: bool = SchemaField(
-            description="Whether the agent should be trusted"
-        )
-        reason: str = SchemaField(
-            description="Reason for the trust decision"
-        )
+        trusted: bool = SchemaField(description="Whether the agent should be trusted")
+        reason: str = SchemaField(description="Reason for the trust decision")
 
     def __init__(self):
         super().__init__(
@@ -364,10 +332,16 @@ class JoyShouldTrustBlock(Block):
 
             if trust_score >= input_data.min_trust_score:
                 yield "trusted", True
-                yield "reason", f"Trust score {trust_score:.2f} meets threshold {input_data.min_trust_score}"
+                yield "reason", (
+                    f"Trust score {trust_score:.2f} meets threshold "
+                    f"{input_data.min_trust_score}"
+                )
             else:
                 yield "trusted", False
-                yield "reason", f"Trust score {trust_score:.2f} below threshold {input_data.min_trust_score}"
+                yield "reason", (
+                    f"Trust score {trust_score:.2f} below threshold "
+                    f"{input_data.min_trust_score}"
+                )
 
         except Exception as e:
             yield "trusted", False
