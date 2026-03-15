@@ -880,7 +880,8 @@ async def _run_stream_attempt(
                 "parent_tool_use_id": None,
                 "session_id": ctx.session_id,
             }
-            assert client._transport is not None  # noqa: SLF001
+            if client._transport is None:  # noqa: SLF001
+                raise RuntimeError("ClaudeSDKClient transport is not initialized")
             await client._transport.write(json.dumps(user_msg) + "\n")  # noqa: SLF001
             state.transcript_builder.append_user(
                 content=[
