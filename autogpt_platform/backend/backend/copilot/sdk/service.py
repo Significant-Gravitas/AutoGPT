@@ -208,7 +208,9 @@ async def _reduce_context(
             logger.info("%s Using compacted transcript for retry", log_prefix)
             tb = TranscriptBuilder()
             tb.load_previous(compacted, log_prefix=log_prefix)
-            resume_file = write_transcript_to_tempfile(compacted, session_id, sdk_cwd)
+            resume_file = await asyncio.to_thread(
+                write_transcript_to_tempfile, compacted, session_id, sdk_cwd
+            )
             if resume_file:
                 return ReducedContext(tb, True, resume_file, False, True)
             logger.warning("%s Failed to write compacted transcript", log_prefix)
@@ -1371,8 +1373,8 @@ async def stream_chat_completion_sdk(
                 # Load previous FULL context into builder
                 transcript_content = dl.content
                 transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
-                resume_file = write_transcript_to_tempfile(
-                    dl.content, session_id, sdk_cwd
+                resume_file = await asyncio.to_thread(
+                    write_transcript_to_tempfile, dl.content, session_id, sdk_cwd
                 )
                 if resume_file:
                     use_resume = True
