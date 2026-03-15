@@ -245,3 +245,14 @@ class StreamStatus(StreamBaseResponse):
 
     type: ResponseType = ResponseType.STATUS
     message: str = Field(..., description="Human-readable status message")
+
+    def to_sse(self) -> str:
+        """Encode as an SSE comment so the AI SDK stream parser ignores it.
+
+        The frontend AI SDK validates every ``data:`` line against a strict
+        Zod union of known chunk types.  ``"status"`` is not in that union,
+        so sending it as ``data:`` would cause a schema-validation error that
+        breaks the entire stream.  Using an SSE comment (``:``) keeps the
+        connection alive and is silently discarded by ``EventSource`` parsers.
+        """
+        return f": status {self.message}\n\n"
