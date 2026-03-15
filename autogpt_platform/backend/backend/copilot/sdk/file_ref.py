@@ -160,6 +160,9 @@ async def read_file_bytes(
             raise ValueError(f"File not found: {plain}")
         except (PermissionError, OSError) as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
+        except Exception as exc:
+            logger.warning("Unexpected error reading %s: %s", plain, exc)
+            raise ValueError(f"Failed to read {plain}: {exc}") from exc
         # NOTE: Workspace API does not support pre-read size checks;
         # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
