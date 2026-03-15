@@ -29,7 +29,7 @@ import pytest
 from backend.util import json
 
 from .conftest import build_test_transcript as _build_transcript
-from .service import _MAX_STREAM_ATTEMPTS
+from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -205,21 +205,21 @@ class TestScenarioCompactFailsFallback:
 class TestScenarioNoTranscriptFallback:
     """No transcript_content available, code skips compaction entirely."""
 
-    def test_empty_transcript_content_skips_compaction(self):
-        """When transcript_content is empty, attempt 2 goes straight to DB
-        fallback (the else branch in the retry logic)."""
-        # This scenario verifies the state transitions:
-        # _attempt == 1, transcript_content == "" → else branch
-        transcript_content = ""
-        _attempt = 1
-
-        # Simulate the retry logic decision
-        if _attempt == 1 and transcript_content:
-            path = "compact"
-        else:
-            path = "db_fallback"
-
-        assert path == "db_fallback"
+    @pytest.mark.asyncio
+    async def test_empty_transcript_content_skips_compaction(self):
+        """When transcript_content is empty, _reduce_context goes straight to
+        DB fallback without attempting compaction."""
+        ctx = await _reduce_context(
+            transcript_content="",
+            tried_compaction=False,
+            session_id="sess-4",
+            sdk_cwd="/tmp/sandbox",
+            log_prefix="[T4]",
+        )
+        # No transcript → no resume file, transcript is lost
+        assert ctx.use_resume is False
+        assert ctx.resume_file is None
+        assert ctx.transcript_lost is True
 
 
 # ---------------------------------------------------------------------------
@@ -269,14 +269,17 @@ class TestScenarioDoubleFailDBFallback:
         assert result is not None
         assert validate_transcript(result)
 
-        # If attempt 2 also fails, attempt 3 skips compaction:
-        _attempt = 2
-        transcript_content = result  # Still set from earlier
-        if _attempt == 1 and transcript_content:
-            path = "compact"
-        else:
-            path = "db_fallback"
-        assert path == "db_fallback"  # Correct: attempt 3 always drops
+        # If attempt 2 also fails, _reduce_context with tried_compaction=True
+        # unconditionally drops the transcript and returns DB fallback
+        ctx = await _reduce_context(
+            transcript_content=result,
+            tried_compaction=True,
+            session_id="sess-5",
+            sdk_cwd="/tmp/sandbox",
+            log_prefix="[T5]",
+        )
+        assert ctx.use_resume is False
+        assert ctx.transcript_lost is True
 
 
 # ---------------------------------------------------------------------------
@@ -287,18 +290,23 @@ class TestScenarioDoubleFailDBFallback:
 class TestScenarioAllAttemptsExhausted:
     """All 3 attempts fail — final StreamError is emitted."""
 
-    def test_exhaustion_state_variables(self):
-        """Verify the state after exhausting all retry attempts."""
-        _stream_error: Exception | None = None
-        skip_transcript_upload = False
-
-        for _attempt in range(_MAX_STREAM_ATTEMPTS):
-            _stream_error = Exception("some error")
-
-        # After loop: check exhaustion
-        assert _stream_error is not None
-        skip_transcript_upload = True
-        assert skip_transcript_upload is True
+    @pytest.mark.asyncio
+    async def test_tried_compaction_always_drops_transcript(self):
+        """When tried_compaction=True (all context-reduction paths exhausted),
+        _reduce_context always drops the transcript regardless of content."""
+        transcript = _build_transcript([("user", "Q"), ("assistant", "A")])
+        # Even with a non-empty transcript, once tried_compaction is True
+        # (all prior strategies used) we must drop to DB fallback
+        ctx = await _reduce_context(
+            transcript_content=transcript,
+            tried_compaction=True,
+            session_id="sess-6",
+            sdk_cwd="/tmp/sandbox",
+            log_prefix="[T6]",
+        )
+        assert ctx.use_resume is False
+        assert ctx.resume_file is None
+        assert ctx.transcript_lost is True
 
 
 # ---------------------------------------------------------------------------
@@ -336,19 +344,29 @@ class TestScenarioCompactionIdentical:
         # Returns None — signals caller to fall through to DB fallback
         assert result is None
 
-    def test_identical_compaction_triggers_db_fallback(self):
-        """When compacted == transcript_content, the retry logic skips
-        the compacted path and falls to DB fallback."""
-        transcript_content = "some transcript content"
-        compacted = transcript_content  # Identical!
+    @pytest.mark.asyncio
+    async def test_identical_compaction_triggers_db_fallback(self):
+        """When compact_transcript returns None (compressor reports no reduction),
+        _reduce_context falls through to DB fallback instead of retrying."""
+        transcript = _build_transcript([("user", "Hello"), ("assistant", "Hi")])
 
-        # Simulate the retry decision at _attempt == 1
-        use_compacted = (
-            compacted
-            and compacted != transcript_content
-            and True  # validate_transcript(compacted)
-        )
-        assert use_compacted is False  # Falls to else → DB fallback
+        with patch(
+            "backend.copilot.sdk.service.compact_transcript",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            ctx = await _reduce_context(
+                transcript_content=transcript,
+                tried_compaction=False,
+                session_id="sess-7",
+                sdk_cwd="/tmp/sandbox",
+                log_prefix="[T7]",
+            )
+
+        # compact_transcript returned None → must drop to DB fallback
+        assert ctx.use_resume is False
+        assert ctx.resume_file is None
+        assert ctx.transcript_lost is True
 
 
 # ---------------------------------------------------------------------------
