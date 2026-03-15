@@ -111,7 +111,8 @@ class AgentOutputTool(BaseTool):
         return (
             "Retrieve execution outputs from a library agent. "
             "Identify by agent_name, library_agent_id, or store_slug. "
-            "Filter by execution_id or run_time."
+            "Filter by execution_id or run_time. "
+            "Optionally wait for running executions."
         )
 
     @property

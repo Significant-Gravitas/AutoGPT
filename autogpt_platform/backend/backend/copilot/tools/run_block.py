@@ -68,7 +68,7 @@ class RunBlockTool(BaseTool):
                     "description": "Input values. Use {} first to see schema.",
                 },
             },
-            "required": ["block_id", "block_name", "input_data"],
+            "required": ["block_id", "input_data"],
         }
 
     @property
