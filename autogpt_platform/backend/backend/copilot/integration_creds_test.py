@@ -16,6 +16,7 @@ from backend.copilot.integration_creds import (
     _token_cache,
     get_integration_env_vars,
     get_provider_token,
+    invalidate_user_provider_cache,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 
@@ -56,6 +57,30 @@ def clear_cache():
     _clear_cache()
     yield
     _clear_cache()
+
+
+class TestInvalidateUserProviderCache:
+    def test_removes_existing_entry(self):
+        key = (_USER, _PROVIDER)
+        _cache_set(key, "tok", _TOKEN_CACHE_TTL)
+        invalidate_user_provider_cache(_USER, _PROVIDER)
+        assert key not in _token_cache
+
+    def test_removes_sentinel_entry(self):
+        key = (_USER, _PROVIDER)
+        _cache_set(key, _NO_TOKEN, _NULL_CACHE_TTL)
+        invalidate_user_provider_cache(_USER, _PROVIDER)
+        assert key not in _token_cache
+
+    def test_noop_when_key_not_cached(self):
+        # Should not raise even when there is no cache entry.
+        invalidate_user_provider_cache("no-such-user", _PROVIDER)
+
+    def test_only_removes_targeted_key(self):
+        other_key = ("other-user", _PROVIDER)
+        _cache_set(other_key, "other-tok", _TOKEN_CACHE_TTL)
+        invalidate_user_provider_cache(_USER, _PROVIDER)
+        assert other_key in _token_cache
 
 
 class TestCacheSet:
