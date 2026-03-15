@@ -14,7 +14,7 @@ metadata:
 
 - **`/pr review`** or `/pr review 12345` — review a PR for quality issues
 - **`/pr address`** or `/pr address 12345` — address existing comments and loop until clear
-- **`/pr 12345`** — auto-detect: if there are unreacted comments → address mode, otherwise → review mode
+- **`/pr 12345`** — auto-detect: if there are unaddressed comments → address mode, otherwise → review mode
 - **`/pr`** — find PR for current branch, then auto-detect
 
 ## Find the PR
@@ -74,9 +74,9 @@ gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversat
 - `sentry[bot]` — bug predictions. Fix real bugs, explain false positives.
 - `coderabbitai[bot]` — automated review. Address actionable items.
 
-### For each unreacted comment
+### For each unaddressed comment
 
-Address comments **one at a time**: fix → react → inline reply → next. Do NOT batch-react to all comments first.
+Address comments **one at a time**: fix → commit → push → inline reply → next.
 
 1. Read the referenced code, make the fix (or reply explaining why it's not needed)
 2. Commit and push the fix
@@ -84,8 +84,8 @@ Address comments **one at a time**: fix → react → inline reply → next. Do 
 
 | Comment type | Inline reply command |
 |---|---|
-| Inline review (`pulls/{N}/comments`) | `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="Fixed in <commit-sha>: <description>"` |
-| Conversation (`issues/{N}/comments`) | `gh api repos/.../issues/{N}/comments -f body="Fixed in <commit-sha>: <description>"` |
+| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="Fixed in <commit-sha>: <description>"` |
+| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="Fixed in <commit-sha>: <description>"` |
 
 ### Format and commit
 
@@ -115,7 +115,7 @@ For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 address comments → format → commit → push
 → re-check comments → fix new ones → push
 → wait for CI → re-check comments after CI settles
-→ repeat until: all comments reacted AND CI green AND no new comments arriving
+→ repeat until: all comments addressed AND CI green AND no new comments arriving
 ```
 
 While CI runs, stay productive: run local tests, address remaining comments.
