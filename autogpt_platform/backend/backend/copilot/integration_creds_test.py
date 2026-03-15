@@ -7,7 +7,6 @@ import pytest
 from pydantic import SecretStr
 
 from backend.copilot.integration_creds import (
-    _CACHE_MAX_SIZE,
     _NO_TOKEN,
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
@@ -100,16 +99,17 @@ class TestCacheSet:
         assert value == "tok2"
 
     def test_evicts_oldest_when_full(self):
-        # Fill to max
-        for i in range(_CACHE_MAX_SIZE):
-            _cache_set((f"user-{i}", _PROVIDER), f"tok-{i}", _TOKEN_CACHE_TTL)
-        assert len(_token_cache) == _CACHE_MAX_SIZE
+        # Use a tiny cap so the test doesn't create 10 000 entries.
+        with patch("backend.copilot.integration_creds._CACHE_MAX_SIZE", 3):
+            for i in range(3):
+                _cache_set((f"user-{i}", _PROVIDER), f"tok-{i}", _TOKEN_CACHE_TTL)
+            assert len(_token_cache) == 3
 
-        # Adding one more should evict the oldest ("user-0")
-        _cache_set(("user-new", _PROVIDER), "tok-new", _TOKEN_CACHE_TTL)
-        assert len(_token_cache) == _CACHE_MAX_SIZE
-        assert ("user-0", _PROVIDER) not in _token_cache
-        assert ("user-new", _PROVIDER) in _token_cache
+            # Adding one more should evict the oldest ("user-0")
+            _cache_set(("user-new", _PROVIDER), "tok-new", _TOKEN_CACHE_TTL)
+            assert len(_token_cache) == 3
+            assert ("user-0", _PROVIDER) not in _token_cache
+            assert ("user-new", _PROVIDER) in _token_cache
 
 
 class TestGetProviderToken:

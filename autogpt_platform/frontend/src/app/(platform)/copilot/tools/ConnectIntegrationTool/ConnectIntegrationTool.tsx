@@ -9,32 +9,29 @@ type Props = {
   part: ToolUIPart;
 };
 
+function parseJson(raw: unknown): unknown {
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return raw;
+}
+
 function parseOutput(raw: unknown): SetupRequirementsResponse | null {
-  try {
-    let parsed: unknown = raw;
-    if (typeof raw === "string") {
-      parsed = JSON.parse(raw);
-    }
-    if (parsed && typeof parsed === "object" && "setup_info" in parsed) {
-      return parsed as SetupRequirementsResponse;
-    }
-  } catch {
-    // ignore parse errors
+  const parsed = parseJson(raw);
+  if (parsed && typeof parsed === "object" && "setup_info" in parsed) {
+    return parsed as SetupRequirementsResponse;
   }
   return null;
 }
 
 function parseError(raw: unknown): string | null {
-  try {
-    let parsed: unknown = raw;
-    if (typeof raw === "string") {
-      parsed = JSON.parse(raw);
-    }
-    if (parsed && typeof parsed === "object" && "message" in parsed) {
-      return String((parsed as { message: unknown }).message);
-    }
-  } catch {
-    // ignore parse errors
+  const parsed = parseJson(raw);
+  if (parsed && typeof parsed === "object" && "message" in parsed) {
+    return String((parsed as { message: unknown }).message);
   }
   return null;
 }

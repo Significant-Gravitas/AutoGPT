@@ -25,6 +25,21 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
+def _bust_copilot_cache(user_id: str, provider: str) -> None:
+    """Remove the copilot token cache entry for *(user_id, provider)*.
+
+    Called after create/update/delete so that the next bash_exec command
+    fetches fresh credentials instead of serving a stale TTL-cached value.
+    Silently skipped if the copilot module is not installed.
+    """
+    try:
+        from backend.copilot.integration_creds import invalidate_user_provider_cache
+
+        invalidate_user_provider_cache(user_id, provider)
+    except ImportError:
+        pass  # copilot module not installed (e.g. isolated test env)
+
+
 class IntegrationCredentialsManager:
     """
     Handles the lifecycle of integration credentials.
@@ -72,12 +87,7 @@ class IntegrationCredentialsManager:
         result = await self.store.add_creds(user_id, credentials)
         # Bust the copilot token cache so that the next bash_exec picks up the
         # new credential immediately instead of waiting for _NULL_CACHE_TTL.
-        try:
-            from backend.copilot.integration_creds import invalidate_user_provider_cache
-
-            invalidate_user_provider_cache(user_id, credentials.provider)
-        except ImportError:
-            pass  # copilot module not installed (e.g. isolated test env)
+        _bust_copilot_cache(user_id, credentials.provider)
         return result
 
     async def exists(self, user_id: str, credentials_id: str) -> bool:
@@ -178,12 +188,7 @@ class IntegrationCredentialsManager:
         async with self._locked(user_id, updated.id):
             await self.store.update_creds(user_id, updated)
         # Bust the copilot token cache so the updated credential is picked up immediately.
-        try:
-            from backend.copilot.integration_creds import invalidate_user_provider_cache
-
-            invalidate_user_provider_cache(user_id, updated.provider)
-        except ImportError:
-            pass  # copilot module not installed (e.g. isolated test env)
+        _bust_copilot_cache(user_id, updated.provider)
 
     async def delete(self, user_id: str, credentials_id: str) -> None:
         # Read provider before deletion so we know which cache entry to bust.
@@ -191,14 +196,7 @@ class IntegrationCredentialsManager:
         async with self._locked(user_id, credentials_id):
             await self.store.delete_creds_by_id(user_id, credentials_id)
         if creds:
-            try:
-                from backend.copilot.integration_creds import (
-                    invalidate_user_provider_cache,
-                )
-
-                invalidate_user_provider_cache(user_id, creds.provider)
-            except ImportError:
-                pass  # copilot module not installed (e.g. isolated test env)
+            _bust_copilot_cache(user_id, creds.provider)
 
     # -- Locking utilities -- #
 
