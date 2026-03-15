@@ -7,7 +7,9 @@ Learn more: https://choosejoy.com.au
 """
 
 import logging
+import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -24,6 +26,35 @@ from backend.data.model import SchemaField
 logger = logging.getLogger(__name__)
 
 JOY_API_URL = "https://joy-connect.fly.dev"
+
+# Joy agent IDs follow pattern: ag_ followed by 24 hex characters
+AGENT_ID_PATTERN = re.compile(r"^ag_[a-f0-9]{24}$")
+
+
+def _validate_agent_id(agent_id: str) -> str:
+    """Validate and sanitize agent ID to prevent injection attacks.
+
+    Args:
+        agent_id: The agent ID to validate
+
+    Returns:
+        The validated agent ID
+
+    Raises:
+        ValueError: If the agent ID format is invalid
+    """
+    if not agent_id or not isinstance(agent_id, str):
+        raise ValueError("Agent ID must be a non-empty string")
+
+    agent_id = agent_id.strip().lower()
+
+    if not AGENT_ID_PATTERN.match(agent_id):
+        raise ValueError(
+            f"Invalid agent ID format: {agent_id!r}. "
+            "Expected format: ag_ followed by 24 hex characters (e.g., 'ag_229e507d7d87f35cc2bc17ea')"
+        )
+
+    return agent_id
 
 
 class JoyTrustVerifyBlock(Block):
@@ -86,9 +117,10 @@ class JoyTrustVerifyBlock(Block):
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
         """Fetch agent data from Joy API."""
+        validated_id = _validate_agent_id(agent_id)
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
-                f"{JOY_API_URL}/agents/{agent_id}",
+                f"{JOY_API_URL}/agents/{quote(validated_id, safe='')}",
                 headers={"User-Agent": "autogpt-joy/1.0.0"},
             )
             response.raise_for_status()
@@ -310,9 +342,10 @@ class JoyShouldTrustBlock(Block):
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
         """Fetch agent data from Joy API."""
+        validated_id = _validate_agent_id(agent_id)
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
-                f"{JOY_API_URL}/agents/{agent_id}",
+                f"{JOY_API_URL}/agents/{quote(validated_id, safe='')}",
                 headers={"User-Agent": "autogpt-joy/1.0.0"},
             )
             response.raise_for_status()
