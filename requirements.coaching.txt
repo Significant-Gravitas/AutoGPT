@@ -1,0 +1,14 @@
+# ABN Consulting AI Co-Navigator — production dependencies only
+# Used by Dockerfile. Add new packages here; the image will stay in sync.
+
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+anthropic>=0.20.0
+supabase>=2.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+requests>=2.32.0
+urllib3>=2.0.0
+charset-normalizer>=3.0.0
+slowapi>=0.1.9
+python-telegram-bot>=20.0
