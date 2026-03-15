@@ -4,11 +4,17 @@ Validates that every tool in TOOL_REGISTRY produces a well-formed schema:
 - description is non-empty
 - all `required` fields exist in `properties`
 - every property has a `type` and `description`
+- total token budget does not regress past 8000 tokens
 """
 
+import json
+
 import pytest
+import tiktoken
 
 from backend.copilot.tools import TOOL_REGISTRY
+
+_TOKEN_BUDGET = 8_000
 
 
 def _get_all_tool_schemas() -> list[tuple[str, object]]:
@@ -52,3 +58,20 @@ class TestToolSchema:
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
+
+
+def test_total_schema_token_budget() -> None:
+    """Assert total tool schema size stays under the token budget.
+
+    This locks in the 34% token reduction from #12398 and prevents future
+    description bloat from eroding the gains. Budget is set to 8000 tokens
+    (current baseline is ~5200 tokens, giving ~54% headroom).
+    """
+    schemas = [tool.as_openai_tool() for tool in TOOL_REGISTRY.values()]
+    serialized = json.dumps(schemas)
+    enc = tiktoken.get_encoding("cl100k_base")
+    total_tokens = len(enc.encode(serialized))
+    assert total_tokens < _TOKEN_BUDGET, (
+        f"Tool schemas use {total_tokens} tokens, exceeding budget of {_TOKEN_BUDGET}. "
+        f"Description bloat detected — trim descriptions or raise the budget intentionally."
+    )

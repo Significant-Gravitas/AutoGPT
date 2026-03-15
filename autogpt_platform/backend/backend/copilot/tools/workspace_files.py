@@ -632,7 +632,7 @@ class WriteWorkspaceFileTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Filename (e.g. 'report.pdf')",
+                    "description": "Filename (e.g. 'report.pdf').",
                 },
                 "content": {
                     "type": "string",

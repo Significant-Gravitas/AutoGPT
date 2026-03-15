@@ -59,7 +59,7 @@ class WebFetchTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Fetch a public web page. Returns readable text from HTML by default."
+        return "Fetch a public web page. Public URLs only — internal addresses blocked. Returns readable text from HTML by default."
 
     @property
     def parameters(self) -> dict[str, Any]:

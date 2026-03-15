@@ -61,7 +61,7 @@ class RunBlockTool(BaseTool):
                 },
                 "block_name": {
                     "type": "string",
-                    "description": "Block name for UI display.",
+                    "description": "Block name for UI display (optional).",
                 },
                 "input_data": {
                     "type": "object",

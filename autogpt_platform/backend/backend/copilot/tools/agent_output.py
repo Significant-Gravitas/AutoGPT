@@ -138,11 +138,11 @@ class AgentOutputTool(BaseTool):
                 },
                 "run_time": {
                     "type": "string",
-                    "description": "Time filter: 'latest', relative ranges (e.g., today/yesterday/last week/last 7 days/last month/last 30 days), 'YYYY-MM-DD', or ISO datetime.",
+                    "description": "Time filter: 'latest', today/yesterday/last week/last 30 days, 'YYYY-MM-DD', or ISO datetime.",
                 },
                 "wait_if_running": {
                     "type": "integer",
-                    "description": "Max seconds to wait if still running (0-300).",
+                    "description": "Max seconds to wait if still running (0-300). Returns current state on timeout.",
                 },
             },
             "required": [],
