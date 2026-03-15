@@ -1,0 +1,31 @@
+{
+  "command": "agbenchmark start --test TestBasicMemory",
+  "completion_time": "2023-07-17-18:18",
+  "metrics": {
+    "run_time": "62.11 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestBasicMemory": {
+      "data_path": "agbenchmark/challenges/memory/m1",
+      "is_regression": false,
+      "task": "Follow the instructions in the instructions_1.txt file",
+      "answer": "2314",
+      "description": "Tests ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
+      "metrics": {
+        "difficulty": "basic",
+        "success": false,
+        "fail_reason": "[Errno 2] No such file or directory: 'C:\\\\Users\\\\silen\\\\miniagi\\\\results.txt'",
+        "success_%": 83.33,
+        "run_time": "61.879 seconds"
+      },
+      "reached_cutoff": false
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-3.5-turbo"
+  }
+}

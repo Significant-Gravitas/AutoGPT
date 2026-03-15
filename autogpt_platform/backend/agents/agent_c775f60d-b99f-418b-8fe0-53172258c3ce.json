@@ -1,0 +1,1005 @@
+{
+  "id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+  "version": 16,
+  "is_active": false,
+  "name": "YouTube Transcription Scraper",
+  "description": "Effortlessly gather transcriptions from multiple YouTube videos with this agent. It scrapes and compiles video transcripts into a clean, organized list, making it easy to extract insights, quotes, or content from various sources in one go. Ideal for researchers, content creators, and marketers looking to quickly analyze or repurpose video content.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1242.570588258763,
+          "y": 1239.0648340008283
+        }
+      },
+      "input_links": [
+        {
+          "id": "e816444c-5fca-42d4-b4d1-719294ccfaeb",
+          "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "sink_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "source_name": "generated_list",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "81581615-5c5c-41b0-906f-1cf259542c53",
+          "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "source_name": "count",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "53cb9832-a375-4084-a635-669f19924cec",
+          "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "source_name": "count",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5275b389-3d1a-472c-877d-bddd7245767a",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Search Query",
+        "value": "Auto_GPT"
+      },
+      "metadata": {
+        "position": {
+          "x": -1066.187417387172,
+          "y": 1001.8552390983206
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "7ba96ec9-67df-458f-9650-3c8779c9584f",
+          "source_id": "5275b389-3d1a-472c-877d-bddd7245767a",
+          "sink_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+          "source_name": "result",
+          "sink_name": "values_#_QUERY",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "133946e1-3033-4c2d-85ab-2ae6b8f65857",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {
+        "entry": "Youtube Transcripts"
+      },
+      "metadata": {
+        "position": {
+          "x": 1231.8185576522417,
+          "y": -915.1398277411396
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "26662256-353e-469e-906f-b413e3ce2f59",
+          "source_id": "133946e1-3033-4c2d-85ab-2ae6b8f65857",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "412ab7a5-ef93-483a-9137-3dfddd0ab455",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Transcripts"
+      },
+      "metadata": {
+        "position": {
+          "x": 3785.9696718713567,
+          "y": 657.2728830845492
+        }
+      },
+      "input_links": [
+        {
+          "id": "fc871514-57ba-41cb-a8fd-e7b6623a5e26",
+          "source_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "sink_id": "412ab7a5-ef93-483a-9137-3dfddd0ab455",
+          "source_name": "yes_output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "operator": ">"
+      },
+      "metadata": {
+        "position": {
+          "x": 3144.36290122744,
+          "y": 657.803932826998
+        }
+      },
+      "input_links": [
+        {
+          "id": "04480881-a501-4c78-a555-a9a6c5781add",
+          "source_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "output",
+          "sink_name": "value2",
+          "is_static": true
+        },
+        {
+          "id": "da50467b-9bd2-4e01-ac4d-25dd5153c0f9",
+          "source_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "8bd9a887-980a-476d-8c0a-f6125b339347",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "updated_list",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fc871514-57ba-41cb-a8fd-e7b6623a5e26",
+          "source_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "sink_id": "412ab7a5-ef93-483a-9137-3dfddd0ab455",
+          "source_name": "yes_output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1863.7263973535069,
+          "y": 176.40384128981023
+        }
+      },
+      "input_links": [
+        {
+          "id": "fa234b34-2608-428f-b0f0-ee68bfc9d1c7",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "26662256-353e-469e-906f-b413e3ce2f59",
+          "source_id": "133946e1-3033-4c2d-85ab-2ae6b8f65857",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "9afff64c-554f-4bf2-a338-85e2edfe44cf",
+          "source_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "transcript",
+          "sink_name": "entry",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fa234b34-2608-428f-b0f0-ee68bfc9d1c7",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "84460e51-1efa-4f54-8c87-316a63666dc8",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+          "source_name": "updated_list",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "8bd9a887-980a-476d-8c0a-f6125b339347",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "updated_list",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+      "block_id": "436c3984-57fd-4b85-8e9a-459b356883bd",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 100.13599586516995,
+          "y": 998.8123871077987
+        }
+      },
+      "input_links": [
+        {
+          "id": "661711fd-dea6-4766-aea2-7cf3177c4dfb",
+          "source_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+          "sink_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+          "source_name": "output",
+          "sink_name": "url",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "1eb955fb-d20e-405d-b89c-a0abd8fbe58e",
+          "source_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+          "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "source_name": "content",
+          "sink_name": "source_data",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a2e83b14-29ca-4f99-b79d-c4e309a86ca8",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Note for self-host users: \n\nPress \"Advanced\" and enter your Anthropic API key ->\n\nhttps://docs.anthropic.com/en/api/getting-started"
+      },
+      "metadata": {
+        "position": {
+          "x": 314.2957291286988,
+          "y": 341.8904744260496
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5c0b3dc2-3bd8-4ee7-a315-83d89219a33e",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "At this point we have all the transcriptions in a list."
+      },
+      "metadata": {
+        "position": {
+          "x": 3555.3575982644275,
+          "y": 235.32122600538992
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0b2bfa81-c3b8-4189-b983-c6364c21272e",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Number of Videos",
+        "value": "3",
+        "description": "The number of videos to collect the transcripts of"
+      },
+      "metadata": {
+        "position": {
+          "x": -1059.1936308573434,
+          "y": 160.45170411762848
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "a90eb9e6-d4de-46e8-8b62-614f9c6ca61b",
+          "source_id": "0b2bfa81-c3b8-4189-b983-c6364c21272e",
+          "sink_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+          "source_name": "result",
+          "sink_name": "values_#_NUMBER",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b4a85365-6943-4b0a-928a-68b56377a454",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1859.949466461855,
+          "y": 1241.0348156680416
+        }
+      },
+      "input_links": [
+        {
+          "id": "81581615-5c5c-41b0-906f-1cf259542c53",
+          "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "source_name": "count",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "53cb9832-a375-4084-a635-669f19924cec",
+          "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "source_name": "count",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "04480881-a501-4c78-a555-a9a6c5781add",
+          "source_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "output",
+          "sink_name": "value2",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+      "block_id": "f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1234.9739670999406,
+          "y": 172.36828137640848
+        }
+      },
+      "input_links": [
+        {
+          "id": "b33653ed-1334-43a9-ad19-24d393de5ec7",
+          "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "sink_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+          "source_name": "list_item",
+          "sink_name": "youtube_url",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9afff64c-554f-4bf2-a338-85e2edfe44cf",
+          "source_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+          "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "source_name": "transcript",
+          "sink_name": "entry",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2525.209901802294,
+          "y": 174.92728320007268
+        }
+      },
+      "input_links": [
+        {
+          "id": "84460e51-1efa-4f54-8c87-316a63666dc8",
+          "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+          "sink_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+          "source_name": "updated_list",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "da50467b-9bd2-4e01-ac4d-25dd5153c0f9",
+          "source_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+          "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "List the top {{NUMBER}} YouTube video urls results in this data.\n\nThe urls look like this:\n```https://www.youtube.com/watch?v=.....```",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -476.1955531511852,
+          "y": 165.59810105279777
+        }
+      },
+      "input_links": [
+        {
+          "id": "a90eb9e6-d4de-46e8-8b62-614f9c6ca61b",
+          "source_id": "0b2bfa81-c3b8-4189-b983-c6364c21272e",
+          "sink_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+          "source_name": "result",
+          "sink_name": "values_#_NUMBER",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "1266f0f1-d6b2-4cdd-ac1a-7169340fc6f4",
+          "source_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+          "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "source_name": "output",
+          "sink_name": "focus",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "https://www.youtube.com/results?search_query={{QUERY}}",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -483.5962787777845,
+          "y": 995.4859020054615
+        }
+      },
+      "input_links": [
+        {
+          "id": "7ba96ec9-67df-458f-9650-3c8779c9584f",
+          "source_id": "5275b389-3d1a-472c-877d-bddd7245767a",
+          "sink_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+          "source_name": "result",
+          "sink_name": "values_#_QUERY",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "661711fd-dea6-4766-aea2-7cf3177c4dfb",
+          "source_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+          "sink_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+          "source_name": "output",
+          "sink_name": "url",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+      "block_id": "9c0b0450-d199-458b-a731-072189dd6593",
+      "input_default": {
+        "focus": "List the top 5 YouTube video urls results in this data.\n\nThe urls look like this:\n```https://www.youtube.com/watch?v=.....```",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "metadata": {
+        "position": {
+          "x": 661.4989974785728,
+          "y": 171
+        }
+      },
+      "input_links": [
+        {
+          "id": "1eb955fb-d20e-405d-b89c-a0abd8fbe58e",
+          "source_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+          "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "source_name": "content",
+          "sink_name": "source_data",
+          "is_static": false
+        },
+        {
+          "id": "1266f0f1-d6b2-4cdd-ac1a-7169340fc6f4",
+          "source_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+          "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "source_name": "output",
+          "sink_name": "focus",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "b33653ed-1334-43a9-ad19-24d393de5ec7",
+          "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "sink_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+          "source_name": "list_item",
+          "sink_name": "youtube_url",
+          "is_static": false
+        },
+        {
+          "id": "e816444c-5fca-42d4-b4d1-719294ccfaeb",
+          "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+          "sink_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+          "source_name": "generated_list",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1acef2da-b865-4503-b94e-bfd444eddd66",
+      "graph_version": 16,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "04480881-a501-4c78-a555-a9a6c5781add",
+      "source_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+      "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+      "source_name": "output",
+      "sink_name": "value2",
+      "is_static": true
+    },
+    {
+      "id": "7ba96ec9-67df-458f-9650-3c8779c9584f",
+      "source_id": "5275b389-3d1a-472c-877d-bddd7245767a",
+      "sink_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+      "source_name": "result",
+      "sink_name": "values_#_QUERY",
+      "is_static": true
+    },
+    {
+      "id": "26662256-353e-469e-906f-b413e3ce2f59",
+      "source_id": "133946e1-3033-4c2d-85ab-2ae6b8f65857",
+      "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "1eb955fb-d20e-405d-b89c-a0abd8fbe58e",
+      "source_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+      "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+      "source_name": "content",
+      "sink_name": "source_data",
+      "is_static": false
+    },
+    {
+      "id": "fa234b34-2608-428f-b0f0-ee68bfc9d1c7",
+      "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "a90eb9e6-d4de-46e8-8b62-614f9c6ca61b",
+      "source_id": "0b2bfa81-c3b8-4189-b983-c6364c21272e",
+      "sink_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+      "source_name": "result",
+      "sink_name": "values_#_NUMBER",
+      "is_static": true
+    },
+    {
+      "id": "fc871514-57ba-41cb-a8fd-e7b6623a5e26",
+      "source_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+      "sink_id": "412ab7a5-ef93-483a-9137-3dfddd0ab455",
+      "source_name": "yes_output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "8bd9a887-980a-476d-8c0a-f6125b339347",
+      "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+      "source_name": "updated_list",
+      "sink_name": "yes_value",
+      "is_static": false
+    },
+    {
+      "id": "661711fd-dea6-4766-aea2-7cf3177c4dfb",
+      "source_id": "46ec84d0-f03a-45f1-a154-4f694738a783",
+      "sink_id": "fafb0d60-a5b6-4188-a144-6ae8e68f65a9",
+      "source_name": "output",
+      "sink_name": "url",
+      "is_static": false
+    },
+    {
+      "id": "e816444c-5fca-42d4-b4d1-719294ccfaeb",
+      "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+      "sink_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+      "source_name": "generated_list",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "84460e51-1efa-4f54-8c87-316a63666dc8",
+      "source_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "sink_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+      "source_name": "updated_list",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "da50467b-9bd2-4e01-ac4d-25dd5153c0f9",
+      "source_id": "c38521df-c4ee-48c8-8cf1-a49de02fa417",
+      "sink_id": "a563e3ed-9d51-4960-9b95-dbe29e8962cd",
+      "source_name": "count",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "53cb9832-a375-4084-a635-669f19924cec",
+      "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+      "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+      "source_name": "count",
+      "sink_name": "data",
+      "is_static": false
+    },
+    {
+      "id": "b33653ed-1334-43a9-ad19-24d393de5ec7",
+      "source_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+      "sink_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+      "source_name": "list_item",
+      "sink_name": "youtube_url",
+      "is_static": false
+    },
+    {
+      "id": "81581615-5c5c-41b0-906f-1cf259542c53",
+      "source_id": "a5c6d874-24ce-4bd9-8722-40ef6e13372e",
+      "sink_id": "b4a85365-6943-4b0a-928a-68b56377a454",
+      "source_name": "count",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "1266f0f1-d6b2-4cdd-ac1a-7169340fc6f4",
+      "source_id": "ac2654e8-546d-4748-a4b9-49e7662d3d1a",
+      "sink_id": "39cd36bc-bf6b-4f8f-9588-c178428c23b8",
+      "source_name": "output",
+      "sink_name": "focus",
+      "is_static": false
+    },
+    {
+      "id": "9afff64c-554f-4bf2-a338-85e2edfe44cf",
+      "source_id": "49ac5b72-9bf5-4697-a56c-a235988394e3",
+      "sink_id": "6231dfea-c224-4029-ae8c-96873dfed078",
+      "source_name": "transcript",
+      "sink_name": "entry",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2024-12-20T16:34:24.107Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Search Query": {
+        "advanced": false,
+        "secret": false,
+        "title": "Search Query",
+        "default": "Auto_GPT"
+      },
+      "Number of Videos": {
+        "advanced": false,
+        "secret": false,
+        "title": "Number of Videos",
+        "description": "The number of videos to collect the transcripts of",
+        "default": "3"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Transcripts": {
+        "advanced": false,
+        "secret": false,
+        "title": "Transcripts"
+      }
+    },
+    "required": [
+      "Transcripts"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "jina_api_key_credentials": {
+        "credentials_provider": [
+          "jina"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "jina",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.JINA: 'jina'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "webshare_proxy_user_password_credentials": {
+        "credentials_provider": [
+          "webshare_proxy"
+        ],
+        "credentials_types": [
+          "user_password"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "webshare_proxy",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "user_password",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.WEBSHARE_PROXY: 'webshare_proxy'>], Literal['user_password']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-5-20250929"
+        ]
+      }
+    },
+    "required": [
+      "jina_api_key_credentials",
+      "webshare_proxy_user_password_credentials",
+      "anthropic_api_key_credentials"
+    ],
+    "title": "YouTubeTranscriptionScraperCredentialsInputSchema",
+    "type": "object"
+  }
+}

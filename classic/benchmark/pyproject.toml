@@ -1,0 +1,89 @@
+[tool.poetry]
+name = "agbenchmark"
+version = "0.0.10"
+description = "Benchmarking the performance of agents far and wide, regardless of how they are set up and how they work"
+authors = ["AutoGPT Team"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "agbenchmark" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+agent-protocol-client = {git = "https://github.com/Significant-Gravitas/agent-protocol.git", subdirectory = "packages/client/python"}
+click = "^8.1.3"
+click-default-group = "^1.2.4"
+colorama = "^0.4.6"
+fastapi = "^0.109.1"
+gitpython = "^3.1.32"
+httpx = "^0.24.0"
+matplotlib = "^3.7.2"
+# Multidict 6.0.4 fails to install and is a dependency of aiohttp which is a depenedency of agent-protocol-client
+multidict = "^6.0.5"
+networkx = "^3.1"
+openai = "^1.7.2"
+pandas = "^2.0.3"
+pexpect = "^4.8.0"
+psutil = "^5.9.5"
+pydantic = "^2.7.2"
+pydantic-settings = "^2.3.4"
+pytest = "^7.3.2"
+pytest-asyncio = "^0.23.3"
+python-dotenv = "^1.0.0"
+python-multipart = "^0.0.7"
+pyvis = "^0.3.2"
+requests = "^2.31.0"
+selenium = "^4.11.2"
+tabulate = "^0.9.0"
+toml = "^0.10.2"
+uvicorn = ">=0.23.2,<1"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.12.1"
+flake8 = "^7.0.0"
+isort = "^5.13.1"
+pyright = "^1.1.364"
+pre-commit = "^3.3.3"
+
+# Testing
+pytest-cov = "^5.0.0"
+
+# Dependencies for stuff in reports/
+gspread = "^5.10.0"
+oauth2client = "^4.1.3"
+
+[tool.poetry.scripts]
+agbenchmark = "agbenchmark.__main__:cli"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+
+
+[tool.isort]
+profile = "black"
+skip_glob = ["reports"]
+
+
+[tool.pyright]
+pythonVersion = "3.10"
+exclude = [
+    "notebooks/**",
+    "reports/**",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+]
+ignore = [
+    "../classic/forge/**"
+]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

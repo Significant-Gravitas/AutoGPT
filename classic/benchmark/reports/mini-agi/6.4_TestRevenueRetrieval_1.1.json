@@ -1,0 +1,31 @@
+{
+  "command": "agbenchmark start --test TestRetrieval2.1",
+  "completion_time": "2023-07-17-17:56",
+  "metrics": {
+    "run_time": "23.64 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRetrieval2.1": {
+      "data_path": "agbenchmark/challenges/retrieval/r2.1_specific",
+      "is_regression": false,
+      "task": "Write Tesla's precise revenue in 2022 into a .txt file.",
+      "answer": "It was $81.462 billion in 2022.",
+      "description": "This one checks the accuracy of the information over r2",
+      "metrics": {
+        "difficulty": "novice",
+        "success": false,
+        "fail_reason": "assert 1 in [0.0]",
+        "success_%": 0.0,
+        "run_time": "23.42 seconds"
+      },
+      "reached_cutoff": false
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-3.5-turbo"
+  }
+}

@@ -1,0 +1,375 @@
+{
+    "edges": [
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
+        }
+    ],
+    "nodes": [
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
+                "ground": {
+                    "answer": "The content of output.txt should be 'Hello World!'",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Hello World!"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can write a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSearch"
+                ],
+                "eval_id": "cd96e6b2-779d-4a4a-8367-d520023e27ae",
+                "ground": {
+                    "answer": "\u00a325.89",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "25.89"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve a specific information from a website.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestBasicRetrieval",
+                "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "label": "BasicRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "scrape_synthesize"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "0bb23182-b434-402b-a73e-9c226469b959",
+                "ground": {
+                    "answer": "This is a Heading\nThis is a paragraph.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Heading",
+                        "paragraph"
+                    ],
+                    "should_not_contain": [
+                        "The",
+                        "the"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can search.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSearch",
+                "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "label": "Search",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestRevenueRetrieval2"
+                ],
+                "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
+                "ground": {
+                    "answer": "The twitter handles of the two hosts of Latent Space.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "swyx",
+                        "FanaHOVA"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve twitter handles given a vague description.",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestTestGetInformation",
+                "task": "Write the twitter handle of the two hosts of Latent Space to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestTestGetInformation::test_method[challenge_data0]",
+            "label": "TestGetInformation",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestRevenueRetrieval"
+                ],
+                "eval_id": "552bdf23-db40-4bd1-b123-4ed820886cc1",
+                "ground": {
+                    "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "15",
+                        "112",
+                        "117",
+                        "204",
+                        "413",
+                        "2,014",
+                        "3,198",
+                        "4,046",
+                        "7,000",
+                        "11,759",
+                        "21,461",
+                        "24,578",
+                        "31,536",
+                        "53,823",
+                        "81,462"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve all the revenues of Tesla since its creation.",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        "tests if there is in fact an LLM attached"
+                    ]
+                },
+                "name": "TestRevenueRetrieval2",
+                "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+            },
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
+            "label": "RevenueRetrieval2",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestBasicRetrieval"
+                ],
+                "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
+                "ground": {
+                    "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "81,462"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve Tesla's revenue in 2022.",
+                    "difficulty": "intermediate",
+                    "side_effects": []
+                },
+                "name": "TestRevenueRetrieval",
+                "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+            },
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "label": "RevenueRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 240,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
+                "ground": {
+                    "answer": "A report highlighting elements from the 2 files.",
+                    "eval": {
+                        "scoring": "binary",
+                        "template": "question",
+                        "type": "llm"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can generate content based on the content of 2 files.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestSynthesizeInfo",
+                "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt."
+            },
+            "id": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "label": "SynthesizeInfo",
+            "shape": "dot"
+        }
+    ]
+}

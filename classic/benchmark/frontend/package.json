@@ -1,0 +1,47 @@
+{
+  "name": "my-t3-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "postinstall": "prisma generate",
+    "lint": "next lint",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.4.2",
+    "@fortawesome/free-solid-svg-icons": "^6.4.2",
+    "@fortawesome/react-fontawesome": "^0.2.0",
+    "@prisma/client": "^5.1.1",
+    "@t3-oss/env-nextjs": "^0.3.1",
+    "next": "^13.4.2",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwind-styled-components": "^2.2.0",
+    "vis-data": "^7.1.6",
+    "vis-network": "^9.1.6",
+    "zod": "^3.21.4"
+  },
+  "devDependencies": {
+    "@types/eslint": "^8.37.0",
+    "@types/node": "^18.16.0",
+    "@types/prettier": "^2.7.2",
+    "@types/react": "^18.2.6",
+    "@types/react-dom": "^18.2.4",
+    "@typescript-eslint/eslint-plugin": "6.0.0",
+    "@typescript-eslint/parser": "6.0.0",
+    "autoprefixer": "^10.4.14",
+    "eslint": "^8.40.0",
+    "eslint-config-next": "^13.4.2",
+    "postcss": "^8.4.27",
+    "prettier": "^2.8.8",
+    "prettier-plugin-tailwindcss": "^0.2.8",
+    "prisma": "^5.1.1",
+    "tailwindcss": "^3.3.3",
+    "typescript": "^5.0.4"
+  },
+  "ct3aMetadata": {
+    "initVersion": "7.18.0"
+  }
+}

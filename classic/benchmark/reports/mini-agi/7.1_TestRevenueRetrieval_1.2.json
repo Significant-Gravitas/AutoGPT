@@ -1,0 +1,31 @@
+{
+  "command": "agbenchmark start --test TestRetrieval2.2",
+  "completion_time": "2023-07-17-17:57",
+  "metrics": {
+    "run_time": "31.1 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRetrieval2.2": {
+      "data_path": "agbenchmark/challenges/retrieval/r2.2_formatting",
+      "is_regression": false,
+      "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+      "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+      "description": "Advanced version of the r2.1 challenge that also asks for specific formatting.",
+      "metrics": {
+        "difficulty": "intermediate",
+        "success": false,
+        "fail_reason": "assert 1 in [0.0]",
+        "success_%": 0.0,
+        "run_time": "30.888 seconds"
+      },
+      "reached_cutoff": false
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-4"
+  }
+}

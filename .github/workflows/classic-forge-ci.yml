@@ -1,0 +1,243 @@
+name: Classic - Forge CI
+
+on:
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - '.github/workflows/classic-forge-ci.yml'
+      - 'classic/forge/**'
+      - '!classic/forge/tests/vcr_cassettes'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - '.github/workflows/classic-forge-ci.yml'
+      - 'classic/forge/**'
+      - '!classic/forge/tests/vcr_cassettes'
+
+concurrency:
+  group: ${{ format('forge-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: classic/forge
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        platform-os: [ubuntu, macos, macos-arm64, windows]
+    runs-on: ${{ matrix.platform-os != 'macos-arm64' && format('{0}-latest', matrix.platform-os) || 'macos-14' }}
+
+    steps:
+      # Quite slow on macOS (2~4 minutes to set up Docker)
+      # - name: Set up Docker (macOS)
+      #   if: runner.os == 'macOS'
+      #   uses: crazy-max/ghaction-setup-docker@v3
+
+      - name: Start MinIO service (Linux)
+        if: runner.os == 'Linux'
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Start MinIO service (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}
+        run: |
+          brew install minio/stable/minio
+          mkdir data
+          minio server ./data &
+
+      # No MinIO on Windows:
+      # - Windows doesn't support running Linux Docker containers
+      # - It doesn't seem possible to start background processes on Windows. They are
+      #   killed after the step returns.
+      #   See: https://github.com/actions/runner/issues/598#issuecomment-2011890429
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Checkout cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
+          cassette_base_branch="${PR_BASE}"
+          cd tests/vcr_cassettes
+
+          if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
+            cassette_base_branch="master"
+          fi
+
+          if git ls-remote --exit-code --heads origin $cassette_branch ; then
+            git fetch origin $cassette_branch
+            git fetch origin $cassette_base_branch
+
+            git checkout $cassette_branch
+
+            # Pick non-conflicting cassette updates from the base branch
+            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
+            echo "Using cassettes from mirror branch '$cassette_branch'," \
+              "synced to upstream branch '$cassette_base_branch'."
+          else
+            git checkout -b $cassette_branch
+            echo "Branch '$cassette_branch' does not exist in cassette submodule." \
+              "Using cassettes from '$cassette_base_branch'."
+          fi
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Python dependency cache
+        # On Windows, unpacking cached dependencies takes longer than just installing them
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/pypoetry' || '~/.cache/pypoetry' }}
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/forge/poetry.lock') }}
+
+      - name: Install Poetry (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install Poetry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+          $env:PATH += ";$env:APPDATA\Python\Scripts"
+          echo "$env:APPDATA\Python\Scripts" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            --cov=forge --cov-branch --cov-report term-missing --cov-report xml \
+            --durations=10 \
+            --junitxml=junit.xml -o junit_family=legacy \
+            forge
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          S3_ENDPOINT_URL: ${{ runner.os != 'Windows' && 'http://127.0.0.1:9000' || '' }}
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}  # Run even if tests fail
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: forge,${{ runner.os }}
+
+      - id: setup_git_auth
+        name: Set up git token authentication
+        # Cassettes may be pushed even when tests fail
+        if: success() || failure()
+        run: |
+          config_key="http.${{ github.server_url }}/.extraheader"
+          if [ "${{ runner.os }}" = 'macOS' ]; then
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64)
+          else
+            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          fi
+
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
+
+          cd tests/vcr_cassettes
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
+
+          echo "config_key=$config_key" >> $GITHUB_OUTPUT
+
+      - id: push_cassettes
+        name: Push updated cassettes
+        # For pull requests, push updated cassettes even when tests fail
+        if: github.event_name == 'push' || (! github.event.pull_request.head.repo.fork && (success() || failure()))
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
+            is_pull_request=true
+            cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
+          else
+            cassette_branch="${{ github.ref_name }}"
+          fi
+
+          cd tests/vcr_cassettes
+          # Commit & push changes to cassettes if any
+          if ! git diff --quiet; then
+            git add .
+            git commit -m "Auto-update cassettes"
+            git push origin HEAD:$cassette_branch
+            if [ ! $is_pull_request ]; then
+              cd ../..
+              git add tests/vcr_cassettes
+              git commit -m "Update cassette submodule"
+              git push origin HEAD:$cassette_branch
+            fi
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+            echo "No cassette changes to commit"
+          fi
+
+      - name: Post Set up git token auth
+        if: steps.setup_git_auth.outcome == 'success'
+        run: |
+          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+
+      - name: Apply "behaviour change" label and comment on PR
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          TOKEN="${{ secrets.PAT_REVIEW }}"
+          REPO="${{ github.repository }}"
+
+          if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
+            echo "Adding label and comment..."
+            echo $TOKEN | gh auth login --with-token
+            gh issue edit $PR_NUMBER --add-label "behaviour change"
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour on ${{ runner.os }}. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+          fi
+
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: classic/forge/logs/

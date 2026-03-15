@@ -1,0 +1,12 @@
+{
+  "output1": [
+    {
+      "data": "result1"
+    }
+  ],
+  "output2": [
+    {
+      "data": "result2"
+    }
+  ]
+}

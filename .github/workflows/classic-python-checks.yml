@@ -1,0 +1,151 @@
+name: Classic - Python checks
+
+on:
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - '.github/workflows/classic-python-checks-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
+      - '**.py'
+      - '!classic/forge/tests/vcr_cassettes'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - '.github/workflows/classic-python-checks-ci.yml'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - 'classic/benchmark/**'
+      - '**.py'
+      - '!classic/forge/tests/vcr_cassettes'
+
+concurrency:
+  group: ${{ format('classic-python-checks-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  get-changed-parts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - id: changes-in
+        name: Determine affected subprojects
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            original_autogpt:
+              - classic/original_autogpt/autogpt/**
+              - classic/original_autogpt/tests/**
+              - classic/original_autogpt/poetry.lock
+            forge:
+              - classic/forge/forge/**
+              - classic/forge/tests/**
+              - classic/forge/poetry.lock
+            benchmark:
+              - classic/benchmark/agbenchmark/**
+              - classic/benchmark/tests/**
+              - classic/benchmark/poetry.lock
+    outputs:
+      changed-parts: ${{ steps.changes-in.outputs.changes }}
+
+  lint:
+    needs: get-changed-parts
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    strategy:
+      matrix:
+        sub-package: ${{ fromJson(needs.get-changed-parts.outputs.changed-parts) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles(format('{0}/poetry.lock', matrix.sub-package)) }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      # Install dependencies
+
+      - name: Install Python dependencies
+        run: poetry -C classic/${{ matrix.sub-package }} install
+
+      # Lint
+
+      - name: Lint (isort)
+        run: poetry run isort --check .
+        working-directory: classic/${{ matrix.sub-package }}
+
+      - name: Lint (Black)
+        if: success() || failure()
+        run: poetry run black --check .
+        working-directory: classic/${{ matrix.sub-package }}
+
+      - name: Lint (Flake8)
+        if: success() || failure()
+        run: poetry run flake8 .
+        working-directory: classic/${{ matrix.sub-package }}
+
+  types:
+    needs: get-changed-parts
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    strategy:
+      matrix:
+        sub-package: ${{ fromJson(needs.get-changed-parts.outputs.changed-parts) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles(format('{0}/poetry.lock', matrix.sub-package)) }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      # Install dependencies
+
+      - name: Install Python dependencies
+        run: poetry -C classic/${{ matrix.sub-package }} install
+
+      # Typecheck
+
+      - name: Typecheck
+        if: success() || failure()
+        run: poetry run pyright
+        working-directory: classic/${{ matrix.sub-package }}

@@ -1,5 +1,10 @@
-# Exclude VCR cassettes from stats
-tests/**/cassettes/**.y*ml linguist-generated
+classic/frontend/build/** linguist-generated
 
-# Mark documentation as such
-docs/**.md linguist-documentation
+**/poetry.lock linguist-generated
+
+docs/_javascript/** linguist-vendored
+
+# Exclude VCR cassettes from stats
+classic/forge/tests/vcr_cassettes/**/**.y*ml linguist-generated
+
+* text=auto

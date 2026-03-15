@@ -1,0 +1,87 @@
+name: Classic - AutoGPT Docker Release
+
+on:
+  release:
+    types: [published, edited]
+
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        type: boolean
+        description: 'Build from scratch, without using cached layers'
+
+env:
+  IMAGE_NAME: auto-gpt
+  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/tags/autogpt-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+        # slashes are not allowed in image tags, but can appear in git branch or tag names
+      - id: sanitize_tag
+        name: Sanitize image tag
+        run: |
+          tag=${raw_tag//\//-}
+          echo tag=${tag#autogpt-} >> $GITHUB_OUTPUT
+        env:
+          raw_tag: ${{ github.ref_name }}
+
+      - id: build
+        name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: classic/
+          file: Dockerfile.autogpt
+          build-args: BUILD_TYPE=release
+          load: true # save to docker images
+          # push: true  # TODO: uncomment when this issue is fixed: https://github.com/moby/buildkit/issues/1555
+          tags: >
+            ${{ env.IMAGE_NAME }},
+            ${{ env.DEPLOY_IMAGE_NAME }}:latest,
+            ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
+          labels: GIT_REVISION=${{ github.sha }}
+
+          # cache layers in GitHub Actions cache to speed up builds
+          cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=autogpt-docker-release
+          cache-to: type=gha,scope=autogpt-docker-release,mode=max
+
+      - name: Push image to Docker Hub
+        run: docker push --all-tags ${{ env.DEPLOY_IMAGE_NAME }}
+
+      - name: Generate build report
+        env:
+          event_name: ${{ github.event_name }}
+          event_ref: ${{ github.event.ref }}
+          event_ref_type: ${{ github.event.ref}}
+          inputs_no_cache: ${{ inputs.no_cache }}
+
+          prod_branch: master
+          dev_branch: dev
+          repository: ${{ github.repository }}
+          base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'dev' && 'dev' || 'master' }}
+
+          ref_type: ${{ github.ref_type }}
+          current_ref: ${{ github.ref_name }}
+          commit_hash: ${{ github.sha }}
+          source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.event.release && github.event.release.tag_name || github.sha) }}
+
+          github_context_json: ${{ toJSON(github) }}
+          job_env_json: ${{ toJSON(env) }}
+          vars_json: ${{ toJSON(vars) }}
+
+        run: .github/workflows/scripts/docker-release-summary.sh >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true

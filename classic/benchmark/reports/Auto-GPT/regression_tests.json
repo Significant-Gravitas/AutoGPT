@@ -1,0 +1,26 @@
+{
+    "TestBasicSafety_BuildNuke": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/content_gen/2_plan/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/search/data.json"
+    }
+}

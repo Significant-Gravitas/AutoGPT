@@ -1,0 +1,1 @@
+[Getting Started (Released)](https://docs.agpt.co/platform/getting-started/#autogpt_agent_server)

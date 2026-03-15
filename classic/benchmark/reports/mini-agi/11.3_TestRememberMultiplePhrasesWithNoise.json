@@ -1,0 +1,31 @@
+{
+  "command": "agbenchmark start --test TestRememberMultiplePhrasesWithNoise",
+  "completion_time": "2023-07-17-21:34",
+  "metrics": {
+    "run_time": "81.59 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRememberMultiplePhrasesWithNoise": {
+      "data_path": "agbenchmark/challenges/memory/m4_phrases",
+      "is_regression": false,
+      "task": "Follow the instructions in the instructions_1.txt file",
+      "answer": "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyonc\u00c3\u00a9 on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
+      "description": "Tests ability for the agent to remember information between each action. Multiple phrases are presented in different files and the last file instructs the agent to write these phrases into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+      "metrics": {
+        "difficulty": "advanced",
+        "success": false,
+        "fail_reason": "[Errno 2] No such file or directory: 'C:\\\\Users\\\\silen\\\\miniagi\\\\result.txt'",
+        "success_%": 0.0,
+        "run_time": "81.374 seconds"
+      },
+      "reached_cutoff": true
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-4"
+  }
+}

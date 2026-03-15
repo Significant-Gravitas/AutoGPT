@@ -1,0 +1,24 @@
+.env
+database.db
+database.db-journal
+dev.db
+dev.db-journal
+build/
+config.json
+secrets/*
+!secrets/.gitkeep
+
+*.ignore.*
+*.ign.*
+
+# Load test results and reports
+load-tests/*_RESULTS.md
+load-tests/*_REPORT.md
+load-tests/results/
+load-tests/*.json
+load-tests/*.log
+load-tests/node_modules/*
+migrations/*/rollback*.sql
+
+# Workspace files
+workspaces/

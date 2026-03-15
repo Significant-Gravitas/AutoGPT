@@ -1,0 +1,52 @@
+# Development and testing files
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env/
+**/venv/
+**/.venv/
+**/pip-log.txt
+**/.pytest_cache/
+**/test-results/
+**/snapshots/
+**/test/
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+**/*.log
+**/logs/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+**/*.md
+!README.md
+
+# Local development files
+.env
+.env.local
+**/.env.test
+
+# Build artifacts
+**/dist/
+**/build/
+**/target/
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*
+.dockerignore

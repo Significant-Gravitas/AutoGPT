@@ -1,0 +1,30 @@
+{
+  "command": "agbenchmark start --test TestRetrieval2.2",
+  "completion_time": "2023-07-17-14:04",
+  "metrics": {
+    "run_time": "28.08 seconds",
+    "highest_difficulty": "No successful tests"
+  },
+  "tests": {
+    "TestRetrieval2.2": {
+      "data_path": "agbenchmark/challenges/retrieval/r2.2_formatting",
+      "is_regression": false,
+      "reached_cutoff": false,
+      "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+      "description": "Advanced version of the r2.1 challenge that also asks for specific formatting.",
+      "metrics": {
+        "difficulty": "intermediate",
+        "success": false,
+        "fail_reason": "assert 1 in [0.0]",
+        "success_%": 0.0,
+        "run_time": "27.857 seconds"
+      }
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-4"
+  }
+}
