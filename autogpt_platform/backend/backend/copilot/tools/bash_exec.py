@@ -22,6 +22,7 @@ from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
+from backend.copilot.integration_creds import get_integration_env_vars
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -96,7 +97,9 @@ class BashExecTool(BaseTool):
 
         sandbox = get_current_sandbox()
         if sandbox is not None:
-            return await self._execute_on_e2b(sandbox, command, timeout, session_id)
+            return await self._execute_on_e2b(
+                sandbox, command, timeout, session_id, user_id
+            )
 
         # Bubblewrap fallback: local isolated execution.
         if not has_full_sandbox():
@@ -133,14 +136,27 @@ class BashExecTool(BaseTool):
         command: str,
         timeout: int,
         session_id: str | None,
+        user_id: str | None = None,
     ) -> ToolResponseBase:
-        """Execute *command* on the E2B sandbox via commands.run()."""
+        """Execute *command* on the E2B sandbox via commands.run().
+
+        Integration tokens (e.g. GH_TOKEN) are injected into the sandbox env
+        for any user with connected accounts. E2B has full internet access, so
+        CLI tools like ``gh`` work without manual authentication.
+        """
+        envs: dict[str, str] = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        }
+        if user_id:
+            integration_env = await get_integration_env_vars(user_id)
+            envs.update(integration_env)
+
         try:
             result = await sandbox.commands.run(
                 f"bash -c {shlex.quote(command)}",
                 cwd=E2B_WORKDIR,
                 timeout=timeout,
-                envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+                envs=envs,
             )
             return BashExecResponse(
                 message=f"Command executed on E2B (exit {result.exit_code})",

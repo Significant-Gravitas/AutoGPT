@@ -29,10 +29,8 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import compress_context
 from backend.util.settings import Settings
@@ -172,41 +170,6 @@ def _resolve_sdk_model() -> str | None:
     if "/" in model:
         return model.split("/", 1)[1]
     return model
-
-
-async def _get_github_token_for_user(user_id: str) -> str | None:
-    """Return the user's GitHub access token, or None if not connected.
-
-    Checks the credentials store for any GitHub OAuth token or API key.
-    OAuth2 tokens are preferred (two-pass); API keys are the fallback.
-    Expired OAuth2 tokens are refreshed via IntegrationCredentialsManager
-    before the token value is returned.
-    """
-    manager = IntegrationCredentialsManager()
-    try:
-        creds_list = await manager.store.get_creds_by_provider(user_id, "github")
-    except Exception:
-        logger.debug("Failed to fetch GitHub credentials for user %s", user_id)
-        return None
-    # Pass 1: prefer OAuth2 tokens (carry scope info, longer-lived via refresh).
-    # Use lock=False — this is a background injection, not a critical execution path.
-    for creds in creds_list:
-        if creds.type == "oauth2":
-            try:
-                fresh = await manager.refresh_if_needed(
-                    user_id, cast(OAuth2Credentials, creds), lock=False
-                )
-                return fresh.access_token.get_secret_value()
-            except Exception:
-                logger.debug(
-                    "Failed to refresh GitHub OAuth token for user %s", user_id
-                )
-                return cast(OAuth2Credentials, creds).access_token.get_secret_value()
-    # Pass 2: fall back to API key (no expiry)
-    for creds in creds_list:
-        if creds.type == "api_key":
-            return cast(APIKeyCredentials, creds).api_key.get_secret_value()
-    return None
 
 
 @functools.cache
@@ -891,14 +854,6 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
-        if user_id:
-            gh_token = await _get_github_token_for_user(user_id)
-            if gh_token:
-                # Inject GitHub token so `gh` CLI works without manual auth.
-                # GH_TOKEN is the canonical env var; GITHUB_TOKEN is kept for
-                # tools (e.g. git, actions) that check the legacy name.
-                sdk_env["GH_TOKEN"] = gh_token
-                sdk_env["GITHUB_TOKEN"] = gh_token
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "

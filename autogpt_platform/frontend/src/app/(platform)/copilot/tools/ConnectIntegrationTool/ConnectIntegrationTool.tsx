@@ -41,7 +41,7 @@ export function ConnectIntegrationTool({ part }: Props) {
   const label = isStreaming
     ? `Connecting ${providerName}…`
     : output
-      ? `Connect ${output.setup_info.agent_name}`
+      ? `Connect ${output.setup_info?.agent_name ?? providerName}`
       : `Connect ${providerName}`;
 
   return (
