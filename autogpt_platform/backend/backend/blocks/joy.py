@@ -7,7 +7,7 @@ Learn more: https://choosejoy.com.au
 """
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 import httpx
 
@@ -86,7 +86,27 @@ class JoyTrustVerifyBlock(Block):
                 ("is_trusted", True),
                 ("trust_score", lambda x: x >= 0.5),
             ],
+            test_mock={
+                "_fetch_agent": lambda *args, **kwargs: {
+                    "id": "ag_229e507d7d87f35cc2bc17ea",
+                    "name": "Test Agent",
+                    "trust_score": 1.5,
+                    "vouch_count": 10,
+                    "verified": True,
+                    "capabilities": ["github", "code"],
+                }
+            },
         )
+
+    async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
+        """Fetch agent data from Joy API."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{JOY_API_URL}/agents/{agent_id}",
+                headers={"User-Agent": "autogpt-joy/1.0.0"},
+            )
+            response.raise_for_status()
+            return response.json()
 
     async def run(
         self,
@@ -96,13 +116,7 @@ class JoyTrustVerifyBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{JOY_API_URL}/agents/{input_data.agent_id}",
-                    headers={"User-Agent": "autogpt-joy/1.0.0"},
-                )
-                response.raise_for_status()
-                data = response.json()
+            data = await self._fetch_agent(input_data.agent_id)
 
             trust_score = float(data.get("trust_score", 0))
             vouch_count = int(data.get("vouch_count", 0))
@@ -186,7 +200,51 @@ class JoyDiscoverAgentsBlock(Block):
             test_output=[
                 ("count", lambda x: x >= 0),
             ],
+            test_mock={
+                "_discover_agents": lambda *args, **kwargs: {
+                    "agents": [
+                        {
+                            "id": "ag_test1",
+                            "name": "Test Agent 1",
+                            "description": "A test agent",
+                            "trust_score": 1.5,
+                            "vouch_count": 10,
+                            "verified": True,
+                            "capabilities": ["github", "code"],
+                        },
+                        {
+                            "id": "ag_test2",
+                            "name": "Test Agent 2",
+                            "description": "Another test agent",
+                            "trust_score": 1.2,
+                            "vouch_count": 5,
+                            "verified": False,
+                            "capabilities": ["github"],
+                        },
+                    ],
+                    "count": 2,
+                }
+            },
         )
+
+    async def _discover_agents(
+        self, capability: str, query: str, limit: int
+    ) -> dict[str, Any]:
+        """Discover agents from Joy API."""
+        params: dict[str, Any] = {"limit": limit}
+        if capability:
+            params["capability"] = capability
+        if query:
+            params["query"] = query
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{JOY_API_URL}/agents/discover",
+                params=params,
+                headers={"User-Agent": "autogpt-joy/1.0.0"},
+            )
+            response.raise_for_status()
+            return response.json()
 
     async def run(
         self,
@@ -196,20 +254,9 @@ class JoyDiscoverAgentsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            params = {"limit": input_data.limit}
-            if input_data.capability:
-                params["capability"] = input_data.capability
-            if input_data.query:
-                params["query"] = input_data.query
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{JOY_API_URL}/agents/discover",
-                    params=params,
-                    headers={"User-Agent": "autogpt-joy/1.0.0"},
-                )
-                response.raise_for_status()
-                data = response.json()
+            data = await self._discover_agents(
+                input_data.capability, input_data.query, input_data.limit
+            )
 
             agents = data.get("agents", [])
 
@@ -281,7 +328,27 @@ class JoyShouldTrustBlock(Block):
             test_output=[
                 ("trusted", True),
             ],
+            test_mock={
+                "_fetch_agent": lambda *args, **kwargs: {
+                    "id": "ag_229e507d7d87f35cc2bc17ea",
+                    "name": "Test Agent",
+                    "trust_score": 1.5,
+                    "vouch_count": 10,
+                    "verified": True,
+                    "capabilities": ["github", "code"],
+                }
+            },
         )
+
+    async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
+        """Fetch agent data from Joy API."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{JOY_API_URL}/agents/{agent_id}",
+                headers={"User-Agent": "autogpt-joy/1.0.0"},
+            )
+            response.raise_for_status()
+            return response.json()
 
     async def run(
         self,
@@ -291,13 +358,7 @@ class JoyShouldTrustBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{JOY_API_URL}/agents/{input_data.agent_id}",
-                    headers={"User-Agent": "autogpt-joy/1.0.0"},
-                )
-                response.raise_for_status()
-                data = response.json()
+            data = await self._fetch_agent(input_data.agent_id)
 
             trust_score = float(data.get("trust_score", 0))
 
