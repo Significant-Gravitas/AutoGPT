@@ -1617,8 +1617,15 @@ async def stream_chat_completion_sdk(
             # retries were consumed vs "sdk_stream_error" for non-context
             # errors that broke the loop immediately (network, auth, etc.).
             safe_err = str(stream_err).replace("\n", " ").replace("\r", "")[:500]
+            if attempts_exhausted:
+                error_text = (
+                    "Your conversation is too long. "
+                    "Please start a new chat or clear some history."
+                )
+            else:
+                error_text = f"SDK stream error: {safe_err}"
             yield StreamError(
-                errorText=f"SDK stream error: {safe_err}",
+                errorText=error_text,
                 code=(
                     "all_attempts_exhausted"
                     if attempts_exhausted

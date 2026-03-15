@@ -570,6 +570,91 @@ class TestRetryStateMachine:
 
 
 # ---------------------------------------------------------------------------
+# Scenario 9: events_yielded > 0 prevents retry
+# ---------------------------------------------------------------------------
+
+
+class TestEventsYieldedGuard:
+    """When events have already been yielded to the frontend, retrying would
+    produce duplicate/inconsistent output.  The retry loop must break
+    immediately with an error instead of continuing to the next attempt."""
+
+    def _simulate_retry_with_events_yielded(
+        self,
+        events_yielded_per_attempt: list[int],
+        transcript_content: str = "some_content",
+    ) -> dict:
+        """Simulate the retry loop with explicit events_yielded counts.
+
+        Args:
+            events_yielded_per_attempt: Number of non-heartbeat events yielded
+                before the error on each attempt.  Only the first attempt that
+                errors with events_yielded > 0 matters — the loop should break.
+            transcript_content: Initial transcript content.
+        """
+        stream_err: Exception | None = None
+        ended_with_stream_error = False
+        attempts_made = 0
+
+        for attempt in range(
+            min(_MAX_STREAM_ATTEMPTS, len(events_yielded_per_attempt))
+        ):
+            attempts_made += 1
+            events_yielded = events_yielded_per_attempt[attempt]
+
+            # Simulate stream error
+            stream_err = Exception("simulated stream error")
+            is_context_error = True
+
+            if events_yielded > 0:
+                # This is the guard under test: when events have been
+                # yielded, the loop breaks immediately — no retry.
+                ended_with_stream_error = True
+                break
+
+            if not is_context_error:
+                ended_with_stream_error = True
+                break
+
+            # Would continue to next attempt
+            continue
+        else:
+            ended_with_stream_error = True
+
+        return {
+            "attempts_made": attempts_made,
+            "stream_err": stream_err,
+            "ended_with_stream_error": ended_with_stream_error,
+        }
+
+    def test_events_yielded_prevents_retry(self):
+        """When events were yielded on attempt 1, no retry should happen."""
+        state = self._simulate_retry_with_events_yielded([5])
+        assert state["attempts_made"] == 1
+        assert state["ended_with_stream_error"] is True
+        assert state["stream_err"] is not None
+
+    def test_zero_events_allows_retry(self):
+        """When no events were yielded on attempt 1, retry should proceed."""
+        state = self._simulate_retry_with_events_yielded([0, 0, 0])
+        assert state["attempts_made"] == 3
+        assert state["ended_with_stream_error"] is True  # all exhausted
+
+    def test_events_on_second_attempt_stops_retry(self):
+        """Attempt 1: 0 events (retry allowed).
+        Attempt 2: events yielded (no further retry)."""
+        state = self._simulate_retry_with_events_yielded([0, 3])
+        assert state["attempts_made"] == 2
+        assert state["ended_with_stream_error"] is True
+
+    def test_single_event_is_enough_to_prevent_retry(self):
+        """Even a single non-heartbeat event should prevent retry."""
+        state = self._simulate_retry_with_events_yielded([1])
+        assert state["attempts_made"] == 1
+        assert state["ended_with_stream_error"] is True
+
+
+# ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
 
