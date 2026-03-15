@@ -327,7 +327,7 @@ class ListWorkspaceFilesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List files in persistent workspace (survives across sessions). Defaults to current session's files; set include_all_sessions=true for all."
+        return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
 
     @property
     def parameters(self) -> dict[str, Any]:

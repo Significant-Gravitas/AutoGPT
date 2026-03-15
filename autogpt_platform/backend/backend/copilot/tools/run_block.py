@@ -59,10 +59,6 @@ class RunBlockTool(BaseTool):
                     "type": "string",
                     "description": "Block ID from find_block results.",
                 },
-                "block_name": {
-                    "type": "string",
-                    "description": "Block name for UI display (optional).",
-                },
                 "input_data": {
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",

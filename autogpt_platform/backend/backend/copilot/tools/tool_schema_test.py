@@ -22,10 +22,13 @@ def _get_all_tool_schemas() -> list[tuple[str, object]]:
     return [(name, tool.as_openai_tool()) for name, tool in TOOL_REGISTRY.items()]
 
 
+_ALL_SCHEMAS = _get_all_tool_schemas()
+
+
 @pytest.mark.parametrize(
     "tool_name,schema",
-    _get_all_tool_schemas(),
-    ids=[name for name, _ in _get_all_tool_schemas()],
+    _ALL_SCHEMAS,
+    ids=[name for name, _ in _ALL_SCHEMAS],
 )
 class TestToolSchema:
     """Validate schema invariants for every registered tool."""
@@ -64,8 +67,9 @@ def test_total_schema_token_budget() -> None:
     """Assert total tool schema size stays under the token budget.
 
     This locks in the 34% token reduction from #12398 and prevents future
-    description bloat from eroding the gains. Budget is set to 8000 tokens
-    (current baseline is ~5200 tokens, giving ~54% headroom).
+    description bloat from eroding the gains. Budget is set to 8000 tokens.
+    Note: this measures tool JSON only (not the full system prompt); the actual
+    baseline for tool schemas alone is ~6470 tokens, giving ~19% headroom.
     """
     schemas = [tool.as_openai_tool() for tool in TOOL_REGISTRY.values()]
     serialized = json.dumps(schemas)

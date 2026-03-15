@@ -232,7 +232,7 @@ class CreateFeatureRequestTool(BaseTool):
         return (
             "Create a feature request or add need to existing one. "
             "Search first to avoid duplicates. Pass existing_issue_id to add to existing. "
-            "Never include PII (names, emails, company names) in title/description."
+            "Never include PII (names, emails, phone numbers, company names) in title/description."
         )
 
     @property

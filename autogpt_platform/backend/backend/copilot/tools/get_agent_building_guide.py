@@ -42,7 +42,7 @@ class GetAgentBuildingGuideTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Get the agent JSON building guide. Call before generating agent JSON."
+        return "Get the agent JSON building guide (nodes, links, AgentExecutorBlock, MCPToolBlock usage). Call before generating agent JSON."
 
     @property
     def parameters(self) -> dict[str, Any]:

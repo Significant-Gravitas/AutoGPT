@@ -76,7 +76,7 @@ def _build_storage_supplement(
 - Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
 - All file tools share the same filesystem. Use relative or absolute paths under this dir.
 
-### Storage
+### Storage — important
 1. **{storage_system_1_name}** (`{working_dir}`):
 {characteristics}
 {persistence}
