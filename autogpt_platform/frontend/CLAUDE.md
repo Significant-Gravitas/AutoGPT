@@ -48,6 +48,8 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
 - No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
+- **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
 
 ## Architecture
 

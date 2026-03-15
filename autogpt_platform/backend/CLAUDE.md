@@ -73,6 +73,8 @@ poetry run pytest path/to/test.py --snapshot-update
 - **Redis pipelines** — `transaction=True` for atomicity on multi-step operations
 - **`max(0, value)` guards** — for computed values that should never be negative
 - **SSE protocol** — `data:` lines for frontend-parsed events (must match Zod schema), `: comment` lines for heartbeats/status
+- **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
+- **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
 
 ## Testing Approach
 
