@@ -96,9 +96,10 @@ If API routes changed, regenerate the frontend client (run in one shell block):
 ```bash
 cd autogpt_platform/backend && poetry run rest &
 REST_PID=$!
-WAIT=0; until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; WAIT=$((WAIT+1)); [ $WAIT -ge 60 ] && echo "Timed out" && kill $REST_PID && exit 1; done
+trap "kill $REST_PID 2>/dev/null" EXIT
+WAIT=0; until curl -sf http://localhost:8006/health > /dev/null 2>&1; do sleep 1; WAIT=$((WAIT+1)); [ $WAIT -ge 60 ] && echo "Timed out" && exit 1; done
 cd ../frontend && pnpm generate:api:force
-kill $REST_PID
+kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
 
