@@ -369,13 +369,14 @@ async def _infer_format_from_workspace(
 
 def _is_tabular(parsed: Any) -> bool:
     """Check if parsed data is in tabular format: [[header], [row1], ...]."""
-    return (
-        isinstance(parsed, list)
-        and len(parsed) >= 2
-        and all(isinstance(row, list) for row in parsed)
-        and len(parsed[0]) >= 1
-        and all(isinstance(h, str) for h in parsed[0])
-    )
+    if not isinstance(parsed, list) or len(parsed) < 2:
+        return False
+    header = parsed[0]
+    if not isinstance(header, list) or not header:
+        return False
+    if not all(isinstance(h, str) for h in header):
+        return False
+    return all(isinstance(row, list) for row in parsed[1:])
 
 
 def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
@@ -489,8 +490,18 @@ async def _expand_bare_ref(
     try:
         if fmt is not None and fmt in BINARY_FORMATS:
             # Binary formats need raw bytes, not UTF-8 text.
-            # Line ranges are meaningless for binary formats
-            # (parquet/xlsx) — ignore them and parse full bytes.
+            # Line ranges are meaningless for binary formats (parquet/xlsx)
+            # — ignore them and parse full bytes.  Warn so the caller/model
+            # knows the range was silently dropped.
+            if ref.start_line is not None or ref.end_line is not None:
+                logger.warning(
+                    "Line range [%s-%s] ignored for binary format %s (%s); "
+                    "binary formats are always parsed in full.",
+                    ref.start_line,
+                    ref.end_line,
+                    fmt,
+                    ref.uri,
+                )
             content: str | bytes = await read_file_bytes(ref.uri, user_id, session)
         else:
             content = await resolve_file_ref(ref, user_id, session)

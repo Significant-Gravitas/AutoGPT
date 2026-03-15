@@ -87,6 +87,11 @@ try:
 except ImportError:  # openpyxl is optional; only needed for .xlsx parsing
     OpenpyxlInvalidFile = None  # type: ignore[assignment,misc]
 
+try:
+    from pyarrow import ArrowException as _ArrowException
+except ImportError:  # pyarrow is optional; only needed for .parquet parsing
+    _ArrowException = None  # type: ignore[assignment,misc]
+
 PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
     filter(
         None,
@@ -103,6 +108,10 @@ PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
             TypeError,
             zipfile.BadZipFile,
             OpenpyxlInvalidFile,
+            # ArrowException covers ArrowIOError and ArrowCapacityError which
+            # do not inherit from standard exceptions; ArrowInvalid/ArrowTypeError
+            # already map to ValueError/TypeError but this catches the rest.
+            _ArrowException,
         ),
     )
 )
@@ -185,7 +194,9 @@ def _parse_tsv(content: str) -> Any:
 
 def _parse_delimited(content: str, *, delimiter: str) -> Any:
     reader = csv.reader(io.StringIO(content), delimiter=delimiter)
-    rows = [row for row in reader if row]
+    # csv.reader never yields [] — blank lines yield [""]. Filter out
+    # rows where every cell is empty (i.e. truly blank lines).
+    rows = [row for row in reader if any(cell for cell in row)]
     if not rows:
         return content
     # If the declared delimiter produces only single-column rows, try
