@@ -38,6 +38,7 @@ from backend.util.settings import Settings
 
 from ..config import ChatConfig
 from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
+from ..context import encode_cwd_for_cli
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -306,11 +307,14 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
     await asyncio.to_thread(shutil.rmtree, normalized, True)
 
     # Best-effort sweep of old project dirs to prevent disk leak.
+    # Pass the encoded cwd so only this session's project directory is swept,
+    # which is safe in multi-tenant environments.
     global _last_sweep_time
     now = time.time()
     if now - _last_sweep_time >= _SWEEP_INTERVAL_SECONDS:
         _last_sweep_time = now
-        await asyncio.to_thread(cleanup_stale_project_dirs)
+        encoded = encode_cwd_for_cli(normalized)
+        await asyncio.to_thread(cleanup_stale_project_dirs, encoded)
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:

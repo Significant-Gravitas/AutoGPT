@@ -945,3 +945,80 @@ class TestCleanupStaleProjectDirs:
 
         removed = cleanup_stale_project_dirs()
         assert removed == 0
+
+    def test_scoped_removes_only_target_dir(self, tmp_path, monkeypatch):
+        """When encoded_cwd is supplied only that directory is swept."""
+        import time
+
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+
+        # Two stale copilot dirs
+        target = projects_dir / "-tmp-copilot-session-abc"
+        target.mkdir()
+        os.utime(target, (old_time, old_time))
+
+        other = projects_dir / "-tmp-copilot-session-xyz"
+        other.mkdir()
+        os.utime(other, (old_time, old_time))
+
+        # Only the target dir should be removed
+        removed = cleanup_stale_project_dirs(encoded_cwd="-tmp-copilot-session-abc")
+        assert removed == 1
+        assert not target.exists()
+        assert other.exists()  # untouched — not the current session
+
+    def test_scoped_fresh_dir_not_removed(self, tmp_path, monkeypatch):
+        """Scoped sweep leaves a fresh directory alone."""
+        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        fresh = projects_dir / "-tmp-copilot-session-new"
+        fresh.mkdir()
+        # mtime is now — well within TTL
+
+        removed = cleanup_stale_project_dirs(encoded_cwd="-tmp-copilot-session-new")
+        assert removed == 0
+        assert fresh.exists()
+
+    def test_scoped_non_copilot_dir_not_removed(self, tmp_path, monkeypatch):
+        """Scoped sweep refuses to remove a non-copilot directory."""
+        import time
+
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+        non_copilot = projects_dir / "some-other-project"
+        non_copilot.mkdir()
+        os.utime(non_copilot, (old_time, old_time))
+
+        removed = cleanup_stale_project_dirs(encoded_cwd="some-other-project")
+        assert removed == 0
+        assert non_copilot.exists()

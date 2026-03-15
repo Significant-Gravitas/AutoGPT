@@ -155,7 +155,7 @@ _STALE_PROJECT_DIR_SECONDS = 12 * 3600  # 12 hours — matches max session lifet
 _MAX_PROJECT_DIRS_TO_SWEEP = 50  # limit per sweep to avoid long pauses
 
 
-def cleanup_stale_project_dirs() -> int:
+def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     """Remove CLI project directories older than ``_STALE_PROJECT_DIR_SECONDS``.
 
     Each CoPilot SDK turn creates a unique ``~/.claude/projects/<encoded-cwd>/``
@@ -164,10 +164,13 @@ def cleanup_stale_project_dirs() -> int:
     become stale.  This function sweeps old ones to prevent unbounded disk
     growth.
 
-    Only directories matching the copilot naming pattern (``-tmp-copilot-``)
-    are considered.  The 12 h TTL ensures active sessions are never affected,
-    even in multi-tenant deployments where multiple copilot sessions share
-    the same host.  Returns the number of directories removed.
+    When *encoded_cwd* is provided the sweep is scoped to that single
+    directory, making the operation safe in multi-tenant environments where
+    multiple copilot sessions share the same host.  Without it the function
+    falls back to sweeping all directories matching the copilot naming pattern
+    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+
+    Returns the number of directories removed.
     """
     projects_base = _projects_base()
     if not os.path.isdir(projects_base):
@@ -176,6 +179,40 @@ def cleanup_stale_project_dirs() -> int:
     now = time.time()
     removed = 0
 
+    # Scoped mode: only clean up the one directory for the current session.
+    if encoded_cwd:
+        target = Path(projects_base) / encoded_cwd
+        if not target.is_dir():
+            return 0
+        # Guard: only sweep copilot-generated dirs.
+        if "-tmp-copilot-" not in target.name:
+            logger.warning(
+                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
+            )
+            return 0
+        try:
+            age = now - target.stat().st_mtime
+        except OSError:
+            return 0
+        if age < _STALE_PROJECT_DIR_SECONDS:
+            return 0
+        try:
+            shutil.rmtree(target, ignore_errors=True)
+            removed = 1
+        except OSError:
+            pass
+        if removed:
+            logger.info(
+                "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
+                target.name,
+                int(age),
+                _STALE_PROJECT_DIR_SECONDS,
+            )
+        return removed
+
+    # Unscoped fallback: sweep all copilot dirs across the projects base.
+    # Only safe for single-tenant deployments; callers should prefer the
+    # scoped variant by passing encoded_cwd.
     try:
         entries = Path(projects_base).iterdir()
     except OSError as e:

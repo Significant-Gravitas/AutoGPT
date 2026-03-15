@@ -39,9 +39,18 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
 
-def _encode_cwd_for_cli(cwd: str) -> str:
-    """Encode a working directory path the same way the Claude CLI does."""
+def encode_cwd_for_cli(cwd: str) -> str:
+    """Encode a working directory path the same way the Claude CLI does.
+
+    The Claude CLI encodes the absolute cwd as a directory name by replacing
+    every non-alphanumeric character with ``-``.  For example
+    ``/tmp/copilot-abc`` becomes ``-tmp-copilot-abc``.
+    """
     return re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(cwd))
+
+
+# Keep the private alias for internal callers (backwards compat).
+_encode_cwd_for_cli = encode_cwd_for_cli
 
 
 def set_execution_context(
