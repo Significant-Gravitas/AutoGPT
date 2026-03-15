@@ -88,6 +88,32 @@ def test_get_enabled_blocks_skips_broken():
     assert list(result.keys()) == ["good"]
 
 
+def test_get_enabled_blocks_cached():
+    """_get_enabled_blocks() calls get_blocks() only once across multiple calls."""
+    blocks = {"b1": _make_block_class(name="B1")}
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ) as mock_get_blocks:
+        result1 = _get_enabled_blocks()
+        result2 = _get_enabled_blocks()
+    assert result1 is result2
+    mock_get_blocks.assert_called_once()
+
+
+def test_get_enabled_blocks_returns_immutable_mapping():
+    """The returned mapping is a MappingProxyType — mutation raises TypeError."""
+    import types
+
+    blocks = {"b1": _make_block_class(name="B1")}
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
+        result = _get_enabled_blocks()
+    assert isinstance(result, types.MappingProxyType)
+    with pytest.raises(TypeError):
+        result["new_key"] = object()  # type: ignore[index]
+
+
 # ---------------------------------------------------------------------------
 # StoreAgentHandler
 # ---------------------------------------------------------------------------
@@ -205,6 +231,27 @@ async def test_block_handler_get_missing_items_splits_camelcase():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_block_handler_get_missing_items_batch_size_zero():
+    """batch_size=0 returns an empty list without querying the database."""
+    handler = BlockHandler()
+
+    blocks = {"b1": _make_block_class(name="B1")}
+
+    with patch(
+        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+    ):
+        with patch(
+            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            return_value=[],
+        ) as mock_query:
+            items = await handler.get_missing_items(batch_size=0)
+            assert items == []
+            # DB query is still issued to learn which blocks lack embeddings;
+            # the empty result comes from itertools.islice limiting to 0 items.
+            mock_query.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_handler_disabled_dont_exhaust_batch():
     """Disabled blocks don't consume batch budget, so enabled blocks get indexed."""
     handler = BlockHandler()
@@ -310,9 +357,9 @@ async def test_block_handler_handles_none_name():
             # display_name should be "" because block.name is None
             # searchable_text should still contain the description
             assert "A block with no name" in items[0].searchable_text
-            # metadata["name"] falls back to block.name (None) when
-            # display_name is empty — the ``or`` in ``display_name or block.name``
-            assert items[0].metadata["name"] is None
+            # metadata["name"] falls back to block_id when both display_name
+            # and block.name are falsy, ensuring it is always a non-empty string.
+            assert items[0].metadata["name"] == "none-name-block"
 
 
 @pytest.mark.asyncio(loop_scope="session")

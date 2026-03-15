@@ -282,7 +282,7 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": display_name or block.name,
+                            "name": display_name or block.name or block_id,
                             "categories": categories_list,
                             "providers": provider_names,
                             "has_llm_model_field": has_llm_model_field,

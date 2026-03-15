@@ -1,5 +1,8 @@
 """Small text helpers shared across store search modules."""
 
+# Safety cap; block names are typically < 50 chars
+_MAX_CAMELCASE_INPUT_LEN = 500
+
 
 def split_camelcase(text: str) -> str:
     """Split CamelCase into separate words.
@@ -24,6 +27,10 @@ def split_camelcase(text: str) -> str:
         >>> split_camelcase("OAuth2Block")
         'OAuth2 Block'
     """
+    # Truncate to safety cap before processing
+    if len(text) > _MAX_CAMELCASE_INPUT_LEN:
+        text = text[:_MAX_CAMELCASE_INPUT_LEN]
+
     if len(text) <= 1:
         return text
 
