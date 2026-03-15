@@ -226,10 +226,20 @@ def _check_content_size(content: str | bytes) -> None:
     if isinstance(content, bytes):
         size = len(content)
     else:
-        # Quick upper-bound: each char is at most 4 UTF-8 bytes
-        if len(content) * 4 <= _MAX_BARE_REF_BYTES:
-            return  # guaranteed under limit, skip encoding
-        size = len(content.encode("utf-8"))
+        char_len = len(content)
+        # Fast lower bound: UTF-8 byte count >= char count.
+        # If char count already exceeds the limit, reject immediately
+        # without allocating an encoded copy.
+        if char_len > _MAX_BARE_REF_BYTES:
+            size = char_len  # real byte size is even larger
+        # Fast upper bound: each char is at most 4 UTF-8 bytes.
+        # If worst-case is still under the limit, skip encoding entirely.
+        elif char_len * 4 <= _MAX_BARE_REF_BYTES:
+            return
+        else:
+            # Edge case: char count is under limit but multibyte chars
+            # might push byte count over. Encode to get exact size.
+            size = len(content.encode("utf-8"))
     if size > _MAX_BARE_REF_BYTES:
         raise FileRefExpansionError(
             f"File too large for structured parsing "
