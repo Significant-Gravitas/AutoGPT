@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import pytest
-
 from backend.util import json
 
 
@@ -41,9 +39,3 @@ def build_test_transcript(pairs: list[tuple[str, str]]) -> str:
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
-
-
-@pytest.fixture()
-def transcript_factory():
-    """Pytest fixture that returns the ``build_test_transcript`` helper."""
-    return build_test_transcript
