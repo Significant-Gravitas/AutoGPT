@@ -359,7 +359,7 @@ def _read_local_tool_result(
         )
 
     return WorkspaceFileContentResponse(
-        file_id="local",
+        file_id=_LOCAL_TOOL_RESULT_FILE_ID,
         name=os.path.basename(path),
         path=path,
         mime_type=mimetypes.guess_type(path)[0] or "text/plain",
