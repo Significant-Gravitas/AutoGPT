@@ -5,21 +5,21 @@ import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { SetupRequirementsCard } from "../RunBlock/components/SetupRequirementsCard/SetupRequirementsCard";
 
-interface Props {
+type Props = {
   part: ToolUIPart;
-}
+};
 
 function parseOutput(raw: unknown): SetupRequirementsResponse | null {
-  if (!raw) return null;
-  if (typeof raw === "string") {
-    try {
-      return parseOutput(JSON.parse(raw) as unknown);
-    } catch {
-      return null;
+  try {
+    let parsed: unknown = raw;
+    if (typeof raw === "string") {
+      parsed = JSON.parse(raw);
     }
-  }
-  if (typeof raw === "object" && "setup_info" in raw) {
-    return raw as SetupRequirementsResponse;
+    if (parsed && typeof parsed === "object" && "setup_info" in parsed) {
+      return parsed as SetupRequirementsResponse;
+    }
+  } catch {
+    // ignore parse errors
   }
   return null;
 }

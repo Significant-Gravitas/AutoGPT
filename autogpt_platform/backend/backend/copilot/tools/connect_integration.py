@@ -77,6 +77,9 @@ class ConnectIntegrationTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
+        # Require auth so only authenticated users can trigger the setup card.
+        # The card itself is user-agnostic (no per-user data needed), so
+        # user_id is intentionally unused in _execute.
         return True
 
     async def _execute(
@@ -85,7 +88,7 @@ class ConnectIntegrationTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        del user_id  # not needed; setup card is user-agnostic
+        del user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider: str = (kwargs.get("provider") or "").strip().lower()
         reason: str = (kwargs.get("reason") or "").strip()
