@@ -46,7 +46,7 @@ def _patch_credit_db(
     get_credits_return: int = 100,
     spend_credits_side_effect: Any = None,
 ):
-    """Patch credit_db to return a mock credit accessor."""
+    """Patch get_user_credit_model to return a mock credit model."""
     mock_credit = MagicMock()
     mock_credit.get_credits = AsyncMock(return_value=get_credits_return)
     if spend_credits_side_effect is not None:
@@ -54,7 +54,11 @@ def _patch_credit_db(
     else:
         mock_credit.spend_credits = AsyncMock()
     return (
-        patch("backend.copilot.tools.helpers.credit_db", return_value=mock_credit),
+        patch(
+            "backend.copilot.tools.helpers.get_user_credit_model",
+            new_callable=AsyncMock,
+            return_value=mock_credit,
+        ),
         mock_credit,
     )
 
