@@ -76,13 +76,16 @@ gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversat
 
 ### For each unreacted comment
 
-1. Read the referenced code, make the fix (or reply explaining disagreement)
-2. React and reply:
+Address comments **one at a time**: fix → react → inline reply → next. Do NOT batch-react to all comments first.
 
-| Comment type | React | Reply |
+1. Read the referenced code, make the fix (or reply explaining disagreement)
+2. React with `+1` only AFTER the fix is committed and pushed
+3. Reply **inline** (not as a new top-level comment) referencing the fixing commit:
+
+| Comment type | React | Inline reply |
 |---|---|---|
-| Inline (`pulls/{N}/comments`) | `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` | `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="..."` |
-| Conversation (`issues/{N}/comments`) | `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` | Post new issue comment |
+| Inline (`pulls/{N}/comments`) | `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` | `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="Fixed in <commit-sha>: <brief description>"` |
+| Conversation (`issues/{N}/comments`) | `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` | Post new issue comment referencing the fix |
 | Top-level reviews | No reaction API | Address in code, reply via issue comment |
 
 ### Format and commit
