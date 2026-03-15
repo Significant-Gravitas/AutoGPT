@@ -11,6 +11,7 @@ from typing import Any
 from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import (
+    ErrorResponse,
     ResponseType,
     SetupInfo,
     SetupRequirementsResponse,
@@ -92,17 +93,13 @@ class ConnectIntegrationTool(BaseTool):
         info = _PROVIDER_INFO.get(provider)
         if not info:
             supported = ", ".join(f"'{p}'" for p in _PROVIDER_INFO)
-            return SetupRequirementsResponse(
-                type=ResponseType.SETUP_REQUIREMENTS,
+            return ErrorResponse(
                 message=(
                     f"Unknown provider '{provider}'. "
                     f"Supported providers: {supported}."
                 ),
+                error="unknown_provider",
                 session_id=session_id,
-                setup_info=SetupInfo(
-                    agent_id=f"connect_{provider}",
-                    agent_name=f"{provider.title()} Integration",
-                ),
             )
 
         provider_name: str = info["name"]
@@ -134,7 +131,7 @@ class ConnectIntegrationTool(BaseTool):
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=f"connect_{provider}",
-                agent_name=f"{provider_name} Integration",
+                agent_name=provider_name,
                 user_readiness=UserReadiness(
                     has_all_credentials=False,
                     missing_credentials=missing_credentials,

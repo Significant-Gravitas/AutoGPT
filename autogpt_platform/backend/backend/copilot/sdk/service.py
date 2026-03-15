@@ -177,9 +177,8 @@ def _resolve_sdk_model() -> str | None:
 async def _get_github_token_for_user(user_id: str) -> str | None:
     """Return the user's GitHub access token, or None if not connected.
 
-    Checks the credentials store for any GitHub API key or OAuth token.
-    The first matching credential is returned; preference is given to OAuth
-    tokens since they carry scope information.
+    Checks the credentials store for any GitHub OAuth token or API key.
+    OAuth2 tokens are preferred (two-pass); API keys are the fallback.
     """
     store = IntegrationCredentialsStore()
     try:
@@ -187,11 +186,14 @@ async def _get_github_token_for_user(user_id: str) -> str | None:
     except Exception:
         logger.debug("Failed to fetch GitHub credentials for user %s", user_id)
         return None
+    # Pass 1: prefer OAuth2 tokens (carry scope info, longer-lived via refresh)
     for creds in creds_list:
-        if isinstance(creds, OAuth2Credentials):
-            return creds.access_token.get_secret_value()
-        if isinstance(creds, APIKeyCredentials):
-            return creds.api_key.get_secret_value()
+        if creds.type == "oauth2":
+            return cast(OAuth2Credentials, creds).access_token.get_secret_value()
+    # Pass 2: fall back to API key
+    for creds in creds_list:
+        if creds.type == "api_key":
+            return cast(APIKeyCredentials, creds).api_key.get_secret_value()
     return None
 
 

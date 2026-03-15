@@ -61,7 +61,10 @@ an @@agptfile: expansion), the string will be parsed into the correct type.
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
+"""
 
+# SDK-only notes — not shown in baseline mode, which has no subprocess or gh CLI.
+_SDK_TOOL_NOTES = """
 ### GitHub CLI (`gh`)
 - If the user has connected their GitHub account, `GH_TOKEN` is automatically
   set in the environment — `gh` CLI commands work without any login step.
@@ -128,7 +131,7 @@ def _build_storage_supplement(
 
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
-{_SHARED_TOOL_NOTES}"""
+{_SHARED_TOOL_NOTES}{_SDK_TOOL_NOTES}"""
 
 
 # Pre-built supplements for common environments
