@@ -1,17 +1,15 @@
-"""Tests for integration_creds — TTL cache, sentinel, and token lookup paths."""
+"""Tests for integration_creds — TTL cache and token lookup paths."""
 
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from backend.copilot.integration_creds import (
-    _NO_TOKEN,
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
     PROVIDER_ENV_VARS,
-    _cache_set,
+    _null_cache,
     _token_cache,
     get_integration_env_vars,
     get_provider_token,
@@ -21,10 +19,6 @@ from backend.data.model import APIKeyCredentials, OAuth2Credentials
 
 _USER = "user-integration-creds-test"
 _PROVIDER = "github"
-
-
-def _clear_cache() -> None:
-    _token_cache.clear()
 
 
 def _make_api_key_creds(key: str = "test-api-key") -> APIKeyCredentials:
@@ -51,25 +45,27 @@ def _make_oauth2_creds(token: str = "test-oauth-token") -> OAuth2Credentials:
 
 
 @pytest.fixture(autouse=True)
-def clear_cache():
-    """Ensure a clean cache before and after every test."""
-    _clear_cache()
+def clear_caches():
+    """Ensure clean caches before and after every test."""
+    _token_cache.clear()
+    _null_cache.clear()
     yield
-    _clear_cache()
+    _token_cache.clear()
+    _null_cache.clear()
 
 
 class TestInvalidateUserProviderCache:
-    def test_removes_existing_entry(self):
+    def test_removes_token_entry(self):
         key = (_USER, _PROVIDER)
-        _cache_set(key, "tok", _TOKEN_CACHE_TTL)
+        _token_cache[key] = "tok"
         invalidate_user_provider_cache(_USER, _PROVIDER)
         assert key not in _token_cache
 
-    def test_removes_sentinel_entry(self):
+    def test_removes_null_entry(self):
         key = (_USER, _PROVIDER)
-        _cache_set(key, _NO_TOKEN, _NULL_CACHE_TTL)
+        _null_cache[key] = True
         invalidate_user_provider_cache(_USER, _PROVIDER)
-        assert key not in _token_cache
+        assert key not in _null_cache
 
     def test_noop_when_key_not_cached(self):
         # Should not raise even when there is no cache entry.
@@ -77,46 +73,15 @@ class TestInvalidateUserProviderCache:
 
     def test_only_removes_targeted_key(self):
         other_key = ("other-user", _PROVIDER)
-        _cache_set(other_key, "other-tok", _TOKEN_CACHE_TTL)
+        _token_cache[other_key] = "other-tok"
         invalidate_user_provider_cache(_USER, _PROVIDER)
         assert other_key in _token_cache
-
-
-class TestCacheSet:
-    def test_inserts_entry(self):
-        key = (_USER, _PROVIDER)
-        _cache_set(key, "tok", _TOKEN_CACHE_TTL)
-        assert key in _token_cache
-        value, _ = _token_cache[key]
-        assert value == "tok"
-
-    def test_updates_existing_key_without_eviction(self):
-        key = (_USER, _PROVIDER)
-        _cache_set(key, "tok1", _TOKEN_CACHE_TTL)
-        _cache_set(key, "tok2", _TOKEN_CACHE_TTL)
-        assert len(_token_cache) == 1
-        value, _ = _token_cache[key]
-        assert value == "tok2"
-
-    def test_evicts_oldest_when_full(self):
-        # Use a tiny cap so the test doesn't create 10 000 entries.
-        with patch("backend.copilot.integration_creds._CACHE_MAX_SIZE", 3):
-            for i in range(3):
-                _cache_set((f"user-{i}", _PROVIDER), f"tok-{i}", _TOKEN_CACHE_TTL)
-            assert len(_token_cache) == 3
-
-            # Adding one more should evict the oldest ("user-0")
-            _cache_set(("user-new", _PROVIDER), "tok-new", _TOKEN_CACHE_TTL)
-            assert len(_token_cache) == 3
-            assert ("user-0", _PROVIDER) not in _token_cache
-            assert ("user-new", _PROVIDER) in _token_cache
 
 
 class TestGetProviderToken:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_returns_cached_token_without_db_hit(self):
-        key = (_USER, _PROVIDER)
-        _cache_set(key, "cached-tok", _TOKEN_CACHE_TTL)
+        _token_cache[(_USER, _PROVIDER)] = "cached-tok"
 
         with patch(
             "backend.copilot.integration_creds.IntegrationCredentialsManager"
@@ -127,9 +92,8 @@ class TestGetProviderToken:
         MockManager.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_returns_none_for_cached_sentinel(self):
-        key = (_USER, _PROVIDER)
-        _cache_set(key, _NO_TOKEN, _NULL_CACHE_TTL)
+    async def test_returns_none_for_null_cached_provider(self):
+        _null_cache[(_USER, _PROVIDER)] = True
 
         with patch(
             "backend.copilot.integration_creds.IntegrationCredentialsManager"
@@ -138,24 +102,6 @@ class TestGetProviderToken:
 
         assert result is None
         MockManager.assert_not_called()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_expired_cache_entry_refetches(self):
-        key = (_USER, _PROVIDER)
-        # Plant an already-expired entry
-        _token_cache[key] = ("old-tok", time.monotonic() - 1)
-
-        api_creds = _make_api_key_creds("fresh-tok")
-        mock_manager = MagicMock()
-        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[api_creds])
-
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
-            result = await get_provider_token(_USER, _PROVIDER)
-
-        assert result == "fresh-tok"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_api_key_creds_returned_and_cached(self):
@@ -170,8 +116,7 @@ class TestGetProviderToken:
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result == "my-api-key"
-        value, _ = _token_cache[(_USER, _PROVIDER)]
-        assert value == "my-api-key"
+        assert _token_cache.get((_USER, _PROVIDER)) == "my-api-key"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth2_preferred_over_api_key(self):
@@ -207,7 +152,7 @@ class TestGetProviderToken:
         assert result == "stale-oauth-tok"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_credentials_caches_sentinel_with_short_ttl(self):
+    async def test_no_credentials_caches_null_entry(self):
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
 
@@ -218,12 +163,7 @@ class TestGetProviderToken:
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result is None
-        value, expires_at = _token_cache[(_USER, _PROVIDER)]
-        assert value is _NO_TOKEN
-        # Sentinel should expire sooner than a real token TTL
-        remaining = expires_at - time.monotonic()
-        assert remaining <= _NULL_CACHE_TTL
-        assert remaining > _NULL_CACHE_TTL - 5  # within 5s of expected
+        assert _null_cache.get((_USER, _PROVIDER)) is True
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_db_exception_returns_none_without_caching(self):
@@ -241,12 +181,20 @@ class TestGetProviderToken:
         assert result is None
         # DB errors are not cached — next call will retry
         assert (_USER, _PROVIDER) not in _token_cache
+        assert (_USER, _PROVIDER) not in _null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_null_cache_has_shorter_ttl_than_token_cache(self):
+        """Verify the TTL constants are set correctly for each cache."""
+        assert _null_cache.ttl == _NULL_CACHE_TTL
+        assert _token_cache.ttl == _TOKEN_CACHE_TTL
+        assert _NULL_CACHE_TTL < _TOKEN_CACHE_TTL
 
 
 class TestGetIntegrationEnvVars:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_injects_all_env_vars_for_provider(self):
-        _cache_set((_USER, "github"), "gh-tok", _TOKEN_CACHE_TTL)
+        _token_cache[(_USER, "github")] = "gh-tok"
 
         result = await get_integration_env_vars(_USER)
 
@@ -255,7 +203,7 @@ class TestGetIntegrationEnvVars:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_empty_dict_when_no_credentials(self):
-        _cache_set((_USER, "github"), _NO_TOKEN, _NULL_CACHE_TTL)
+        _null_cache[(_USER, "github")] = True
 
         result = await get_integration_env_vars(_USER)
 

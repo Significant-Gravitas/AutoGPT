@@ -4,17 +4,17 @@ Provides token retrieval for connected integrations so that copilot tools
 (e.g. bash_exec) can inject auth tokens into the execution environment without
 hitting the database on every command.
 
-Cache semantics:
+Cache semantics (handled automatically by TTLCache):
 - Token found → cached for _TOKEN_CACHE_TTL (5 min).  Avoids repeated DB hits
   for users who have credentials and are running many bash commands.
 - No credentials found → cached for _NULL_CACHE_TTL (60 s).  Avoids a DB hit
   on every E2B command for users who haven't connected an account yet, while
   still picking up a newly-connected account within one minute.
 
-The cache is bounded to _CACHE_MAX_SIZE entries.  When the limit is reached,
-the oldest entry (by insertion order, Python 3.7+ dict guarantee) is evicted.
+Both caches are bounded to _CACHE_MAX_SIZE entries; cachetools evicts the
+least-recently-used entry when the limit is reached.
 
-Multi-worker note: ``_token_cache`` is in-process only.  Each worker/replica
+Multi-worker note: both caches are in-process only.  Each worker/replica
 maintains its own independent cache, so a credential fetch may be duplicated
 across processes.  This is acceptable for the current goal (reduce DB hits per
 session per-process), but if cache efficiency across replicas becomes important
@@ -22,8 +22,9 @@ a shared cache (e.g. Redis) should be used instead.
 """
 
 import logging
-import time
 from typing import cast
+
+from cachetools import TTLCache
 
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -40,33 +41,28 @@ PROVIDER_ENV_VARS: dict[str, list[str]] = {
 
 _TOKEN_CACHE_TTL = 300.0  # seconds — for found tokens
 _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
-_CACHE_MAX_SIZE = 10_000  # evict oldest entry when exceeded
+_CACHE_MAX_SIZE = 10_000
 
-# Explicit sentinel object — avoids ambiguity with empty-string tokens.
-_NO_TOKEN = object()
-
-# (user_id, provider) → (token | _NO_TOKEN, monotonic expiry)
-_token_cache: dict[tuple[str, str], tuple[object, float]] = {}
-
-
-def _cache_set(key: tuple[str, str], value: object, ttl: float) -> None:
-    """Insert *key* → *(value, expiry)* into the cache, evicting oldest if full."""
-    if len(_token_cache) >= _CACHE_MAX_SIZE and key not in _token_cache:
-        # Python dicts preserve insertion order — oldest key is first.
-        oldest = next(iter(_token_cache))
-        del _token_cache[oldest]
-    _token_cache[key] = (value, time.monotonic() + ttl)
+# (user_id, provider) → token string.  TTLCache handles expiry + eviction.
+_token_cache: TTLCache[tuple[str, str], str] = TTLCache(
+    maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
+)
+# Separate cache for "no credentials" results with a shorter TTL.
+_null_cache: TTLCache[tuple[str, str], bool] = TTLCache(
+    maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
+)
 
 
 def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
-    """Remove the cached entry for *user_id*/*provider*.
+    """Remove the cached entry for *user_id*/*provider* from both caches.
 
     Call this after storing new credentials so that the next
     ``get_provider_token()`` call performs a fresh DB lookup instead of
-    returning the stale ``_NO_TOKEN`` sentinel, allowing the retry to
-    succeed immediately without waiting for the TTL to expire.
+    serving a stale TTL-cached result.
     """
-    _token_cache.pop((user_id, provider), None)
+    key = (user_id, provider)
+    _token_cache.pop(key, None)
+    _null_cache.pop(key, None)
 
 
 async def get_provider_token(user_id: str, provider: str) -> str | None:
@@ -78,14 +74,12 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     command for users who haven't connected yet, while still picking up a
     newly-connected account within one minute.
     """
-    now = time.monotonic()
     cache_key = (user_id, provider)
-    cached = _token_cache.get(cache_key)
-    if cached is not None:
-        value, expires_at = cached
-        if now < expires_at:
-            return value if value is not _NO_TOKEN else None  # type: ignore[return-value]
-        del _token_cache[cache_key]
+
+    if cache_key in _null_cache:
+        return None
+    if cached := _token_cache.get(cache_key):
+        return cached
 
     manager = IntegrationCredentialsManager()
     try:
@@ -111,18 +105,18 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                     user_id,
                 )
                 token = cast(OAuth2Credentials, creds).access_token.get_secret_value()
-            _cache_set(cache_key, token, _TOKEN_CACHE_TTL)
+            _token_cache[cache_key] = token
             return token
 
     # Pass 2: fall back to API key (no expiry, no refresh needed).
     for creds in creds_list:
         if creds.type == "api_key":
             token = cast(APIKeyCredentials, creds).api_key.get_secret_value()
-            _cache_set(cache_key, token, _TOKEN_CACHE_TTL)
+            _token_cache[cache_key] = token
             return token
 
-    # No credentials found — cache the sentinel to avoid repeated DB hits.
-    _cache_set(cache_key, _NO_TOKEN, _NULL_CACHE_TTL)
+    # No credentials found — cache to avoid repeated DB hits.
+    _null_cache[cache_key] = True
     return None
 
 
