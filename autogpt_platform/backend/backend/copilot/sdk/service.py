@@ -167,7 +167,7 @@ async def _reduce_context(
     entirely so the query is rebuilt from DB messages only.
 
     ``transcript_lost`` is True when the transcript was dropped (caller
-    should set ``transcript_caused_error``).
+    should set ``skip_transcript_upload``).
     """
     # First retry: try compacting
     if transcript_content and not tried_compaction:
@@ -280,6 +280,7 @@ async def _iter_sdk_messages(
     pending_task: asyncio.Task[Any] | None = None
 
     async def _next_msg() -> Any:
+        """Await the next SDK message, wrapped for use with ``asyncio.Task``."""
         return await msg_iter.__anext__()
 
     try:
@@ -513,10 +514,25 @@ async def _compress_messages(
 ) -> tuple[list[ChatMessage], bool]:
     """Compress a list of messages if they exceed the token threshold.
 
-    Uses the shared compress_context() from prompt.py which supports:
+    Uses the shared ``compress_context()`` from ``prompt.py`` which supports:
     - LLM summarization of old messages (keeps recent ones intact)
     - Progressive content truncation as fallback
     - Middle-out deletion as last resort
+
+    This is one of three compaction touch-points that share
+    ``compress_context`` but operate on different input formats:
+
+    1. **``_compress_messages``** (here) — compresses ``ChatMessage`` lists
+       used for the pre-query DB history (``_build_query_message``).
+    2. **``compact_transcript``** (``transcript.py``) — compresses the JSONL
+       ``--resume`` transcript; converts entries to messages, compresses,
+       and rebuilds JSONL.
+    3. **``CompactionTracker``** (``compaction.py``) — emits UI events for
+       mid-stream compaction; does *not* call ``compress_context`` itself
+       but tracks whether compaction happened.
+
+    All three converge on ``compress_context`` with ``list[dict]`` messages
+    but acquire the OpenAI client independently (``get_openai_client()``).
     """
     messages = filter_compaction_messages(messages)
 
@@ -895,7 +911,7 @@ async def stream_chat_completion_sdk(
 
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
-    transcript_caused_error = False
+    skip_transcript_upload = False
     transcript_content: str = ""
     state: _RetryState | None = None
 
@@ -1050,6 +1066,7 @@ async def stream_chat_completion_sdk(
         disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
         def _on_stderr(line: str) -> None:
+            """Log a stderr line emitted by the Claude CLI subprocess."""
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
 
@@ -1118,7 +1135,7 @@ async def stream_chat_completion_sdk(
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
-        _tried_compaction = False
+        tried_compaction = False
 
         async def _run_stream_attempt(
             state: _RetryState,
@@ -1471,19 +1488,19 @@ async def stream_chat_completion_sdk(
             transcript_builder=transcript_builder,
         )
 
-        for _attempt in range(_MAX_STREAM_ATTEMPTS):
-            if _attempt > 0:
+        for attempt in range(_MAX_STREAM_ATTEMPTS):
+            if attempt > 0:
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
                     log_prefix,
-                    _attempt + 1,
+                    attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
                 yield StreamStatus(message="Optimizing conversation context\u2026")
 
                 ctx = await _reduce_context(
                     transcript_content,
-                    _tried_compaction,
+                    tried_compaction,
                     session_id,
                     sdk_cwd,
                     log_prefix,
@@ -1491,10 +1508,10 @@ async def stream_chat_completion_sdk(
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume
                 state.resume_file = ctx.resume_file
-                _tried_compaction = ctx.tried_compaction
+                tried_compaction = ctx.tried_compaction
                 state.transcript_msg_count = 0
                 if ctx.transcript_lost:
-                    transcript_caused_error = True
+                    skip_transcript_upload = True
 
                 # Rebuild SDK options and query for the reduced context
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
@@ -1516,20 +1533,20 @@ async def stream_chat_completion_sdk(
                     message_id=message_id, session_id=session_id
                 )
 
-            _pre_attempt_msg_count = len(session.messages)
-            _events_yielded = 0
+            pre_attempt_msg_count = len(session.messages)
+            events_yielded = 0
 
             try:
                 async for event in _run_stream_attempt(state):
                     if not isinstance(event, StreamHeartbeat):
-                        _events_yielded += 1
+                        events_yielded += 1
                     yield event
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
                     "%s Streaming cancelled (attempt %d/%d)",
                     log_prefix,
-                    _attempt + 1,
+                    attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
@@ -1540,22 +1557,22 @@ async def stream_chat_completion_sdk(
                     "%s Stream error (attempt %d/%d, context_error=%s, "
                     "events_yielded=%d): %s",
                     log_prefix,
-                    _attempt + 1,
+                    attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                     is_context_error,
-                    _events_yielded,
+                    events_yielded,
                     stream_err,
                     exc_info=True,
                 )
-                session.messages = session.messages[:_pre_attempt_msg_count]
-                if _events_yielded > 0:
+                session.messages = session.messages[:pre_attempt_msg_count]
+                if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
                     # output, so treat this as a final error.
                     logger.warning(
                         "%s Not retrying — %d events already yielded",
                         log_prefix,
-                        _events_yielded,
+                        events_yielded,
                     )
                     ended_with_stream_error = True
                     break
@@ -1567,7 +1584,7 @@ async def stream_chat_completion_sdk(
                 continue
         else:
             # All retry attempts exhausted (loop ended without break)
-            # transcript_caused_error is already set by _reduce_context
+            # skip_transcript_upload is already set by _reduce_context
             # when the transcript was dropped (transcript_lost=True).
             ended_with_stream_error = True
             attempts_exhausted = True
@@ -1704,10 +1721,10 @@ async def stream_chat_completion_sdk(
         # TranscriptBuilder is the single source of truth.  It mirrors the
         # CLI's active context: on compaction, replace_entries() syncs it
         # with the compacted session file.  No CLI file read needed here.
-        if transcript_caused_error:
+        if skip_transcript_upload:
             logger.warning(
-                "%s Skipping transcript upload — transcript caused "
-                "prompt-too-long error",
+                "%s Skipping transcript upload — transcript was dropped "
+                "during prompt-too-long recovery",
                 log_prefix,
             )
         elif (

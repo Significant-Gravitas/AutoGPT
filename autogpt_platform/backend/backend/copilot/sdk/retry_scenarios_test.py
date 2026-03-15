@@ -17,7 +17,7 @@ Scenario matrix:
   5. Error × 2 → attempt 3 DB fallback succeeds
   6. All 3 attempts exhausted → StreamError(all_attempts_exhausted)
   7. Compaction returns identical content → treated as compact failure → DB fallback
-  8. transcript_caused_error → finally skips upload
+  8. skip_transcript_upload → finally skips upload
 """
 
 from __future__ import annotations
@@ -290,15 +290,15 @@ class TestScenarioAllAttemptsExhausted:
     def test_exhaustion_state_variables(self):
         """Verify the state after exhausting all retry attempts."""
         _stream_error: Exception | None = None
-        transcript_caused_error = False
+        skip_transcript_upload = False
 
         for _attempt in range(_MAX_STREAM_ATTEMPTS):
             _stream_error = Exception("some error")
 
         # After loop: check exhaustion
         assert _stream_error is not None
-        transcript_caused_error = True
-        assert transcript_caused_error is True
+        skip_transcript_upload = True
+        assert skip_transcript_upload is True
 
 
 # ---------------------------------------------------------------------------
@@ -352,23 +352,23 @@ class TestScenarioCompactionIdentical:
 
 
 # ---------------------------------------------------------------------------
-# Scenario 8: transcript_caused_error → finally skips upload
+# Scenario 8: skip_transcript_upload → finally skips upload
 # ---------------------------------------------------------------------------
 
 
 class TestScenarioTranscriptCausedError:
-    """When transcript_caused_error is True, the finally block skips
+    """When skip_transcript_upload is True, the finally block skips
     transcript upload to avoid persisting a broken transcript."""
 
     def test_finally_guard_logic(self):
         """Verify the guard logic matches the implementation."""
-        # Case 1: transcript_caused_error = True → skip upload
-        transcript_caused_error = True
+        # Case 1: skip_transcript_upload = True → skip upload
+        skip_transcript_upload = True
         claude_agent_use_resume = True
         user_id = "uid"
         session = MagicMock()
 
-        if transcript_caused_error:
+        if skip_transcript_upload:
             action = "skip_upload"
         elif claude_agent_use_resume and user_id and session is not None:
             action = "upload"
@@ -377,9 +377,9 @@ class TestScenarioTranscriptCausedError:
 
         assert action == "skip_upload"
 
-        # Case 2: transcript_caused_error = False → upload
-        transcript_caused_error = False
-        if transcript_caused_error:
+        # Case 2: skip_transcript_upload = False → upload
+        skip_transcript_upload = False
+        if skip_transcript_upload:
             action = "skip_upload"
         elif claude_agent_use_resume and user_id and session is not None:
             action = "upload"
@@ -388,20 +388,20 @@ class TestScenarioTranscriptCausedError:
 
         assert action == "upload"
 
-    def test_db_fallback_sets_transcript_caused_error(self):
-        """Both DB fallback branches must set transcript_caused_error = True.
+    def test_db_fallback_sets_skip_transcript_upload(self):
+        """Both DB fallback branches must set skip_transcript_upload = True.
         This verifies the fix for coderabbit comment #3."""
         # Branch 1: compaction failed, dropping transcript
-        transcript_caused_error = False
+        skip_transcript_upload = False
         # Simulating the "compaction failed" branch
-        transcript_caused_error = True
-        assert transcript_caused_error is True
+        skip_transcript_upload = True
+        assert skip_transcript_upload is True
 
         # Branch 2: no transcript to compact
-        transcript_caused_error = False
+        skip_transcript_upload = False
         # Simulating the "no transcript" branch
-        transcript_caused_error = True
-        assert transcript_caused_error is True
+        skip_transcript_upload = True
+        assert skip_transcript_upload is True
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +428,7 @@ class TestRetryStateMachine:
             compact_result: Result of compact_transcript (None = failure)
         """
         _stream_error: Exception | None = None
-        transcript_caused_error = False
+        skip_transcript_upload = False
         use_resume = bool(transcript_content)
         stream_completed = False
         attempts_made = 0
@@ -447,10 +447,10 @@ class TestRetryStateMachine:
                         use_resume = True
                     else:
                         use_resume = False
-                        transcript_caused_error = True
+                        skip_transcript_upload = True
                 else:
                     use_resume = False
-                    transcript_caused_error = True
+                    skip_transcript_upload = True
 
             attempts_made += 1
             result = attempt_results[_attempt]
@@ -464,12 +464,12 @@ class TestRetryStateMachine:
             break
 
         if _stream_error is not None:
-            transcript_caused_error = True
+            skip_transcript_upload = True
 
         return {
             "attempts_made": attempts_made,
             "stream_error": _stream_error,
-            "transcript_caused_error": transcript_caused_error,
+            "skip_transcript_upload": skip_transcript_upload,
             "stream_completed": stream_completed,
             "use_resume": use_resume,
         }
@@ -479,7 +479,7 @@ class TestRetryStateMachine:
         state = self._simulate_retry_loop(["success"])
         assert state["attempts_made"] == 1
         assert state["stream_error"] is None
-        assert state["transcript_caused_error"] is False
+        assert state["skip_transcript_upload"] is False
         assert state["stream_completed"] is True
         assert state["use_resume"] is True
 
@@ -492,7 +492,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 2
         assert state["stream_error"] is None
-        assert state["transcript_caused_error"] is False
+        assert state["skip_transcript_upload"] is False
         assert state["stream_completed"] is True
         assert state["use_resume"] is True  # compacted transcript used
 
@@ -505,7 +505,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 2
         assert state["stream_error"] is None
-        assert state["transcript_caused_error"] is True  # DB fallback
+        assert state["skip_transcript_upload"] is True  # DB fallback
         assert state["stream_completed"] is True
         assert state["use_resume"] is False
 
@@ -517,7 +517,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 2
         assert state["stream_error"] is None
-        assert state["transcript_caused_error"] is True
+        assert state["skip_transcript_upload"] is True
         assert state["stream_completed"] is True
         assert state["use_resume"] is False
 
@@ -530,7 +530,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 3
         assert state["stream_error"] is None
-        assert state["transcript_caused_error"] is True
+        assert state["skip_transcript_upload"] is True
         assert state["stream_completed"] is True
         assert state["use_resume"] is False  # dropped for attempt 3
 
@@ -543,7 +543,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 3
         assert state["stream_error"] is not None
-        assert state["transcript_caused_error"] is True
+        assert state["skip_transcript_upload"] is True
         assert state["stream_completed"] is False
 
     def test_compact_identical_triggers_db_fallback(self):
@@ -554,7 +554,7 @@ class TestRetryStateMachine:
             compact_result="original",  # Same as input!
         )
         assert state["attempts_made"] == 2
-        assert state["transcript_caused_error"] is True
+        assert state["skip_transcript_upload"] is True
         assert state["use_resume"] is False  # Fell through to DB fallback
 
     def test_no_transcript_all_exhausted(self):
@@ -565,7 +565,7 @@ class TestRetryStateMachine:
         )
         assert state["attempts_made"] == 3
         assert state["stream_error"] is not None
-        assert state["transcript_caused_error"] is True
+        assert state["skip_transcript_upload"] is True
         assert state["stream_completed"] is False
 
 
@@ -693,25 +693,25 @@ class TestRetryStateReset:
         assert session_messages == ["msg1", "msg2"]
 
     def test_write_transcript_failure_sets_error_flag(self):
-        """When write_transcript_to_tempfile fails, transcript_caused_error
+        """When write_transcript_to_tempfile fails, skip_transcript_upload
         must be set True to prevent uploading stale data."""
         # Simulate the logic from service.py lines 1012-1020
-        transcript_caused_error = False
+        skip_transcript_upload = False
         use_resume = True
         resume_file = None  # write_transcript_to_tempfile returned None
 
         if not resume_file:
             use_resume = False
-            transcript_caused_error = True
+            skip_transcript_upload = True
 
-        assert transcript_caused_error is True
+        assert skip_transcript_upload is True
         assert use_resume is False
 
     @pytest.mark.asyncio
     async def test_compact_returns_none_preserves_error_flag(self):
-        """When compaction returns None, transcript_caused_error is set."""
+        """When compaction returns None, skip_transcript_upload is set."""
         transcript = _build_transcript([("user", "A"), ("assistant", "B")])
-        transcript_caused_error = False
+        skip_transcript_upload = False
 
         with (
             patch(
@@ -730,10 +730,10 @@ class TestRetryStateReset:
 
         # compact_transcript returns None on failure
         assert compacted is None
-        # Caller sets transcript_caused_error
+        # Caller sets skip_transcript_upload
         if not compacted:
-            transcript_caused_error = True
-        assert transcript_caused_error is True
+            skip_transcript_upload = True
+        assert skip_transcript_upload is True
 
 
 class TestTranscriptEdgeCases:

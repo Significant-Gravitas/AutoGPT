@@ -811,6 +811,12 @@ async def compact_transcript(
     They are re-attached each turn and are unaffected by compaction.
 
     Returns the compacted JSONL string, or ``None`` on failure.
+
+    See also:
+        ``_compress_messages`` in ``service.py`` — compresses ``ChatMessage``
+        lists for pre-query DB history.  Both share ``compress_context()``
+        but operate on different input formats (JSONL transcript entries
+        here vs. ChatMessage dicts there).
     """
     messages = _transcript_to_messages(content)
     if len(messages) < 2:
