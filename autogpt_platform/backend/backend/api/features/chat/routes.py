@@ -215,7 +215,7 @@ async def list_sessions(
             }
         except Exception:
             logger.warning(
-                "Failed to fetch processing status from Redis; " "defaulting to empty"
+                "Failed to fetch processing status from Redis; defaulting to empty"
             )
 
     return ListSessionsResponse(
@@ -532,8 +532,9 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (token-based)
-    if user_id and (config.daily_token_limit > 0 or config.weekly_token_limit > 0):
+    # Pre-turn rate limit check (token-based).
+    # check_rate_limit short-circuits internally when both limits are 0.
+    if user_id:
         try:
             await check_rate_limit(
                 user_id=user_id,
