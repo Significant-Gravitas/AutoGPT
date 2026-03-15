@@ -163,13 +163,19 @@ async def execute_block(
                         reason="copilot_block_execution",
                     ),
                 )
-            except InsufficientBalanceError as e:
-                # Concurrent spend drained balance after our pre-check passed.
-                # Block already executed (with possible side effects), so return
-                # its output but log the billing leak for monitoring.
+            except Exception as e:
+                # Block already executed (with possible side effects). Never
+                # return ErrorResponse here — the user received output and
+                # deserves it. Log the billing failure for reconciliation.
+                leak_type = (
+                    "INSUFFICIENT_BALANCE"
+                    if isinstance(e, InsufficientBalanceError)
+                    else "UNEXPECTED_ERROR"
+                )
                 logger.error(
-                    "BILLING_LEAK: block executed but credit charge failed — "
+                    "BILLING_LEAK[%s]: block executed but credit charge failed — "
                     "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+                    leak_type,
                     user_id,
                     block_id,
                     node_exec_id,
@@ -178,6 +184,7 @@ async def execute_block(
                     extra={
                         "json_fields": {
                             "billing_leak": True,
+                            "leak_type": leak_type,
                             "user_id": user_id,
                             "cost": str(cost),
                         }
