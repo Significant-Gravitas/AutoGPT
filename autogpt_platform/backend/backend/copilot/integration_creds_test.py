@@ -83,25 +83,23 @@ class TestGetProviderToken:
     async def test_returns_cached_token_without_db_hit(self):
         _token_cache[(_USER, _PROVIDER)] = "cached-tok"
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager"
-        ) as MockManager:
+        mock_manager = MagicMock()
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result == "cached-tok"
-        MockManager.assert_not_called()
+        mock_manager.store.get_creds_by_provider.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_returns_none_for_null_cached_provider(self):
         _null_cache[(_USER, _PROVIDER)] = True
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager"
-        ) as MockManager:
+        mock_manager = MagicMock()
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result is None
-        MockManager.assert_not_called()
+        mock_manager.store.get_creds_by_provider.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_api_key_creds_returned_and_cached(self):
@@ -109,10 +107,7 @@ class TestGetProviderToken:
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[api_creds])
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result == "my-api-key"
@@ -128,10 +123,7 @@ class TestGetProviderToken:
         )
         mock_manager.refresh_if_needed = AsyncMock(return_value=oauth_creds)
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result == "oauth-tok"
@@ -143,10 +135,7 @@ class TestGetProviderToken:
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
         mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result == "stale-oauth-tok"
@@ -156,10 +145,7 @@ class TestGetProviderToken:
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result is None
@@ -172,10 +158,7 @@ class TestGetProviderToken:
             side_effect=RuntimeError("db down")
         )
 
-        with patch(
-            "backend.copilot.integration_creds.IntegrationCredentialsManager",
-            return_value=mock_manager,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result is None
