@@ -10,14 +10,16 @@ interface Props {
 }
 
 function parseOutput(raw: unknown): SetupRequirementsResponse | null {
-  if (typeof raw !== "string") return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "setup_info" in parsed) {
-      return parsed as SetupRequirementsResponse;
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try {
+      return parseOutput(JSON.parse(raw) as unknown);
+    } catch {
+      return null;
     }
-  } catch {
-    // ignore parse errors
+  }
+  if (typeof raw === "object" && "setup_info" in raw) {
+    return raw as SetupRequirementsResponse;
   }
   return null;
 }

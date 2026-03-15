@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import compress_context
 from backend.util.settings import Settings
@@ -179,18 +179,30 @@ async def _get_github_token_for_user(user_id: str) -> str | None:
 
     Checks the credentials store for any GitHub OAuth token or API key.
     OAuth2 tokens are preferred (two-pass); API keys are the fallback.
+    Expired OAuth2 tokens are refreshed via IntegrationCredentialsManager
+    before the token value is returned.
     """
-    store = IntegrationCredentialsStore()
+    manager = IntegrationCredentialsManager()
     try:
-        creds_list = await store.get_creds_by_provider(user_id, "github")
+        creds_list = await manager.store.get_creds_by_provider(user_id, "github")
     except Exception:
         logger.debug("Failed to fetch GitHub credentials for user %s", user_id)
         return None
-    # Pass 1: prefer OAuth2 tokens (carry scope info, longer-lived via refresh)
+    # Pass 1: prefer OAuth2 tokens (carry scope info, longer-lived via refresh).
+    # Use lock=False — this is a background injection, not a critical execution path.
     for creds in creds_list:
         if creds.type == "oauth2":
-            return cast(OAuth2Credentials, creds).access_token.get_secret_value()
-    # Pass 2: fall back to API key
+            try:
+                fresh = await manager.refresh_if_needed(
+                    user_id, cast(OAuth2Credentials, creds), lock=False
+                )
+                return fresh.access_token.get_secret_value()
+            except Exception:
+                logger.debug(
+                    "Failed to refresh GitHub OAuth token for user %s", user_id
+                )
+                return cast(OAuth2Credentials, creds).access_token.get_secret_value()
+    # Pass 2: fall back to API key (no expiry)
     for creds in creds_list:
         if creds.type == "api_key":
             return cast(APIKeyCredentials, creds).api_key.get_secret_value()
