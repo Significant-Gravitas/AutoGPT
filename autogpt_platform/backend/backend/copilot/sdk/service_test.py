@@ -310,7 +310,7 @@ class TestCleanupSdkToolResults:
         cwd = "/tmp/copilot-test-cleanup-remove"
         os.makedirs(cwd, exist_ok=True)
 
-        with patch("backend.copilot.sdk.transcript.cleanup_stale_project_dirs"):
+        with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
             import backend.copilot.sdk.service as svc_mod
 
             svc_mod._last_sweep_time = 0.0
@@ -330,7 +330,7 @@ class TestCleanupSdkToolResults:
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
-            "backend.copilot.sdk.transcript.cleanup_stale_project_dirs"
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
         ) as mock_sweep:
             # Set last sweep to a time far in the past
             svc_mod._last_sweep_time = 0.0
@@ -351,7 +351,7 @@ class TestCleanupSdkToolResults:
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
-            "backend.copilot.sdk.transcript.cleanup_stale_project_dirs"
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
         ) as mock_sweep:
             # Set last sweep to now — interval not elapsed
             svc_mod._last_sweep_time = time.time()
@@ -368,7 +368,7 @@ class TestCleanupSdkToolResults:
         os.makedirs(evil_cwd, exist_ok=True)
 
         with patch(
-            "backend.copilot.sdk.transcript.cleanup_stale_project_dirs"
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
         ) as mock_sweep:
             await _cleanup_sdk_tool_results(evil_cwd)
 
