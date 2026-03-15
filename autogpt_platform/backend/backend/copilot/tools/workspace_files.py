@@ -352,7 +352,9 @@ def _read_local_tool_result(
         )
         slice_text = text_content[char_offset:end]
     except FileNotFoundError:
-        return ErrorResponse(message=f"File not found: {path}", session_id=session_id)
+        return ErrorResponse(
+            message=f"File not found: {os.path.basename(path)}", session_id=session_id
+        )
     except Exception as exc:
         return ErrorResponse(
             message=f"Error reading file: {type(exc).__name__}", session_id=session_id

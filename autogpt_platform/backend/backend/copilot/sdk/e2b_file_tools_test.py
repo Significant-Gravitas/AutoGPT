@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
 
 from .e2b_file_tools import (
     _check_sandbox_symlink_escape,
@@ -25,46 +25,48 @@ from .e2b_file_tools import (
 
 class TestResolveSandboxPath:
     def test_relative_path_resolved(self):
-        assert resolve_sandbox_path("src/main.py") == "/home/user/src/main.py"
+        assert resolve_sandbox_path("src/main.py") == f"{E2B_WORKDIR}/src/main.py"
 
     def test_absolute_within_sandbox(self):
-        assert resolve_sandbox_path("/home/user/file.txt") == "/home/user/file.txt"
+        assert (
+            resolve_sandbox_path(f"{E2B_WORKDIR}/file.txt") == f"{E2B_WORKDIR}/file.txt"
+        )
 
     def test_workdir_itself(self):
-        assert resolve_sandbox_path("/home/user") == "/home/user"
+        assert resolve_sandbox_path(E2B_WORKDIR) == E2B_WORKDIR
 
     def test_relative_dotslash(self):
-        assert resolve_sandbox_path("./README.md") == "/home/user/README.md"
+        assert resolve_sandbox_path("./README.md") == f"{E2B_WORKDIR}/README.md"
 
     def test_traversal_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("../../etc/passwd")
 
     def test_absolute_traversal_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
-            resolve_sandbox_path("/home/user/../../etc/passwd")
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+            resolve_sandbox_path(f"{E2B_WORKDIR}/../../etc/passwd")
 
     def test_absolute_outside_sandbox_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/etc/passwd")
 
     def test_root_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/")
 
     def test_home_other_user_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/home/other/file.txt")
 
     def test_deep_nested_allowed(self):
-        assert resolve_sandbox_path("a/b/c/d/e.txt") == "/home/user/a/b/c/d/e.txt"
+        assert resolve_sandbox_path("a/b/c/d/e.txt") == f"{E2B_WORKDIR}/a/b/c/d/e.txt"
 
     def test_trailing_slash_normalised(self):
-        assert resolve_sandbox_path("src/") == "/home/user/src"
+        assert resolve_sandbox_path("src/") == f"{E2B_WORKDIR}/src"
 
     def test_double_dots_within_sandbox_ok(self):
-        """Path that resolves back within /home/user is allowed."""
-        assert resolve_sandbox_path("a/b/../c.txt") == "/home/user/a/c.txt"
+        """Path that resolves back within E2B_WORKDIR is allowed."""
+        assert resolve_sandbox_path("a/b/../c.txt") == f"{E2B_WORKDIR}/a/c.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -179,49 +181,49 @@ def _make_sandbox(stdout: str, exit_code: int = 0) -> SimpleNamespace:
 class TestCheckSandboxSymlinkEscape:
     @pytest.mark.asyncio
     async def test_canonical_path_within_workdir_returns_path(self):
-        """When readlink -f resolves to a path inside /home/user, returns it."""
-        sandbox = _make_sandbox(stdout="/home/user/src\n", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
-        assert result == "/home/user/src"
+        """When readlink -f resolves to a path inside E2B_WORKDIR, returns it."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/src\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
+        assert result == f"{E2B_WORKDIR}/src"
 
     @pytest.mark.asyncio
     async def test_workdir_itself_returns_workdir(self):
-        """When readlink -f resolves to /home/user exactly, returns /home/user."""
-        sandbox = _make_sandbox(stdout="/home/user\n", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user")
-        assert result == "/home/user"
+        """When readlink -f resolves to E2B_WORKDIR exactly, returns E2B_WORKDIR."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, E2B_WORKDIR)
+        assert result == E2B_WORKDIR
 
     @pytest.mark.asyncio
     async def test_symlink_escape_returns_none(self):
-        """When readlink -f resolves outside /home/user (symlink escape), returns None."""
+        """When readlink -f resolves outside E2B_WORKDIR (symlink escape), returns None."""
         sandbox = _make_sandbox(stdout="/etc\n", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/evil")
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/evil")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_nonzero_exit_code_returns_none(self):
         """A non-zero exit code from readlink -f returns None."""
         sandbox = _make_sandbox(stdout="", exit_code=1)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_empty_stdout_returns_none(self):
         """Empty stdout from readlink (e.g. path doesn't exist yet) returns None."""
         sandbox = _make_sandbox(stdout="", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/src")
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_prefix_collision_returns_none(self):
-        """/home/user-evil does not satisfy the startswith check."""
-        sandbox = _make_sandbox(stdout="/home/user-evil\n", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user-evil")
+        """A path prefixed with E2B_WORKDIR but not within it is rejected."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}-evil\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}-evil")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_deeply_nested_path_within_workdir(self):
-        """Deep nested paths inside /home/user are allowed."""
-        sandbox = _make_sandbox(stdout="/home/user/a/b/c/d\n", exit_code=0)
-        result = await _check_sandbox_symlink_escape(sandbox, "/home/user/a/b/c/d")
-        assert result == "/home/user/a/b/c/d"
+        """Deep nested paths inside E2B_WORKDIR are allowed."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/a/b/c/d\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/a/b/c/d")
+        assert result == f"{E2B_WORKDIR}/a/b/c/d"

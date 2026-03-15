@@ -191,6 +191,11 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
             )
             return 0
         try:
+            # st_mtime is used as a proxy for session activity. Claude CLI writes
+            # its JSONL transcript into this directory during each turn, so mtime
+            # advances on every turn. A directory whose mtime is older than
+            # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
+            # and is safe to remove (the session cannot --resume after cleanup).
             age = now - target.stat().st_mtime
         except OSError:
             return 0
@@ -229,6 +234,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
         if not entry.is_dir():
             continue
         try:
+            # See the scoped-mode comment above: st_mtime advances on every turn,
+            # so a stale mtime reliably indicates an inactive session.
             age = now - entry.stat().st_mtime
         except OSError:
             continue

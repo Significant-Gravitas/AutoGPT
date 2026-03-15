@@ -577,3 +577,49 @@ async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_da
     finally:
         _current_project_dir.reset(token)
         shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_data):
+    """When _resolve_file succeeds, the local-disk fallback must NOT be invoked."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    fake_file_id = "fake-file-id-001"
+    fake_content = b"workspace content"
+
+    # Build a minimal file_info stub that the tool's happy-path needs.
+    class _FakeFileInfo:
+        id = fake_file_id
+        name = "result.json"
+        path = "/result.json"
+        mime_type = "text/plain"
+        size_bytes = len(fake_content)
+
+    mock_resolve = AsyncMock(return_value=(fake_file_id, _FakeFileInfo()))
+
+    mock_manager = AsyncMock()
+    mock_manager.read_file_by_id = AsyncMock(return_value=fake_content)
+
+    with (
+        patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve),
+        patch(
+            "backend.copilot.tools.workspace_files.get_manager",
+            AsyncMock(return_value=mock_manager),
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files._read_local_tool_result"
+        ) as patched_local,
+    ):
+        read_tool = ReadWorkspaceFileTool()
+        result = await read_tool._execute(
+            user_id=user.id,
+            session=session,
+            file_id=fake_file_id,
+        )
+
+    # Fallback must not have been called.
+    patched_local.assert_not_called()
+    # Normal workspace path must have produced a content response.
+    assert isinstance(result, WorkspaceFileContentResponse)
+    assert base64.b64decode(result.content_base64) == fake_content

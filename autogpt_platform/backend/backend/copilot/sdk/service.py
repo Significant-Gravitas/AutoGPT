@@ -77,6 +77,7 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
+    cleanup_stale_project_dirs,
     download_transcript,
     read_compacted_entries,
     upload_transcript,
@@ -297,8 +298,6 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
-    from .transcript import cleanup_stale_project_dirs
-
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
         logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
