@@ -893,3 +893,276 @@ class TestTranscriptEdgeCases:
         result = _flatten_tool_result_content(blocks)
         # json.dumps fallback for image, text for text
         assert "screenshot above" in result
+
+
+# ---------------------------------------------------------------------------
+# Real integration test: stream_chat_completion_sdk retry loop
+# ---------------------------------------------------------------------------
+
+_SVC = "backend.copilot.sdk.service"
+
+
+def _make_lock_mock():
+    """Build a lock mock that always grants acquisition.
+
+    ``try_acquire`` must return the same ``owner_id`` passed to the lock
+    constructor, so the service's ``if lock_owner != stream_id`` check passes.
+    The ``owner_id`` is captured from the keyword argument at construction time.
+    """
+    captured_owner = {}
+
+    def _lock_factory(*args, **kwargs):
+        captured_owner["id"] = kwargs.get("owner_id", "")
+        mock_lock = MagicMock()
+        mock_lock.try_acquire = AsyncMock(side_effect=lambda: captured_owner["id"])
+        mock_lock.refresh = AsyncMock()
+        mock_lock.release = AsyncMock()
+        return mock_lock
+
+    return _lock_factory
+
+
+def _make_sdk_patches(
+    session,
+    original_transcript: str,
+    compacted_transcript: str | None,
+    client_side_effect,
+):
+    """Return a list of (target, kwargs) tuples for patching service dependencies.
+
+    Using a flat list instead of nested ``with`` statements avoids Python's
+    20-block nesting limit.  Callers apply them via ``contextlib.ExitStack``.
+    """
+    return [
+        (
+            f"{_SVC}.get_chat_session",
+            dict(new_callable=AsyncMock, return_value=session),
+        ),
+        (
+            f"{_SVC}.upsert_chat_session",
+            dict(new_callable=AsyncMock, return_value=session),
+        ),
+        (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
+        (
+            f"{_SVC}.AsyncClusterLock",
+            dict(side_effect=_make_lock_mock()),
+        ),
+        (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
+        ("os.makedirs", {}),
+        (
+            f"{_SVC}.propagate_attributes",
+            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
+        ),
+        (
+            f"{_SVC}._build_system_prompt",
+            dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+        ),
+        (
+            f"{_SVC}.download_transcript",
+            dict(
+                new_callable=AsyncMock,
+                return_value=MagicMock(content=original_transcript, message_count=2),
+            ),
+        ),
+        (f"{_SVC}.write_transcript_to_tempfile", dict(return_value="/tmp/sess.jsonl")),
+        (f"{_SVC}.validate_transcript", dict(return_value=True)),
+        (
+            f"{_SVC}.compact_transcript",
+            dict(new_callable=AsyncMock, return_value=compacted_transcript),
+        ),
+        (f"{_SVC}.ClaudeSDKClient", dict(side_effect=client_side_effect)),
+        (f"{_SVC}.create_copilot_mcp_server", dict(return_value=MagicMock())),
+        (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
+        (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
+        (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
+        (f"{_SVC}._build_sdk_env", dict(return_value=None)),
+        (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
+        (f"{_SVC}.set_execution_context", {}),
+        (
+            f"{_SVC}.config",
+            dict(
+                api_key="test-key",
+                use_claude_code_subscription=False,
+                claude_agent_use_resume=True,
+                claude_agent_max_buffer_size=100_000,
+                claude_agent_max_subtasks=5,
+                stream_lock_ttl=60,
+                active_e2b_api_key=None,
+                use_e2b_sandbox=False,
+            ),
+        ),
+        (f"{_SVC}.upload_transcript", dict(new_callable=AsyncMock)),
+    ]
+
+
+class TestStreamChatCompletionRetryIntegration:
+    """Integration tests exercising the actual ``stream_chat_completion_sdk``
+    generator with a mocked ``ClaudeSDKClient``.
+
+    Unlike ``TestRetryStateMachine`` which simulates the retry logic manually,
+    these tests call the real function and assert on the SSE event stream it
+    produces — so any divergence between production code and tests will be
+    caught immediately.
+    """
+
+    def _make_session(self):
+        """Build a minimal ChatSession for testing."""
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[ChatMessage(role="user", content="hello")],
+        )
+
+    def _make_result_message(self):
+        """Build a minimal successful ResultMessage."""
+        from claude_agent_sdk import ResultMessage
+
+        return ResultMessage(
+            subtype="success",
+            result="done",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=1,
+            session_id="test-session-id",
+        )
+
+    def _make_client_mock(self, raises_on_enter=False, result_message=None):
+        """Build an async context-manager mock for ClaudeSDKClient.
+
+        If *raises_on_enter* is True the mock raises a prompt-too-long error
+        when ``client.query()`` is called (simulating rejection before
+        streaming begins).
+        """
+        err = Exception("prompt is too long (context_length_exceeded)")
+
+        async def _receive():
+            if result_message is not None:
+                yield result_message
+
+        client = MagicMock()
+        client.receive_response = _receive
+        client.query = AsyncMock()
+        client._transport = MagicMock()
+        client._transport.write = AsyncMock()
+
+        if raises_on_enter:
+            client.query.side_effect = err
+
+        cm = AsyncMock()
+        cm.__aenter__.return_value = client
+        cm.__aexit__.return_value = None
+        return cm
+
+    @pytest.mark.asyncio
+    async def test_prompt_too_long_retries_with_compaction(self):
+        """ClaudeSDKClient raises prompt-too-long on attempt 1.
+
+        On retry attempt 2, ``compact_transcript`` provides a smaller
+        transcript and the stream succeeds.  The generator must NOT yield
+        ``StreamError``.
+        """
+        import contextlib
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        attempt_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert (
+            attempt_count[0] == 2
+        ), f"Expected 2 SDK attempts (retry), got {attempt_count[0]}"
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_all_attempts_exhausted_yields_stream_error(self):
+        """All 3 ClaudeSDKClient attempts fail with prompt-too-long.
+
+        The generator must yield ``StreamError(code="all_attempts_exhausted")``
+        with a user-friendly message, not raw SDK error text.
+        """
+        import contextlib
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=None,  # compaction fails → DB fallback
+            client_side_effect=lambda *a, **kw: self._make_client_mock(
+                raises_on_enter=True
+            ),
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert errors, "Expected StreamError but got none"
+        err = errors[0]
+        assert err.code == "all_attempts_exhausted"
+        assert (
+            "too long" in err.errorText.lower() or "new chat" in err.errorText.lower()
+        )
+        assert "context_length_exceeded" not in err.errorText
+        assert any(isinstance(e, StreamStart) for e in events)
