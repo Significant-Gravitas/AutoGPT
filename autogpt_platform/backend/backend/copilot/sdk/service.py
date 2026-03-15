@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import Any, NamedTuple, cast
 
@@ -828,7 +828,7 @@ async def _prepare_file_attachments(
 async def _run_stream_attempt(
     ctx: _StreamContext,
     state: _RetryState,
-) -> AsyncGenerator[StreamBaseResponse, None]:
+) -> AsyncIterator[StreamBaseResponse]:
     """Run one SDK streaming attempt.
 
     Opens a ``ClaudeSDKClient``, sends the query, iterates SDK messages with
@@ -1167,7 +1167,7 @@ async def stream_chat_completion_sdk(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     **_kwargs: Any,
-) -> AsyncGenerator[StreamBaseResponse, None]:
+) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
 
     Args:
