@@ -60,9 +60,12 @@ AutoGPT Platform is a monorepo containing:
 
 ### Reviewing/Revising Pull Requests
 
-- When the user runs /pr-comments or tries to fetch them, also run gh api /repos/Significant-Gravitas/AutoGPT/pulls/[issuenum]/reviews to get the reviews
-- Use gh api /repos/Significant-Gravitas/AutoGPT/pulls/[issuenum]/reviews/[review_id]/comments to get the review contents
-- Use gh api /repos/Significant-Gravitas/AutoGPT/issues/9924/comments to get the pr specific comments
+Use `/pr review` to review a PR or `/pr address` to address comments. The `/pr` skill handles both modes.
+
+When fetching comments manually:
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` — top-level reviews
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` — inline review comments
+- `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` — PR conversation comments
 
 ### Conventional Commits
 

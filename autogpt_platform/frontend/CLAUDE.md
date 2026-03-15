@@ -44,6 +44,10 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
 - Use function declarations (not arrow functions) for components/handlers
+- No `dark:` Tailwind classes — the design system handles dark mode
+- Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
+- No `any` types unless the value genuinely can be anything
+- No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
 
 ## Architecture
 
