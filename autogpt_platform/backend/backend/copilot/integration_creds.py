@@ -13,6 +13,12 @@ Cache semantics:
 
 The cache is bounded to _CACHE_MAX_SIZE entries.  When the limit is reached,
 the oldest entry (by insertion order, Python 3.7+ dict guarantee) is evicted.
+
+Multi-worker note: ``_token_cache`` is in-process only.  Each worker/replica
+maintains its own independent cache, so a credential fetch may be duplicated
+across processes.  This is acceptable for the current goal (reduce DB hits per
+session per-process), but if cache efficiency across replicas becomes important
+a shared cache (e.g. Redis) should be used instead.
 """
 
 import logging
@@ -98,8 +104,11 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                 )
                 token = fresh.access_token.get_secret_value()
             except Exception:
-                logger.debug(
-                    "Failed to refresh %s OAuth token for user %s", provider, user_id
+                logger.warning(
+                    "Failed to refresh %s OAuth token for user %s; "
+                    "falling back to potentially stale token",
+                    provider,
+                    user_id,
                 )
                 token = cast(OAuth2Credentials, creds).access_token.get_secret_value()
             _cache_set(cache_key, token, _TOKEN_CACHE_TTL)
