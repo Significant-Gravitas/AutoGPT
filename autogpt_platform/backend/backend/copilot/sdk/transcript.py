@@ -106,6 +106,11 @@ def strip_progress_entries(content: str) -> str:
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
+        # seen_parents is local per-entry (not shared across iterations) so
+        # it can only detect cycles within a single ancestry walk, not across
+        # entries.  This is intentional: each entry's parent chain is
+        # independent, and reusing a global set would incorrectly short-circuit
+        # valid re-use of the same UUID as a parent in different subtrees.
         seen_parents: set[str] = set()
         while parent in stripped_uuids and parent not in seen_parents:
             seen_parents.add(parent)
