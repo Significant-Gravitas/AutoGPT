@@ -178,6 +178,21 @@ export function useCopilotStream({
     onError: (error) => {
       if (!sessionId) return;
 
+      // Detect rate limit (429) responses and show reset time to the user.
+      const isRateLimited =
+        error.message.includes("429") ||
+        error.message.toLowerCase().includes("usage limit");
+      if (isRateLimited) {
+        toast({
+          title: "Usage limit reached",
+          description:
+            error.message.replace(/^[^:]*:\s*/, "") ||
+            "You've reached your usage limit. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Detect authentication failures (from getAuthHeaders or 401 responses)
       const isAuthError =
         error.message.includes("Authentication failed") ||
