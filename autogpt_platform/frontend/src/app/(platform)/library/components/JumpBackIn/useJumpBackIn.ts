@@ -1,28 +1,13 @@
 "use client";
 
 import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
-import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
-
-function findAgentWithLatestSuccessfulRun(
-  agents: LibraryAgent[],
-): LibraryAgent | null {
-  for (const agent of agents) {
-    const hasCompletedRun = agent.recent_executions?.some(
-      (exec) => exec.status === "COMPLETED",
-    );
-    if (hasCompletedRun) {
-      return agent;
-    }
-  }
-  return null;
-}
 
 export function useJumpBackIn() {
   const { data, isLoading } = useGetV2ListLibraryAgents(
     {
       page: 1,
-      page_size: 20,
+      page_size: 1,
       sort_by: "updatedAt",
     },
     {
@@ -30,7 +15,11 @@ export function useJumpBackIn() {
     },
   );
 
-  const agent = data ? findAgentWithLatestSuccessfulRun(data.agents) : null;
+  // The API doesn't include execution data by default (include_executions is
+  // internal to the backend), so recent_executions is always empty here.
+  // We use the most recently updated agent as the "jump back in" candidate
+  // instead — updatedAt is the best available proxy for recent activity.
+  const agent = data?.agents[0] ?? null;
 
   return {
     agent,
