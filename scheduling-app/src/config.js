@@ -8,9 +8,11 @@
  */
 
 // ── GAS Backend URL ──────────────────────────────────────────────────────────
-// After deploying gas/Code.gs as a Web App, paste the URL here.
-// In production this comes from the VITE_GAS_URL env var.
-export const GAS_URL = import.meta.env.VITE_GAS_URL || ''
+// Override in production via the VITE_GAS_URL environment variable.
+// The fallback below is the deployed Google Apps Script Web App.
+export const GAS_URL =
+  import.meta.env.VITE_GAS_URL ||
+  'https://script.google.com/macros/s/AKfycbywOVVMWMPiTmTXzB7F8rm7LZFpItdVHjTWd3eDCbP24lZUwMwDrtENg0GbINmSUSF0/exec'
 
 // ── Owner / Calendar settings ────────────────────────────────────────────────
 export const OWNER_NAME = import.meta.env.VITE_OWNER_NAME || 'Your Name'
