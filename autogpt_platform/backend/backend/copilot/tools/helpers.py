@@ -122,7 +122,7 @@ async def execute_block(
         has_cost = cost > 0
         _credit_db = credit_db()
         if has_cost:
-            balance = await _credit_db.get_credit_balance(user_id)
+            balance = await _credit_db.get_credits(user_id)
             if balance < cost:
                 return ErrorResponse(
                     message=(

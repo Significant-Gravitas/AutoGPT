@@ -959,7 +959,7 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if db_client.get_credit_balance(graph_exec.user_id) <= 0:
+            if db_client.get_credits(graph_exec.user_id) <= 0:
                 raise InsufficientBalanceError(
                     user_id=graph_exec.user_id,
                     message="You have no credits left to run an agent.",

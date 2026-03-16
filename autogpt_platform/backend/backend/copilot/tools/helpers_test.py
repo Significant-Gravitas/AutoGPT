@@ -48,7 +48,7 @@ def _patch_credit_db(
 ):
     """Patch credit_db accessor to return a mock credit adapter."""
     mock_credit = MagicMock()
-    mock_credit.get_credit_balance = AsyncMock(return_value=get_credits_return)
+    mock_credit.get_credits = AsyncMock(return_value=get_credits_return)
     if spend_credits_side_effect is not None:
         mock_credit.spend_credits = AsyncMock(side_effect=spend_credits_side_effect)
     else:
@@ -151,7 +151,7 @@ class TestExecuteBlockCreditCharging:
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
         # Credit functions should not be called at all for zero-cost blocks
-        mock_credit.get_credit_balance.assert_not_awaited()
+        mock_credit.get_credits.assert_not_awaited()
         mock_credit.spend_credits.assert_not_awaited()
 
     async def test_returns_output_on_post_exec_insufficient_balance(self):
@@ -197,6 +197,7 @@ class TestExecuteBlockCreditCharging:
 def _make_block_schema(annotations: dict[str, Any]) -> MagicMock:
     """Create a mock input_schema with model_fields matching the given annotations."""
     schema = MagicMock()
+    # coerce_inputs_to_schema uses model_fields (Pydantic v2 API)
     model_fields = {}
     for name, ann in annotations.items():
         field = MagicMock()
@@ -237,7 +238,7 @@ _TEST_USER_ID = "test-user-coerce"
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_nested_list():
-    """JSON string -> list[list[str]] (Google Sheets CSV import case)."""
+    """JSON string → list[list[str]] (Google Sheets CSV import case)."""
     block = _make_coerce_block(
         "sheets-write",
         "Google Sheets Write",
@@ -268,6 +269,7 @@ async def test_coerce_json_string_to_nested_list():
 
     assert isinstance(response, BlockOutputResponse)
     assert response.success is True
+    # Verify the input was coerced from string to list[list[str]]
     assert block._captured_inputs["values"] == [
         ["Name", "Score"],
         ["Alice", "90"],
@@ -279,7 +281,7 @@ async def test_coerce_json_string_to_nested_list():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_list():
-    """JSON string -> list[str]."""
+    """JSON string → list[str]."""
     block = _make_coerce_block(
         "list-block",
         "List Block",
@@ -311,7 +313,7 @@ async def test_coerce_json_string_to_list():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_dict():
-    """JSON string -> dict[str, str]."""
+    """JSON string → dict[str, str]."""
     block = _make_coerce_block(
         "dict-block",
         "Dict Block",
@@ -377,7 +379,7 @@ async def test_no_coercion_when_type_matches():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_string_to_int():
-    """String number -> int."""
+    """String number → int."""
     block = _make_coerce_block(
         "int-block",
         "Int Block",
@@ -437,6 +439,7 @@ async def test_coerce_skips_none_values():
         )
 
     assert isinstance(response, BlockOutputResponse)
+    # 'data' was not provided, so it should not appear in captured inputs
     assert "data" not in block._captured_inputs
 
 
@@ -469,6 +472,7 @@ async def test_coerce_union_type_preserves_valid_member():
         )
 
     assert isinstance(response, BlockOutputResponse)
+    # list[str] should NOT be stringified to '["a", "b"]'
     assert block._captured_inputs["content"] == ["a", "b"]
     assert isinstance(block._captured_inputs["content"], list)
 
@@ -494,6 +498,7 @@ async def test_coerce_inner_elements_of_generic():
         response = await execute_block(
             block=block,
             block_id="inner-coerce",
+            # Inner elements are ints, but target is list[str]
             input_data={"values": [1, 2, 3]},
             user_id=_TEST_USER_ID,
             session_id=_TEST_SESSION_ID,
@@ -502,5 +507,6 @@ async def test_coerce_inner_elements_of_generic():
         )
 
     assert isinstance(response, BlockOutputResponse)
+    # Inner elements should be coerced from int to str
     assert block._captured_inputs["values"] == ["1", "2", "3"]
     assert all(isinstance(v, str) for v in block._captured_inputs["values"])
