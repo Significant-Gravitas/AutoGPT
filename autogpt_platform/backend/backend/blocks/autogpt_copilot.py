@@ -218,8 +218,9 @@ class AutogptCopilotBlock(Block):
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
             # -- Stream consumption --
-            response_text = ""
+            response_parts: list[str] = []
             tool_calls: list[dict] = []
+            tool_calls_by_id: dict[str, dict] = {}
             total_usage = {
                 "promptTokens": 0,
                 "completionTokens": 0,
@@ -235,23 +236,21 @@ class AutogptCopilotBlock(Block):
                     session=session,
                 ):
                     if isinstance(event, StreamTextDelta):
-                        response_text += event.delta
+                        response_parts.append(event.delta)
                     elif isinstance(event, StreamToolInputAvailable):
-                        tool_calls.append(
-                            {
-                                "toolCallId": event.toolCallId,
-                                "toolName": event.toolName,
-                                "input": event.input,
-                                "output": None,
-                                "success": None,
-                            }
-                        )
+                        entry = {
+                            "toolCallId": event.toolCallId,
+                            "toolName": event.toolName,
+                            "input": event.input,
+                            "output": None,
+                            "success": None,
+                        }
+                        tool_calls.append(entry)
+                        tool_calls_by_id[event.toolCallId] = entry
                     elif isinstance(event, StreamToolOutputAvailable):
-                        for tc in tool_calls:
-                            if tc["toolCallId"] == event.toolCallId:
-                                tc["output"] = event.output
-                                tc["success"] = event.success
-                                break
+                        if tc := tool_calls_by_id.get(event.toolCallId):
+                            tc["output"] = event.output
+                            tc["success"] = event.success
                     elif isinstance(event, StreamUsage):
                         total_usage["promptTokens"] += event.promptTokens
                         total_usage["completionTokens"] += event.completionTokens
@@ -264,9 +263,11 @@ class AutogptCopilotBlock(Block):
             history_json = "[]"
             if updated_session and updated_session.messages:
                 history_json = json.dumps(
-                    [m.model_dump() for m in updated_session.messages],
+                    [m.model_dump(exclude_none=True) for m in updated_session.messages],
                     default=str,
                 )
+
+            response_text = "".join(response_parts)
 
             return (
                 response_text,
@@ -289,7 +290,9 @@ class AutogptCopilotBlock(Block):
             yield "error", "Prompt cannot be empty."
             return
 
-        user_id = execution_context.user_id or ""
+        if not execution_context.user_id:
+            yield "error", "Cannot run copilot without an authenticated user."
+            return
 
         try:
             response, tool_calls, history, sid, usage = await self.execute_copilot(
@@ -298,7 +301,7 @@ class AutogptCopilotBlock(Block):
                 session_id=input_data.session_id,
                 timeout=input_data.timeout,
                 max_recursion_depth=input_data.max_recursion_depth,
-                user_id=user_id,
+                user_id=execution_context.user_id,
             )
 
             yield "response", response
@@ -306,5 +309,7 @@ class AutogptCopilotBlock(Block):
             yield "conversation_history", history
             yield "session_id", sid
             yield "token_usage", usage
+        except TimeoutError:
+            yield "error", (f"Copilot execution timed out after {input_data.timeout}s.")
         except Exception as e:
             yield "error", str(e)
