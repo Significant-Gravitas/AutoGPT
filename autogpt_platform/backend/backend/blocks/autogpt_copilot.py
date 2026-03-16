@@ -95,7 +95,7 @@ class AutogptCopilotBlock(Block):
         conversation_history: str = SchemaField(
             description=(
                 "Full conversation history as JSON. "
-                "Can be used for logging or analysis."
+                "It can be used for logging or analysis."
             ),
         )
         session_id: str = SchemaField(
@@ -287,6 +287,14 @@ class AutogptCopilotBlock(Block):
     ) -> BlockOutput:
         if not input_data.prompt.strip():
             yield "error", "Prompt cannot be empty."
+            return
+
+        if input_data.timeout <= 0:
+            yield "error", "Timeout must be greater than 0 seconds."
+            return
+
+        if input_data.max_recursion_depth < 1:
+            yield "error", "max_recursion_depth must be at least 1."
             return
 
         if not execution_context.user_id:

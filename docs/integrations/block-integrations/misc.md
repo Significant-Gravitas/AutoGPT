@@ -65,7 +65,7 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 | error | Error message if execution failed. | str |
 | response | The final text response from the copilot. | str |
 | tool_calls | List of tools called during execution. Each entry has toolCallId, toolName, input, output, and success fields. | List[Dict[str, Any]] |
-| conversation_history | Full conversation history as JSON. Can be used for logging or analysis. | str |
+| conversation_history | Full conversation history as JSON. It can be used for logging or analysis. | str |
 | session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
 | token_usage | Token usage statistics: promptTokens, completionTokens, totalTokens. | Dict[str, Any] |
 
