@@ -19,6 +19,7 @@ from prisma.errors import PrismaError
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -310,6 +311,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/users",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,
