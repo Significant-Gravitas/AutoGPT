@@ -1930,3 +1930,41 @@ async def test_bare_ref_binary_format_ignores_line_range():
         )
     # Full 2-row table is returned, not just row 1.
     assert result["data"] == [["A", "B"], [1, 3], [2, 4]]
+
+
+# ---------------------------------------------------------------------------
+# NaN handling in bare ref binary format (parquet/xlsx)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_parquet_nan_replaced_with_none():
+    """NaN values in Parquet bare refs must become None for JSON serializability."""
+    import io
+    import math
+
+    import pandas as pd
+
+    df = pd.DataFrame({"A": [1.0, float("nan"), 3.0], "B": ["x", None, "z"]})
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=False)
+    parquet_bytes = buf.getvalue()
+
+    with patch(
+        "backend.copilot.sdk.file_ref.read_file_bytes",
+        new=AsyncMock(return_value=parquet_bytes),
+    ):
+        result = await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///data.parquet"},
+            user_id="u1",
+            session=_make_session(),
+        )
+    rows = result["data"]
+    # Row with NaN in float col → None
+    assert rows[2][0] is None  # float NaN → None
+    assert rows[2][1] is None  # str None → None
+    # Ensure no NaN leaks
+    for row in rows[1:]:
+        for cell in row:
+            if isinstance(cell, float):
+                assert not math.isnan(cell), f"NaN leaked: {row}"

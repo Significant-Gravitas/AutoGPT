@@ -160,7 +160,9 @@ async def read_file_bytes(
             raise ValueError(f"File not found: {plain}")
         except (PermissionError, OSError) as exc:
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
-        except Exception as exc:
+        except (AttributeError, TypeError, RuntimeError) as exc:
+            # AttributeError/TypeError: workspace manager returned an
+            # unexpected type or interface; RuntimeError: async runtime issues.
             logger.warning("Unexpected error reading %s: %s", plain, exc)
             raise ValueError(f"Failed to read {plain}: {exc}") from exc
         # NOTE: Workspace API does not support pre-read size checks;
@@ -396,10 +398,8 @@ def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
     Extra values beyond the header length are silently dropped.
     """
     header = parsed[0]
-    n = len(header)
     return [
-        # Pad short rows with None; trim extra values beyond header length.
-        dict(zip(header, (row + [None] * n)[:n]))
+        dict(itertools.zip_longest(header, row[: len(header)], fillvalue=None))
         for row in parsed[1:]
     ]
 
