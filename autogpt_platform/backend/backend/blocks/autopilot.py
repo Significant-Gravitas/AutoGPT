@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
+
+from typing_extensions import TypedDict
 
 from backend.blocks._base import (
     Block,
@@ -18,17 +21,17 @@ if TYPE_CHECKING:
 
 
 class ToolCallEntry(TypedDict):
-    toolCallId: str
-    toolName: str
+    tool_call_id: str
+    tool_name: str
     input: object
     output: object | None
     success: bool | None
 
 
 class TokenUsage(TypedDict):
-    promptTokens: int
-    completionTokens: int
-    totalTokens: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 # Task-scoped recursion depth counter & chain-wide limit.
@@ -119,7 +122,7 @@ class AutoPilotBlock(Block):
         tool_calls: list[ToolCallEntry] = SchemaField(
             description=(
                 "List of tools called during execution. Each entry has "
-                "toolCallId, toolName, input, output, and success fields."
+                "tool_call_id, tool_name, input, output, and success fields."
             ),
         )
         conversation_history: str = SchemaField(
@@ -136,8 +139,8 @@ class AutoPilotBlock(Block):
         )
         token_usage: TokenUsage = SchemaField(
             description=(
-                "Token usage statistics: promptTokens, "
-                "completionTokens, totalTokens."
+                "Token usage statistics: prompt_tokens, "
+                "completion_tokens, total_tokens."
             ),
         )
         error: str = SchemaField(
@@ -173,9 +176,9 @@ class AutoPilotBlock(Block):
                 (
                     "token_usage",
                     {
-                        "promptTokens": 100,
-                        "completionTokens": 50,
-                        "totalTokens": 150,
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
                     },
                 ),
             ],
@@ -187,9 +190,9 @@ class AutoPilotBlock(Block):
                     '[{"role": "user", "content": "List my agents"}]',
                     "test-session-id",
                     {
-                        "promptTokens": 100,
-                        "completionTokens": 50,
-                        "totalTokens": 150,
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
                     },
                 ),
             },
@@ -240,9 +243,9 @@ class AutoPilotBlock(Block):
             tool_calls: list[ToolCallEntry] = []
             tool_calls_by_id: dict[str, ToolCallEntry] = {}
             total_usage: TokenUsage = {
-                "promptTokens": 0,
-                "completionTokens": 0,
-                "totalTokens": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
             }
 
             async for event in stream_chat_completion_sdk(
@@ -255,8 +258,8 @@ class AutoPilotBlock(Block):
                     response_parts.append(event.delta)
                 elif isinstance(event, StreamToolInputAvailable):
                     entry: ToolCallEntry = {
-                        "toolCallId": event.toolCallId,
-                        "toolName": event.toolName,
+                        "tool_call_id": event.toolCallId,
+                        "tool_name": event.toolName,
                         "input": event.input,
                         "output": None,
                         "success": None,
@@ -268,9 +271,9 @@ class AutoPilotBlock(Block):
                         tc["output"] = event.output
                         tc["success"] = event.success
                 elif isinstance(event, StreamUsage):
-                    total_usage["promptTokens"] += event.promptTokens
-                    total_usage["completionTokens"] += event.completionTokens
-                    total_usage["totalTokens"] += event.totalTokens
+                    total_usage["prompt_tokens"] += event.promptTokens
+                    total_usage["completion_tokens"] += event.completionTokens
+                    total_usage["total_tokens"] += event.totalTokens
                 elif isinstance(event, StreamError):
                     raise RuntimeError(f"AutoPilot error: {event.errorText}")
 
@@ -329,6 +332,10 @@ class AutoPilotBlock(Block):
             yield "conversation_history", history
             yield "session_id", sid
             yield "token_usage", usage
+        except asyncio.CancelledError:
+            yield "session_id", sid
+            yield "error", "AutoPilot execution was cancelled."
+            raise
         except Exception as e:
             yield "session_id", sid
             yield "error", str(e)
