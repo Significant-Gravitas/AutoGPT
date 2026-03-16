@@ -45,7 +45,7 @@ Execute tasks using the AutoGPT Copilot with full access to platform tools (agen
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the copilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the copilot calls this block as a sub-agent.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -71,7 +71,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Schedule a copilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report. Or chain copilot blocks where one gathers data and another analyzes it, enabling multi-step AI workflows within the graph editor.
 <!-- END MANUAL -->
 
 ---
