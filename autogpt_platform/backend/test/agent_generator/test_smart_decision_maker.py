@@ -382,6 +382,21 @@ class TestValidateSmartDecisionMakerBlocks:
         assert len(validator.errors) == 1
         assert sdm_invalid["id"] in validator.errors[0]
 
+    def test_sdm_with_traditional_mode_fails(self):
+        """agent_mode_max_iterations=0 (traditional mode) is rejected."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": 0})
+        tool = _make_agent_executor_node()
+        agent = {
+            "nodes": [sdm, tool],
+            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is False
+        assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
+
     def test_sdm_with_only_interface_block_links_fails(self):
         """Links to AgentInput/OutputBlocks don't count as tool connections."""
         validator = AgentValidator()

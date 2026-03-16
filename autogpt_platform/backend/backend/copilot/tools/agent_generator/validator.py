@@ -834,6 +834,21 @@ class AgentValidator:
                 "customized_name", node_id
             )
 
+            # Warn if agent_mode_max_iterations is 0 (traditional mode) —
+            # requires complex external conversation-history loop wiring
+            # that the agent generator does not produce.
+            input_default = node.get("input_default", {})
+            max_iter = input_default.get("agent_mode_max_iterations")
+            if max_iter == 0:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has agent_mode_max_iterations=0 "
+                    f"(traditional mode). The agent generator only supports "
+                    f"agent mode (set to -1 for infinite or a positive "
+                    f"number for bounded iterations)."
+                )
+                valid = False
+
             has_tools = any(
                 link.get("source_id") == node_id
                 and link.get("source_name") == "tools"
