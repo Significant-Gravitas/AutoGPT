@@ -81,7 +81,7 @@ jobs:
         working-directory: autogpt_platform/backend
         run: poetry run prisma generate && poetry run gen-prisma-stub
 
-      - name: Set up Frontend - Export OpenAPI schema
+      - name: Set up Frontend - Export OpenAPI schema from Backend
         working-directory: autogpt_platform/backend
         run: poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
 
@@ -193,7 +193,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/e2e_test_data.sql
-          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-frontend-ci.yml') }}
+          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
 
       - name: Set up Platform - Start Supabase DB + Auth
         run: |
