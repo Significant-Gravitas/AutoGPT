@@ -165,6 +165,7 @@ class AutoPilotBlock(Block):
                 ),
             ],
             test_mock={
+                "create_session": lambda *args, **kwargs: "test-session-id",
                 "execute_copilot": lambda *args, **kwargs: (
                     "You have 2 agents: Agent A and Agent B.",
                     [],
@@ -178,6 +179,13 @@ class AutoPilotBlock(Block):
                 ),
             },
         )
+
+    async def create_session(self, user_id: str) -> str:
+        """Create a new chat session and return its ID (mockable for tests)."""
+        from backend.copilot.model import create_chat_session
+
+        session = await create_chat_session(user_id)
+        return session.session_id
 
     async def execute_copilot(
         self,
@@ -193,7 +201,7 @@ class AutoPilotBlock(Block):
         then let stream_chat_completion_sdk handle everything (session loading,
         message append, lock, transcript, cleanup).
         """
-        from backend.copilot.model import create_chat_session, get_chat_session
+        from backend.copilot.model import get_chat_session
         from backend.copilot.response_model import (
             StreamError,
             StreamTextDelta,
@@ -205,12 +213,6 @@ class AutoPilotBlock(Block):
 
         tokens = _check_recursion(max_recursion_depth)
         try:
-            # Create session if needed — same as the chat API route.
-            # If session_id is provided, stream_chat_completion_sdk loads it.
-            if not session_id:
-                session = await create_chat_session(user_id)
-                session_id = session.session_id
-
             effective_prompt = prompt
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
@@ -292,14 +294,11 @@ class AutoPilotBlock(Block):
             yield "error", "Cannot run autopilot without an authenticated user."
             return
 
-        from backend.copilot.model import create_chat_session
-
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
         sid = input_data.session_id
         if not sid:
-            session = await create_chat_session(execution_context.user_id)
-            sid = session.session_id
+            sid = await self.create_session(execution_context.user_id)
 
         try:
             response, tool_calls, history, _, usage = await self.execute_copilot(
