@@ -71,8 +71,10 @@ class ChatConfig(BaseSettings):
     )
 
     # Rate limiting — token-based limits per day and per week.
-    # Each CoPilot turn consumes ~10-15K tokens (system prompt + tool schemas + response),
-    # so 2.5M daily allows ~170-250 turns/day which is reasonable for normal use.
+    # Per-turn token cost varies with context size: ~10-15K for early turns,
+    # ~30-50K mid-session, up to ~100K pre-compaction. Average across a
+    # session with compaction cycles is ~25-35K tokens/turn, so 2.5M daily
+    # allows ~70-100 turns/day.
     # Checked both at the HTTP layer (routes.py pre-turn) and in the SDK service
     # just before compaction, since context can grow fast with heavy workloads.
     #

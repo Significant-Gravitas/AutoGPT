@@ -147,9 +147,6 @@ async def execute_block(
                     user_id=user_id,
                     cost=cost,
                     metadata=UsageTransactionMetadata(
-                        graph_exec_id=synthetic_graph_id,
-                        graph_id=synthetic_graph_id,
-                        node_id=synthetic_node_id,
                         node_exec_id=node_exec_id,
                         block_id=block_id,
                         block=block.name,
