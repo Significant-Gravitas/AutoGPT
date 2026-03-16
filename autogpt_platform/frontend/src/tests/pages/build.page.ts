@@ -1,12 +1,6 @@
 import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-export interface Block {
-  id: string;
-  name: string;
-  description: string;
-}
-
 export class BuildPage extends BasePage {
   constructor(page: Page) {
     super(page);

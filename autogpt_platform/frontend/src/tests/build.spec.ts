@@ -104,8 +104,6 @@ test.describe("Builder", () => {
   // --- Run agent test ---
 
   test("user can run an agent from the builder", async () => {
-    test.setTimeout(60000);
-
     await buildPage.addBlockByClick("Store Value");
     await buildPage.waitForNodeOnCanvas(1);
 
