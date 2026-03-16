@@ -52,7 +52,7 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| prompt | The task or instruction for the copilot to execute. The copilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | No |
+| prompt | The task or instruction for the copilot to execute. The copilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | Yes |
 | system_context | Optional additional context prepended to the prompt. Use this to constrain copilot behavior, provide domain context, or set output format requirements. | str | No |
 | session_id | Session ID to continue an existing copilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
 | timeout | Maximum execution time in seconds. Copilot tasks can involve multiple tool calls and may take a while. Set appropriately for your task complexity. | int | No |

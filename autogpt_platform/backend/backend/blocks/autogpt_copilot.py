@@ -40,7 +40,6 @@ class AutogptCopilotBlock(Block):
                 "workspace files, web fetch, block execution, and more."
             ),
             placeholder="Find my agents and list them",
-            default="",
             advanced=False,
         )
 
