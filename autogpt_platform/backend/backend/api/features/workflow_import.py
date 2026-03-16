@@ -29,9 +29,11 @@ class ImportWorkflowRequest(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def check_exactly_one_source(self) -> "ImportWorkflowRequest":
-        if not self.workflow_json and not self.template_url:
+        has_json = self.workflow_json is not None
+        has_url = self.template_url is not None
+        if not has_json and not has_url:
             raise ValueError("Provide either 'workflow_json' or 'template_url'")
-        if self.workflow_json and self.template_url:
+        if has_json and has_url:
             raise ValueError(
                 "Provide only one of 'workflow_json' or 'template_url', not both"
             )
@@ -89,7 +91,13 @@ async def import_competitor_workflow(
     desc = describe_workflow(workflow_json, fmt)
 
     # Step 4: Convert to AutoGPT agent
-    agent_json, conversion_notes = await convert_competitor_workflow(desc)
+    try:
+        agent_json, conversion_notes = await convert_competitor_workflow(desc)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Workflow conversion failed: {e}",
+        ) from e
 
     # Step 5: Optionally save
     graph_id = None

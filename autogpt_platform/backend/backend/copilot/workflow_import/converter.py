@@ -168,8 +168,13 @@ async def convert_competitor_workflow(
         content = raw_content.strip()
         if content.startswith("```"):
             lines = content.split("\n")
-            # Remove first line (```json) and last line (```)
-            lines = [line for line in lines[1:] if line.strip() != "```"]
+            # Remove opening fence line (e.g. ```json)
+            lines = lines[1:]
+            # Find closing fence and truncate everything after it
+            for idx, line in enumerate(lines):
+                if line.strip() == "```":
+                    lines = lines[:idx]
+                    break
             content = "\n".join(lines)
 
         try:
