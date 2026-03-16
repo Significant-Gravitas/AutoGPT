@@ -7,6 +7,7 @@ from typing import Any
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    SMART_DECISION_MAKER_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     generate_uuid,
@@ -1630,6 +1631,47 @@ class AgentFixer:
 
         return agent
 
+    def fix_smart_decision_maker_blocks(self, agent: AgentDict) -> AgentDict:
+        """Fix SmartDecisionMakerBlock nodes to ensure agent-mode defaults.
+
+        Ensures:
+        1. ``agent_mode_max_iterations`` defaults to ``-1`` (infinite agent mode)
+        2. ``conversation_compaction`` defaults to ``True``
+        3. ``retry`` defaults to ``3``
+        4. ``multiple_tool_calls`` defaults to ``False``
+
+        Args:
+            agent: The agent dictionary to fix
+
+        Returns:
+            The fixed agent dictionary
+        """
+        nodes = agent.get("nodes", [])
+
+        _DEFAULTS: dict[str, object] = {
+            "agent_mode_max_iterations": -1,
+            "conversation_compaction": True,
+            "retry": 3,
+            "multiple_tool_calls": False,
+        }
+
+        for node in nodes:
+            if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            input_default = node.setdefault("input_default", {})
+
+            for field, default_value in _DEFAULTS.items():
+                if field not in input_default:
+                    input_default[field] = default_value
+                    self.add_fix_log(
+                        f"SmartDecisionMakerBlock {node_id}: "
+                        f"Set {field}={default_value!r}"
+                    )
+
+        return agent
+
     def fix_dynamic_block_sink_names(self, agent: AgentDict) -> AgentDict:
         """Fix links that use _#_ notation for dynamic block sink names.
 
@@ -1716,6 +1758,9 @@ class AgentFixer:
 
         # Apply fixes for MCPToolBlock nodes
         agent = self.fix_mcp_tool_blocks(agent)
+
+        # Apply fixes for SmartDecisionMakerBlock nodes (agent-mode defaults)
+        agent = self.fix_smart_decision_maker_blocks(agent)
 
         # Apply fixes for AgentExecutorBlock nodes (sub-agents)
         if library_agents:

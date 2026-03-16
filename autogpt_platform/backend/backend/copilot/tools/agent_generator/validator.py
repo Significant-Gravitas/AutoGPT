@@ -10,6 +10,7 @@ from .helpers import (
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    SMART_DECISION_MAKER_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     get_defined_property_type,
@@ -809,6 +810,44 @@ class AgentValidator:
 
         return valid
 
+    def validate_smart_decision_maker_blocks(self, agent: AgentDict) -> bool:
+        """Validate that SmartDecisionMakerBlock nodes have downstream tools.
+
+        Checks that each SmartDecisionMakerBlock node has at least one link
+        with ``source_name == "tools"`` connecting to a downstream block.
+        Without tools, the block has nothing to call and will error at runtime.
+
+        Returns True if all SmartDecisionMakerBlock nodes are valid.
+        """
+        valid = True
+        nodes = agent.get("nodes", [])
+        links = agent.get("links", [])
+
+        for node in nodes:
+            if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            customized_name = (node.get("metadata") or {}).get(
+                "customized_name", node_id
+            )
+
+            has_tools = any(
+                link.get("source_id") == node_id and link.get("source_name") == "tools"
+                for link in links
+            )
+
+            if not has_tools:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has no downstream tool blocks connected. "
+                    f"Connect at least one block to its 'tools' output so "
+                    f"the AI has tools to call."
+                )
+                valid = False
+
+        return valid
+
     def validate_mcp_tool_blocks(self, agent: AgentDict) -> bool:
         """Validate that MCPToolBlock nodes have required fields.
 
@@ -912,6 +951,10 @@ class AgentValidator:
             (
                 "MCP tool blocks",
                 self.validate_mcp_tool_blocks(agent),
+            ),
+            (
+                "SmartDecisionMaker blocks",
+                self.validate_smart_decision_maker_blocks(agent),
             ),
         ]
 
