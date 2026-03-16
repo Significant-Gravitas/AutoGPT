@@ -13,6 +13,7 @@ import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
@@ -59,6 +60,8 @@ export function useCopilotPage() {
     hasActiveStream,
     refetchSession,
   });
+
+  useCopilotNotifications(sessionId);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =

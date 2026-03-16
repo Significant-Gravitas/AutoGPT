@@ -53,6 +53,8 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
@@ -127,6 +129,7 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    is_processing: bool
 
 
 class ListSessionsResponse(BaseModel):
@@ -185,6 +188,28 @@ async def list_sessions(
     """
     sessions, total_count = await get_user_sessions(user_id, limit, offset)
 
+    # Batch-check Redis for active stream status on each session
+    processing_set: set[str] = set()
+    if sessions:
+        try:
+            redis = await get_redis_async()
+            pipe = redis.pipeline(transaction=False)
+            for session in sessions:
+                pipe.hget(
+                    f"{config.session_meta_prefix}{session.session_id}",
+                    "status",
+                )
+            statuses = await pipe.execute()
+            processing_set = {
+                session.session_id
+                for session, st in zip(sessions, statuses)
+                if st == "running"
+            }
+        except Exception:
+            logger.warning(
+                "Failed to fetch processing status from Redis; " "defaulting to empty"
+            )
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -192,6 +217,7 @@ async def list_sessions(
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
                 title=session.title,
+                is_processing=session.session_id in processing_set,
             )
             for session in sessions
         ],
@@ -826,6 +852,36 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
+
+
+# ========== Suggested Prompts ==========
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts."""
+
+    prompts: list[str]
+
+
+@router.get(
+    "/suggested-prompts",
+    dependencies=[Security(auth.requires_user)],
+)
+async def get_suggested_prompts(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> SuggestedPromptsResponse:
+    """
+    Get LLM-generated suggested prompts for the authenticated user.
+
+    Returns personalized quick-action prompts based on the user's
+    business understanding. Returns an empty list if no custom prompts
+    are available.
+    """
+    understanding = await get_business_understanding(user_id)
+    if understanding is None:
+        return SuggestedPromptsResponse(prompts=[])
+
+    return SuggestedPromptsResponse(prompts=understanding.suggested_prompts)
 
 
 # ========== Configuration ==========
