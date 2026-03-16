@@ -165,10 +165,10 @@ export function getAnimationText(part: {
       if (isRunBlockReviewRequiredOutput(output)) {
         return `Review needed for "${output.block_name}"`;
       }
-      return "Step failed";
+      return "Action failed";
     }
     case "output-error":
-      return "Step failed";
+      return "Action failed";
     default:
       return "Running";
   }

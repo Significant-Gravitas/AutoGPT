@@ -41,7 +41,7 @@ export function getAnimationText(part: FindBlockToolPart): string {
     }
 
     case "output-error":
-      return `Search failed${queryText}`;
+      return `Search failed${query ? ` for "${query}"` : ""}`;
 
     default:
       return "Searching for actions";

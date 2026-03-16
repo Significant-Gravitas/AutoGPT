@@ -154,7 +154,10 @@ export function humanizeFileName(filePath: string): string {
     .replace(/[_-]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    .map((w) => {
+      if (w === w.toUpperCase()) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
   return `"${words.join(" ")}"`;
 }
 
