@@ -7,9 +7,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { parseAsString, useQueryState } from "nuqs";
-import { getSessionListParams, isNonManualSessionStartType } from "./helpers";
+import { getSessionListParams } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { useCallbackToken } from "./useCallbackToken";
 import { useChatSession } from "./useChatSession";
@@ -20,13 +18,8 @@ import { useTitlePolling } from "./useTitlePolling";
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
-  const [showAutopilot, setShowAutopilot] = useQueryState(
-    "showAutopilot",
-    parseAsString,
-  );
   const queryClient = useQueryClient();
-  const showAutopilotHistory = showAutopilot === "1";
-  const listSessionsParams = getSessionListParams(showAutopilotHistory);
+  const listSessionsParams = getSessionListParams();
 
   const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
     useCopilotUIStore();
@@ -34,7 +27,6 @@ export function useCopilotPage() {
   const {
     sessionId,
     setSessionId,
-    sessionStartType,
     hydratedMessages,
     hasActiveStream,
     isLoadingSession: isLoadingCurrentSession,
@@ -94,22 +86,8 @@ export function useCopilotPage() {
   const { isConsumingCallbackToken } = useCallbackToken({
     isLoggedIn,
     onConsumed: setSessionId,
-    onClearAutopilot() {
-      void setShowAutopilot(null);
-    },
+    onClearAutopilot() {},
   });
-
-  useEffect(() => {
-    if (
-      !sessionId ||
-      showAutopilot !== null ||
-      !isNonManualSessionStartType(sessionStartType)
-    ) {
-      return;
-    }
-
-    setShowAutopilot("1");
-  }, [sessionId, sessionStartType, setShowAutopilot, showAutopilot]);
 
   const { isUploadingFiles, onSend } = useFileUpload({
     createSession,
@@ -130,7 +108,6 @@ export function useCopilotPage() {
   useTitlePolling({
     isReconnecting,
     sessionId,
-    showAutopilotHistory,
     status,
   });
 
@@ -155,10 +132,6 @@ export function useCopilotPage() {
   function handleNewChat() {
     setSessionId(null);
     if (isMobile) setDrawerOpen(false);
-  }
-
-  function handleToggleAutopilotHistory() {
-    setShowAutopilot(showAutopilotHistory ? null : "1");
   }
 
   // --- Delete handlers ---
@@ -197,10 +170,8 @@ export function useCopilotPage() {
     // Mobile drawer
     isMobile,
     isDrawerOpen,
-    showAutopilotHistory,
     sessions,
     isLoadingSessions,
-    handleToggleAutopilotHistory,
     handleOpenDrawer,
     handleCloseDrawer,
     handleDrawerOpenChange,

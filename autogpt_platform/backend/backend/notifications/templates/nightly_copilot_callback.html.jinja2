@@ -1,17 +1,17 @@
 <div style="font-family: 'Poppins', sans-serif; color: #1F1F20;">
   <!-- Header -->
   <h2
-    style="font-size: 24px; line-height: 130%; font-weight: 600; margin-top: 0; margin-bottom: 8px; color: #1F1F20;">
+    style="font-size: 24px; line-height: 130%; font-weight: 700; margin-top: 0; margin-bottom: 8px; color: #1F1F20; letter-spacing: -0.5px;">
     Autopilot picked up where you left off
   </h2>
-  <p style="font-size: 14px; line-height: 165%; margin-top: 0; margin-bottom: 24px; color: #505057;">
+  <p style="font-size: 14px; line-height: 165%; margin-top: 0; margin-bottom: 28px; color: #505057;">
     We used your recent Copilot activity to prepare a concrete follow-up for you.
   </p>
 
   <!-- Divider -->
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 28px;">
     <tr>
-      <td style="border-top: 1px solid #E5E7EB; font-size: 0; line-height: 0; height: 1px;">&nbsp;</td>
+      <td style="border-top: 1px solid #E8E5F0; font-size: 0; line-height: 0; height: 1px;">&nbsp;</td>
     </tr>
   </table>
 
@@ -20,22 +20,22 @@
 
   {% if approval_summary_html %}
   <!-- Approval Callout -->
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 24px; margin-bottom: 8px;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 28px; margin-bottom: 8px;">
     <tr>
-      <td
-        style="background-color: #F1EBFE; border: 1px solid #C0A1FA; border-radius: 12px; padding: 20px 24px;">
+      <td bgcolor="#FFF3E6"
+        style="background-color: #FFF3E6; border-left: 4px solid #FE8700; border-radius: 12px; padding: 20px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="padding-bottom: 12px;">
+            <td style="padding: 0 0 12px 0;">
               <span
-                style="display: inline-block; background-color: #7733F5; color: #FFFFFF; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px;">
+                style="display: inline-block; background-color: #FE8700; color: #FFFFFF; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px;">
                 Approval needed
               </span>
             </td>
           </tr>
         </table>
         {{ approval_summary_html|safe }}
-        <p style="font-size: 14px; line-height: 165%; margin-top: 0; margin-bottom: 0; color: #505057;">
+        <p style="font-size: 14px; line-height: 165%; margin-top: 8px; margin-bottom: 0; color: #505057;">
           I thought this was a good idea. If you want it to happen, please hit approve.
         </p>
       </td>
@@ -44,22 +44,14 @@
   {% endif %}
 
   <!-- CTA Button -->
-  <table cellpadding="0" cellspacing="0" border="0" style="margin-top: 28px;">
+  <table cellpadding="0" cellspacing="0" border="0" style="margin-top: 32px;">
     <tr>
-      <td align="center"
-        style="background-color: #7733F5; border-radius: 999px; mso-padding-alt: 14px 28px;">
-        <!--[if mso]>
-        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ cta_url }}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="50%" fillcolor="#7733F5" stroke="f">
-          <w:anchorlock/>
-          <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:600;">{{ cta_label }}</center>
-        </v:roundrect>
-        <![endif]-->
-        <!--[if !mso]><!-->
+      <td align="center" bgcolor="#7733F5"
+        style="background-color: #7733F5; border-radius: 12px;">
         <a href="{{ cta_url }}"
-          style="display: inline-block; padding: 14px 28px; background-color: #7733F5; color: #FFFFFF; text-decoration: none; font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 15px; border-radius: 999px; line-height: 1;">
+          style="display: inline-block; padding: 16px 36px; background-color: #7733F5; color: #FFFFFF; text-decoration: none; font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 16px; border-radius: 12px; line-height: 1;">
           {{ cta_label }}
         </a>
-        <!--<![endif]-->
       </td>
     </tr>
   </table>

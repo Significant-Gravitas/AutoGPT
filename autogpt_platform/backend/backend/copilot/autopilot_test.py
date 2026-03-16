@@ -772,6 +772,135 @@ async def test_send_nightly_copilot_emails_sends_and_marks_sent(mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_nightly_copilot_emails_uses_email_title_for_session_title(
+    mocker,
+) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report(
+        email_title="Autopilot update",
+        email_body="Useful update",
+    )
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
+    )
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.stream_registry.get_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
+        new_callable=AsyncMock,
+        return_value=(0, None),
+    )
+    update_title = mocker.patch(
+        "backend.copilot.autopilot_email.update_session_title",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    generate_title = mocker.patch(
+        "backend.copilot.autopilot_email._generate_session_title",
+        new_callable=AsyncMock,
+    )
+    send_email = mocker.patch(
+        "backend.copilot.autopilot_email._send_completion_email",
+        new_callable=AsyncMock,
+    )
+    upsert = mocker.patch(
+        "backend.copilot.autopilot_email.upsert_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    processed = await send_nightly_copilot_emails()
+
+    assert processed == 1
+    assert session.title == "Autopilot update"
+    update_title.assert_awaited_once_with(
+        session.session_id,
+        session.user_id,
+        "Autopilot update",
+        only_if_empty=True,
+    )
+    generate_title.assert_not_awaited()
+    send_email.assert_awaited_once_with(session)
+    upsert.assert_awaited_once_with(session)
+
+
+@pytest.mark.asyncio
+async def test_send_nightly_copilot_emails_generates_session_title_when_missing(
+    mocker,
+) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report(email_body="Useful update")
+    session.completion_report = session.completion_report.model_copy(
+        update={"email_title": None}
+    )
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
+    )
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.stream_registry.get_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
+        new_callable=AsyncMock,
+        return_value=(0, None),
+    )
+    update_title = mocker.patch(
+        "backend.copilot.autopilot_email.update_session_title",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    generate_title = mocker.patch(
+        "backend.copilot.autopilot_email._generate_session_title",
+        new_callable=AsyncMock,
+        return_value="Generated title",
+    )
+    send_email = mocker.patch(
+        "backend.copilot.autopilot_email._send_completion_email",
+        new_callable=AsyncMock,
+    )
+    upsert = mocker.patch(
+        "backend.copilot.autopilot_email.upsert_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    processed = await send_nightly_copilot_emails()
+
+    assert processed == 1
+    assert session.title == "Generated title"
+    generate_title.assert_awaited_once_with(
+        "Useful update",
+        user_id=session.user_id,
+        session_id=session.session_id,
+    )
+    update_title.assert_awaited_once_with(
+        session.session_id,
+        session.user_id,
+        "Generated title",
+        only_if_empty=True,
+    )
+    send_email.assert_awaited_once_with(session)
+    upsert.assert_awaited_once_with(session)
+
+
+@pytest.mark.asyncio
 async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) -> None:
     session = _build_autopilot_session()
     session.completion_report = StoredCompletionReport(

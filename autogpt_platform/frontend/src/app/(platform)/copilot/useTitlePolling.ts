@@ -12,14 +12,12 @@ const TITLE_POLL_MAX_ATTEMPTS = 5;
 interface Props {
   isReconnecting: boolean;
   sessionId: string | null;
-  showAutopilotHistory: boolean;
   status: string;
 }
 
 export function useTitlePolling({
   isReconnecting,
   sessionId,
-  showAutopilotHistory,
   status,
 }: Props) {
   const queryClient = useQueryClient();
@@ -37,7 +35,7 @@ export function useTitlePolling({
       return;
     }
 
-    const params = getSessionListParams(showAutopilotHistory);
+    const params = getSessionListParams();
     const queryKey = getGetV2ListSessionsQueryKey(params);
     let attempts = 0;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -74,5 +72,5 @@ export function useTitlePolling({
         clearTimeout(timeoutId);
       }
     };
-  }, [isReconnecting, queryClient, sessionId, showAutopilotHistory, status]);
+  }, [isReconnecting, queryClient, sessionId, status]);
 }

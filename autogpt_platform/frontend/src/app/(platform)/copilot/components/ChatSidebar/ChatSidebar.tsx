@@ -38,12 +38,7 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const [showAutopilot, setShowAutopilot] = useQueryState(
-    "showAutopilot",
-    parseAsString,
-  );
-  const showAutopilotHistory = showAutopilot === "1";
-  const listSessionsParams = getSessionListParams(showAutopilotHistory);
+  const listSessionsParams = getSessionListParams();
   const {
     sessionToDelete,
     setSessionToDelete,
@@ -140,10 +135,6 @@ export function ChatSidebar() {
 
   function handleSelectSession(id: string) {
     setSessionId(id);
-  }
-
-  function handleToggleAutopilotHistory() {
-    setShowAutopilot(showAutopilotHistory ? null : "1");
   }
 
   function handleRenameClick(
@@ -245,19 +236,6 @@ export function ChatSidebar() {
                     <SidebarTrigger />
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <Text variant="small" className="text-neutral-400">
-                  Inspect autopilot sessions
-                </Text>
-                <Button
-                  variant={showAutopilotHistory ? "primary" : "secondary"}
-                  size="small"
-                  onClick={handleToggleAutopilotHistory}
-                  className="min-w-0 px-3 text-xs"
-                >
-                  {showAutopilotHistory ? "Hide" : "Show"}
-                </Button>
               </div>
               {sessionId ? (
                 <Button

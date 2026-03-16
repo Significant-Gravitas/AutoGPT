@@ -1,5 +1,4 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import {
@@ -16,11 +15,9 @@ import { SessionListItem } from "../SessionListItem/SessionListItem";
 
 interface Props {
   isOpen: boolean;
-  showAutopilotHistory: boolean;
   sessions: SessionSummaryResponse[];
   currentSessionId: string | null;
   isLoading: boolean;
-  onToggleAutopilotHistory: () => void;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onClose: () => void;
@@ -29,11 +26,9 @@ interface Props {
 
 export function MobileDrawer({
   isOpen,
-  showAutopilotHistory,
   sessions,
   currentSessionId,
   isLoading,
-  onToggleAutopilotHistory,
   onSelectSession,
   onNewChat,
   onClose,
@@ -81,19 +76,6 @@ export function MobileDrawer({
                   <X width="1rem" height="1rem" />
                 </Button>
               </div>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <Text variant="small" className="text-neutral-400">
-                Inspect autopilot sessions
-              </Text>
-              <Button
-                variant={showAutopilotHistory ? "primary" : "secondary"}
-                size="small"
-                onClick={onToggleAutopilotHistory}
-                className="min-w-0 px-3 text-xs"
-              >
-                {showAutopilotHistory ? "Hide" : "Show"}
-              </Button>
             </div>
             {currentSessionId ? (
               <div className="mt-2">

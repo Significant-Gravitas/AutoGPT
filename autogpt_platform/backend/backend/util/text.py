@@ -90,6 +90,9 @@ class TextFormatter:
             "p",
             "span",
             "strong",
+            "table",
+            "td",
+            "tr",
             "u",
             "ul",
         ]
@@ -99,6 +102,15 @@ class TextFormatter:
             "*": ["class", "style"],
             "a": ["href"],
             "img": ["src"],
+            "table": [
+                "align",
+                "border",
+                "cellpadding",
+                "cellspacing",
+                "role",
+                "width",
+            ],
+            "td": ["align", "bgcolor", "colspan", "height", "valign", "width"],
         }
 
     def format_string(self, template_str: str, values=None, **kwargs) -> str:

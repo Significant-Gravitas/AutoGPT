@@ -18,7 +18,13 @@ from backend.copilot.autopilot_prompts import (
     AUTOPILOT_NIGHTLY_EMAIL_TEMPLATE,
     MAX_COMPLETION_REPORT_REPAIRS,
 )
-from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    get_chat_session,
+    update_session_title,
+    upsert_chat_session,
+)
+from backend.copilot.service import _generate_session_title
 from backend.copilot.session_types import ChatSessionStartType
 from backend.data.db_accessors import chat_db, user_db
 from backend.notifications.email import EmailSender
@@ -106,6 +112,38 @@ class PendingCopilotEmailSweepResult(BaseModel):
     repair_queued_count: int = 0
     running_count: int = 0
     failed_count: int = 0
+
+
+async def _ensure_session_title_for_completed_session(session: ChatSession) -> None:
+    if session.title or not session.user_id:
+        return
+
+    report = session.completion_report
+    if report is None:
+        return
+
+    title = report.email_title.strip() if report.email_title else ""
+    if not title:
+        title_seed = report.email_body or report.thoughts
+        if title_seed:
+            generated_title = await _generate_session_title(
+                title_seed,
+                user_id=session.user_id,
+                session_id=session.session_id,
+            )
+            title = generated_title.strip() if generated_title else ""
+
+    if not title:
+        return
+
+    updated = await update_session_title(
+        session.session_id,
+        session.user_id,
+        title,
+        only_if_empty=True,
+    )
+    if updated:
+        session.title = title
 
 
 # --------------- send email --------------- #
@@ -203,6 +241,14 @@ async def _process_pending_copilot_email_candidates(
                     "pending_approval_count": pending_approval_count,
                     "pending_approval_graph_exec_id": graph_exec_id,
                 }
+            )
+
+        try:
+            await _ensure_session_title_for_completed_session(session)
+        except Exception:
+            logger.exception(
+                "Failed to ensure session title for session %s",
+                session.session_id,
             )
 
         if not session.completion_report.should_notify_user:

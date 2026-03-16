@@ -7,12 +7,10 @@ import type { UIMessage } from "ai";
 
 export const COPILOT_SESSION_LIST_LIMIT = 50;
 
-export function getSessionListParams(
-  includeNonManual: boolean,
-): GetV2ListSessionsParams {
+export function getSessionListParams(): GetV2ListSessionsParams {
   return {
     limit: COPILOT_SESSION_LIST_LIMIT,
-    with_auto: includeNonManual,
+    with_auto: true,
   };
 }
 

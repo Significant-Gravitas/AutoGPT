@@ -171,129 +171,93 @@
 
     <table width="100%" align="center" cellspacing="0" cellpadding="0" border="0">
       <tr>
-        <td align="center" valign="top" style="padding: 40px 16px 32px;">
+        <td align="center" valign="top" style="padding: 48px 16px 40px;">
 
-          <!-- Main Card -->
+          <!-- ============ CARD ============ -->
           <table class="container" align="center" width="640" cellpadding="0" cellspacing="0" border="0"
             style="max-width: 640px;">
+
+            <!-- Gradient Accent Strip -->
             <tr>
-              <td>
+              <td bgcolor="#7733F5"
+                style="background: linear-gradient(90deg, #7733F5 0%, #60A5FA 35%, #EC4899 65%, #7733F5 100%); height: 6px; border-radius: 16px 16px 0 0; font-size: 0; line-height: 0;">
+                &nbsp;</td>
+            </tr>
 
-                <!-- Purple Accent Bar -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td
-                      style="background-color: #7733F5; background: linear-gradient(135deg, #7733F5 0%, #925CF7 100%); height: 6px; border-radius: 16px 16px 0 0; font-size: 0; line-height: 0;">
-                      &nbsp;</td>
-                  </tr>
-                </table>
-
-                <!-- Logo Section -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td bgcolor="#FFFFFF" align="center" style="padding: 32px 48px 24px;">
-                      <img
-                        src="https://storage.mlcdn.com/account_image/597379/8QJ8kOjXakVvfe1kJLY2wWCObU1mp5EiDLfBlbQa.png"
-                        border="0" alt="AutoGPT" width="120"
-                        style="max-width: 120px; display: inline-block;">
-                    </td>
-                  </tr>
-                </table>
-
-                <!-- Divider -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td bgcolor="#FFFFFF" style="padding: 0 48px;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td style="border-top: 1px solid #E5E7EB; font-size: 0; line-height: 0; height: 1px;">
-                            &nbsp;</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-
-                <!-- Content Section -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td class="card-inner" bgcolor="#FFFFFF"
-                      style="padding: 32px 48px; color: #1F1F20; font-family: 'Poppins', sans-serif;">
-                      {{data.message|safe}}
-                    </td>
-                  </tr>
-                </table>
-
-                <!-- Community Section -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td class="card-inner" bgcolor="#F9FAFB"
-                      style="padding: 24px 48px; border-radius: 0 0 16px 16px; border-top: 1px solid #E5E7EB;">
-                      <p
-                        style="font-family: 'Poppins', sans-serif; color: #505057; font-size: 14px; line-height: 160%; margin: 0;">
-                        Thank you for being part of the AutoGPT community. Join the conversation on
-                        <a href="https://discord.gg/autogpt"
-                          style="color: #7733F5; text-decoration: underline; font-weight: 500;">Discord</a>
-                        and share your thoughts with us anytime.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-
+            <!-- Logo -->
+            <tr>
+              <td bgcolor="#FFFFFF" align="center" class="card-inner" style="padding: 32px 48px 24px;">
+                <img
+                  src="https://storage.mlcdn.com/account_image/597379/8QJ8kOjXakVvfe1kJLY2wWCObU1mp5EiDLfBlbQa.png"
+                  border="0" alt="AutoGPT" width="120"
+                  style="max-width: 120px; display: inline-block;">
               </td>
             </tr>
+
+            <!-- Divider -->
+            <tr>
+              <td bgcolor="#FFFFFF" class="card-inner" style="padding: 0 48px;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="border-top: 1px solid #E8E5F0; font-size: 0; line-height: 0; height: 1px;">&nbsp;</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+              <td class="card-inner" bgcolor="#FFFFFF"
+                style="padding: 36px 48px 44px; color: #1F1F20; font-family: 'Poppins', sans-serif; border-radius: 0 0 16px 16px;">
+                {{data.message|safe}}
+              </td>
+            </tr>
+
           </table>
+          <!-- ============ END CARD ============ -->
 
           <!-- Spacer -->
           <table width="640" class="container" align="center" cellpadding="0" cellspacing="0" border="0"
             style="max-width: 640px;">
             <tr>
-              <td style="height: 32px; font-size: 0; line-height: 0;">&nbsp;</td>
+              <td style="height: 40px; font-size: 0; line-height: 0;">&nbsp;</td>
             </tr>
           </table>
 
-          <!-- Footer -->
+          <!-- ============ FOOTER ============ -->
           <table class="container" align="center" width="640" cellpadding="0" cellspacing="0" border="0"
             style="max-width: 640px;">
             <tr>
-              <td class="row" style="padding: 0 48px;">
+              <td align="center" style="padding: 0 48px;">
 
-                <!-- Footer Logo + Social Row -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <!-- Logo Text -->
+                <p
+                  style="font-family: 'Poppins', sans-serif; font-size: 22px; font-weight: 700; color: #FFFFFF; margin: 0 0 16px; letter-spacing: -0.5px;">
+                  AutoGPT</p>
+
+                <!-- Social Icons -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
                   <tr>
-                    <td class="col" align="left" valign="middle" width="120">
-                      <img
-                        src="https://storage.mlcdn.com/account_image/597379/8QJ8kOjXakVvfe1kJLY2wWCObU1mp5EiDLfBlbQa.png"
-                        border="0" alt="AutoGPT" width="100"
-                        style="max-width: 100px; display: inline-block; opacity: 0.7;">
+                    <td align="center" valign="middle" style="padding: 0 8px;">
+                      <a href="https://x.com/auto_gpt" target="_blank" style="text-decoration: none;">
+                        <img
+                          src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/x.png"
+                          width="22" alt="X" style="display: block; opacity: 0.6;">
+                      </a>
                     </td>
-                    <td class="col" width="40" height="20" style="line-height: 20px;"></td>
-                    <td class="col mobile-center" align="right" valign="middle">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td align="center" valign="middle" style="padding: 0 6px;">
-                            <a href="https://x.com/auto_gpt" target="_blank" style="text-decoration: none;">
-                              <img
-                                src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/x.png"
-                                width="20" alt="X" style="display: block;">
-                            </a>
-                          </td>
-                          <td align="center" valign="middle" style="padding: 0 6px;">
-                            <a href="https://discord.gg/autogpt" target="_blank" style="text-decoration: none;">
-                              <img
-                                src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/discord.png"
-                                width="20" alt="Discord" style="display: block;">
-                            </a>
-                          </td>
-                          <td align="center" valign="middle" style="padding: 0 6px;">
-                            <a href="https://agpt.co/" target="_blank" style="text-decoration: none;">
-                              <img
-                                src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/website.png"
-                                width="20" alt="Website" style="display: block;">
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
+                    <td align="center" valign="middle" style="padding: 0 8px;">
+                      <a href="https://discord.gg/autogpt" target="_blank" style="text-decoration: none;">
+                        <img
+                          src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/discord.png"
+                          width="22" alt="Discord" style="display: block; opacity: 0.6;">
+                      </a>
+                    </td>
+                    <td align="center" valign="middle" style="padding: 0 8px;">
+                      <a href="https://agpt.co/" target="_blank" style="text-decoration: none;">
+                        <img
+                          src="https://assets.mlcdn.com/ml/images/icons/default/rounded_corners/white/website.png"
+                          width="22" alt="Website" style="display: block; opacity: 0.6;">
+                      </a>
                     </td>
                   </tr>
                 </table>
@@ -308,28 +272,23 @@
                 <!-- Divider -->
                 <table width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td style="border-top: 1px solid rgba(255,255,255,0.1); font-size: 0; line-height: 0; height: 1px;">
+                    <td
+                      style="border-top: 1px solid rgba(255,255,255,0.08); font-size: 0; line-height: 0; height: 1px;">
                       &nbsp;</td>
                   </tr>
                 </table>
 
                 <!-- Footer Text -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="padding-top: 20px;">
-                      <p
-                        style="font-family: 'Poppins', sans-serif; color: rgba(255,255,255,0.4); font-size: 12px; line-height: 160%; margin: 0 0 4px;">
-                        AutoGPT &middot; 3rd Floor 1 Ashley Road, Altrincham, WA14 2DT, United Kingdom
-                      </p>
-                      <p
-                        style="font-family: 'Poppins', sans-serif; color: rgba(255,255,255,0.4); font-size: 12px; line-height: 160%; margin: 0;">
-                        You received this email because you signed up on our website.
-                        <a href="{{data.unsubscribe_link}}"
-                          style="color: rgba(255,255,255,0.5); text-decoration: underline;">Unsubscribe</a>
-                      </p>
-                    </td>
-                  </tr>
-                </table>
+                <p
+                  style="font-family: 'Poppins', sans-serif; color: rgba(255,255,255,0.3); font-size: 12px; line-height: 165%; margin: 16px 0 0; text-align: center;">
+                  AutoGPT &middot; 3rd Floor 1 Ashley Road, Altrincham, WA14 2DT, United Kingdom
+                </p>
+                <p
+                  style="font-family: 'Poppins', sans-serif; color: rgba(255,255,255,0.3); font-size: 12px; line-height: 165%; margin: 4px 0 0; text-align: center;">
+                  You received this email because you signed up on our website.
+                  <a href="{{data.unsubscribe_link}}"
+                    style="color: rgba(255,255,255,0.45); text-decoration: underline;">Unsubscribe</a>
+                </p>
 
               </td>
             </tr>
