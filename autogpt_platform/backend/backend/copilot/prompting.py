@@ -66,13 +66,18 @@ an @@agptfile: expansion), the string will be parsed into the correct type.
 # E2B-only notes — E2B has full internet access so gh CLI works there.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
-### GitHub CLI (`gh`)
-- If the user has connected their GitHub account, the `gh` CLI is
-  pre-authenticated — use it directly without any manual login step.
-- If `gh` fails with an authentication error (e.g. "authentication required"
-  or exit code 4), call `connect_integration(provider="github")` to surface
-  the GitHub credentials setup card so the user can connect their account.
-  Once connected, retry the operation.
+### GitHub CLI (`gh`) and git
+- If the user has connected their GitHub account, both `gh` and `git` are
+  pre-authenticated — use them directly without any manual login step.
+  `git` HTTPS operations (clone, push, pull) work automatically.
+- If `gh` or `git` fails with an authentication error (e.g. "authentication
+  required", "could not read Username", or exit code 128), call
+  `connect_integration(provider="github")` to surface the GitHub credentials
+  setup card so the user can connect their account. Once connected, retry
+  the operation.
+- For operations that need broader access (e.g. private org repos, GitHub
+  Actions), pass the required scopes: e.g.
+  `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
 
 

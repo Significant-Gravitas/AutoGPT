@@ -68,8 +68,11 @@ export function SetupRequirementsCard({
       return v !== undefined && v !== null && v !== "";
     });
 
+  if (hasSent) {
+    return <ContentMessage>Connected. Continuing…</ContentMessage>;
+  }
+
   const canRun =
-    !hasSent &&
     (!needsCredentials || isAllCredentialsComplete) &&
     (!needsInputs || isAllInputsComplete);
 

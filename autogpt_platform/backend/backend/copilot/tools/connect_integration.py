@@ -25,6 +25,7 @@ from .base import BaseTool
 class _ProviderInfo(TypedDict):
     name: str
     types: list[str]
+    # Default OAuth scopes requested when the agent doesn't specify any.
     scopes: list[str]
 
 
@@ -63,7 +64,9 @@ def _get_provider_info() -> dict[str, _ProviderInfo]:
             "types": (
                 ["api_key", "oauth2"] if _is_github_oauth_configured() else ["api_key"]
             ),
-            "scopes": [],
+            # Default: repo scope covers clone/push/pull for public and private repos.
+            # Agent can request additional scopes (e.g. "read:org") via the scopes param.
+            "scopes": ["repo"],
         },
     }
 
@@ -108,6 +111,17 @@ class ConnectIntegrationTool(BaseTool):
                     ),
                     "maxLength": 500,
                 },
+                "scopes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "OAuth scopes to request. Omit to use the provider default. "
+                        "Add extra scopes when you need more access — e.g. for GitHub: "
+                        "'repo' (clone/push/pull), 'read:org' (org membership), "
+                        "'workflow' (GitHub Actions). "
+                        "Requesting only the scopes you actually need is best practice."
+                    ),
+                },
             },
             "required": ["provider"],
         }
@@ -131,6 +145,9 @@ class ConnectIntegrationTool(BaseTool):
         reason: str = (kwargs.get("reason") or "").strip()[
             :500
         ]  # cap LLM-controlled text
+        extra_scopes: list[str] = [
+            str(s).strip() for s in (kwargs.get("scopes") or []) if str(s).strip()
+        ]
 
         provider_info = _get_provider_info()
         info = provider_info.get(provider)
@@ -147,7 +164,14 @@ class ConnectIntegrationTool(BaseTool):
 
         provider_name: str = info["name"]
         supported_types: list[str] = info["types"]
-        scopes: list[str] = info["scopes"]
+        # Merge agent-requested scopes with provider defaults (deduplicated, order preserved).
+        default_scopes: list[str] = info["scopes"]
+        seen: set[str] = set()
+        scopes: list[str] = []
+        for s in default_scopes + extra_scopes:
+            if s not in seen:
+                seen.add(s)
+                scopes.append(s)
         field_key = f"{provider}_credentials"
 
         message_parts = [

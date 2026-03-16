@@ -151,6 +151,13 @@ class BashExecTool(BaseTool):
             integration_env = await get_integration_env_vars(user_id)
             envs.update(integration_env)
 
+        # When GH_TOKEN is available, lazily configure git to use the gh credential
+        # helper so that git HTTPS operations (clone/push/pull) are authenticated.
+        # gh auth setup-git is idempotent (writes ~/.gitconfig) — safe to run every
+        # time; failure is non-fatal (best-effort, logged at debug level only).
+        if envs.get("GH_TOKEN"):
+            command = "gh auth setup-git 2>/dev/null || true; " + command
+
         try:
             result = await sandbox.commands.run(
                 f"bash -c {shlex.quote(command)}",

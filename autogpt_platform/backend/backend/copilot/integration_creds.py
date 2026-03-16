@@ -109,8 +109,14 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
         return None
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
+    # Sort so broader-scoped tokens come first: a token with "repo" scope covers
+    # full git access, while a public-data-only token lacks push/pull permission.
     # lock=False — background injection; not worth a distributed lock acquisition.
-    for creds in creds_list:
+    oauth2_creds = sorted(
+        [c for c in creds_list if c.type == "oauth2"],
+        key=lambda c: 0 if "repo" in (cast(OAuth2Credentials, c).scopes or []) else 1,
+    )
+    for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
                 fresh = await manager.refresh_if_needed(
