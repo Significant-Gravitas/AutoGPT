@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -187,6 +187,23 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
 }: Props) {
+  // Hide the container for one frame when messages first load so
+  // StickToBottom can scroll to the bottom before the user sees it.
+  const [settled, setSettled] = useState(false);
+  const [prevSessionID, setPrevSessionID] = useState(sessionID);
+  if (sessionID !== prevSessionID) {
+    setPrevSessionID(sessionID);
+    if (settled) setSettled(false);
+  }
+  const messagesReady = messages.length > 0 || !isLoading;
+  useEffect(() => {
+    if (settled || !messagesReady) return;
+    const raf = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(raf);
+  }, [settled, messagesReady]);
+  // opacity-0 only during the single frame between messages arriving and scroll settling
+  const hideForScroll = messagesReady && !settled;
+
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
@@ -215,8 +232,16 @@ export function ChatMessagesContainer({
     status === "submitted" || (status === "streaming" && !hasInflight);
 
   return (
-    <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+    <Conversation
+      key={sessionID ?? "new"}
+      className={
+        "min-h-0 flex-1 " +
+        (hideForScroll
+          ? "opacity-0"
+          : "opacity-100 transition-opacity duration-100 ease-out")
+      }
+    >
+      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
         <ScrollPreserver messageCount={messages.length} />
         {hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
@@ -227,10 +252,7 @@ export function ChatMessagesContainer({
         )}
         {headerSlot}
         {isLoading && messages.length === 0 && (
-          <div
-            className="flex flex-1 items-center justify-center"
-            style={{ minHeight: "calc(100vh - 12rem)" }}
-          >
+          <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
