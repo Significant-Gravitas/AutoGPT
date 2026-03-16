@@ -17,6 +17,14 @@ if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
 
 
+class ToolCallEntry(TypedDict):
+    toolCallId: str
+    toolName: str
+    input: object
+    output: object | None
+    success: bool | None
+
+
 class TokenUsage(TypedDict):
     promptTokens: int
     completionTokens: int
@@ -108,7 +116,7 @@ class AutoPilotBlock(Block):
         response: str = SchemaField(
             description="The final text response from the autopilot."
         )
-        tool_calls: list[dict] = SchemaField(
+        tool_calls: list[ToolCallEntry] = SchemaField(
             description=(
                 "List of tools called during execution. Each entry has "
                 "toolCallId, toolName, input, output, and success fields."
@@ -201,7 +209,7 @@ class AutoPilotBlock(Block):
         session_id: str,
         max_recursion_depth: int,
         user_id: str,
-    ) -> tuple[str, list[dict], str, str, TokenUsage]:
+    ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot and collect all stream results.
 
         Follows the same path as the normal copilot: create session if needed,
@@ -229,8 +237,8 @@ class AutoPilotBlock(Block):
             # so all session management (lock, persist, transcript) is handled
             # by the SDK's own finally block.
             response_parts: list[str] = []
-            tool_calls: list[dict] = []
-            tool_calls_by_id: dict[str, dict] = {}
+            tool_calls: list[ToolCallEntry] = []
+            tool_calls_by_id: dict[str, ToolCallEntry] = {}
             total_usage: TokenUsage = {
                 "promptTokens": 0,
                 "completionTokens": 0,
@@ -246,7 +254,7 @@ class AutoPilotBlock(Block):
                 if isinstance(event, StreamTextDelta):
                     response_parts.append(event.delta)
                 elif isinstance(event, StreamToolInputAvailable):
-                    entry = {
+                    entry: ToolCallEntry = {
                         "toolCallId": event.toolCallId,
                         "toolName": event.toolName,
                         "input": event.input,
