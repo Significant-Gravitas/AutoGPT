@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies to populate cache
         run: pnpm install --frozen-lockfile
 
-  types:
+  check-api-types:
     name: check API types
     runs-on: ubuntu-latest
     needs: setup
@@ -59,6 +59,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Set up Backend - Install Poetry
+        working-directory: autogpt_platform/backend
+        run: |
+          POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Installing Poetry version ${POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
       - name: Set up Backend - Set up dependency cache
         uses: actions/cache@v5
