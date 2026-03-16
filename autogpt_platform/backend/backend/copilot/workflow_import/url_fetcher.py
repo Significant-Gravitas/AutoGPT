@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Any
 
-from backend.util.request import Requests
+from backend.util.request import HTTPClientError, Requests
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,11 @@ async def fetch_n8n_template(url: str) -> dict[str, Any]:
     try:
         response = await client.get(api_url)
         data = response.json()
+    except HTTPClientError as e:
+        # 4xx from n8n API (e.g. 404 template not found) → bad user input
+        raise ValueError(
+            f"n8n template {template_id} not found or inaccessible: {e}"
+        ) from e
     except Exception as e:
         raise RuntimeError(f"Failed to fetch n8n template {template_id}: {e}") from e
 
