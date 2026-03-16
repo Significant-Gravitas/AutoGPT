@@ -292,11 +292,20 @@ class AutoPilotBlock(Block):
             yield "error", "Cannot run autopilot without an authenticated user."
             return
 
+        from backend.copilot.model import create_chat_session
+
+        # Create session eagerly so the user always gets the session_id,
+        # even if the downstream stream fails (avoids orphaned sessions).
+        sid = input_data.session_id
+        if not sid:
+            session = await create_chat_session(execution_context.user_id)
+            sid = session.session_id
+
         try:
-            response, tool_calls, history, sid, usage = await self.execute_copilot(
+            response, tool_calls, history, _, usage = await self.execute_copilot(
                 prompt=input_data.prompt,
                 system_context=input_data.system_context,
-                session_id=input_data.session_id,
+                session_id=sid,
                 max_recursion_depth=input_data.max_recursion_depth,
                 user_id=execution_context.user_id,
             )
@@ -307,4 +316,5 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "token_usage", usage
         except Exception as e:
+            yield "session_id", sid
             yield "error", str(e)
