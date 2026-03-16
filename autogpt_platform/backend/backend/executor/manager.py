@@ -1912,9 +1912,8 @@ class ExecutionManager(AppProcess):
             channel = client.get_channel()
             channel.connection.add_callback_threadsafe(lambda: channel.stop_consuming())
 
-            try:
-                thread.join(timeout=300)
-            except TimeoutError:
+            thread.join(timeout=300)
+            if thread.is_alive():
                 logger.warning(
                     f"{prefix} ⚠️ Run thread did not finish in time, forcing disconnect"
                 )
