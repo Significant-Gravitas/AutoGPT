@@ -428,7 +428,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Mail Delete Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-delete-inbox-thread) | Permanently delete a conversation thread and all its messages |
 | [Agent Mail Delete List Entry](block-integrations/agent_mail/lists.md#agent-mail-delete-list-entry) | Remove an email address or domain from an allow/block list to stop filtering it |
 | [Agent Mail Delete Pod](block-integrations/agent_mail/pods.md#agent-mail-delete-pod) | Permanently delete a pod |
-| [Agent Mail Forward Message](block-integrations/agent_mail/messages.md#agent-mail-forward-message) | Forward an email message to a new recipient |
+| [Agent Mail Forward Message](block-integrations/agent_mail/messages.md#agent-mail-forward-message) | Forward an email message to one or more recipients |
 | [Agent Mail Get Draft](block-integrations/agent_mail/drafts.md#agent-mail-get-draft) | Retrieve a draft email to review its contents, recipients, and scheduled send status |
 | [Agent Mail Get Inbox](block-integrations/agent_mail/inbox.md#agent-mail-get-inbox) | Retrieve details of an existing AgentMail inbox including its email address, display name, and configuration |
 | [Agent Mail Get Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-get-inbox-thread) | Retrieve a conversation thread with all its messages |
