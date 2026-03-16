@@ -4,12 +4,11 @@ import json
 import logging
 import re
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import prisma.enums
-import prisma.models
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import stream_registry
@@ -29,14 +28,23 @@ from backend.copilot.session_types import (
     CompletionReportInput,
     StoredCompletionReport,
 )
-from backend.data.understanding import (
-    format_understanding_for_prompt,
-    get_business_understanding,
-    parse_business_understanding_input,
+from backend.data.db_accessors import (
+    chat_db,
+    invited_user_db,
+    review_db,
+    understanding_db,
+    user_db,
 )
+from backend.data.model import User
+from backend.data.understanding import format_understanding_for_prompt
 from backend.notifications.email import EmailSender
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
+from backend.util.url import get_frontend_base_url
+
+if TYPE_CHECKING:
+    from backend.data.invited_user import InvitedUserRecord
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -104,26 +112,13 @@ def get_invite_cta_execution_tag() -> str:
     return AUTOPILOT_INVITE_CTA_TAG
 
 
-def _get_frontend_base_url() -> str:
-    return (
-        settings.config.frontend_base_url or settings.config.platform_base_url
-    ).rstrip("/")
-
-
 def _bucket_end_for_now(now_utc: datetime) -> datetime:
     minute = 30 if now_utc.minute >= 30 else 0
     return now_utc.replace(minute=minute, second=0, microsecond=0)
 
 
 def _resolve_timezone_name(raw_timezone: str | None) -> str:
-    if not raw_timezone or raw_timezone == "not-set":
-        return "UTC"
-    try:
-        ZoneInfo(raw_timezone)
-        return raw_timezone
-    except ZoneInfoNotFoundError:
-        logger.warning("Unknown timezone %s; falling back to UTC", raw_timezone)
-        return "UTC"
+    return get_user_timezone_or_utc(raw_timezone)
 
 
 def _crosses_local_midnight(
@@ -140,50 +135,28 @@ def _crosses_local_midnight(
 
 
 async def _user_has_recent_manual_message(user_id: str, since: datetime) -> bool:
-    message = await prisma.models.ChatMessage.prisma().find_first(
-        where={
-            "role": "user",
-            "createdAt": {"gte": since},
-            "Session": {
-                "is": {
-                    "userId": user_id,
-                    "startType": ChatSessionStartType.MANUAL.value,
-                }
-            },
-        }
-    )
-    return message is not None
+    return await chat_db().has_recent_manual_message(user_id, since)
 
 
 async def _user_has_session_since(user_id: str, since: datetime) -> bool:
-    session = await prisma.models.ChatSession.prisma().find_first(
-        where={"userId": user_id, "createdAt": {"gte": since}}
-    )
-    return session is not None
+    return await chat_db().has_session_since(user_id, since)
 
 
 async def _session_exists_for_execution_tag(user_id: str, execution_tag: str) -> bool:
-    existing = await prisma.models.ChatSession.prisma().find_first(
-        where={"userId": user_id, "executionTag": execution_tag}
-    )
-    return existing is not None
+    return await chat_db().session_exists_for_execution_tag(user_id, execution_tag)
 
 
 def _get_invited_user_tally_understanding(
-    invited_user: prisma.models.InvitedUser | None,
+    invited_user: InvitedUserRecord | None,
 ) -> dict[str, Any] | None:
-    if invited_user is None:
-        return None
-
-    understanding = parse_business_understanding_input(invited_user.tallyUnderstanding)
-    return understanding.model_dump(mode="json") if understanding is not None else None
+    return invited_user.tally_understanding if invited_user is not None else None
 
 
 def _render_initial_message(
     start_type: ChatSessionStartType,
     *,
     user_name: str | None,
-    invited_user: prisma.models.InvitedUser | None = None,
+    invited_user: InvitedUserRecord | None = None,
 ) -> str:
     display_name = user_name or "the user"
     if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
@@ -263,14 +236,10 @@ async def _get_recent_manual_session_context(
     *,
     since_utc: datetime,
 ) -> str:
-    sessions = await prisma.models.ChatSession.prisma().find_many(
-        where={
-            "userId": user_id,
-            "startType": ChatSessionStartType.MANUAL.value,
-            "updatedAt": {"gte": since_utc},
-        },
-        order={"updatedAt": "desc"},
-        take=AUTOPILOT_RECENT_SESSION_LIMIT,
+    sessions = await chat_db().get_manual_chat_sessions_since(
+        user_id,
+        since_utc,
+        AUTOPILOT_RECENT_SESSION_LIMIT,
     )
 
     if not sessions:
@@ -280,12 +249,8 @@ async def _get_recent_manual_session_context(
     used_chars = 0
 
     for session in sessions:
-        messages = await prisma.models.ChatMessage.prisma().find_many(
-            where={
-                "sessionId": session.id,
-                "createdAt": {"gte": since_utc},
-            },
-            order={"sequence": "asc"},
+        messages = await chat_db().get_chat_messages_since(
+            session.session_id, since_utc
         )
 
         visible_messages: list[str] = []
@@ -312,7 +277,7 @@ async def _get_recent_manual_session_context(
 
         title_suffix = f" ({session.title})" if session.title else ""
         block = (
-            f"### Session updated {session.updatedAt.isoformat()}{title_suffix}\n"
+            f"### Session updated {session.updated_at.isoformat()}{title_suffix}\n"
             + "\n".join(visible_messages)
         )
         if used_chars + len(block) > AUTOPILOT_RECENT_CONTEXT_CHAR_LIMIT:
@@ -329,14 +294,14 @@ async def _get_recent_manual_session_context(
 
 
 async def _build_autopilot_system_prompt(
-    user: prisma.models.User,
+    user: User,
     *,
     start_type: ChatSessionStartType,
     timezone_name: str,
     target_local_date: date | None = None,
-    invited_user: prisma.models.InvitedUser | None = None,
+    invited_user: InvitedUserRecord | None = None,
 ) -> str:
-    understanding = await get_business_understanding(user.id)
+    understanding = await understanding_db().get_business_understanding(user.id)
     context_sections = [
         (
             format_understanding_for_prompt(understanding)
@@ -400,13 +365,13 @@ async def _enqueue_session_turn(
 
 
 async def _create_autopilot_session(
-    user: prisma.models.User,
+    user: User,
     *,
     start_type: ChatSessionStartType,
     execution_tag: str,
     timezone_name: str,
     target_local_date: date | None = None,
-    invited_user: prisma.models.InvitedUser | None = None,
+    invited_user: InvitedUserRecord | None = None,
 ) -> ChatSession | None:
     if await _session_exists_for_execution_tag(user.id, execution_tag):
         return None
@@ -446,9 +411,9 @@ async def _create_autopilot_session(
 
 
 async def _try_create_invite_cta_session(
-    user: prisma.models.User,
+    user: User,
     *,
-    invited_user: prisma.models.InvitedUser | None,
+    invited_user: InvitedUserRecord | None,
     now_utc: datetime,
     timezone_name: str,
     invite_cta_start: date,
@@ -458,9 +423,9 @@ async def _try_create_invite_cta_session(
         return False
     if invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
         return False
-    if invited_user.createdAt.date() < invite_cta_start:
+    if invited_user.created_at.date() < invite_cta_start:
         return False
-    if invited_user.createdAt > now_utc - invite_cta_delay:
+    if invited_user.created_at > now_utc - invite_cta_delay:
         return False
     if await _session_exists_for_execution_tag(user.id, get_invite_cta_execution_tag()):
         return False
@@ -476,7 +441,7 @@ async def _try_create_invite_cta_session(
 
 
 async def _try_create_nightly_session(
-    user: prisma.models.User,
+    user: User,
     *,
     now_utc: datetime,
     timezone_name: str,
@@ -499,7 +464,7 @@ async def _try_create_nightly_session(
 
 
 async def _try_create_callback_session(
-    user: prisma.models.User,
+    user: User,
     *,
     callback_start: datetime,
     timezone_name: str,
@@ -518,7 +483,7 @@ async def _try_create_callback_session(
     return created is not None
 
 
-async def dispatch_nightly_copilot() -> int:
+async def _dispatch_nightly_copilot() -> int:
     now_utc = datetime.now(UTC)
     bucket_end = _bucket_end_for_now(now_utc)
     bucket_start = bucket_end - timedelta(minutes=30)
@@ -532,16 +497,12 @@ async def dispatch_nightly_copilot() -> int:
         hours=settings.config.nightly_copilot_invite_cta_delay_hours
     )
 
-    users = await prisma.models.User.prisma().find_many()
-    invites = await prisma.models.InvitedUser.prisma().find_many(
-        where={
-            "authUserId": {
-                "in": [user.id for user in users],
-            }
-        }
+    users = await user_db().list_users()
+    invites = await invited_user_db().list_invited_users_for_auth_users(
+        [user.id for user in users]
     )
     invites_by_user_id = {
-        invite.authUserId: invite for invite in invites if invite.authUserId
+        invite.auth_user_id: invite for invite in invites if invite.auth_user_id
     }
 
     created_count = 0
@@ -589,16 +550,17 @@ async def dispatch_nightly_copilot() -> int:
     return created_count
 
 
+async def dispatch_nightly_copilot() -> int:
+    return await _dispatch_nightly_copilot()
+
+
 async def _get_pending_approval_metadata(
     session: ChatSession,
 ) -> tuple[int, str | None]:
     graph_exec_id = get_graph_exec_id_for_session(session.session_id)
-    pending_count = await prisma.models.PendingHumanReview.prisma().count(
-        where={
-            "userId": session.user_id,
-            "graphExecId": graph_exec_id,
-            "status": prisma.enums.ReviewStatus.WAITING,
-        }
+    pending_count = await review_db().count_pending_reviews_for_graph_exec(
+        graph_exec_id,
+        session.user_id,
     )
     return pending_count, graph_exec_id if pending_count > 0 else None
 
@@ -740,32 +702,31 @@ def _split_email_paragraphs(text: str | None) -> list[str]:
 
 async def _create_callback_token(
     session: ChatSession,
-) -> prisma.models.ChatSessionCallbackToken:
+) -> str:
     if session.completion_report is None:
         raise ValueError("Missing completion report")
     callback_session_message = session.completion_report.callback_session_message
     if callback_session_message is None:
         raise ValueError("Missing callback session message")
 
-    return await prisma.models.ChatSessionCallbackToken.prisma().create(
-        data={
-            "userId": session.user_id,
-            "sourceSessionId": session.session_id,
-            "callbackSessionMessage": callback_session_message,
-            "expiresAt": datetime.now(UTC)
-            + timedelta(hours=settings.config.nightly_copilot_callback_token_ttl_hours),
-        }
+    token = await chat_db().create_chat_session_callback_token(
+        user_id=session.user_id,
+        source_session_id=session.session_id,
+        callback_session_message=callback_session_message,
+        expires_at=datetime.now(UTC)
+        + timedelta(hours=settings.config.nightly_copilot_callback_token_ttl_hours),
     )
+    return token.id
 
 
 def _build_session_link(session_id: str, *, show_autopilot: bool) -> str:
-    base_url = _get_frontend_base_url()
+    base_url = get_frontend_base_url()
     suffix = "&showAutopilot=1" if show_autopilot else ""
     return f"{base_url}/copilot?sessionId={session_id}{suffix}"
 
 
 def _build_callback_link(token_id: str) -> str:
-    return f"{_get_frontend_base_url()}/copilot?callbackToken={token_id}"
+    return f"{get_frontend_base_url()}/copilot?callbackToken={token_id}"
 
 
 def _get_completion_email_template_name(start_type: ChatSessionStartType) -> str:
@@ -782,8 +743,12 @@ async def _send_completion_email(session: ChatSession) -> None:
     report = session.completion_report
     if report is None:
         raise ValueError("Missing completion report")
-    user = await prisma.models.User.prisma().find_unique(where={"id": session.user_id})
-    if user is None:
+    try:
+        user = await user_db().get_user_by_id(session.user_id)
+    except ValueError as exc:
+        raise ValueError(f"User {session.user_id} not found") from exc
+
+    if not user.email:
         raise ValueError(f"User {session.user_id} not found")
 
     approval_cta = report.has_pending_approvals
@@ -792,8 +757,8 @@ async def _send_completion_email(session: ChatSession) -> None:
         cta_url = _build_session_link(session.session_id, show_autopilot=True)
         cta_label = "Review in Copilot"
     else:
-        token = await _create_callback_token(session)
-        cta_url = _build_callback_link(token.id)
+        token_id = await _create_callback_token(session)
+        cta_url = _build_callback_link(token_id)
         cta_label = (
             "Try Copilot"
             if session.start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA
@@ -815,20 +780,12 @@ async def _send_completion_email(session: ChatSession) -> None:
     )
 
 
-async def send_nightly_copilot_emails() -> int:
-    candidates = await prisma.models.ChatSession.prisma().find_many(
-        where={
-            "startType": {"not": ChatSessionStartType.MANUAL.value},
-            "notificationEmailSentAt": None,
-            "notificationEmailSkippedAt": None,
-        },
-        order={"updatedAt": "asc"},
-        take=200,
-    )
+async def _send_nightly_copilot_emails() -> int:
+    candidates = await chat_db().get_pending_notification_chat_sessions(limit=200)
 
     processed_count = 0
     for candidate in candidates:
-        session = await get_chat_session(candidate.id)
+        session = await get_chat_session(candidate.session_id)
         if session is None or session.is_manual:
             continue
 
@@ -891,32 +848,31 @@ async def send_nightly_copilot_emails() -> int:
     return processed_count
 
 
+async def send_nightly_copilot_emails() -> int:
+    return await _send_nightly_copilot_emails()
+
+
 async def consume_callback_token(
     token_id: str,
     user_id: str,
 ) -> CallbackTokenConsumeResult:
-    token = await prisma.models.ChatSessionCallbackToken.prisma().find_unique(
-        where={"id": token_id}
-    )
-    if token is None or token.userId != user_id:
+    token = await chat_db().get_chat_session_callback_token(token_id)
+    if token is None or token.user_id != user_id:
         raise ValueError("Callback token not found")
-    if token.expiresAt <= datetime.now(UTC):
+    if token.expires_at <= datetime.now(UTC):
         raise ValueError("Callback token has expired")
 
-    if token.consumedSessionId:
-        return CallbackTokenConsumeResult(session_id=token.consumedSessionId)
+    if token.consumed_session_id:
+        return CallbackTokenConsumeResult(session_id=token.consumed_session_id)
 
     session = await create_chat_session(
         user_id,
         initial_messages=[
-            ChatMessage(role="assistant", content=token.callbackSessionMessage)
+            ChatMessage(role="assistant", content=token.callback_session_message)
         ],
     )
-    await prisma.models.ChatSessionCallbackToken.prisma().update(
-        where={"id": token_id},
-        data={
-            "consumedAt": datetime.now(UTC),
-            "consumedSessionId": session.session_id,
-        },
+    await chat_db().mark_chat_session_callback_token_consumed(
+        token_id,
+        session.session_id,
     )
     return CallbackTokenConsumeResult(session_id=session.session_id)

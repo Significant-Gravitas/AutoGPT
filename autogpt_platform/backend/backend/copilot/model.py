@@ -169,7 +169,6 @@ class ChatSession(ChatSessionInfo):
     def new(
         cls,
         user_id: str,
-        *,
         start_type: ChatSessionStartType = ChatSessionStartType.MANUAL,
         execution_tag: str | None = None,
         session_config: ChatSessionConfig | None = None,
@@ -678,7 +677,6 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
 
 async def create_chat_session(
     user_id: str,
-    *,
     start_type: ChatSessionStartType = ChatSessionStartType.MANUAL,
     execution_tag: str | None = None,
     session_config: ChatSessionConfig | None = None,

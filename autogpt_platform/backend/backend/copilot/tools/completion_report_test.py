@@ -39,11 +39,11 @@ async def test_completion_report_requires_approval_summary_when_pending(
         start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
     )
 
-    pending_reviews = Mock()
-    pending_reviews.count = AsyncMock(return_value=2)
+    review_store = Mock()
+    review_store.count_pending_reviews_for_graph_exec = AsyncMock(return_value=2)
     mocker.patch(
-        "backend.copilot.tools.completion_report.PendingHumanReview.prisma",
-        return_value=pending_reviews,
+        "backend.copilot.tools.completion_report.review_db",
+        return_value=review_store,
     )
 
     response = await tool._execute(
@@ -71,11 +71,11 @@ async def test_completion_report_succeeds_without_pending_approvals(
         start_type=ChatSessionStartType.AUTOPILOT_CALLBACK,
     )
 
-    pending_reviews = Mock()
-    pending_reviews.count = AsyncMock(return_value=0)
+    review_store = Mock()
+    review_store.count_pending_reviews_for_graph_exec = AsyncMock(return_value=0)
     mocker.patch(
-        "backend.copilot.tools.completion_report.PendingHumanReview.prisma",
-        return_value=pending_reviews,
+        "backend.copilot.tools.completion_report.review_db",
+        return_value=review_store,
     )
 
     response = await tool._execute(

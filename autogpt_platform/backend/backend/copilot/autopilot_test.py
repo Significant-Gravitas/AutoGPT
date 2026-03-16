@@ -69,18 +69,34 @@ def test_crosses_local_midnight_supports_offset_timezones() -> None:
     )
 
 
+def test_crosses_local_midnight_only_triggers_once_across_dst_shift() -> None:
+    assert _crosses_local_midnight(
+        datetime(2026, 3, 8, 4, 30, tzinfo=UTC),
+        datetime(2026, 3, 8, 5, 0, tzinfo=UTC),
+        "America/New_York",
+    ) == date(2026, 3, 8)
+    assert (
+        _crosses_local_midnight(
+            datetime(2026, 3, 8, 5, 0, tzinfo=UTC),
+            datetime(2026, 3, 8, 5, 30, tzinfo=UTC),
+            "America/New_York",
+        )
+        is None
+    )
+
+
 @pytest.mark.asyncio
 async def test_get_recent_manual_session_context_strips_internal_content(
     mocker,
 ) -> None:
     session = SimpleNamespace(
-        id="sess-1",
+        session_id="sess-1",
         title="Manual work",
-        updatedAt=datetime(2026, 3, 14, 9, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 3, 14, 9, 0, tzinfo=UTC),
     )
-    session_prisma = SimpleNamespace(find_many=AsyncMock(return_value=[session]))
-    message_prisma = SimpleNamespace(
-        find_many=AsyncMock(
+    chat_store = SimpleNamespace(
+        get_manual_chat_sessions_since=AsyncMock(return_value=[session]),
+        get_chat_messages_since=AsyncMock(
             return_value=[
                 SimpleNamespace(
                     role="user",
@@ -95,10 +111,9 @@ async def test_get_recent_manual_session_context_strips_internal_content(
                     content="Completed a useful task for the user.",
                 ),
             ]
-        )
+        ),
     )
-    mocker.patch("prisma.models.ChatSession.prisma", return_value=session_prisma)
-    mocker.patch("prisma.models.ChatMessage.prisma", return_value=message_prisma)
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
 
     context = await _get_recent_manual_session_context(
         "user-1",
@@ -335,12 +350,12 @@ async def test_dispatch_nightly_copilot_respects_cohort_priority(mocker) -> None
     )
 
     invited = SimpleNamespace(
-        authUserId="invite-user",
+        auth_user_id="invite-user",
         status=prisma.enums.InvitedUserStatus.INVITED,
-        createdAt=fixed_now - timedelta(hours=72),
+        created_at=fixed_now - timedelta(hours=72),
     )
-    user_prisma = SimpleNamespace(
-        find_many=AsyncMock(
+    user_store = SimpleNamespace(
+        list_users=AsyncMock(
             return_value=[
                 invite_user,
                 nightly_user,
@@ -349,9 +364,14 @@ async def test_dispatch_nightly_copilot_respects_cohort_priority(mocker) -> None
             ]
         )
     )
-    invite_prisma = SimpleNamespace(find_many=AsyncMock(return_value=[invited]))
-    mocker.patch("prisma.models.User.prisma", return_value=user_prisma)
-    mocker.patch("prisma.models.InvitedUser.prisma", return_value=invite_prisma)
+    invited_user_store = SimpleNamespace(
+        list_invited_users_for_auth_users=AsyncMock(return_value=[invited])
+    )
+    mocker.patch("backend.copilot.autopilot.user_db", return_value=user_store)
+    mocker.patch(
+        "backend.copilot.autopilot.invited_user_db",
+        return_value=invited_user_store,
+    )
     mocker.patch(
         "backend.copilot.autopilot.is_feature_enabled",
         new_callable=AsyncMock,
@@ -409,10 +429,11 @@ async def test_send_nightly_copilot_emails_queues_repair_for_missing_report(
     mocker,
 ) -> None:
     session = _build_autopilot_session()
-    candidate = SimpleNamespace(id=session.session_id)
-
-    chat_session_prisma = SimpleNamespace(find_many=AsyncMock(return_value=[candidate]))
-    mocker.patch("prisma.models.ChatSession.prisma", return_value=chat_session_prisma)
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
+    )
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
     mocker.patch(
         "backend.copilot.autopilot.get_chat_session",
         new_callable=AsyncMock,
@@ -454,10 +475,11 @@ async def test_send_nightly_copilot_emails_sends_and_marks_sent(mocker) -> None:
         pending_approval_graph_exec_id=None,
         saved_at=datetime.now(UTC),
     )
-    candidate = SimpleNamespace(id=session.session_id)
-
-    chat_session_prisma = SimpleNamespace(find_many=AsyncMock(return_value=[candidate]))
-    mocker.patch("prisma.models.ChatSession.prisma", return_value=chat_session_prisma)
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
+    )
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
     mocker.patch(
         "backend.copilot.autopilot.get_chat_session",
         new_callable=AsyncMock,
@@ -508,10 +530,11 @@ async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) 
         pending_approval_graph_exec_id=None,
         saved_at=datetime.now(UTC),
     )
-    candidate = SimpleNamespace(id=session.session_id)
-
-    chat_session_prisma = SimpleNamespace(find_many=AsyncMock(return_value=[candidate]))
-    mocker.patch("prisma.models.ChatSession.prisma", return_value=chat_session_prisma)
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
+    )
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
     mocker.patch(
         "backend.copilot.autopilot.get_chat_session",
         new_callable=AsyncMock,
@@ -548,17 +571,17 @@ async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) 
 async def test_consume_callback_token_reuses_existing_session(mocker) -> None:
     token = SimpleNamespace(
         id="token-1",
-        userId="user-1",
-        expiresAt=datetime.now(UTC) + timedelta(hours=1),
-        consumedSessionId="sess-existing",
+        user_id="user-1",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        consumed_session_id="sess-existing",
     )
-    token_prisma = SimpleNamespace(
-        find_unique=AsyncMock(return_value=token),
-        update=AsyncMock(),
+    chat_store = SimpleNamespace(
+        get_chat_session_callback_token=AsyncMock(return_value=token),
+        mark_chat_session_callback_token_consumed=AsyncMock(),
     )
     mocker.patch(
-        "prisma.models.ChatSessionCallbackToken.prisma",
-        return_value=token_prisma,
+        "backend.copilot.autopilot.chat_db",
+        return_value=chat_store,
     )
     create_chat_session = mocker.patch(
         "backend.copilot.autopilot.create_chat_session",
@@ -569,26 +592,26 @@ async def test_consume_callback_token_reuses_existing_session(mocker) -> None:
 
     assert result.session_id == "sess-existing"
     create_chat_session.assert_not_called()
-    token_prisma.update.assert_not_called()
+    chat_store.mark_chat_session_callback_token_consumed.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_consume_callback_token_creates_manual_session(mocker) -> None:
     token = SimpleNamespace(
         id="token-1",
-        userId="user-1",
-        expiresAt=datetime.now(UTC) + timedelta(hours=1),
-        consumedSessionId=None,
-        callbackSessionMessage="Open this chat",
+        user_id="user-1",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        consumed_session_id=None,
+        callback_session_message="Open this chat",
     )
-    token_prisma = SimpleNamespace(
-        find_unique=AsyncMock(return_value=token),
-        update=AsyncMock(),
+    chat_store = SimpleNamespace(
+        get_chat_session_callback_token=AsyncMock(return_value=token),
+        mark_chat_session_callback_token_consumed=AsyncMock(),
     )
     created_session = ChatSession.new("user-1")
     mocker.patch(
-        "prisma.models.ChatSessionCallbackToken.prisma",
-        return_value=token_prisma,
+        "backend.copilot.autopilot.chat_db",
+        return_value=chat_store,
     )
     create_chat_session = mocker.patch(
         "backend.copilot.autopilot.create_chat_session",
@@ -603,24 +626,27 @@ async def test_consume_callback_token_creates_manual_session(mocker) -> None:
     create_kwargs = create_chat_session.await_args.kwargs
     assert create_kwargs["initial_messages"][0].role == "assistant"
     assert create_kwargs["initial_messages"][0].content == "Open this chat"
-    token_prisma.update.assert_awaited_once()
+    chat_store.mark_chat_session_callback_token_consumed.assert_awaited_once_with(
+        "token-1",
+        created_session.session_id,
+    )
 
 
 @pytest.mark.asyncio
 async def test_consume_callback_token_rejects_expired_token(mocker) -> None:
     token = SimpleNamespace(
         id="token-1",
-        userId="user-1",
-        expiresAt=datetime.now(UTC) - timedelta(minutes=1),
-        consumedSessionId=None,
-        callbackSessionMessage="Open this chat",
+        user_id="user-1",
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        consumed_session_id=None,
+        callback_session_message="Open this chat",
     )
-    token_prisma = SimpleNamespace(
-        find_unique=AsyncMock(return_value=token),
+    chat_store = SimpleNamespace(
+        get_chat_session_callback_token=AsyncMock(return_value=token),
     )
     mocker.patch(
-        "prisma.models.ChatSessionCallbackToken.prisma",
-        return_value=token_prisma,
+        "backend.copilot.autopilot.chat_db",
+        return_value=chat_store,
     )
 
     with pytest.raises(ValueError, match="expired"):

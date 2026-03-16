@@ -62,6 +62,14 @@ async def get_user_by_id(user_id: str) -> User:
     return User.from_db(user)
 
 
+async def list_users() -> list[User]:
+    try:
+        users = await PrismaUser.prisma().find_many()
+        return [User.from_db(user) for user in users]
+    except Exception as e:
+        raise DatabaseError(f"Failed to list users: {e}") from e
+
+
 async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
         user = await prisma.user.find_unique(where={"id": user_id})

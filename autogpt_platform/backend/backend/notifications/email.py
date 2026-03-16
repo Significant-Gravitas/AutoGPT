@@ -15,6 +15,7 @@ from backend.data.notifications import (
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
+from backend.util.url import get_frontend_base_url
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -47,6 +48,25 @@ class EmailSender:
         self.formatter = TextFormatter()
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
+
+    def _get_unsubscribe_link(self, user_unsubscribe_link: str | None) -> str:
+        return user_unsubscribe_link or f"{get_frontend_base_url()}/profile/settings"
+
+    def _format_template_email(
+        self,
+        *,
+        subject_template: str,
+        content_template: str,
+        data: Any,
+        unsubscribe_link: str,
+    ) -> tuple[str, str]:
+        return self.formatter.format_email(
+            base_template=self._read_template("templates/base.html.jinja2"),
+            subject_template=subject_template,
+            content_template=content_template,
+            data=data,
+            unsubscribe_link=unsubscribe_link,
+        )
 
     def _build_large_output_summary(
         self,
@@ -102,14 +122,10 @@ class EmailSender:
             logger.warning("Postmark client not initialized, email not sent")
             return
 
-        base_url = (
-            settings.config.frontend_base_url or settings.config.platform_base_url
-        )
-        unsubscribe_link = user_unsubscribe_link or f"{base_url}/profile/settings"
+        unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
 
-        _, full_message = self.formatter.format_email(
+        _, full_message = self._format_template_email(
             subject_template="{{ subject }}",
-            base_template=self._read_template("templates/base.html.jinja2"),
             content_template=self._read_template(f"templates/{template_name}"),
             data={"subject": subject, **(data or {})},
             unsubscribe_link=unsubscribe_link,
@@ -119,7 +135,7 @@ class EmailSender:
             user_email=user_email,
             subject=subject,
             body=full_message,
-            user_unsubscribe_link=user_unsubscribe_link,
+            user_unsubscribe_link=unsubscribe_link,
         )
 
     def send_templated(
@@ -138,21 +154,18 @@ class EmailSender:
             return
 
         template = self._get_template(notification)
-
-        base_url = (
-            settings.config.frontend_base_url or settings.config.platform_base_url
-        )
+        base_url = get_frontend_base_url()
+        unsubscribe_link = self._get_unsubscribe_link(user_unsub_link)
 
         # Normalize data
         template_data = {"notifications": data} if isinstance(data, list) else data
 
         try:
-            subject, full_message = self.formatter.format_email(
-                base_template=template.base_template,
+            subject, full_message = self._format_template_email(
                 subject_template=template.subject_template,
                 content_template=template.body_template,
                 data=template_data,
-                unsubscribe_link=f"{base_url}/profile/settings",
+                unsubscribe_link=unsubscribe_link,
             )
         except Exception as e:
             logger.error(f"Error formatting full message: {e}")
@@ -176,7 +189,7 @@ class EmailSender:
                 user_email=user_email,
                 subject=f"{subject} (Output Too Large)",
                 body=summary_message,
-                user_unsubscribe_link=user_unsub_link,
+                user_unsubscribe_link=unsubscribe_link,
             )
             return  # Skip sending full email
 
@@ -185,7 +198,7 @@ class EmailSender:
             user_email=user_email,
             subject=subject,
             body=full_message,
-            user_unsubscribe_link=user_unsub_link,
+            user_unsubscribe_link=unsubscribe_link,
         )
 
     def _get_template(self, notification: NotificationType):
@@ -218,20 +231,17 @@ class EmailSender:
         if not self.postmark:
             logger.warning("Email tried to send without postmark configured")
             return
+        unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
         logger.debug(f"Sending email to {user_email} with subject {subject}")
         self.postmark.emails.send(
             From=settings.config.postmark_sender_email,
             To=user_email,
             Subject=subject,
             HtmlBody=body,
-            Headers=(
-                {
-                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                    "List-Unsubscribe": f"<{user_unsubscribe_link}>",
-                }
-                if user_unsubscribe_link
-                else None
-            ),
+            Headers={
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                "List-Unsubscribe": f"<{unsubscribe_link}>",
+            },
         )
 
     def send_html(

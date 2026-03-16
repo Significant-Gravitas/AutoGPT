@@ -215,6 +215,18 @@ async def list_invited_users(
     return [InvitedUserRecord.from_db(iu) for iu in invited_users], total
 
 
+async def list_invited_users_for_auth_users(
+    auth_user_ids: list[str],
+) -> list[InvitedUserRecord]:
+    if not auth_user_ids:
+        return []
+
+    invited_users = await prisma.models.InvitedUser.prisma().find_many(
+        where={"authUserId": {"in": auth_user_ids}}
+    )
+    return [InvitedUserRecord.from_db(invited_user) for invited_user in invited_users]
+
+
 async def create_invited_user(
     email: str, name: Optional[str] = None
 ) -> InvitedUserRecord:

@@ -8,12 +8,14 @@ from typing import Any
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import ChatSessionCallbackToken as PrismaChatSessionCallbackToken
 from prisma.types import (
     ChatMessageCreateInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
 )
+from pydantic import BaseModel
 
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
@@ -25,6 +27,31 @@ logger = logging.getLogger(__name__)
 _UNSET = object()
 
 
+class ChatSessionCallbackTokenInfo(BaseModel):
+    id: str
+    user_id: str
+    source_session_id: str | None = None
+    callback_session_message: str
+    expires_at: datetime
+    consumed_at: datetime | None = None
+    consumed_session_id: str | None = None
+
+    @classmethod
+    def from_db(
+        cls,
+        token: PrismaChatSessionCallbackToken,
+    ) -> "ChatSessionCallbackTokenInfo":
+        return cls(
+            id=token.id,
+            user_id=token.userId,
+            source_session_id=token.sourceSessionId,
+            callback_session_message=token.callbackSessionMessage,
+            expires_at=token.expiresAt,
+            consumed_at=token.consumedAt,
+            consumed_session_id=token.consumedSessionId,
+        )
+
+
 async def get_chat_session(session_id: str) -> ChatSession | None:
     """Get a chat session by ID from the database."""
     session = await PrismaChatSession.prisma().find_unique(
@@ -32,6 +59,67 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
         include={"Messages": {"order_by": {"sequence": "asc"}}},
     )
     return ChatSession.from_db(session) if session else None
+
+
+async def has_recent_manual_message(user_id: str, since: datetime) -> bool:
+    message = await PrismaChatMessage.prisma().find_first(
+        where={
+            "role": "user",
+            "createdAt": {"gte": since},
+            "Session": {
+                "is": {
+                    "userId": user_id,
+                    "startType": ChatSessionStartType.MANUAL.value,
+                }
+            },
+        }
+    )
+    return message is not None
+
+
+async def has_session_since(user_id: str, since: datetime) -> bool:
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "createdAt": {"gte": since}}
+    )
+    return session is not None
+
+
+async def session_exists_for_execution_tag(user_id: str, execution_tag: str) -> bool:
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "executionTag": execution_tag}
+    )
+    return session is not None
+
+
+async def get_manual_chat_sessions_since(
+    user_id: str,
+    since_utc: datetime,
+    limit: int,
+) -> list[ChatSessionInfo]:
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={
+            "userId": user_id,
+            "startType": ChatSessionStartType.MANUAL.value,
+            "updatedAt": {"gte": since_utc},
+        },
+        order={"updatedAt": "desc"},
+        take=limit,
+    )
+    return [ChatSessionInfo.from_db(session) for session in sessions]
+
+
+async def get_chat_messages_since(
+    session_id: str,
+    since_utc: datetime,
+) -> list[ChatMessage]:
+    messages = await PrismaChatMessage.prisma().find_many(
+        where={
+            "sessionId": session_id,
+            "createdAt": {"gte": since_utc},
+        },
+        order={"sequence": "asc"},
+    )
+    return [ChatMessage.from_db(message) for message in messages]
 
 
 def _build_chat_message_create_input(
@@ -316,6 +404,21 @@ async def get_user_chat_sessions(
     return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
 
 
+async def get_pending_notification_chat_sessions(
+    limit: int = 200,
+) -> list[ChatSessionInfo]:
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={
+            "startType": {"not": ChatSessionStartType.MANUAL.value},
+            "notificationEmailSentAt": None,
+            "notificationEmailSkippedAt": None,
+        },
+        order={"updatedAt": "asc"},
+        take=limit,
+    )
+    return [ChatSessionInfo.from_db(session) for session in sessions]
+
+
 async def get_user_session_count(
     user_id: str,
     with_auto: bool = False,
@@ -416,3 +519,42 @@ async def update_tool_message_content(
             f"tool_call_id {tool_call_id}: {e}"
         )
         return False
+
+
+async def create_chat_session_callback_token(
+    user_id: str,
+    source_session_id: str,
+    callback_session_message: str,
+    expires_at: datetime,
+) -> ChatSessionCallbackTokenInfo:
+    token = await PrismaChatSessionCallbackToken.prisma().create(
+        data={
+            "userId": user_id,
+            "sourceSessionId": source_session_id,
+            "callbackSessionMessage": callback_session_message,
+            "expiresAt": expires_at,
+        }
+    )
+    return ChatSessionCallbackTokenInfo.from_db(token)
+
+
+async def get_chat_session_callback_token(
+    token_id: str,
+) -> ChatSessionCallbackTokenInfo | None:
+    token = await PrismaChatSessionCallbackToken.prisma().find_unique(
+        where={"id": token_id}
+    )
+    return ChatSessionCallbackTokenInfo.from_db(token) if token else None
+
+
+async def mark_chat_session_callback_token_consumed(
+    token_id: str,
+    consumed_session_id: str,
+) -> None:
+    await PrismaChatSessionCallbackToken.prisma().update(
+        where={"id": token_id},
+        data={
+            "consumedAt": datetime.now(UTC),
+            "consumedSessionId": consumed_session_id,
+        },
+    )

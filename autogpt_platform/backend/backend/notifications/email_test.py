@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any, cast
 
 from backend.api.test_helpers import override_config
@@ -29,6 +30,9 @@ def test_send_template_renders_nightly_copilot_email(mocker) -> None:
     assert "I found something useful for you." in body
     assert "Open Copilot" in body
     assert "Approval needed" not in body
+    assert send_email.call_args.kwargs["user_unsubscribe_link"].endswith(
+        "/profile/settings"
+    )
 
 
 def test_send_template_renders_nightly_copilot_approval_block(mocker) -> None:
@@ -180,3 +184,21 @@ def test_send_template_still_sends_in_production(mocker) -> None:
         )
 
     send_email.assert_called_once()
+
+
+def test_send_html_uses_default_unsubscribe_link(mocker) -> None:
+    sender = EmailSender()
+    send = mocker.Mock()
+    sender.postmark = cast(Any, SimpleNamespace(emails=SimpleNamespace(send=send)))
+
+    with override_config(settings, "frontend_base_url", "https://example.com"):
+        sender.send_html(
+            user_email="user@example.com",
+            subject="Autopilot update",
+            body="<p>Hello</p>",
+        )
+
+    headers = send.call_args.kwargs["Headers"]
+
+    assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert headers["List-Unsubscribe"] == "<https://example.com/profile/settings>"

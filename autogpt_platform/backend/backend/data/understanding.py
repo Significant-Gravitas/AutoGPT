@@ -1,7 +1,5 @@
 """Data models and access layer for user business understanding."""
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime
 from typing import Any, Optional, cast
@@ -35,7 +33,7 @@ def _json_to_list(value: Any) -> list[str]:
 
 def parse_business_understanding_input(
     payload: Any,
-) -> BusinessUnderstandingInput | None:
+) -> "BusinessUnderstandingInput | None":
     if payload is None:
         return None
 

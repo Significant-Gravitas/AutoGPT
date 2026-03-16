@@ -254,6 +254,23 @@ async def list_workspace_files(
     return [WorkspaceFile.from_db(f) for f in files]
 
 
+async def get_workspace_files_by_ids(
+    workspace_id: str,
+    file_ids: list[str],
+) -> list[WorkspaceFile]:
+    if not file_ids:
+        return []
+
+    files = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": file_ids},
+            "workspaceId": workspace_id,
+            "isDeleted": False,
+        }
+    )
+    return [WorkspaceFile.from_db(file) for file in files]
+
+
 async def count_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,

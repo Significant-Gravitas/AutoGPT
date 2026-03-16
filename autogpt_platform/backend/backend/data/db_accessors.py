@@ -92,6 +92,19 @@ def user_db():
     return user_db
 
 
+def invited_user_db():
+    if db.is_connected():
+        from backend.data import invited_user as _invited_user_db
+
+        invited_user_db = _invited_user_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        invited_user_db = get_database_manager_async_client()
+
+    return invited_user_db
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db

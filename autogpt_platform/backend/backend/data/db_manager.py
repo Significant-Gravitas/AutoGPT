@@ -79,6 +79,7 @@ from backend.data.graph import (
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    count_pending_reviews_for_graph_exec,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
     get_pending_reviews_for_execution,
@@ -86,6 +87,7 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
 )
+from backend.data.invited_user import list_invited_users_for_auth_users
 from backend.data.notifications import (
     clear_all_user_notification_batches,
     create_or_add_to_user_notification_batch,
@@ -107,6 +109,7 @@ from backend.data.user import (
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    list_users,
     update_user_integrations,
 )
 from backend.data.workspace import (
@@ -115,6 +118,7 @@ from backend.data.workspace import (
     get_or_create_workspace,
     get_workspace_file,
     get_workspace_file_by_path,
+    get_workspace_files_by_ids,
     list_workspace_files,
     soft_delete_workspace_file,
 )
@@ -237,6 +241,7 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    list_users = _(list_users)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
 
@@ -249,6 +254,7 @@ class DatabaseManager(AppService):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    count_pending_reviews_for_graph_exec = _(count_pending_reviews_for_graph_exec)
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
@@ -313,11 +319,15 @@ class DatabaseManager(AppService):
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
+    get_workspace_files_by_ids = _(get_workspace_files_by_ids)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
     list_workspace_files = _(list_workspace_files)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+
+    # ============ Invited Users ============ #
+    list_invited_users_for_auth_users = _(list_invited_users_for_auth_users)
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
@@ -328,8 +338,21 @@ class DatabaseManager(AppService):
     update_block_optimized_description = _(update_block_optimized_description)
 
     # ============ CoPilot Chat Sessions ============ #
+    get_chat_messages_since = _(chat_db.get_chat_messages_since)
+    get_chat_session_callback_token = _(chat_db.get_chat_session_callback_token)
     get_chat_session = _(chat_db.get_chat_session)
+    create_chat_session_callback_token = _(chat_db.create_chat_session_callback_token)
     create_chat_session = _(chat_db.create_chat_session)
+    get_manual_chat_sessions_since = _(chat_db.get_manual_chat_sessions_since)
+    get_pending_notification_chat_sessions = _(
+        chat_db.get_pending_notification_chat_sessions
+    )
+    has_recent_manual_message = _(chat_db.has_recent_manual_message)
+    has_session_since = _(chat_db.has_session_since)
+    mark_chat_session_callback_token_consumed = _(
+        chat_db.mark_chat_session_callback_token_consumed
+    )
+    session_exists_for_execution_tag = _(chat_db.session_exists_for_execution_tag)
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
@@ -374,10 +397,12 @@ class DatabaseManagerClient(AppServiceClient):
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
     # Human In The Loop
+    count_pending_reviews_for_graph_exec = _(d.count_pending_reviews_for_graph_exec)
     has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
 
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
+    list_users = _(d.list_users)
 
     # Library
     list_library_agents = _(d.list_library_agents)
@@ -433,12 +458,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    list_users = d.list_users
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    count_pending_reviews_for_graph_exec = d.count_pending_reviews_for_graph_exec
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
@@ -506,11 +533,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
+    get_workspace_files_by_ids = d.get_workspace_files_by_ids
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
+
+    # ============ Invited Users ============ #
+    list_invited_users_for_auth_users = d.list_invited_users_for_auth_users
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
@@ -520,8 +551,19 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_blocks_needing_optimization = d.get_blocks_needing_optimization
 
     # ============ CoPilot Chat Sessions ============ #
+    get_chat_messages_since = d.get_chat_messages_since
+    get_chat_session_callback_token = d.get_chat_session_callback_token
     get_chat_session = d.get_chat_session
+    create_chat_session_callback_token = d.create_chat_session_callback_token
     create_chat_session = d.create_chat_session
+    get_manual_chat_sessions_since = d.get_manual_chat_sessions_since
+    get_pending_notification_chat_sessions = d.get_pending_notification_chat_sessions
+    has_recent_manual_message = d.has_recent_manual_message
+    has_session_since = d.has_session_since
+    mark_chat_session_callback_token_consumed = (
+        d.mark_chat_session_callback_token_consumed
+    )
+    session_exists_for_execution_tag = d.session_exists_for_execution_tag
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch

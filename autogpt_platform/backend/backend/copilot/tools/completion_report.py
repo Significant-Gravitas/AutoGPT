@@ -2,12 +2,10 @@
 
 from typing import Any
 
-from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
-
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.session_types import CompletionReportInput
+from backend.data.db_accessors import review_db
 
 from .base import BaseTool
 from .models import CompletionReportSavedResponse, ErrorResponse, ToolResponseBase
@@ -64,11 +62,9 @@ class CompletionReportTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        pending_approval_count = await PendingHumanReview.prisma().count(
-            where={
-                "graphExecId": f"{COPILOT_SESSION_PREFIX}{session.session_id}",
-                "status": ReviewStatus.WAITING,
-            }
+        pending_approval_count = await review_db().count_pending_reviews_for_graph_exec(
+            f"{COPILOT_SESSION_PREFIX}{session.session_id}",
+            session.user_id,
         )
 
         if pending_approval_count > 0 and not report.approval_summary:

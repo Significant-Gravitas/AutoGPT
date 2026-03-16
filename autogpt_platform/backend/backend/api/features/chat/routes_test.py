@@ -346,11 +346,11 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockFixture):
         "backend.api.features.chat.routes.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
-    mock_prisma = mocker.MagicMock()
-    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
+    workspace_store = mocker.MagicMock()
+    workspace_store.get_workspace_files_by_ids = mocker.AsyncMock(return_value=[])
     mocker.patch(
-        "prisma.models.UserWorkspaceFile.prisma",
-        return_value=mock_prisma,
+        "backend.api.features.chat.routes.workspace_db",
+        return_value=workspace_store,
     )
 
     response = client.post(
@@ -376,11 +376,11 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
         return_value=type("W", (), {"id": "ws-1"})(),
     )
 
-    mock_prisma = mocker.MagicMock()
-    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
+    workspace_store = mocker.MagicMock()
+    workspace_store.get_workspace_files_by_ids = mocker.AsyncMock(return_value=[])
     mocker.patch(
-        "prisma.models.UserWorkspaceFile.prisma",
-        return_value=mock_prisma,
+        "backend.api.features.chat.routes.workspace_db",
+        return_value=workspace_store,
     )
 
     valid_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -398,9 +398,10 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
     )
 
     # The find_many call should only receive the one valid UUID
-    mock_prisma.find_many.assert_called_once()
-    call_kwargs = mock_prisma.find_many.call_args[1]
-    assert call_kwargs["where"]["id"]["in"] == [valid_id]
+    workspace_store.get_workspace_files_by_ids.assert_called_once_with(
+        workspace_id="ws-1",
+        file_ids=[valid_id],
+    )
 
 
 # ─── Cross-workspace file_ids ─────────────────────────────────────────
@@ -414,11 +415,11 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
         return_value=type("W", (), {"id": "my-workspace-id"})(),
     )
 
-    mock_prisma = mocker.MagicMock()
-    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
+    workspace_store = mocker.MagicMock()
+    workspace_store.get_workspace_files_by_ids = mocker.AsyncMock(return_value=[])
     mocker.patch(
-        "prisma.models.UserWorkspaceFile.prisma",
-        return_value=mock_prisma,
+        "backend.api.features.chat.routes.workspace_db",
+        return_value=workspace_store,
     )
 
     fid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -427,9 +428,10 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
         json={"message": "hi", "file_ids": [fid]},
     )
 
-    call_kwargs = mock_prisma.find_many.call_args[1]
-    assert call_kwargs["where"]["workspaceId"] == "my-workspace-id"
-    assert call_kwargs["where"]["isDeleted"] is False
+    workspace_store.get_workspace_files_by_ids.assert_called_once_with(
+        workspace_id="my-workspace-id",
+        file_ids=[fid],
+    )
 
 
 # ─── Suggested prompts endpoint ──────────────────────────────────────

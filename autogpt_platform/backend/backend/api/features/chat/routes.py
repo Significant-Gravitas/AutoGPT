@@ -11,7 +11,6 @@ from uuid import uuid4
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
-from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -61,6 +60,7 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.db_accessors import workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
@@ -738,18 +738,14 @@ async def stream_chat_post(
 
         if valid_ids:
             workspace = await get_or_create_workspace(user_id)
-            # Batch query instead of N+1
-            files = await UserWorkspaceFile.prisma().find_many(
-                where={
-                    "id": {"in": valid_ids},
-                    "workspaceId": workspace.id,
-                    "isDeleted": False,
-                }
+            files = await workspace_db().get_workspace_files_by_ids(
+                workspace_id=workspace.id,
+                file_ids=valid_ids,
             )
             # Only keep IDs that actually exist in the user's workspace
             sanitized_file_ids = [wf.id for wf in files] or None
             file_lines: list[str] = [
-                f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
+                f"- {wf.name} ({wf.mime_type}, {round(wf.size_bytes / 1024, 1)} KB), file_id={wf.id}"
                 for wf in files
             ]
             if file_lines:

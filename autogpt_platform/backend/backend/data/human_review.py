@@ -342,6 +342,19 @@ async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     return count > 0
 
 
+async def count_pending_reviews_for_graph_exec(
+    graph_exec_id: str,
+    user_id: str,
+) -> int:
+    return await PendingHumanReview.prisma().count(
+        where={
+            "userId": user_id,
+            "graphExecId": graph_exec_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+
+
 async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
     """Resolve node_id from a node_exec_id.
 
