@@ -454,8 +454,8 @@ async def stream_chat_completion_baseline(
             turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 1
             )
-            turn_completion_tokens = max(
-                estimate_token_count_str(assistant_text, model=config.model), 1
+            turn_completion_tokens = estimate_token_count_str(
+                assistant_text, model=config.model
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
