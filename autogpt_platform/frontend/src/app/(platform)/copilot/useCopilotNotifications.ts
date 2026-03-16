@@ -8,43 +8,28 @@ const ORIGINAL_TITLE = "AutoGPT";
 const NOTIFICATION_SOUND_PATH = "/sounds/notification.mp3";
 
 /**
- * Show a browser notification, using ServiceWorkerRegistration.showNotification()
- * when available (required in PWA / service-worker contexts) and falling back to
- * the Notification constructor for normal browser tabs.
+ * Show a browser notification with click-to-navigate behaviour.
+ * Wrapped in try-catch so it degrades gracefully in service-worker or
+ * other restricted contexts where the Notification constructor throws.
  */
 function showBrowserNotification(
   title: string,
   opts: { body: string; icon: string; sessionID: string },
 ) {
-  const notificationOpts = { body: opts.body, icon: opts.icon };
-
-  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.ready
-      .then((reg) => reg.showNotification(title, notificationOpts))
-      .catch(() => {
-        // Registration not available — fall back to constructor
-        createFallbackNotification(title, notificationOpts, opts.sessionID);
-      });
-    return;
+  try {
+    const n = new Notification(title, { body: opts.body, icon: opts.icon });
+    n.onclick = () => {
+      window.focus();
+      const url = new URL(window.location.href);
+      url.searchParams.set("sessionId", opts.sessionID);
+      window.history.pushState({}, "", url.toString());
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      n.close();
+    };
+  } catch {
+    // Notification constructor is unavailable (e.g. service-worker context).
+    // The user will still see the in-app badge and title update.
   }
-
-  createFallbackNotification(title, notificationOpts, opts.sessionID);
-}
-
-function createFallbackNotification(
-  title: string,
-  opts: NotificationOptions,
-  sessionID: string,
-) {
-  const n = new Notification(title, opts);
-  n.onclick = () => {
-    window.focus();
-    const url = new URL(window.location.href);
-    url.searchParams.set("sessionId", sessionID);
-    window.history.pushState({}, "", url.toString());
-    window.dispatchEvent(new PopStateEvent("popstate"));
-    n.close();
-  };
 }
 
 /**

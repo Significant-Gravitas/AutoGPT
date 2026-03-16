@@ -10,7 +10,8 @@ function loadCompletedSessions(): Set<string> {
   const raw = storage.get(Key.COPILOT_COMPLETED_SESSIONS);
   if (!raw) return new Set();
   try {
-    return new Set(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
   } catch {
     return new Set();
   }
