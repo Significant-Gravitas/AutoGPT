@@ -101,7 +101,6 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         steps=steps,
         trigger_type=trigger_type,
         source_format=SourcePlatform.N8N,
-        raw_json=json_data,
     )
 
 
@@ -160,7 +159,6 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         steps=steps,
         trigger_type=trigger_type,
         source_format=SourcePlatform.MAKE,
-        raw_json=json_data,
     )
 
 
@@ -201,7 +199,6 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         steps=steps,
         trigger_type=trigger_type,
         source_format=SourcePlatform.ZAPIER,
-        raw_json=json_data,
     )
 
 

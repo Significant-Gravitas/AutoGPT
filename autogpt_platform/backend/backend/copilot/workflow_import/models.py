@@ -4,7 +4,6 @@ from enum import Enum
 from typing import Any
 
 import pydantic
-from pydantic import Field
 
 
 class SourcePlatform(str, Enum):
@@ -32,4 +31,3 @@ class WorkflowDescription(pydantic.BaseModel):
     steps: list[StepDescription]
     trigger_type: str | None = None
     source_format: SourcePlatform
-    raw_json: dict[str, Any] = Field(default_factory=dict, exclude=True)

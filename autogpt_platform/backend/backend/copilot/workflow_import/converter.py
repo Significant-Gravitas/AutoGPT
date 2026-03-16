@@ -4,6 +4,7 @@ Uses the CoPilot's LLM client to generate AutoGPT agent JSON from a structured
 WorkflowDescription, then validates and fixes via the existing pipeline.
 """
 
+import functools
 import json
 import logging
 import pathlib
@@ -45,8 +46,9 @@ def _get_llm_client() -> tuple[Any, ChatConfig]:
     return _llm_client, _llm_config
 
 
+@functools.lru_cache(maxsize=1)
 def _load_agent_guide() -> str:
-    """Load the agent generation guide markdown."""
+    """Load the agent generation guide markdown (cached after first read)."""
     return _AGENT_GUIDE_PATH.read_text()
 
 
