@@ -1,7 +1,21 @@
 """Joy trust network integration blocks for AutoGPT.
 
-These blocks enable trust verification between AI agents using the Joy network.
-Joy is a decentralized trust network where agents vouch for each other.
+This module provides blocks for integrating with the Joy trust network, enabling
+AI agents to verify trustworthiness before delegating tasks or sharing data.
+
+Joy is a decentralized trust network where agents build reputation through:
+- Vouches from other agents after successful collaborations
+- Verification of agent identity and capabilities
+- Trust scores calculated from network activity
+
+Available blocks:
+    JoyTrustVerifyBlock: Verify an agent's trust score and status.
+    JoyDiscoverAgentsBlock: Find agents by capability and trust level.
+    JoyShouldTrustBlock: Simple boolean trust gate for workflows.
+
+Example usage:
+    Use JoyTrustVerifyBlock before delegating sensitive tasks to check
+    if an external agent meets your minimum trust requirements.
 
 Learn more: https://choosejoy.com.au
 """
@@ -58,10 +72,30 @@ def _validate_agent_id(agent_id: str) -> str:
 
 
 class JoyTrustVerifyBlock(Block):
-    """Verify an agent's trustworthiness using the Joy network.
+    """Verify an agent's trustworthiness using the Joy trust network.
 
-    Use this block to check if an agent should be trusted before
-    delegating tasks or sharing sensitive data.
+    This block queries the Joy platform to retrieve an agent's trust metrics
+    including trust score, verification status, and vouch count. Use this
+    before delegating tasks to external agents to ensure reliability.
+
+    The Joy trust network builds reputation through agent-to-agent vouches
+    after successful collaborations. Higher trust scores indicate more
+    reliable agents with proven track records.
+
+    Attributes:
+        Input: Configuration for trust verification including agent_id,
+            minimum trust threshold, and verification requirements.
+        Output: Trust metrics including is_trusted boolean, trust_score,
+            vouch_count, verified status, and capabilities list.
+
+    Example:
+        Verify an agent before delegating a code review task::
+
+            input_data = {
+                "agent_id": "ag_229e507d7d87f35cc2bc17ea",
+                "min_trust_score": 0.5,
+                "require_verified": True
+            }
     """
 
     class Input(BlockSchemaInput):
@@ -116,7 +150,28 @@ class JoyTrustVerifyBlock(Block):
         )
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
-        """Fetch agent data from Joy API."""
+        """Fetch agent data from the Joy API.
+
+        Retrieves trust metrics for a specific agent including trust score,
+        verification status, vouch count, and registered capabilities.
+
+        Args:
+            agent_id: The Joy agent identifier to look up. Must match the
+                pattern 'ag_' followed by 24 hexadecimal characters.
+
+        Returns:
+            Dictionary containing agent data with keys:
+                - id: The agent's unique identifier
+                - name: Display name of the agent
+                - trust_score: Float from 0.0 to 2.0+
+                - vouch_count: Number of vouches received
+                - verified: Boolean verification status
+                - capabilities: List of capability strings
+
+        Raises:
+            ValueError: If agent_id format is invalid.
+            httpx.HTTPStatusError: If the API request fails.
+        """
         validated_id = _validate_agent_id(agent_id)
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -133,6 +188,25 @@ class JoyTrustVerifyBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        """Execute trust verification against the Joy platform.
+
+        Fetches agent data and evaluates against the configured trust
+        criteria to determine if the agent should be trusted.
+
+        Args:
+            input_data: Input parameters including agent_id and trust criteria.
+            execution_context: AutoGPT execution context.
+            **kwargs: Additional execution parameters.
+
+        Yields:
+            Tuple of (output_name, value) for each output field:
+                - is_trusted: Boolean indicating if criteria are met
+                - trust_score: The agent's trust score
+                - vouch_count: Number of vouches received
+                - verified: Verification status
+                - capabilities: List of capabilities
+                - error: Error message if verification failed
+        """
         try:
             data = await self._fetch_agent(input_data.agent_id)
 
@@ -164,10 +238,31 @@ class JoyTrustVerifyBlock(Block):
 
 
 class JoyDiscoverAgentsBlock(Block):
-    """Discover trusted agents from the Joy network.
+    """Discover trusted agents from the Joy network by capability.
 
-    Use this block to find agents with specific capabilities
-    that meet your trust requirements.
+    This block searches the Joy platform for agents matching specific
+    capabilities and trust criteria. Use this to find reliable agents
+    for task delegation in multi-agent workflows.
+
+    The discovery system filters agents by:
+        - Capability tags (e.g., 'github', 'email', 'code-generation')
+        - Free-text search queries
+        - Minimum trust score thresholds
+
+    Attributes:
+        Input: Search parameters including capability filter, query string,
+            minimum trust score, and result limit.
+        Output: List of matching agents with their trust metrics, plus
+            count and any error messages.
+
+    Example:
+        Find trusted agents capable of GitHub operations::
+
+            input_data = {
+                "capability": "github",
+                "min_trust_score": 0.7,
+                "limit": 5
+            }
     """
 
     class Input(BlockSchemaInput):
@@ -236,7 +331,24 @@ class JoyDiscoverAgentsBlock(Block):
     async def _discover_agents(
         self, capability: str, query: str, limit: int
     ) -> dict[str, Any]:
-        """Discover agents from Joy API."""
+        """Discover agents from the Joy API with filtering.
+
+        Searches the Joy network for agents matching the specified criteria.
+        Results are ordered by trust score descending.
+
+        Args:
+            capability: Optional capability tag to filter by (e.g., 'github').
+            query: Optional free-text search query.
+            limit: Maximum number of agents to return.
+
+        Returns:
+            Dictionary containing:
+                - agents: List of agent dictionaries with trust metrics
+                - count: Total number of matching agents
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+        """
         params: dict[str, Any] = {"limit": limit}
         if capability:
             params["capability"] = capability
@@ -259,6 +371,23 @@ class JoyDiscoverAgentsBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        """Execute agent discovery against the Joy platform.
+
+        Searches for agents matching the specified criteria and filters
+        results by the minimum trust score threshold.
+
+        Args:
+            input_data: Search parameters including capability, query,
+                min_trust_score, and limit.
+            execution_context: AutoGPT execution context.
+            **kwargs: Additional execution parameters.
+
+        Yields:
+            Tuple of (output_name, value) for each output field:
+                - agents: List of matching agent dictionaries
+                - count: Number of agents returned
+                - error: Error message if discovery failed
+        """
         try:
             data = await self._discover_agents(
                 input_data.capability, input_data.query, input_data.limit
@@ -293,10 +422,28 @@ class JoyDiscoverAgentsBlock(Block):
 
 
 class JoyShouldTrustBlock(Block):
-    """Simple trust gate - check if an agent should be trusted.
+    """Simple trust gate for conditional workflow decisions.
 
-    Returns a simple boolean for use in conditional flows.
-    Use this as a gate before delegating sensitive tasks.
+    This block provides a straightforward boolean trust check for use in
+    conditional workflow branches. It returns whether an agent meets the
+    minimum trust threshold along with a human-readable reason.
+
+    Use this block as a gate before delegating sensitive tasks to external
+    agents. The simple true/false output integrates easily with AutoGPT's
+    conditional logic blocks.
+
+    Attributes:
+        Input: Agent ID to check and minimum trust score threshold.
+        Output: Boolean trusted status and explanation string.
+
+    Example:
+        Gate a task delegation based on trust::
+
+            input_data = {
+                "agent_id": "ag_229e507d7d87f35cc2bc17ea",
+                "min_trust_score": 0.5
+            }
+            # Output: {"trusted": True, "reason": "Trust score 1.50 meets threshold 0.5"}
     """
 
     class Input(BlockSchemaInput):
@@ -341,7 +488,21 @@ class JoyShouldTrustBlock(Block):
         )
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
-        """Fetch agent data from Joy API."""
+        """Fetch agent data from the Joy API.
+
+        Retrieves the agent's trust score for threshold comparison.
+
+        Args:
+            agent_id: The Joy agent identifier to look up. Must match the
+                pattern 'ag_' followed by 24 hexadecimal characters.
+
+        Returns:
+            Dictionary containing agent data including trust_score.
+
+        Raises:
+            ValueError: If agent_id format is invalid.
+            httpx.HTTPStatusError: If the API request fails.
+        """
         validated_id = _validate_agent_id(agent_id)
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -358,6 +519,21 @@ class JoyShouldTrustBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        """Execute trust gate check against the Joy platform.
+
+        Fetches the agent's trust score and compares against the minimum
+        threshold to produce a simple boolean decision.
+
+        Args:
+            input_data: Input parameters including agent_id and min_trust_score.
+            execution_context: AutoGPT execution context.
+            **kwargs: Additional execution parameters.
+
+        Yields:
+            Tuple of (output_name, value) for each output field:
+                - trusted: Boolean indicating if threshold is met
+                - reason: Human-readable explanation of the decision
+        """
         try:
             data = await self._fetch_agent(input_data.agent_id)
 
