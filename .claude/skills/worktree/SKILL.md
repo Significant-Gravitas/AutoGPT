@@ -50,11 +50,14 @@ cd "$TARGET/autogpt_platform/backend" && poetry install && poetry run prisma gen
 cd "$TARGET/autogpt_platform/frontend" && pnpm install
 ```
 
+Replace `<NAME>` with the actual worktree name (e.g., `AutoGPT7`).
+
 ## Running the app (optional)
 
 Backend uses ports: 8001, 8002, 8003, 8005, 8006, 8007, 8008. Free them first if needed:
 
 ```bash
+TARGET="$(dirname "$(git rev-parse --show-toplevel)")/<NAME>"
 for port in 8001 8002 8003 8005 8006 8007 8008; do
   lsof -ti :$port | xargs kill -9 2>/dev/null || true
 done
@@ -68,6 +71,7 @@ SDK mode spawns a Claude subprocess — won't work inside Claude Code. Set `CHAT
 ## Cleanup
 
 ```bash
+# Replace <NAME> with the actual worktree name (e.g., AutoGPT7)
 git worktree remove "$(dirname "$(git rev-parse --show-toplevel)")/<NAME>"
 ```
 

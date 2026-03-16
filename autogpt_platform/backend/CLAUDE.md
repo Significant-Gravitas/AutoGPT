@@ -82,7 +82,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - Test files are colocated with source files (`*_test.py`)
 - Mock at boundaries — mock where the symbol is **used**, not where it's **defined**
 - After refactoring, update mock targets to match new module paths
-- Use `AsyncMock` for async functions
+- Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 
 ## Database Schema
 
