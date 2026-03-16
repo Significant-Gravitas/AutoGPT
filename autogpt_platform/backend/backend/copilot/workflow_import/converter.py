@@ -1,4 +1,4 @@
-"""LLM-powered conversion of competitor workflows to AutoGPT agent graphs.
+"""LLM-powered conversion of external workflows to AutoGPT agent graphs.
 
 Uses the CoPilot's LLM client to generate AutoGPT agent JSON from a structured
 WorkflowDescription, then validates and fixes via the existing pipeline.
@@ -84,7 +84,7 @@ def _build_conversion_prompt(
 
     system_msg = f"""You are an expert at converting automation workflows into AutoGPT agent graphs.
 
-Your task: Convert the competitor workflow described below into a valid AutoGPT agent JSON.
+Your task: Convert the workflow described below into a valid AutoGPT agent JSON.
 
 ## Agent Generation Guide
 {agent_guide}
@@ -93,11 +93,11 @@ Your task: Convert the competitor workflow described below into a valid AutoGPT 
 {block_catalog}
 
 ## Instructions
-1. Map each competitor workflow step to the most appropriate AutoGPT block(s)
+1. Map each workflow step to the most appropriate AutoGPT block(s)
 2. If no exact block match exists, use the closest alternative (e.g., HttpRequestBlock for generic API calls)
 3. Every agent MUST have at least one AgentInputBlock and one AgentOutputBlock
 4. Wire blocks together with links matching the original workflow's data flow
-5. Set meaningful input_default values based on the competitor's parameters
+5. Set meaningful input_default values based on the workflow's parameters
 6. Position nodes with 800+ X-unit spacing
 7. Return ONLY valid JSON — no markdown fences, no explanation"""
 
@@ -124,13 +124,13 @@ IMPORTANT: Your previous attempt had validation errors. Fix them:
     ]
 
 
-async def convert_competitor_workflow(
+async def convert_workflow(
     desc: WorkflowDescription,
 ) -> tuple[dict[str, Any], list[str]]:
     """Convert a WorkflowDescription into an AutoGPT agent JSON.
 
     Args:
-        desc: Structured description of the competitor workflow.
+        desc: Structured description of the source workflow.
 
     Returns:
         Tuple of (agent_json dict, conversion_notes list).

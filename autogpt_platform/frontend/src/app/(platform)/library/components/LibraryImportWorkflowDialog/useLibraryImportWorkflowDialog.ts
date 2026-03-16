@@ -1,4 +1,4 @@
-import { usePostV2ImportACompetitorWorkflowN8nMakeComZapier } from "@/app/api/__generated__/endpoints/import/import";
+import { usePostV2ImportAWorkflowFromAnotherToolN8nMakeComZapier } from "@/app/api/__generated__/endpoints/import/import";
 import type { ImportWorkflowRequest } from "@/app/api/__generated__/models/importWorkflowRequest";
 import type { ImportWorkflowResponse } from "@/app/api/__generated__/models/importWorkflowResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -6,27 +6,25 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { importCompetitorFormSchema } from "./LibraryImportCompetitorDialog";
+import { importWorkflowFormSchema } from "./LibraryImportWorkflowDialog";
 
-export function useLibraryImportCompetitorDialog() {
+export function useLibraryImportWorkflowDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const [importMode, setImportMode] = useState<"file" | "url">("file");
 
   const { mutateAsync: importWorkflow, isPending: isConverting } =
-    usePostV2ImportACompetitorWorkflowN8nMakeComZapier();
+    usePostV2ImportAWorkflowFromAnotherToolN8nMakeComZapier();
 
-  const form = useForm<z.infer<typeof importCompetitorFormSchema>>({
-    resolver: zodResolver(importCompetitorFormSchema),
+  const form = useForm<z.infer<typeof importWorkflowFormSchema>>({
+    resolver: zodResolver(importWorkflowFormSchema),
     defaultValues: {
       workflowFile: "",
       templateUrl: "",
     },
   });
 
-  const onSubmit = async (
-    values: z.infer<typeof importCompetitorFormSchema>,
-  ) => {
+  const onSubmit = async (values: z.infer<typeof importWorkflowFormSchema>) => {
     try {
       let body: ImportWorkflowRequest;
 

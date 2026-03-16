@@ -1,4 +1,4 @@
-"""Fetch competitor workflow templates by URL."""
+"""Fetch workflow templates by URL."""
 
 import logging
 import re

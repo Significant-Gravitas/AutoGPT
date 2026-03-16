@@ -13,14 +13,14 @@ import {
 } from "@/components/molecules/Form/Form";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { z } from "zod";
-import { useLibraryImportCompetitorDialog } from "./useLibraryImportCompetitorDialog";
+import { useLibraryImportWorkflowDialog } from "./useLibraryImportWorkflowDialog";
 
-export const importCompetitorFormSchema = z.object({
+export const importWorkflowFormSchema = z.object({
   workflowFile: z.string(),
   templateUrl: z.string(),
 });
 
-export default function LibraryImportCompetitorDialog() {
+export default function LibraryImportWorkflowDialog() {
   const {
     onSubmit,
     isConverting,
@@ -29,7 +29,7 @@ export default function LibraryImportCompetitorDialog() {
     form,
     importMode,
     setImportMode,
-  } = useLibraryImportCompetitorDialog();
+  } = useLibraryImportWorkflowDialog();
 
   const hasInput =
     importMode === "url"
@@ -38,7 +38,7 @@ export default function LibraryImportCompetitorDialog() {
 
   return (
     <Dialog
-      title="Import Competitor Workflow"
+      title="Import Workflow"
       styling={{ maxWidth: "32rem" }}
       controlled={{
         isOpen,
@@ -51,7 +51,7 @@ export default function LibraryImportCompetitorDialog() {
     >
       <Dialog.Trigger>
         <Button
-          data-testid="import-competitor-button"
+          data-testid="import-workflow-button"
           variant="primary"
           className="h-[2.78rem] w-full md:w-[14rem]"
           size="small"

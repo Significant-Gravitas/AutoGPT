@@ -1,4 +1,4 @@
-"""API endpoint for importing competitor workflows."""
+"""API endpoint for importing external workflows."""
 
 import logging
 from typing import Annotated, Any
@@ -7,10 +7,10 @@ import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
 
-from backend.copilot.workflow_import.converter import convert_competitor_workflow
+from backend.copilot.workflow_import.converter import convert_workflow
 from backend.copilot.workflow_import.describers import describe_workflow
 from backend.copilot.workflow_import.format_detector import (
-    CompetitorFormat,
+    SourcePlatform,
     detect_format,
 )
 from backend.copilot.workflow_import.url_fetcher import fetch_n8n_template
@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 class ImportWorkflowRequest(pydantic.BaseModel):
-    """Request body for importing a competitor workflow."""
+    """Request body for importing an external workflow."""
 
     workflow_json: dict[str, Any] | None = None
     template_url: str | None = None
@@ -41,7 +41,7 @@ class ImportWorkflowRequest(pydantic.BaseModel):
 
 
 class ImportWorkflowResponse(pydantic.BaseModel):
-    """Response from importing a competitor workflow."""
+    """Response from importing an external workflow."""
 
     graph: dict[str, Any]
     graph_id: str | None = None
@@ -52,16 +52,17 @@ class ImportWorkflowResponse(pydantic.BaseModel):
 
 
 @router.post(
-    path="/competitor-workflow",
-    summary="Import a competitor workflow (n8n, Make.com, Zapier)",
+    path="/workflow",
+    summary="Import a workflow from another tool (n8n, Make.com, Zapier)",
     tags=["import"],
     dependencies=[Security(requires_user)],
 )
-async def import_competitor_workflow(
+async def import_workflow(
     request: ImportWorkflowRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> ImportWorkflowResponse:
-    """Import a workflow from a competitor platform and convert it to an AutoGPT agent.
+    """Import a workflow from another automation platform and convert it to an
+    AutoGPT agent.
 
     Accepts either raw workflow JSON or a template URL (n8n only for now).
     The workflow is parsed, described, and then converted to an AutoGPT graph
@@ -81,7 +82,7 @@ async def import_competitor_workflow(
 
     # Step 2: Detect format
     fmt = detect_format(workflow_json)
-    if fmt == CompetitorFormat.UNKNOWN:
+    if fmt == SourcePlatform.UNKNOWN:
         raise HTTPException(
             status_code=400,
             detail="Could not detect workflow format. Supported formats: "
@@ -94,7 +95,7 @@ async def import_competitor_workflow(
 
     # Step 4: Convert to AutoGPT agent
     try:
-        agent_json, conversion_notes = await convert_competitor_workflow(desc)
+        agent_json, conversion_notes = await convert_workflow(desc)
     except ValueError as e:
         raise HTTPException(
             status_code=502,

@@ -1,29 +1,29 @@
-"""Detect the source platform of a competitor workflow JSON."""
+"""Detect the source platform of a workflow JSON."""
 
 import re
 from typing import Any
 
-from .models import CompetitorFormat
+from .models import SourcePlatform
 
 _N8N_TYPE_RE = re.compile(r"^(n8n-nodes-base\.|@n8n/)")
 
 
-def detect_format(json_data: dict[str, Any]) -> CompetitorFormat:
+def detect_format(json_data: dict[str, Any]) -> SourcePlatform:
     """Inspect a workflow JSON and determine which platform it came from.
 
     Args:
-        json_data: The parsed JSON data from a competitor workflow file.
+        json_data: The parsed JSON data from a workflow export file.
 
     Returns:
-        The detected CompetitorFormat.
+        The detected SourcePlatform.
     """
     if _is_n8n(json_data):
-        return CompetitorFormat.N8N
+        return SourcePlatform.N8N
     if _is_make(json_data):
-        return CompetitorFormat.MAKE
+        return SourcePlatform.MAKE
     if _is_zapier(json_data):
-        return CompetitorFormat.ZAPIER
-    return CompetitorFormat.UNKNOWN
+        return SourcePlatform.ZAPIER
+    return SourcePlatform.UNKNOWN
 
 
 def _is_n8n(data: dict[str, Any]) -> bool:

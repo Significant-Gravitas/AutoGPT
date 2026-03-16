@@ -1,28 +1,31 @@
-"""Extract structured WorkflowDescription from competitor workflow JSONs.
+"""Extract structured WorkflowDescription from external workflow JSONs.
 
-Each describer is a pure function that deterministically parses the competitor
+Each describer is a pure function that deterministically parses the source
 format into a platform-agnostic WorkflowDescription. No LLM calls are made here.
 """
 
 import re
 from typing import Any
 
-from .models import CompetitorFormat, StepDescription, WorkflowDescription
+from .models import SourcePlatform, StepDescription, WorkflowDescription
 
 
 def describe_workflow(
-    json_data: dict[str, Any], fmt: CompetitorFormat
+    json_data: dict[str, Any], fmt: SourcePlatform
 ) -> WorkflowDescription:
     """Route to the appropriate describer based on detected format."""
     describers = {
-        CompetitorFormat.N8N: describe_n8n_workflow,
-        CompetitorFormat.MAKE: describe_make_workflow,
-        CompetitorFormat.ZAPIER: describe_zapier_workflow,
+        SourcePlatform.N8N: describe_n8n_workflow,
+        SourcePlatform.MAKE: describe_make_workflow,
+        SourcePlatform.ZAPIER: describe_zapier_workflow,
     }
     describer = describers.get(fmt)
     if not describer:
         raise ValueError(f"No describer available for format: {fmt}")
-    return describer(json_data)
+    result = describer(json_data)
+    if not result.steps:
+        raise ValueError(f"Workflow contains no steps (format: {fmt.value})")
+    return result
 
 
 def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
@@ -35,8 +38,11 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     steps: list[StepDescription] = []
 
     for i, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            continue
+
         node_name = node.get("name", f"Node {i}")
-        node_index[node_name] = i
+        node_index[node_name] = len(steps)
 
         node_type = node.get("type", "unknown")
         # Extract service name from type (e.g., "n8n-nodes-base.gmail" -> "Gmail")
@@ -44,6 +50,8 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 
         # Build action description from type and parameters
         params = node.get("parameters", {})
+        if not isinstance(params, dict):
+            params = {}
         action = _describe_n8n_action(node_type, node_name, params)
 
         # Extract key parameters (skip large/internal ones)
@@ -51,7 +59,7 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 
         steps.append(
             StepDescription(
-                order=i,
+                order=len(steps),
                 action=action,
                 service=service,
                 parameters=clean_params,
@@ -69,16 +77,22 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
             if not isinstance(output_group, list):
                 continue
             for conn in output_group:
+                if not isinstance(conn, dict):
+                    continue
                 target_name = conn.get("node")
+                if not isinstance(target_name, str):
+                    continue
                 target_idx = node_index.get(target_name)
                 if target_idx is not None:
                     steps[source_idx].connections_to.append(target_idx)
 
     # Detect trigger type
     trigger_type = None
-    if nodes:
+    if nodes and isinstance(nodes[0], dict):
         first_type = nodes[0].get("type", "")
-        if "trigger" in first_type.lower() or "webhook" in first_type.lower():
+        if isinstance(first_type, str) and (
+            "trigger" in first_type.lower() or "webhook" in first_type.lower()
+        ):
             trigger_type = _extract_n8n_service(first_type)
 
     return WorkflowDescription(
@@ -86,7 +100,7 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         description=_build_workflow_summary(steps),
         steps=steps,
         trigger_type=trigger_type,
-        source_format=CompetitorFormat.N8N,
+        source_format=SourcePlatform.N8N,
         raw_json=json_data,
     )
 
@@ -95,15 +109,21 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     """Extract a structured description from a Make.com scenario blueprint."""
     flow = json_data.get("flow", [])
     steps: list[StepDescription] = []
+    valid_count = 0
 
-    for i, module in enumerate(flow):
+    for module in flow:
+        if not isinstance(module, dict):
+            continue
+
         module_ref = module.get("module", "unknown:unknown")
+        if not isinstance(module_ref, str):
+            module_ref = "unknown:unknown"
         parts = module_ref.split(":", 1)
         service = parts[0].replace("-", " ").title() if parts else "Unknown"
         action_verb = parts[1] if len(parts) > 1 else "process"
 
         # Build human-readable action
-        action = f"{action_verb.replace(':', ' ').title()} via {service}"
+        action = f"{str(action_verb).replace(':', ' ').title()} via {service}"
 
         params = module.get("mapper", module.get("parameters", {}))
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
@@ -116,23 +136,26 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
             clean_params["_has_routes"] = len(routes)
         else:
             # Make.com flows are sequential by default; each step connects to next
-            connections_to = [i + 1] if i < len(flow) - 1 else []
+            connections_to = [valid_count + 1] if valid_count < len(flow) - 1 else []
 
         steps.append(
             StepDescription(
-                order=i,
+                order=valid_count,
                 action=action,
                 service=service,
                 parameters=clean_params,
                 connections_to=connections_to,
             )
         )
+        valid_count += 1
 
     # Detect trigger
     trigger_type = None
-    if flow:
+    if flow and isinstance(flow[0], dict):
         first_module = flow[0].get("module", "")
-        if "watch" in first_module.lower() or "trigger" in first_module.lower():
+        if isinstance(first_module, str) and (
+            "watch" in first_module.lower() or "trigger" in first_module.lower()
+        ):
             trigger_type = first_module.split(":")[0].replace("-", " ").title()
 
     return WorkflowDescription(
@@ -140,7 +163,7 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         description=_build_workflow_summary(steps),
         steps=steps,
         trigger_type=trigger_type,
-        source_format=CompetitorFormat.MAKE,
+        source_format=SourcePlatform.MAKE,
         raw_json=json_data,
     )
 
@@ -149,30 +172,35 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     """Extract a structured description from a Zapier Zap JSON."""
     zap_steps = json_data.get("steps", [])
     steps: list[StepDescription] = []
+    valid_count = 0
 
-    for i, step in enumerate(zap_steps):
+    for step in zap_steps:
+        if not isinstance(step, dict):
+            continue
+
         app = step.get("app", "Unknown")
         action = step.get("action", "process")
-        action_desc = f"{action.replace('_', ' ').title()} via {app}"
+        action_desc = f"{str(action).replace('_', ' ').title()} via {app}"
 
         params = step.get("params", step.get("inputFields", {}))
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
 
         # Zapier zaps are linear: each step connects to next
-        connections_to = [i + 1] if i < len(zap_steps) - 1 else []
+        connections_to = [valid_count + 1] if valid_count < len(zap_steps) - 1 else []
 
         steps.append(
             StepDescription(
-                order=i,
+                order=valid_count,
                 action=action_desc,
                 service=app,
                 parameters=clean_params,
                 connections_to=connections_to,
             )
         )
+        valid_count += 1
 
     trigger_type = None
-    if zap_steps:
+    if zap_steps and isinstance(zap_steps[0], dict):
         trigger_type = zap_steps[0].get("app")
 
     return WorkflowDescription(
@@ -180,7 +208,7 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         description=_build_workflow_summary(steps),
         steps=steps,
         trigger_type=trigger_type,
-        source_format=CompetitorFormat.ZAPIER,
+        source_format=SourcePlatform.ZAPIER,
         raw_json=json_data,
     )
 
@@ -213,8 +241,8 @@ def _extract_n8n_service(node_type: str) -> str:
 def _describe_n8n_action(node_type: str, node_name: str, params: dict[str, Any]) -> str:
     """Build a human-readable action description for an n8n node."""
     service = _extract_n8n_service(node_type)
-    resource = params.get("resource", "")
-    operation = params.get("operation", "")
+    resource = str(params.get("resource", ""))
+    operation = str(params.get("operation", ""))
 
     if resource and operation:
         return f"{operation.title()} {resource} via {service}"

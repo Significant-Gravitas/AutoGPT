@@ -8,7 +8,7 @@ from .describers import (
     describe_workflow,
     describe_zapier_workflow,
 )
-from .models import CompetitorFormat
+from .models import SourcePlatform
 
 
 class TestDescribeN8nWorkflow:
@@ -35,7 +35,7 @@ class TestDescribeN8nWorkflow:
         }
         desc = describe_n8n_workflow(data)
         assert desc.name == "Email on Webhook"
-        assert desc.source_format == CompetitorFormat.N8N
+        assert desc.source_format == SourcePlatform.N8N
         assert len(desc.steps) == 2
         assert desc.steps[0].connections_to == [1]
         assert desc.steps[1].connections_to == []
@@ -83,7 +83,7 @@ class TestDescribeMakeWorkflow:
         }
         desc = describe_make_workflow(data)
         assert desc.name == "Sheets to Calendar"
-        assert desc.source_format == CompetitorFormat.MAKE
+        assert desc.source_format == SourcePlatform.MAKE
         assert len(desc.steps) == 2
         # Sequential: step 0 connects to step 1
         assert desc.steps[0].connections_to == [1]
@@ -113,7 +113,7 @@ class TestDescribeZapierWorkflow:
         }
         desc = describe_zapier_workflow(data)
         assert desc.name == "Gmail to Slack"
-        assert desc.source_format == CompetitorFormat.ZAPIER
+        assert desc.source_format == SourcePlatform.ZAPIER
         assert len(desc.steps) == 2
         assert desc.steps[0].connections_to == [1]
         assert desc.trigger_type == "Gmail"
@@ -127,9 +127,9 @@ class TestDescribeWorkflowRouter:
             ],
             "connections": {},
         }
-        desc = describe_workflow(data, CompetitorFormat.N8N)
-        assert desc.source_format == CompetitorFormat.N8N
+        desc = describe_workflow(data, SourcePlatform.N8N)
+        assert desc.source_format == SourcePlatform.N8N
 
     def test_unknown_raises(self):
         with pytest.raises(ValueError, match="No describer"):
-            describe_workflow({}, CompetitorFormat.UNKNOWN)
+            describe_workflow({}, SourcePlatform.UNKNOWN)

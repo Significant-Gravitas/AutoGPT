@@ -1,7 +1,7 @@
 """Tests for format_detector.py."""
 
 from .format_detector import detect_format
-from .models import CompetitorFormat
+from .models import SourcePlatform
 
 
 class TestDetectFormat:
@@ -26,7 +26,7 @@ class TestDetectFormat:
                 }
             },
         }
-        assert detect_format(data) == CompetitorFormat.N8N
+        assert detect_format(data) == SourcePlatform.N8N
 
     def test_n8n_langchain_nodes(self):
         data = {
@@ -39,7 +39,7 @@ class TestDetectFormat:
             ],
             "connections": {},
         }
-        assert detect_format(data) == CompetitorFormat.N8N
+        assert detect_format(data) == SourcePlatform.N8N
 
     def test_make_scenario(self):
         data = {
@@ -55,7 +55,7 @@ class TestDetectFormat:
                 },
             ],
         }
-        assert detect_format(data) == CompetitorFormat.MAKE
+        assert detect_format(data) == SourcePlatform.MAKE
 
     def test_zapier_zap(self):
         data = {
@@ -69,14 +69,14 @@ class TestDetectFormat:
                 },
             ],
         }
-        assert detect_format(data) == CompetitorFormat.ZAPIER
+        assert detect_format(data) == SourcePlatform.ZAPIER
 
     def test_unknown_format(self):
         data = {"foo": "bar", "nodes": []}
-        assert detect_format(data) == CompetitorFormat.UNKNOWN
+        assert detect_format(data) == SourcePlatform.UNKNOWN
 
     def test_empty_dict(self):
-        assert detect_format({}) == CompetitorFormat.UNKNOWN
+        assert detect_format({}) == SourcePlatform.UNKNOWN
 
     def test_autogpt_graph_not_detected_as_n8n(self):
         """AutoGPT graphs have nodes but not n8n-style types."""
@@ -86,16 +86,16 @@ class TestDetectFormat:
             ],
             "connections": {},
         }
-        assert detect_format(data) == CompetitorFormat.UNKNOWN
+        assert detect_format(data) == SourcePlatform.UNKNOWN
 
     def test_make_without_colon_not_detected(self):
         data = {
             "flow": [{"module": "simplemodule", "mapper": {}}],
         }
-        assert detect_format(data) == CompetitorFormat.UNKNOWN
+        assert detect_format(data) == SourcePlatform.UNKNOWN
 
     def test_zapier_without_action_not_detected(self):
         data = {
             "steps": [{"app": "gmail"}],
         }
-        assert detect_format(data) == CompetitorFormat.UNKNOWN
+        assert detect_format(data) == SourcePlatform.UNKNOWN

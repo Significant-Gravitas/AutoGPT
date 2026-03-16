@@ -75,7 +75,7 @@ def mock_converter(mocker):
         "links": [],
     }
     return mocker.patch(
-        "backend.api.features.workflow_import.convert_competitor_workflow",
+        "backend.api.features.workflow_import.convert_workflow",
         new_callable=AsyncMock,
         return_value=(agent_json, ["Applied 2 auto-fixes"]),
     )
@@ -96,10 +96,10 @@ def mock_save(mocker):
     )
 
 
-class TestImportCompetitorWorkflow:
+class TestImportWorkflow:
     def test_import_n8n_workflow(self, mock_converter, mock_save):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": N8N_WORKFLOW, "save": True},
         )
         assert response.status_code == 200
@@ -111,7 +111,7 @@ class TestImportCompetitorWorkflow:
 
     def test_import_make_workflow(self, mock_converter, mock_save):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": MAKE_WORKFLOW, "save": True},
         )
         assert response.status_code == 200
@@ -121,7 +121,7 @@ class TestImportCompetitorWorkflow:
 
     def test_import_zapier_workflow(self, mock_converter, mock_save):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": ZAPIER_WORKFLOW, "save": True},
         )
         assert response.status_code == 200
@@ -131,7 +131,7 @@ class TestImportCompetitorWorkflow:
 
     def test_import_without_save(self, mock_converter, mock_save):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": N8N_WORKFLOW, "save": False},
         )
         assert response.status_code == 200
@@ -142,14 +142,14 @@ class TestImportCompetitorWorkflow:
 
     def test_no_source_provided(self):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"save": True},
         )
         assert response.status_code == 422  # Pydantic validation error
 
     def test_both_sources_provided(self):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={
                 "workflow_json": N8N_WORKFLOW,
                 "template_url": "https://n8n.io/workflows/123",
@@ -160,7 +160,7 @@ class TestImportCompetitorWorkflow:
 
     def test_unknown_format_returns_400(self, mock_converter):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": {"foo": "bar"}, "save": False},
         )
         assert response.status_code == 400
@@ -168,12 +168,12 @@ class TestImportCompetitorWorkflow:
 
     def test_converter_failure_returns_502(self, mocker):
         mocker.patch(
-            "backend.api.features.workflow_import.convert_competitor_workflow",
+            "backend.api.features.workflow_import.convert_workflow",
             new_callable=AsyncMock,
             side_effect=ValueError("LLM call failed"),
         )
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": N8N_WORKFLOW, "save": False},
         )
         assert response.status_code == 502
@@ -186,7 +186,7 @@ class TestImportCompetitorWorkflow:
             side_effect=RuntimeError("DB connection failed"),
         )
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": N8N_WORKFLOW, "save": True},
         )
         assert response.status_code == 500
@@ -199,7 +199,7 @@ class TestImportCompetitorWorkflow:
             side_effect=ValueError("Invalid URL format"),
         )
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"template_url": "https://bad-url.com", "save": False},
         )
         assert response.status_code == 400
@@ -212,7 +212,7 @@ class TestImportCompetitorWorkflow:
             side_effect=RuntimeError("n8n API returned 500"),
         )
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"template_url": "https://n8n.io/workflows/123", "save": False},
         )
         assert response.status_code == 502
@@ -220,7 +220,7 @@ class TestImportCompetitorWorkflow:
 
     def test_response_model_shape(self, mock_converter, mock_save):
         response = client.post(
-            "/competitor-workflow",
+            "/workflow",
             json={"workflow_json": N8N_WORKFLOW, "save": True},
         )
         data = response.json()

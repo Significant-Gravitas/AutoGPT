@@ -1,4 +1,4 @@
-"""Data models for competitor workflow import."""
+"""Data models for external workflow import."""
 
 from enum import Enum
 from typing import Any
@@ -7,7 +7,7 @@ import pydantic
 from pydantic import Field
 
 
-class CompetitorFormat(str, Enum):
+class SourcePlatform(str, Enum):
     N8N = "n8n"
     MAKE = "make"
     ZAPIER = "zapier"
@@ -15,7 +15,7 @@ class CompetitorFormat(str, Enum):
 
 
 class StepDescription(pydantic.BaseModel):
-    """A single step/node extracted from a competitor workflow."""
+    """A single step/node extracted from an external workflow."""
 
     order: int
     action: str
@@ -25,11 +25,11 @@ class StepDescription(pydantic.BaseModel):
 
 
 class WorkflowDescription(pydantic.BaseModel):
-    """Structured description of a competitor workflow."""
+    """Structured description of an external workflow."""
 
     name: str
     description: str
     steps: list[StepDescription]
     trigger_type: str | None = None
-    source_format: CompetitorFormat
+    source_format: SourcePlatform
     raw_json: dict[str, Any] = Field(default_factory=dict, exclude=True)
