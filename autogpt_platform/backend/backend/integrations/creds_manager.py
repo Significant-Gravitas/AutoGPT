@@ -43,7 +43,15 @@ def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
 def _bust_copilot_cache(user_id: str, provider: str) -> None:
     """Invoke the registered hook (if any) to bust downstream token caches."""
     if _on_creds_changed is not None:
-        _on_creds_changed(user_id, provider)
+        try:
+            _on_creds_changed(user_id, provider)
+        except Exception:
+            logger.warning(
+                "Credential-change hook failed for user=%s provider=%s",
+                user_id,
+                provider,
+                exc_info=True,
+            )
 
 
 class IntegrationCredentialsManager:

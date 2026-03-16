@@ -86,8 +86,11 @@ class ConnectIntegrationTool(BaseTool):
             "has not connected the relevant account. "
             "The tool surfaces a credentials setup card in the chat so the user "
             "can authenticate without leaving the page. "
-            "After the user connects the account, retry the operation — the token "
-            "will be automatically available in the execution environment."
+            "After the user connects the account, retry the operation. "
+            "In E2B/cloud sandbox mode the token (GH_TOKEN/GITHUB_TOKEN) is "
+            "automatically injected per-command in bash_exec — no manual export needed. "
+            "In local bubblewrap mode network is isolated so GitHub CLI commands "
+            "will still fail after connecting; inform the user of this limitation."
         )
 
     @property
