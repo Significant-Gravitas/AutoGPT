@@ -39,6 +39,25 @@ function guessMimeType(url: string): string | null {
   return extension ? mimeMap[extension] || null : null;
 }
 
+const YOUTUBE_REGEX =
+  /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+
+const VIMEO_REGEX = /^https?:\/\/(?:www\.)?vimeo\.com\/(\d+)/;
+
+function getYouTubeVideoID(url: string): string | null {
+  const match = url.match(YOUTUBE_REGEX);
+  return match ? match[1] : null;
+}
+
+function getVimeoVideoID(url: string): string | null {
+  const match = url.match(VIMEO_REGEX);
+  return match ? match[1] : null;
+}
+
+function isEmbeddableVideoURL(url: string): boolean {
+  return getYouTubeVideoID(url) !== null || getVimeoVideoID(url) !== null;
+}
+
 function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
   if (
     metadata?.type === "video" ||
@@ -49,6 +68,10 @@ function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
 
   if (typeof value === "string") {
     if (value.startsWith("data:video/")) {
+      return true;
+    }
+
+    if (isEmbeddableVideoURL(value)) {
       return true;
     }
 
@@ -72,6 +95,36 @@ function renderVideo(
 ): React.ReactNode {
   const videoUrl = String(value);
 
+  const youtubeID = getYouTubeVideoID(videoUrl);
+  if (youtubeID) {
+    return (
+      <div className="group relative aspect-video w-full">
+        <iframe
+          className="h-full w-full rounded-md border border-gray-200"
+          src={`https://www.youtube.com/embed/${youtubeID}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title="YouTube video"
+        />
+      </div>
+    );
+  }
+
+  const vimeoID = getVimeoVideoID(videoUrl);
+  if (vimeoID) {
+    return (
+      <div className="group relative aspect-video w-full">
+        <iframe
+          className="h-full w-full rounded-md border border-gray-200"
+          src={`https://player.vimeo.com/video/${vimeoID}`}
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          title="Vimeo video"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="group relative">
       <video
@@ -91,6 +144,15 @@ function getCopyContentVideo(
   metadata?: OutputMetadata,
 ): CopyContent | null {
   const videoUrl = String(value);
+
+  // For embeddable URLs, just copy the URL text
+  if (isEmbeddableVideoURL(videoUrl)) {
+    return {
+      mimeType: "text/plain",
+      data: videoUrl,
+      fallbackText: videoUrl,
+    };
+  }
 
   if (videoUrl.startsWith("data:")) {
     const mimeMatch = videoUrl.match(/data:([^;]+)/);

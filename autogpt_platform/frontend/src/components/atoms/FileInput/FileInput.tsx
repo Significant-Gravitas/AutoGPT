@@ -5,6 +5,7 @@ import { formatFileSize, getFileLabel } from "./helpers";
 import { cn } from "@/lib/utils";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { Text } from "../Text/Text";
+import { getMediaPreview, MediaPreviewRenderer } from "./MediaPreview";
 
 type UploadFileResult = {
   file_name: string;
@@ -271,36 +272,41 @@ export function FileInput(props: Props) {
               </Text>
             </div>
           ) : value ? (
-            <div className="flex items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
-                <FileTextIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
+                  <FileTextIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
 
-                <Text
-                  variant="small-medium"
-                  className="truncate text-gray-900 dark:text-gray-100"
-                >
-                  {fileInfo
-                    ? getFileLabel(fileInfo.name, fileInfo.content_type)
-                    : getFileLabelFromValue(value)}
-                </Text>
-                {fileInfo && (
                   <Text
-                    variant="small"
-                    className="text-gray-500 dark:text-gray-400"
+                    variant="small-medium"
+                    className="truncate text-gray-900 dark:text-gray-100"
                   >
-                    {formatFileSize(fileInfo.size)}
+                    {fileInfo
+                      ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                      : getFileLabelFromValue(value)}
                   </Text>
-                )}
+                  {fileInfo && (
+                    <Text
+                      variant="small"
+                      className="text-gray-500 dark:text-gray-400"
+                    >
+                      {formatFileSize(fileInfo.size)}
+                    </Text>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="small"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                  onClick={handleClear}
+                  type="button"
+                >
+                  <X size={14} />
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
-                onClick={handleClear}
-                type="button"
-              >
-                <X size={14} />
-              </Button>
+              <MediaPreviewRenderer
+                preview={getMediaPreview(value, fileInfo?.content_type)}
+              />
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -369,6 +375,9 @@ export function FileInput(props: Props) {
               />
             </div>
           </div>
+          <MediaPreviewRenderer
+            preview={getMediaPreview(value, fileInfo?.content_type)}
+          />
           {showStorageNote && mode === "upload" && (
             <p className="text-xs text-gray-500">{storageNote}</p>
           )}
