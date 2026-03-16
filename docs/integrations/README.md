@@ -418,6 +418,43 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [AgentMail Send Message](block-integrations/agent_mail/messages.md#send-message) | Send a new email from an AgentMail inbox, creating a new conversation thread |
+| [AgentMail List Messages](block-integrations/agent_mail/messages.md#list-messages) | List messages in an AgentMail inbox with optional label filtering |
+| [AgentMail Get Message](block-integrations/agent_mail/messages.md#get-message) | Retrieve a specific email message by ID with extracted reply content |
+| [AgentMail Reply To Message](block-integrations/agent_mail/messages.md#reply-to-message) | Reply to an existing email in the same conversation thread |
+| [AgentMail Forward Message](block-integrations/agent_mail/messages.md#forward-message) | Forward an email message to a new recipient |
+| [AgentMail Update Message](block-integrations/agent_mail/messages.md#update-message) | Add or remove labels on an email message for state management |
+| [AgentMail List Inbox Threads](block-integrations/agent_mail/threads.md#list-inbox-threads) | List all conversation threads in an AgentMail inbox |
+| [AgentMail Get Inbox Thread](block-integrations/agent_mail/threads.md#get-inbox-thread) | Retrieve a conversation thread with all its messages |
+| [AgentMail Delete Inbox Thread](block-integrations/agent_mail/threads.md#delete-inbox-thread) | Permanently delete a conversation thread and all its messages |
+| [AgentMail List Org Threads](block-integrations/agent_mail/threads.md#list-org-threads) | List threads across all inboxes in your organization |
+| [AgentMail Get Org Thread](block-integrations/agent_mail/threads.md#get-org-thread) | Retrieve a thread by ID from anywhere in the organization |
+| [AgentMail Create Draft](block-integrations/agent_mail/drafts.md#create-draft) | Create a draft email for review or scheduled sending |
+| [AgentMail Get Draft](block-integrations/agent_mail/drafts.md#get-draft) | Retrieve a draft to review its contents and send status |
+| [AgentMail List Drafts](block-integrations/agent_mail/drafts.md#list-drafts) | List drafts in an inbox with optional label filtering |
+| [AgentMail Update Draft](block-integrations/agent_mail/drafts.md#update-draft) | Update a draft's content, recipients, or scheduled send time |
+| [AgentMail Send Draft](block-integrations/agent_mail/drafts.md#send-draft) | Send a draft immediately, converting it into a delivered message |
+| [AgentMail Delete Draft](block-integrations/agent_mail/drafts.md#delete-draft) | Delete a draft or cancel a scheduled email |
+| [AgentMail List Org Drafts](block-integrations/agent_mail/drafts.md#list-org-drafts) | List all drafts across every inbox in your organization |
+| [AgentMail Get Message Attachment](block-integrations/agent_mail/attachments.md#get-message-attachment) | Download a file attachment from an email message as base64 |
+| [AgentMail Get Thread Attachment](block-integrations/agent_mail/attachments.md#get-thread-attachment) | Download a file attachment from a conversation thread as base64 |
+| [AgentMail Create Inbox](block-integrations/agent_mail/inbox.md#create-inbox) | Create a new email inbox for an AI agent |
+| [AgentMail Get Inbox](block-integrations/agent_mail/inbox.md#get-inbox) | Retrieve details of an existing inbox |
+| [AgentMail List Inboxes](block-integrations/agent_mail/inbox.md#list-inboxes) | List all email inboxes in your organization |
+| [AgentMail Update Inbox](block-integrations/agent_mail/inbox.md#update-inbox) | Update the display name of an inbox |
+| [AgentMail Delete Inbox](block-integrations/agent_mail/inbox.md#delete-inbox) | Permanently delete an inbox and all its data |
+| [AgentMail List Entries](block-integrations/agent_mail/lists.md#list-entries) | List all entries in an allow/block list |
+| [AgentMail Create List Entry](block-integrations/agent_mail/lists.md#create-list-entry) | Add an email address or domain to an allow/block list |
+| [AgentMail Get List Entry](block-integrations/agent_mail/lists.md#get-list-entry) | Check if an address or domain is in an allow/block list |
+| [AgentMail Delete List Entry](block-integrations/agent_mail/lists.md#delete-list-entry) | Remove an entry from an allow/block list |
+| [AgentMail Create Pod](block-integrations/agent_mail/pods.md#create-pod) | Create a new pod for multi-tenant customer isolation |
+| [AgentMail Get Pod](block-integrations/agent_mail/pods.md#get-pod) | Retrieve details of an existing pod |
+| [AgentMail List Pods](block-integrations/agent_mail/pods.md#list-pods) | List all tenant pods in your organization |
+| [AgentMail Delete Pod](block-integrations/agent_mail/pods.md#delete-pod) | Permanently delete a pod (must be empty first) |
+| [AgentMail List Pod Inboxes](block-integrations/agent_mail/pods.md#list-pod-inboxes) | List all inboxes within a specific pod |
+| [AgentMail List Pod Threads](block-integrations/agent_mail/pods.md#list-pod-threads) | List all threads across all inboxes within a pod |
+| [AgentMail List Pod Drafts](block-integrations/agent_mail/pods.md#list-pod-drafts) | List all drafts across all inboxes within a pod |
+| [AgentMail Create Pod Inbox](block-integrations/agent_mail/pods.md#create-pod-inbox) | Create a new inbox within a specific pod |
 | [Baas Bot Join Meeting](block-integrations/baas/bots.md#baas-bot-join-meeting) | Deploy a bot to join and record a meeting |
 | [Baas Bot Leave Meeting](block-integrations/baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
 | [Gmail Add Label](block-integrations/google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
