@@ -38,6 +38,44 @@ Input and output schemas define the expected data structure for communication be
 
 ---
 
+## Autogpt Copilot
+
+### What it is
+Execute tasks using the AutoGPT Copilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more). Enables sub-agent patterns and scheduled copilot execution.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The task or instruction for the copilot to execute. The copilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | No |
+| system_context | Optional additional context prepended to the prompt. Use this to constrain copilot behavior, provide domain context, or set output format requirements. | str | No |
+| session_id | Session ID to continue an existing copilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
+| timeout | Maximum execution time in seconds. Copilot tasks can involve multiple tool calls and may take a while. Set appropriately for your task complexity. | int | No |
+| max_recursion_depth | Maximum nesting depth when the copilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if execution failed. | str |
+| response | The final text response from the copilot. | str |
+| tool_calls | List of tools called during execution. Each entry has toolCallId, toolName, input, output, and success fields. | List[Dict[str, Any]] |
+| conversation_history | Full conversation history as JSON. Can be used for logging or analysis. | str |
+| session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
+| token_usage | Token usage statistics: promptTokens, completionTokens, totalTokens. | Dict[str, Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Create Reddit Post
 
 ### What it is
