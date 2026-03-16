@@ -31,6 +31,15 @@ def _json_to_list(value: Any) -> list[str]:
     return []
 
 
+def _json_to_themed_prompts(value: Any) -> dict[str, list[str]]:
+    """Convert Json field to themed prompts dict, ignoring legacy list format."""
+    if isinstance(value, dict):
+        return {
+            k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, list)
+        }
+    return {}
+
+
 class BusinessUnderstandingInput(pydantic.BaseModel):
     """Input model for updating business understanding - all fields optional for incremental updates."""
 
@@ -87,8 +96,8 @@ class BusinessUnderstandingInput(pydantic.BaseModel):
     )
 
     # Suggested prompts (UI-only, not included in system prompt)
-    suggested_prompts: Optional[list[str]] = pydantic.Field(
-        None, description="LLM-generated suggested prompts based on business context"
+    suggested_prompts: Optional[dict[str, list[str]]] = pydantic.Field(
+        None, description="LLM-generated suggested prompts grouped by theme"
     )
 
 
@@ -128,7 +137,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
     additional_notes: Optional[str] = None
 
     # Suggested prompts (UI-only, not included in system prompt)
-    suggested_prompts: list[str] = pydantic.Field(default_factory=list)
+    suggested_prompts: dict[str, list[str]] = pydantic.Field(default_factory=dict)
 
     @classmethod
     def from_db(cls, db_record: CoPilotUnderstanding) -> "BusinessUnderstanding":
@@ -157,7 +166,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
             current_software=_json_to_list(business.get("current_software")),
             existing_automation=_json_to_list(business.get("existing_automation")),
             additional_notes=business.get("additional_notes"),
-            suggested_prompts=_json_to_list(data.get("suggested_prompts")),
+            suggested_prompts=_json_to_themed_prompts(data.get("suggested_prompts")),
         )
 
 
