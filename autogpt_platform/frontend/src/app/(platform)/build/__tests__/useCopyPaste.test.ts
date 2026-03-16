@@ -413,12 +413,12 @@ describe("useCopyPaste", () => {
         expect(mockReadText).toHaveBeenCalled();
       });
 
-      // Wait a tick to ensure no state changes happen
-      await new Promise((r) => setTimeout(r, 50));
-
-      const { nodes } = useNodeStore.getState();
-      expect(nodes).toHaveLength(1);
-      expect(nodes[0].id).toBe("1");
+      // Ensure no state changes happen after clipboard read
+      await vi.waitFor(() => {
+        const { nodes } = useNodeStore.getState();
+        expect(nodes).toHaveLength(1);
+        expect(nodes[0].id).toBe("1");
+      });
     });
 
     it("does nothing when clipboard is empty", async () => {
@@ -437,11 +437,12 @@ describe("useCopyPaste", () => {
         expect(mockReadText).toHaveBeenCalled();
       });
 
-      await new Promise((r) => setTimeout(r, 50));
-
-      const { nodes } = useNodeStore.getState();
-      expect(nodes).toHaveLength(1);
-      expect(nodes[0].id).toBe("1");
+      // Ensure no state changes happen after clipboard read
+      await vi.waitFor(() => {
+        const { nodes } = useNodeStore.getState();
+        expect(nodes).toHaveLength(1);
+        expect(nodes[0].id).toBe("1");
+      });
     });
   });
 

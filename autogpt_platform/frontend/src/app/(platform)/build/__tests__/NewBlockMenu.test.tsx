@@ -47,7 +47,6 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  cleanup();
   useBlockMenuStore.getState().reset();
   useBlockMenuStore.setState({
     filters: [],

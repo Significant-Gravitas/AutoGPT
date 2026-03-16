@@ -7,9 +7,11 @@ import type { CustomNode } from "../components/FlowEditor/nodes/CustomNode/Custo
 import type { CustomNodeData } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
-function createTestNode(
-  overrides: Partial<CustomNode> & { id: string },
-): CustomNode {
+function createTestNode(overrides: {
+  id: string;
+  position?: { x: number; y: number };
+  data?: Partial<CustomNodeData>;
+}): CustomNode {
   const defaults: CustomNodeData = {
     hardcodedValues: {},
     title: "Test Block",
@@ -125,7 +127,7 @@ describe("nodeStore", () => {
       const node1 = createTestNode({ id: "1" });
       const node2 = createTestNode({
         id: "2",
-        data: { title: "Node 2" } as CustomNodeData,
+        data: { title: "Node 2" },
       });
       useNodeStore.getState().setNodes([node1, node2]);
 
@@ -229,7 +231,7 @@ describe("nodeStore", () => {
         id: "1",
         data: {
           metadata: { customized_name: "My Custom Name" },
-        } as Partial<CustomNodeData> as CustomNodeData,
+        },
       });
 
       const backend = useNodeStore
@@ -247,7 +249,7 @@ describe("nodeStore", () => {
         id: "1",
         data: {
           metadata: { credentials_optional: true },
-        } as Partial<CustomNodeData> as CustomNodeData,
+        },
       });
 
       const backend = useNodeStore
@@ -262,7 +264,7 @@ describe("nodeStore", () => {
         id: "1",
         data: {
           hardcodedValues: { filled: "value", empty: "" },
-        } as Partial<CustomNodeData> as CustomNodeData,
+        },
       });
 
       const backend = useNodeStore
@@ -530,7 +532,7 @@ describe("nodeStore", () => {
           id: "1",
           data: {
             uiType: BlockUIType.INPUT,
-          } as Partial<CustomNodeData> as CustomNodeData,
+          },
         }),
       );
 
@@ -558,7 +560,7 @@ describe("nodeStore", () => {
           id: "1",
           data: {
             uiType: BlockUIType.WEBHOOK,
-          } as Partial<CustomNodeData> as CustomNodeData,
+          },
         }),
       );
       expect(useNodeStore.getState().hasWebhookNodes()).toBe(true);
@@ -570,7 +572,7 @@ describe("nodeStore", () => {
           id: "1",
           data: {
             uiType: BlockUIType.WEBHOOK_MANUAL,
-          } as Partial<CustomNodeData> as CustomNodeData,
+          },
         }),
       );
       expect(useNodeStore.getState().hasWebhookNodes()).toBe(true);
@@ -638,7 +640,7 @@ describe("nodeStore", () => {
           id: "1",
           data: {
             hardcodedValues: { key: "value" },
-          } as Partial<CustomNodeData> as CustomNodeData,
+          },
         }),
       );
 
@@ -735,15 +737,11 @@ describe("nodeStore", () => {
       useNodeStore.getState().addNodes([
         createTestNode({
           id: "1",
-          data: {
-            title: "First",
-          } as Partial<CustomNodeData> as CustomNodeData,
+          data: { title: "First" },
         }),
         createTestNode({
           id: "1",
-          data: {
-            title: "Second",
-          } as Partial<CustomNodeData> as CustomNodeData,
+          data: { title: "Second" },
         }),
       ]);
 
@@ -760,7 +758,7 @@ describe("nodeStore", () => {
           data: {
             title: "My Node",
             hardcodedValues: { key: "val" },
-          } as Partial<CustomNodeData> as CustomNodeData,
+          },
         }),
       );
 
