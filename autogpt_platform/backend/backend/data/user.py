@@ -70,6 +70,43 @@ async def list_users() -> list[User]:
         raise DatabaseError(f"Failed to list users: {e}") from e
 
 
+async def search_users(query: str, limit: int = 20) -> list[User]:
+    normalized_query = query.strip()
+    if not normalized_query:
+        return []
+
+    try:
+        users = await PrismaUser.prisma().find_many(
+            where={
+                "OR": [
+                    {
+                        "email": {
+                            "contains": normalized_query,
+                            "mode": "insensitive",
+                        }
+                    },
+                    {
+                        "name": {
+                            "contains": normalized_query,
+                            "mode": "insensitive",
+                        }
+                    },
+                    {
+                        "id": {
+                            "contains": normalized_query,
+                            "mode": "insensitive",
+                        }
+                    },
+                ]
+            },
+            order={"updatedAt": "desc"},
+            take=limit,
+        )
+        return [User.from_db(user) for user in users]
+    except Exception as e:
+        raise DatabaseError(f"Failed to search users for query {query!r}: {e}") from e
+
+
 async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
         user = await prisma.user.find_unique(where={"id": user_id})

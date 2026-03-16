@@ -8,6 +8,7 @@ import {
   MagnifyingGlassIcon,
   FileTextIcon,
   SlidersHorizontalIcon,
+  LightningIcon,
 } from "@phosphor-icons/react";
 
 const sidebarLinkGroups = [
@@ -32,6 +33,11 @@ const sidebarLinkGroups = [
         text: "User Impersonation",
         href: "/admin/impersonation",
         icon: <MagnifyingGlassIcon size={24} />,
+      },
+      {
+        text: "Copilot",
+        href: "/admin/copilot",
+        icon: <LightningIcon size={24} />,
       },
       {
         text: "Execution Analytics",

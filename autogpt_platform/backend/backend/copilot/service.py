@@ -69,6 +69,7 @@ async def _get_system_prompt_template(
     *,
     prompt_name: str | None = None,
     fallback_prompt: str | None = None,
+    template_vars: dict[str, str] | None = None,
 ) -> str:
     """Get the system prompt, trying Langfuse first with fallback to default.
 
@@ -79,6 +80,10 @@ async def _get_system_prompt_template(
         The compiled system prompt string.
     """
     resolved_prompt_name = prompt_name or config.langfuse_prompt_name
+    resolved_template_vars = {
+        "users_information": context,
+        **(template_vars or {}),
+    }
     if _is_langfuse_configured():
         try:
             # Use asyncio.to_thread to avoid blocking the event loop
@@ -95,12 +100,12 @@ async def _get_system_prompt_template(
                 label=label,
                 cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
             )
-            return prompt.compile(users_information=context)
+            return prompt.compile(**resolved_template_vars)
         except Exception as e:
             logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
 
     # Fallback to default prompt
-    return (fallback_prompt or DEFAULT_SYSTEM_PROMPT).format(users_information=context)
+    return (fallback_prompt or DEFAULT_SYSTEM_PROMPT).format(**resolved_template_vars)
 
 
 async def _build_system_prompt(

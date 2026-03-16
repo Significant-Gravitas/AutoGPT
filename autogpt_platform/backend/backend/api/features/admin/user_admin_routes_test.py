@@ -8,11 +8,14 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+from backend.copilot.model import ChatSession
+from backend.copilot.session_types import ChatSessionStartType
 from backend.data.invited_user import (
     BulkInvitedUserRowResult,
     BulkInvitedUsersResult,
     InvitedUserRecord,
 )
+from backend.data.model import User
 
 from .user_admin_routes import router as user_admin_router
 
@@ -69,6 +72,20 @@ def _sample_bulk_invited_users_result() -> BulkInvitedUsersResult:
                 invited_user=None,
             ),
         ],
+    )
+
+
+def _sample_user() -> User:
+    now = datetime.now(timezone.utc)
+    return User(
+        id="user-1",
+        email="copilot@example.com",
+        name="Copilot User",
+        timezone="Europe/Madrid",
+        created_at=now,
+        updated_at=now,
+        stripe_customer_id=None,
+        top_up_config=None,
     )
 
 
@@ -166,3 +183,71 @@ def test_retry_invited_user_tally(
 
     assert response.status_code == 200
     assert response.json()["tally_status"] == "RUNNING"
+
+
+def test_search_copilot_users(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.admin.user_admin_routes.search_users",
+        AsyncMock(return_value=[_sample_user()]),
+    )
+
+    response = client.get("/admin/copilot/users", params={"search": "copilot"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["email"] == "copilot@example.com"
+    assert data["users"][0]["timezone"] == "Europe/Madrid"
+
+
+def test_trigger_copilot_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        "user-1",
+        start_type=ChatSessionStartType.AUTOPILOT_CALLBACK,
+    )
+    trigger = mocker.patch(
+        "backend.api.features.admin.user_admin_routes.trigger_autopilot_session_for_user",
+        AsyncMock(return_value=session),
+    )
+
+    response = client.post(
+        "/admin/copilot/trigger",
+        json={
+            "user_id": "user-1",
+            "start_type": ChatSessionStartType.AUTOPILOT_CALLBACK.value,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["session_id"] == session.session_id
+    assert response.json()["start_type"] == "AUTOPILOT_CALLBACK"
+    assert trigger.await_args is not None
+    assert trigger.await_args.args[0] == "user-1"
+    assert (
+        trigger.await_args.kwargs["start_type"]
+        == ChatSessionStartType.AUTOPILOT_CALLBACK
+    )
+
+
+def test_trigger_copilot_session_returns_not_found(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.admin.user_admin_routes.trigger_autopilot_session_for_user",
+        AsyncMock(side_effect=LookupError("User not found with ID: missing-user")),
+    )
+
+    response = client.post(
+        "/admin/copilot/trigger",
+        json={
+            "user_id": "missing-user",
+            "start_type": ChatSessionStartType.AUTOPILOT_NIGHTLY.value,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User not found with ID: missing-user"

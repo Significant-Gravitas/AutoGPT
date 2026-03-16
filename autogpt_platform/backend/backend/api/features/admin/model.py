@@ -6,11 +6,13 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 import prisma.enums
 from pydantic import BaseModel, EmailStr
 
+from backend.copilot.session_types import ChatSessionStartType
 from backend.data.model import UserTransaction
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
     from backend.data.invited_user import BulkInvitedUsersResult, InvitedUserRecord
+    from backend.data.model import User
 
 
 class UserHistoryResponse(BaseModel):
@@ -90,3 +92,37 @@ class BulkInvitedUsersResponse(BaseModel):
                 for row in result.results
             ],
         )
+
+
+class AdminCopilotUserSummary(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    timezone: str
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_user(cls, user: "User") -> "AdminCopilotUserSummary":
+        return cls(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            timezone=user.timezone,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
+
+
+class AdminCopilotUsersResponse(BaseModel):
+    users: list[AdminCopilotUserSummary]
+
+
+class TriggerCopilotSessionRequest(BaseModel):
+    user_id: str
+    start_type: ChatSessionStartType
+
+
+class TriggerCopilotSessionResponse(BaseModel):
+    session_id: str
+    start_type: ChatSessionStartType

@@ -6721,6 +6721,104 @@
         }
       }
     },
+    "/api/users/admin/copilot/trigger": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Trigger Copilot Session",
+        "operationId": "postV2TriggerCopilotSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerCopilotSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerCopilotSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/users/admin/copilot/users": {
+      "get": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Search Copilot Users",
+        "operationId": "getV2SearchCopilotUsers",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Search by email, name, or user ID",
+              "default": "",
+              "title": "Search"
+            },
+            "description": "Search by email, name, or user ID"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCopilotUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/users/admin/invited-users": {
       "get": {
         "tags": ["v2", "admin", "users", "admin"],
@@ -7321,6 +7419,42 @@
         "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
       },
+      "AdminCopilotUserSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "email", "timezone", "created_at", "updated_at"],
+        "title": "AdminCopilotUserSummary"
+      },
+      "AdminCopilotUsersResponse": {
+        "properties": {
+          "users": {
+            "items": { "$ref": "#/components/schemas/AdminCopilotUserSummary" },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": ["users"],
+        "title": "AdminCopilotUsersResponse"
+      },
       "AgentDetails": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7334,14 +7468,12 @@
           "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Inputs",
-            "default": {}
+            "title": "Inputs"
           },
           "credentials": {
             "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
             "type": "array",
-            "title": "Credentials",
-            "default": []
+            "title": "Credentials"
           },
           "execution_options": {
             "$ref": "#/components/schemas/ExecutionOptions"
@@ -7918,20 +8050,17 @@
           "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Inputs",
-            "default": {}
+            "title": "Inputs"
           },
           "outputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Outputs",
-            "default": {}
+            "title": "Outputs"
           },
           "credentials": {
             "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
             "type": "array",
-            "title": "Credentials",
-            "default": []
+            "title": "Credentials"
           }
         },
         "type": "object",
@@ -10953,8 +11082,7 @@
           "suggestions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Suggestions",
-            "default": []
+            "title": "Suggestions"
           },
           "name": { "type": "string", "title": "Name", "default": "no_results" }
         },
@@ -13939,6 +14067,24 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
+      "TriggerCopilotSessionRequest": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "start_type": { "$ref": "#/components/schemas/ChatSessionStartType" }
+        },
+        "type": "object",
+        "required": ["user_id", "start_type"],
+        "title": "TriggerCopilotSessionRequest"
+      },
+      "TriggerCopilotSessionResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" },
+          "start_type": { "$ref": "#/components/schemas/ChatSessionStartType" }
+        },
+        "type": "object",
+        "required": ["session_id", "start_type"],
+        "title": "TriggerCopilotSessionResponse"
+      },
       "TriggeredPresetSetupRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -14870,8 +15016,7 @@
           "missing_credentials": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Missing Credentials",
-            "default": {}
+            "title": "Missing Credentials"
           },
           "ready_to_run": {
             "type": "boolean",

@@ -2,8 +2,9 @@ import logging
 import math
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, File, Query, Security, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Security, UploadFile
 
+from backend.copilot.autopilot import trigger_autopilot_session_for_user
 from backend.data.invited_user import (
     bulk_create_invited_users_from_file,
     create_invited_user,
@@ -12,13 +13,18 @@ from backend.data.invited_user import (
     revoke_invited_user,
 )
 from backend.data.tally import mask_email
+from backend.data.user import search_users
 from backend.util.models import Pagination
 
 from .model import (
+    AdminCopilotUsersResponse,
+    AdminCopilotUserSummary,
     BulkInvitedUsersResponse,
     CreateInvitedUserRequest,
     InvitedUserResponse,
     InvitedUsersResponse,
+    TriggerCopilotSessionRequest,
+    TriggerCopilotSessionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,3 +141,64 @@ async def retry_invited_user_tally_route(
         invited_user_id,
     )
     return InvitedUserResponse.from_record(invited_user)
+
+
+@router.get(
+    "/copilot/users",
+    response_model=AdminCopilotUsersResponse,
+    summary="Search Copilot Users",
+    operation_id="getV2SearchCopilotUsers",
+)
+async def search_copilot_users_route(
+    search: str = Query("", description="Search by email, name, or user ID"),
+    limit: int = Query(20, ge=1, le=50),
+    admin_user_id: str = Security(get_user_id),
+) -> AdminCopilotUsersResponse:
+    logger.info(
+        "Admin user %s searched Copilot users (query_length=%s, limit=%s)",
+        admin_user_id,
+        len(search.strip()),
+        limit,
+    )
+    users = await search_users(search, limit=limit)
+    return AdminCopilotUsersResponse(
+        users=[AdminCopilotUserSummary.from_user(user) for user in users]
+    )
+
+
+@router.post(
+    "/copilot/trigger",
+    response_model=TriggerCopilotSessionResponse,
+    summary="Trigger Copilot Session",
+    operation_id="postV2TriggerCopilotSession",
+)
+async def trigger_copilot_session_route(
+    request: TriggerCopilotSessionRequest,
+    admin_user_id: str = Security(get_user_id),
+) -> TriggerCopilotSessionResponse:
+    logger.info(
+        "Admin user %s manually triggered %s for user %s",
+        admin_user_id,
+        request.start_type,
+        request.user_id,
+    )
+    try:
+        session = await trigger_autopilot_session_for_user(
+            request.user_id,
+            start_type=request.start_type,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    logger.info(
+        "Admin user %s created manual Copilot session %s for user %s",
+        admin_user_id,
+        session.session_id,
+        request.user_id,
+    )
+    return TriggerCopilotSessionResponse(
+        session_id=session.session_id,
+        start_type=request.start_type,
+    )

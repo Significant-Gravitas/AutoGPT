@@ -25,6 +25,7 @@ from backend.copilot.autopilot import (
     handle_non_manual_session_completion,
     send_nightly_copilot_emails,
     strip_internal_content,
+    trigger_autopilot_session_for_user,
     wrap_internal_message,
 )
 from backend.copilot.model import ChatMessage, ChatSession
@@ -273,16 +274,30 @@ async def test_build_autopilot_system_prompt_selects_langfuse_prompt(
     assert prompt == "compiled prompt"
     assert compile_prompt.await_args.kwargs["prompt_name"] == expected_prompt_name
     compiled_context = compile_prompt.await_args.args[0]
+    template_vars = compile_prompt.await_args.kwargs["template_vars"]
     assert "business understanding" in compiled_context
     assert "## Recent Copilot Emails Sent To User\nrecent emails" in compiled_context
     assert "## Recent Copilot Session Summaries\nrecent summaries" in compiled_context
+    assert template_vars["business_understanding"] == "business understanding"
+    assert template_vars["recent_copilot_emails"] == "recent emails"
+    assert template_vars["recent_session_summaries"] == "recent summaries"
+    assert template_vars["users_information"] == compiled_context
     if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
-        assert (
-            "## Recent Manual Sessions Since Previous Nightly Run\n"
-            "recent manual sessions"
-        ) in compiled_context
+        assert template_vars["recent_manual_sessions"] == "recent manual sessions"
+    else:
+        assert template_vars["recent_manual_sessions"] == (
+            "Not applicable for this prompt type."
+        )
     if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA:
-        assert "## Beta Application Context" in compiled_context
+        assert template_vars["beta_application_context"] == '{"company": "Example"}'
+    else:
+        assert template_vars["beta_application_context"] == (
+            "No beta application context available."
+        )
+    assert (
+        "## Recent Manual Sessions Since Previous Nightly Run" not in compiled_context
+    )
+    assert "## Beta Application Context" not in compiled_context
 
 
 @pytest.mark.asyncio
@@ -580,6 +595,58 @@ async def test_dispatch_nightly_copilot_respects_cohort_priority(mocker) -> None
     )
     assert (
         create_calls[2].kwargs["start_type"] == ChatSessionStartType.AUTOPILOT_CALLBACK
+    )
+
+
+@pytest.mark.asyncio
+async def test_trigger_autopilot_session_for_user_uses_local_date_for_nightly(
+    mocker,
+) -> None:
+    fixed_now = datetime(2026, 3, 16, 18, 30, tzinfo=UTC)
+    datetime_mock = mocker.patch(
+        "backend.copilot.autopilot.datetime",
+        wraps=datetime,
+    )
+    datetime_mock.now.return_value = fixed_now
+
+    user = SimpleNamespace(
+        id="user-1",
+        timezone="Asia/Tokyo",
+        name="Nightly User",
+    )
+    user_store = SimpleNamespace(get_user_by_id=AsyncMock(return_value=user))
+    invited_user_store = SimpleNamespace(
+        list_invited_users_for_auth_users=AsyncMock(return_value=[])
+    )
+    session = ChatSession.new(
+        "user-1",
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+    )
+    create_autopilot_session = mocker.patch(
+        "backend.copilot.autopilot._create_autopilot_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch("backend.copilot.autopilot.user_db", return_value=user_store)
+    mocker.patch(
+        "backend.copilot.autopilot.invited_user_db",
+        return_value=invited_user_store,
+    )
+
+    created = await trigger_autopilot_session_for_user(
+        "user-1",
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+    )
+
+    assert created is session
+    assert create_autopilot_session.await_args.kwargs["execution_tag"].startswith(
+        "admin-autopilot:AUTOPILOT_NIGHTLY:"
+    )
+    assert create_autopilot_session.await_args.kwargs["timezone_name"] == "Asia/Tokyo"
+    assert create_autopilot_session.await_args.kwargs["target_local_date"] == date(
+        2026,
+        3,
+        17,
     )
 
 
