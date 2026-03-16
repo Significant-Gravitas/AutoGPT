@@ -7,6 +7,7 @@ import { StepHeader } from "./StepHeader";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { usePathname } from "next/navigation";
+import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 
 interface Props {
   agentName: string;
@@ -16,6 +17,35 @@ interface Props {
   onDone: () => void;
   onViewProgress: () => void;
   thumbnailSrc?: string;
+  status?: SubmissionStatus;
+  reviewComments?: string | null;
+}
+
+function getStepHeaderContent(
+  status: SubmissionStatus | undefined,
+  isDashboardPage: boolean,
+): { title: string; description: string } {
+  switch (status) {
+    case SubmissionStatus.APPROVED:
+      return {
+        title: "Agent approved",
+        description:
+          "Your agent has been approved and is now available in the AutoGPT marketplace.",
+      };
+    case SubmissionStatus.REJECTED:
+      return {
+        title: "Agent rejected",
+        description:
+          "Your agent submission was not approved. Please review the feedback and resubmit.",
+      };
+    default:
+      return {
+        title: "Agent is awaiting review",
+        description: isDashboardPage
+          ? "Once the agent is approved, it will be available in the AutoGPT marketplace."
+          : "In the meantime you can check your progress on your Creator Dashboard page",
+      };
+  }
 }
 
 export function AgentReviewStep({
@@ -25,19 +55,18 @@ export function AgentReviewStep({
   thumbnailSrc,
   onDone,
   onViewProgress,
+  status,
+  reviewComments,
 }: Props) {
   const pathname = usePathname();
   const isDashboardPage = pathname.includes("/profile/dashboard");
+  const headerContent = getStepHeaderContent(status, isDashboardPage);
 
   return (
     <div aria-labelledby="modal-title">
       <StepHeader
-        title="Agent is awaiting review"
-        description={
-          isDashboardPage
-            ? "Once the agent is approved, it will be available in the AutoGPT marketplace."
-            : "In the meantime you can check your progress on your Creator Dashboard page"
-        }
+        title={headerContent.title}
+        description={headerContent.description}
       />
 
       <div className="flex flex-1 flex-col items-center gap-8 px-6 pt-6 sm:gap-6">
@@ -84,6 +113,20 @@ export function AgentReviewStep({
             >
               {description}
             </Text>
+          ) : null}
+
+          {reviewComments && status === SubmissionStatus.REJECTED ? (
+            <div className="w-full rounded-lg bg-red-50 p-4 dark:bg-red-950">
+              <Text
+                variant="body"
+                className="mb-1 font-semibold text-red-700 dark:text-red-300"
+              >
+                Review feedback
+              </Text>
+              <Text variant="body" className="text-red-600 dark:text-red-400">
+                {reviewComments}
+              </Text>
+            </div>
           ) : null}
         </div>
       </div>

@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 _AUTH_STATUS_CODES = {401, 403}
 
 
+def _service_name(host: str) -> str:
+    """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
+    return host[4:] if host.startswith("mcp.") else host
+
+
 class RunMCPToolTool(BaseTool):
     """
     Tool for discovering and executing tools on any MCP server.
@@ -179,10 +184,12 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
+            host = server_host(server_url)
+            logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
-                message=f"MCP server returned HTTP {e.status_code}: {e}",
+                message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
+                error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 
         except MCPClientError as e:
@@ -303,8 +310,8 @@ class RunMCPToolTool(BaseTool):
             )
             return ErrorResponse(
                 message=(
-                    f"The MCP server at {server_host(server_url)} requires authentication, "
-                    "but no credential configuration was found."
+                    f"Unable to connect to {_service_name(server_host(server_url))} "
+                    "— no credentials configured."
                 ),
                 session_id=session_id,
             )
@@ -312,15 +319,13 @@ class RunMCPToolTool(BaseTool):
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
+        service = _service_name(host)
         return SetupRequirementsResponse(
-            message=(
-                f"The MCP server at {host} requires authentication. "
-                "Please connect your credentials to continue."
-            ),
+            message=(f"To continue, sign in to {service} and approve access."),
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=server_url,
-                agent_name=f"MCP: {host}",
+                agent_name=service,
                 user_readiness=UserReadiness(
                     has_all_credentials=False,
                     missing_credentials=missing_creds_dict,
