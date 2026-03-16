@@ -15,11 +15,7 @@ interface Props {
   status: string;
 }
 
-export function useTitlePolling({
-  isReconnecting,
-  sessionId,
-  status,
-}: Props) {
+export function useTitlePolling({ isReconnecting, sessionId, status }: Props) {
   const queryClient = useQueryClient();
   const previousStatusRef = useRef(status);
 
