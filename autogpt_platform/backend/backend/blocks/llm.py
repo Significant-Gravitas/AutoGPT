@@ -806,9 +806,7 @@ async def llm_call(
     if provider == "openai":
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
 
-        tools_param = (
-            convert_tools_to_responses_format(tools) if tools else openai.omit
-        )
+        tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
 
         text_config = openai.omit
         if force_json_output:
