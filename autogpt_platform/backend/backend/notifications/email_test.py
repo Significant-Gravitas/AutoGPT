@@ -191,7 +191,11 @@ def test_send_html_uses_default_unsubscribe_link(mocker) -> None:
     send = mocker.Mock()
     sender.postmark = cast(Any, SimpleNamespace(emails=SimpleNamespace(send=send)))
 
-    with override_config(settings, "frontend_base_url", "https://example.com"):
+    mocker.patch(
+        "backend.notifications.email.get_frontend_base_url",
+        return_value="https://example.com",
+    )
+    with override_config(settings, "postmark_sender_email", "test@example.com"):
         sender.send_html(
             user_email="user@example.com",
             subject="Autopilot update",
