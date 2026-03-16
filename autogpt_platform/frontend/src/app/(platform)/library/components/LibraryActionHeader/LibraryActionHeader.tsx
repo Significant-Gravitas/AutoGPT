@@ -1,3 +1,4 @@
+import LibraryImportCompetitorDialog from "../LibraryImportCompetitorDialog/LibraryImportCompetitorDialog";
 import { LibrarySearchBar } from "../LibrarySearchBar/LibrarySearchBar";
 import LibraryUploadAgentDialog from "../LibraryUploadAgentDialog/LibraryUploadAgentDialog";
 
@@ -11,12 +12,14 @@ export function LibraryActionHeader({ setSearchTerm }: Props) {
       <div className="mb-[32px] hidden items-center justify-center gap-4 md:flex">
         <LibrarySearchBar setSearchTerm={setSearchTerm} />
         <LibraryUploadAgentDialog />
+        <LibraryImportCompetitorDialog />
       </div>
 
       {/* Mobile and tablet */}
       <div className="flex flex-col gap-4 p-4 pt-[52px] md:hidden">
-        <div className="flex w-full justify-between">
+        <div className="flex w-full justify-between gap-2">
           <LibraryUploadAgentDialog />
+          <LibraryImportCompetitorDialog />
         </div>
 
         <div className="flex items-center justify-center">

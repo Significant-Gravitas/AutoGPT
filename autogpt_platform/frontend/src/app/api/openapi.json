@@ -2920,6 +2920,46 @@
         }
       }
     },
+    "/api/import/competitor-workflow": {
+      "post": {
+        "tags": ["v2", "import", "import"],
+        "summary": "Import a competitor workflow (n8n, Make.com, Zapier)",
+        "description": "Import a workflow from a competitor platform and convert it to an AutoGPT agent.\n\nAccepts either raw workflow JSON or a template URL (n8n only for now).\nThe workflow is parsed, described, and then converted to an AutoGPT graph\nusing LLM-powered block mapping.",
+        "operationId": "postV2Import a competitor workflow (n8n, make.com, zapier)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ImportWorkflowRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportWorkflowResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -9970,6 +10010,54 @@
         "type": "object",
         "required": ["image_url"],
         "title": "ImageURLResponse"
+      },
+      "ImportWorkflowRequest": {
+        "properties": {
+          "workflow_json": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Workflow Json"
+          },
+          "template_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Template Url"
+          },
+          "save": { "type": "boolean", "title": "Save", "default": true }
+        },
+        "type": "object",
+        "title": "ImportWorkflowRequest",
+        "description": "Request body for importing a competitor workflow."
+      },
+      "ImportWorkflowResponse": {
+        "properties": {
+          "graph": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Graph"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "source_format": { "type": "string", "title": "Source Format" },
+          "source_name": { "type": "string", "title": "Source Name" },
+          "conversion_notes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Conversion Notes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["graph", "source_format", "source_name"],
+        "title": "ImportWorkflowResponse",
+        "description": "Response from importing a competitor workflow."
       },
       "InputValidationErrorResponse": {
         "properties": {
