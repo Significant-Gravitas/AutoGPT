@@ -52,11 +52,43 @@ Examples:
 You can embed a reference inside any string argument, or use it as the entire
 value.  Multiple references in one argument are all expanded.
 
-**Type coercion**: The platform automatically coerces expanded string values
-to match the block's expected input types.  For example, if a block expects
-`list[list[str]]` and you pass a string containing a JSON array (e.g. from
-an @@agptfile: expansion), the string will be parsed into the correct type.
+**Structured data**: When the **entire** argument value is a single file
+reference (no surrounding text), the platform automatically parses the file
+content based on its extension or MIME type.  Supported formats: JSON, JSONL,
+CSV, TSV, YAML, TOML, Parquet, and Excel (.xlsx — first sheet only).
+For example, pass `@@agptfile:workspace://<id>` where the file is a `.csv` and
+the rows will be parsed into `list[list[str]]` automatically.  If the format is
+unrecognised or parsing fails, the content is returned as a plain string.
+Legacy `.xls` files are **not** supported — only the modern `.xlsx` format.
 
+**Type coercion**: The platform also coerces expanded values to match the
+block's expected input types.  For example, if a block expects `list[list[str]]`
+and the expanded value is a JSON string, it will be parsed into the correct type.
+
+### Media file inputs (format: "file")
+Some block inputs accept media files — their schema shows `"format": "file"`.
+These fields accept:
+- **`workspace://<file_id>`** or **`workspace://<file_id>#<mime>`** — preferred
+  for large files (images, videos, PDFs). The platform passes the reference
+  directly to the block without reading the content into memory.
+- **`data:<mime>;base64,<payload>`** — inline base64 data URI, suitable for
+  small files only.
+
+When a block input has `format: "file"`, **pass the `workspace://` URI
+directly as the value** (do NOT wrap it in `@@agptfile:`). This avoids large
+payloads in tool arguments and preserves binary content (images, videos)
+that would be corrupted by text encoding.
+
+Example — committing an image file to GitHub:
+```json
+{
+  "files": [{
+    "path": "docs/hero.png",
+    "content": "workspace://abc123#image/png",
+    "operation": "upsert"
+  }]
+}
+```
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
