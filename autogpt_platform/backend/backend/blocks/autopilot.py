@@ -19,48 +19,48 @@ if TYPE_CHECKING:
 # Task-scoped recursion depth counter & chain-wide limit.
 # contextvars are scoped to the current asyncio task, so concurrent
 # graph executions each get independent counters.
-_copilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "_copilot_recursion_depth", default=0
+_autopilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "_autopilot_recursion_depth", default=0
 )
-_copilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
-    "_copilot_recursion_limit", default=None
+_autopilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "_autopilot_recursion_limit", default=None
 )
 
 
 def _check_recursion(max_depth: int) -> tuple:
     """Check and increment recursion depth. Returns tokens to reset on exit."""
-    current = _copilot_recursion_depth.get()
-    inherited = _copilot_recursion_limit.get()
+    current = _autopilot_recursion_depth.get()
+    inherited = _autopilot_recursion_limit.get()
     limit = max_depth if inherited is None else min(inherited, max_depth)
     if current >= limit:
         raise RuntimeError(
-            f"Copilot recursion depth limit reached ({limit}). "
-            "The copilot has called itself too many times."
+            f"AutoPilot recursion depth limit reached ({limit}). "
+            "The autopilot has called itself too many times."
         )
     return (
-        _copilot_recursion_depth.set(current + 1),
-        _copilot_recursion_limit.set(limit),
+        _autopilot_recursion_depth.set(current + 1),
+        _autopilot_recursion_limit.set(limit),
     )
 
 
 def _reset_recursion(tokens: tuple) -> None:
-    _copilot_recursion_depth.reset(tokens[0])
-    _copilot_recursion_limit.reset(tokens[1])
+    _autopilot_recursion_depth.reset(tokens[0])
+    _autopilot_recursion_limit.reset(tokens[1])
 
 
-class AutogptCopilotBlock(Block):
-    """Execute tasks using the AutoGPT Copilot with full access to platform tools.
+class AutoPilotBlock(Block):
+    """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
-    The copilot can manage agents, access workspace files, fetch web content,
-    run blocks, and more. This block enables sub-agent patterns (copilot calling
-    copilot) and scheduled copilot execution via the agent executor.
+    The autopilot can manage agents, access workspace files, fetch web content,
+    run blocks, and more. This block enables sub-agent patterns (autopilot calling
+    autopilot) and scheduled autopilot execution via the agent executor.
     """
 
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description=(
-                "The task or instruction for the copilot to execute. "
-                "The copilot has access to platform tools like agent management, "
+                "The task or instruction for the autopilot to execute. "
+                "The autopilot has access to platform tools like agent management, "
                 "workspace files, web fetch, block execution, and more."
             ),
             placeholder="Find my agents and list them",
@@ -70,7 +70,7 @@ class AutogptCopilotBlock(Block):
         system_context: str = SchemaField(
             description=(
                 "Optional additional context prepended to the prompt. "
-                "Use this to constrain copilot behavior, provide domain "
+                "Use this to constrain autopilot behavior, provide domain "
                 "context, or set output format requirements."
             ),
             default="",
@@ -79,7 +79,7 @@ class AutogptCopilotBlock(Block):
 
         session_id: str = SchemaField(
             description=(
-                "Session ID to continue an existing copilot conversation. "
+                "Session ID to continue an existing autopilot conversation. "
                 "Leave empty to start a new session. "
                 "Use the session_id output from a previous run to continue."
             ),
@@ -89,7 +89,7 @@ class AutogptCopilotBlock(Block):
 
         max_recursion_depth: int = SchemaField(
             description=(
-                "Maximum nesting depth when the copilot calls this block "
+                "Maximum nesting depth when the autopilot calls this block "
                 "recursively (sub-agent pattern). Prevents infinite loops."
             ),
             default=3,
@@ -99,7 +99,7 @@ class AutogptCopilotBlock(Block):
 
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
-            description="The final text response from the copilot."
+            description="The final text response from the autopilot."
         )
         tool_calls: list[dict] = SchemaField(
             description=(
@@ -133,14 +133,14 @@ class AutogptCopilotBlock(Block):
         super().__init__(
             id="c069dc6b-c3ed-4c12-b6e5-d47361e64ce6",
             description=(
-                "Execute tasks using the AutoGPT Copilot with full access to "
+                "Execute tasks using AutoGPT AutoPilot with full access to "
                 "platform tools (agent management, workspace files, web fetch, "
                 "block execution, and more). Enables sub-agent patterns and "
-                "scheduled copilot execution."
+                "scheduled autopilot execution."
             ),
             categories={BlockCategory.AI, BlockCategory.AGENT},
-            input_schema=AutogptCopilotBlock.Input,
-            output_schema=AutogptCopilotBlock.Output,
+            input_schema=AutoPilotBlock.Input,
+            output_schema=AutoPilotBlock.Output,
             test_input={
                 "prompt": "List my agents",
                 "system_context": "",
@@ -255,7 +255,7 @@ class AutogptCopilotBlock(Block):
                     total_usage["completionTokens"] += event.completionTokens
                     total_usage["totalTokens"] += event.totalTokens
                 elif isinstance(event, StreamError):
-                    raise RuntimeError(f"Copilot error: {event.errorText}")
+                    raise RuntimeError(f"AutoPilot error: {event.errorText}")
 
             # Session was persisted by the SDK's finally block.
             # Re-fetch for conversation history output.
@@ -289,7 +289,7 @@ class AutogptCopilotBlock(Block):
             return
 
         if not execution_context.user_id:
-            yield "error", "Cannot run copilot without an authenticated user."
+            yield "error", "Cannot run autopilot without an authenticated user."
             return
 
         try:

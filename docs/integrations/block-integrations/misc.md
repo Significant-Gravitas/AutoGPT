@@ -38,31 +38,31 @@ Input and output schemas define the expected data structure for communication be
 
 ---
 
-## Autogpt Copilot
+## Auto Pilot
 
 ### What it is
-Execute tasks using the AutoGPT Copilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more). Enables sub-agent patterns and scheduled copilot execution.
+Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more). Enables sub-agent patterns and scheduled autopilot execution.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the copilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the copilot calls this block as a sub-agent.
+This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the autopilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the autopilot calls this block as a sub-agent.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| prompt | The task or instruction for the copilot to execute. The copilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | Yes |
-| system_context | Optional additional context prepended to the prompt. Use this to constrain copilot behavior, provide domain context, or set output format requirements. | str | No |
-| session_id | Session ID to continue an existing copilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
-| max_recursion_depth | Maximum nesting depth when the copilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
+| prompt | The task or instruction for the autopilot to execute. The autopilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | Yes |
+| system_context | Optional additional context prepended to the prompt. Use this to constrain autopilot behavior, provide domain context, or set output format requirements. | str | No |
+| session_id | Session ID to continue an existing autopilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
+| max_recursion_depth | Maximum nesting depth when the autopilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if execution failed. | str |
-| response | The final text response from the copilot. | str |
+| response | The final text response from the autopilot. | str |
 | tool_calls | List of tools called during execution. Each entry has toolCallId, toolName, input, output, and success fields. | List[Dict[str, Any]] |
 | conversation_history | Full conversation history as JSON. It can be used for logging or analysis. | str |
 | session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
@@ -70,7 +70,7 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Schedule a copilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report. Or chain copilot blocks where one gathers data and another analyzes it, enabling multi-step AI workflows within the graph editor.
+Schedule an autopilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report. Or chain autopilot blocks where one gathers data and another analyzes it, enabling multi-step AI workflows within the graph editor.
 <!-- END MANUAL -->
 
 ---

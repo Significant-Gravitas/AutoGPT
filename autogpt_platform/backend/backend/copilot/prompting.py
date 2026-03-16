@@ -62,10 +62,10 @@ an @@agptfile: expansion), the string will be parsed into the correct type.
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
 
-### Delegating to another copilot (sub-copilot pattern)
-Use the **AutogptCopilotBlock** (`run_block` with block_id
+### Delegating to another autopilot (sub-autopilot pattern)
+Use the **AutoPilotBlock** (`run_block` with block_id
 `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) to delegate a task to a fresh
-copilot instance.  The sub-copilot has its own full tool set and can
+autopilot instance.  The sub-autopilot has its own full tool set and can
 perform multi-step work autonomously.
 
 - **Input**: `prompt` (required) — the task description.
@@ -75,8 +75,8 @@ perform multi-step work autonomously.
   (for continuation), `conversation_history`, `token_usage`.
 
 Use this when a task is complex enough to benefit from a separate
-copilot context, e.g. "research X and write a report" while the
-parent copilot handles orchestration.
+autopilot context, e.g. "research X and write a report" while the
+parent autopilot handles orchestration.
 """
 
 
