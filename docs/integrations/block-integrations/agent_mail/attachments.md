@@ -1,16 +1,16 @@
-# AgentMail Attachments
+# Agent Mail Attachments
 <!-- MANUAL: file_description -->
 Blocks for downloading file attachments from AgentMail messages and threads. Attachments are files associated with messages (PDFs, CSVs, images, etc.) and are returned as base64-encoded content.
 <!-- END MANUAL -->
 
-## Get Message Attachment
+## Agent Mail Get Message Attachment
 
 ### What it is
-A block that downloads a file attachment from a specific email message.
+Download a file attachment from an email message. Returns base64-encoded file content.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block retrieves the raw file content from a message attachment and returns it as base64-encoded data. First get the attachment_id from a message object's attachments array (via Get Message), then use this block to download the file content.
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,27 +25,25 @@ The block retrieves the raw file content from a message attachment and returns i
 
 | Output | Description | Type |
 |--------|-------------|------|
-| content_base64 | File content encoded as a base64 string | str |
-| attachment_id | The attachment ID that was downloaded | str |
 | error | Error message if the operation failed | str |
+| content_base64 | File content encoded as a base64 string. Decode with base64.b64decode() to get raw bytes. | str |
+| attachment_id | The attachment ID that was downloaded | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Document Processing**: Download PDF or CSV attachments from incoming emails for automated data extraction.
-
-**File Archival**: Retrieve and store email attachments in a separate storage system for record-keeping.
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
 
-## Get Thread Attachment
+## Agent Mail Get Thread Attachment
 
 ### What it is
-A block that downloads a file attachment from a conversation thread.
+Download a file attachment from a conversation thread. Returns base64-encoded file content.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Same as Get Message Attachment but looks up by thread ID instead of message ID. The block retrieves the raw file content and returns it as base64-encoded data. Useful when you know the thread but not the specific message containing the attachment.
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -60,13 +58,13 @@ Same as Get Message Attachment but looks up by thread ID instead of message ID. 
 
 | Output | Description | Type |
 |--------|-------------|------|
-| content_base64 | File content encoded as a base64 string | str |
-| attachment_id | The attachment ID that was downloaded | str |
 | error | Error message if the operation failed | str |
+| content_base64 | File content encoded as a base64 string. Decode with base64.b64decode() to get raw bytes. | str |
+| attachment_id | The attachment ID that was downloaded | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Thread-Based File Retrieval**: Download attachments from a conversation thread when you don't have the specific message ID.
-
-**Invoice Processing**: Retrieve invoice attachments from support threads for automated accounting workflows.
+_Add practical use case examples here._
 <!-- END MANUAL -->
+
+---
