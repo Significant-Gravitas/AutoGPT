@@ -5,10 +5,14 @@ on:
     branches: [master, dev]
     paths:
       - ".github/workflows/platform-fullstack-ci.yml"
+      - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   pull_request:
     paths:
       - ".github/workflows/platform-fullstack-ci.yml"
+      - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   merge_group:
 
