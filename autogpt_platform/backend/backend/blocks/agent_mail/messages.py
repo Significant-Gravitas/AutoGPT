@@ -329,10 +329,11 @@ class AgentMailReplyToMessageBlock(Block):
 
 class AgentMailForwardMessageBlock(Block):
     """
-    Forward an existing email message to a new recipient.
+    Forward an existing email message to one or more recipients.
 
-    Sends the original message content to a different email address.
+    Sends the original message content to different email addresses.
     Optionally prepend additional text or override the subject line.
+    Max 50 combined recipients across to, cc, and bcc.
     """
 
     class Input(BlockSchemaInput):
@@ -343,7 +344,19 @@ class AgentMailForwardMessageBlock(Block):
             description="Inbox ID or email address to forward from"
         )
         message_id: str = SchemaField(description="Message ID to forward")
-        to: str = SchemaField(description="Email address to forward the message to")
+        to: list[str] = SchemaField(
+            description="Recipient email addresses to forward the message to (e.g. ['user@example.com'])"
+        )
+        cc: list[str] = SchemaField(
+            description="CC recipient email addresses",
+            default_factory=list,
+            advanced=True,
+        )
+        bcc: list[str] = SchemaField(
+            description="BCC recipient email addresses (hidden from other recipients)",
+            default_factory=list,
+            advanced=True,
+        )
         subject: str = SchemaField(
             description="Override the subject line (defaults to 'Fwd: <original subject>')",
             default="",
@@ -373,7 +386,7 @@ class AgentMailForwardMessageBlock(Block):
     def __init__(self):
         super().__init__(
             id="b70c7e33-5d66-4f8e-897f-ac73a7bfce82",
-            description="Forward an email message to a new recipient. Optionally add extra text or change the subject.",
+            description="Forward an email message to one or more recipients. Supports CC/BCC and optional extra text or subject override.",
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -382,8 +395,18 @@ class AgentMailForwardMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
+        if total > 50:
+            raise ValueError(
+                f"Max 50 combined recipients across to, cc, and bcc (got {total})"
+            )
+
         client = _client(credentials)
         params: dict = {"to": input_data.to}
+        if input_data.cc:
+            params["cc"] = input_data.cc
+        if input_data.bcc:
+            params["bcc"] = input_data.bcc
         if input_data.subject:
             params["subject"] = input_data.subject
         if input_data.text:

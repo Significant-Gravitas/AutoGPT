@@ -6,11 +6,11 @@ Blocks for sending, receiving, replying to, forwarding, and managing email messa
 ## Agent Mail Forward Message
 
 ### What it is
-Forward an email message to a new recipient. Optionally add extra text or change the subject.
+Forward an email message to one or more recipients. Supports CC/BCC and optional extra text or subject override.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block calls the AgentMail API to forward a specific message from your inbox to a new recipient. You provide the inbox ID and message ID to identify the original email, along with the target email address. Optionally, you can override the subject line or prepend additional plain text or HTML content before the forwarded message body.
+The block validates that the combined recipient count across to, cc, and bcc does not exceed 50, then calls the AgentMail API to forward a specific message from your inbox. You provide the inbox ID and message ID to identify the original email, along with the target email addresses. Optionally, you can override the subject line or prepend additional plain text or HTML content before the forwarded message body.
 
 The API handles constructing the forwarded email with the original content included. Any errors from the API propagate directly to the global error handler without being caught by the block.
 <!-- END MANUAL -->
@@ -21,7 +21,9 @@ The API handles constructing the forwarded email with the original content inclu
 |-------|-------------|------|----------|
 | inbox_id | Inbox ID or email address to forward from | str | Yes |
 | message_id | Message ID to forward | str | Yes |
-| to | Email address to forward the message to | str | Yes |
+| to | Recipient email addresses to forward the message to (e.g. ['user@example.com']) | List[str] | Yes |
+| cc | CC recipient email addresses | List[str] | No |
+| bcc | BCC recipient email addresses (hidden from other recipients) | List[str] | No |
 | subject | Override the subject line (defaults to 'Fwd: <original subject>') | str | No |
 | text | Additional plain text to prepend before the forwarded content | str | No |
 | html | Additional HTML to prepend before the forwarded content | str | No |
