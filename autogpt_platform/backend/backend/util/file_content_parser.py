@@ -79,62 +79,10 @@ MIME_TO_FORMAT: dict[str, str] = {
 # Formats that require raw bytes rather than decoded text.
 BINARY_FORMATS: frozenset[str] = frozenset({"parquet", "xlsx"})
 
-# Exception types that can be raised during file content parsing.
-# Shared between ``parse_file_content`` (which catches them in non-strict mode)
-# and ``file_ref._expand_bare_ref`` (which re-raises them as FileRefExpansionError).
-#
-# Optional-dependency exception types are loaded via a helper that raises
-# ``ImportError`` at *parse time* rather than silently becoming ``None`` here.
-# This ensures mypy sees clean types and missing deps surface as real errors.
 
-
-def _load_openpyxl_exception() -> type[Exception]:
-    """Return openpyxl's InvalidFileException, raising ImportError if absent."""
-    from openpyxl.utils.exceptions import InvalidFileException  # noqa: PLC0415
-
-    return InvalidFileException
-
-
-def _load_arrow_exception() -> type[Exception]:
-    """Return pyarrow's ArrowException, raising ImportError if absent."""
-    from pyarrow import ArrowException  # noqa: PLC0415
-
-    return ArrowException
-
-
-def _optional_exc(loader: "Callable[[], type[Exception]]") -> "type[Exception] | None":
-    """Return the exception class from *loader*, or ``None`` if the dep is absent."""
-    try:
-        return loader()
-    except ImportError:
-        return None
-
-
-_OpenpyxlInvalidFile = _optional_exc(_load_openpyxl_exception)
-_ArrowException = _optional_exc(_load_arrow_exception)
-
-PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
-    exc
-    for exc in (
-        json.JSONDecodeError,
-        csv.Error,
-        yaml.YAMLError,
-        tomllib.TOMLDecodeError,
-        ValueError,
-        UnicodeDecodeError,
-        ImportError,
-        OSError,
-        KeyError,
-        TypeError,
-        zipfile.BadZipFile,
-        _OpenpyxlInvalidFile,
-        # ArrowException covers ArrowIOError and ArrowCapacityError which
-        # do not inherit from standard exceptions; ArrowInvalid/ArrowTypeError
-        # already map to ValueError/TypeError but this catches the rest.
-        _ArrowException,
-    )
-    if exc is not None
-)
+# ---------------------------------------------------------------------------
+# Public API  (top-down: main functions first, helpers below)
+# ---------------------------------------------------------------------------
 
 
 def infer_format_from_uri(uri: str) -> str | None:
@@ -164,6 +112,105 @@ def infer_format_from_uri(uri: str) -> str | None:
         return "xls"
 
     return None
+
+
+def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) -> Any:
+    """Parse *content* according to *fmt* and return a native Python value.
+
+    When *strict* is ``False`` (default), returns the original *content*
+    unchanged if *fmt* is not recognised or parsing fails for any reason.
+    This mode **never raises**.
+
+    When *strict* is ``True``, parsing errors are propagated to the caller.
+    Unrecognised formats or type mismatches (e.g. text for a binary format)
+    still return *content* unchanged without raising.
+    """
+    if fmt == "xls":
+        return (
+            "[Unsupported format] Legacy .xls files are not supported. "
+            "Please re-save the file as .xlsx (Excel 2007+) and upload again."
+        )
+
+    try:
+        if fmt in BINARY_FORMATS:
+            parser = _BINARY_PARSERS.get(fmt)
+            if parser is None:
+                return content
+            if isinstance(content, str):
+                # Caller gave us text for a binary format — can't parse.
+                return content
+            return parser(content)
+
+        parser = _TEXT_PARSERS.get(fmt)
+        if parser is None:
+            return content
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", errors="replace")
+        return parser(content)
+
+    except PARSE_EXCEPTIONS:
+        if strict:
+            raise
+        logger.debug("Structured parsing failed for format=%s, falling back", fmt)
+        return content
+
+
+# ---------------------------------------------------------------------------
+# Exception loading helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_openpyxl_exception() -> type[Exception]:
+    """Return openpyxl's InvalidFileException, raising ImportError if absent."""
+    from openpyxl.utils.exceptions import InvalidFileException  # noqa: PLC0415
+
+    return InvalidFileException
+
+
+def _load_arrow_exception() -> type[Exception]:
+    """Return pyarrow's ArrowException, raising ImportError if absent."""
+    from pyarrow import ArrowException  # noqa: PLC0415
+
+    return ArrowException
+
+
+def _optional_exc(loader: "Callable[[], type[Exception]]") -> "type[Exception] | None":
+    """Return the exception class from *loader*, or ``None`` if the dep is absent."""
+    try:
+        return loader()
+    except ImportError:
+        return None
+
+
+# Exception types that can be raised during file content parsing.
+# Shared between ``parse_file_content`` (which catches them in non-strict mode)
+# and ``file_ref._expand_bare_ref`` (which re-raises them as FileRefExpansionError).
+#
+# Optional-dependency exception types are loaded via a helper that raises
+# ``ImportError`` at *parse time* rather than silently becoming ``None`` here.
+# This ensures mypy sees clean types and missing deps surface as real errors.
+PARSE_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
+    exc
+    for exc in (
+        json.JSONDecodeError,
+        csv.Error,
+        yaml.YAMLError,
+        tomllib.TOMLDecodeError,
+        ValueError,
+        UnicodeDecodeError,
+        ImportError,
+        OSError,
+        KeyError,
+        TypeError,
+        zipfile.BadZipFile,
+        _optional_exc(_load_openpyxl_exception),
+        # ArrowException covers ArrowIOError and ArrowCapacityError which
+        # do not inherit from standard exceptions; ArrowInvalid/ArrowTypeError
+        # already map to ValueError/TypeError but this catches the rest.
+        _optional_exc(_load_arrow_exception),
+    )
+    if exc is not None
+)
 
 
 # ---------------------------------------------------------------------------
@@ -214,16 +261,6 @@ def _parse_tsv(content: str) -> Any:
     return _parse_delimited(content, delimiter="\t")
 
 
-def _row_has_content(row: list[str]) -> bool:
-    """Return True when *row* contains at least one non-empty cell.
-
-    ``csv.reader`` never yields ``[]`` — truly blank lines yield ``[""]``.
-    This predicate filters those out consistently across the initial read
-    and the sniffer-fallback re-read.
-    """
-    return any(cell for cell in row)
-
-
 def _parse_delimited(content: str, *, delimiter: str) -> Any:
     reader = csv.reader(io.StringIO(content), delimiter=delimiter)
     # csv.reader never yields [] — blank lines yield [""]. Filter out
@@ -245,6 +282,16 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     if rows and len(rows[0]) >= 2:
         return rows
     return content
+
+
+def _row_has_content(row: list[str]) -> bool:
+    """Return True when *row* contains at least one non-empty cell.
+
+    ``csv.reader`` never yields ``[]`` — truly blank lines yield ``[""]``.
+    This predicate filters those out consistently across the initial read
+    and the sniffer-fallback re-read.
+    """
+    return any(cell for cell in row)
 
 
 def _parse_yaml(content: str) -> list | dict | str:
@@ -281,31 +328,6 @@ _TEXT_PARSERS: dict[str, Callable[[str], Any]] = {
 # ---------------------------------------------------------------------------
 
 
-def _is_nan(cell: Any) -> bool:
-    """Check if a cell value is NaN, handling non-scalar types (lists, dicts).
-
-    ``pd.isna()`` on a list/dict returns a boolean array which raises
-    ``ValueError`` in a boolean context.  Guard with a scalar check first.
-    """
-    import pandas as pd
-
-    return bool(pd.api.types.is_scalar(cell) and pd.isna(cell))
-
-
-def _df_to_rows(df: Any) -> list[list[Any]]:
-    """Convert a DataFrame to ``list[list[Any]]`` with a header row.
-
-    NaN values are replaced with ``None`` so the result is JSON-serializable.
-    Uses explicit cell-level checking because ``df.where(df.notna(), None)``
-    silently converts ``None`` back to ``NaN`` in float64 columns.
-    """
-    header = df.columns.tolist()
-    rows = [
-        [None if _is_nan(cell) else cell for cell in row] for row in df.values.tolist()
-    ]
-    return [header] + rows
-
-
 def _parse_parquet(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
@@ -322,53 +344,32 @@ def _parse_xlsx(content: bytes) -> list[list[Any]]:
     return _df_to_rows(df)
 
 
+def _df_to_rows(df: Any) -> list[list[Any]]:
+    """Convert a DataFrame to ``list[list[Any]]`` with a header row.
+
+    NaN values are replaced with ``None`` so the result is JSON-serializable.
+    Uses explicit cell-level checking because ``df.where(df.notna(), None)``
+    silently converts ``None`` back to ``NaN`` in float64 columns.
+    """
+    header = df.columns.tolist()
+    rows = [
+        [None if _is_nan(cell) else cell for cell in row] for row in df.values.tolist()
+    ]
+    return [header] + rows
+
+
+def _is_nan(cell: Any) -> bool:
+    """Check if a cell value is NaN, handling non-scalar types (lists, dicts).
+
+    ``pd.isna()`` on a list/dict returns a boolean array which raises
+    ``ValueError`` in a boolean context.  Guard with a scalar check first.
+    """
+    import pandas as pd
+
+    return bool(pd.api.types.is_scalar(cell) and pd.isna(cell))
+
+
 _BINARY_PARSERS: dict[str, Callable[[bytes], Any]] = {
     "parquet": _parse_parquet,
     "xlsx": _parse_xlsx,
 }
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) -> Any:
-    """Parse *content* according to *fmt* and return a native Python value.
-
-    When *strict* is ``False`` (default), returns the original *content*
-    unchanged if *fmt* is not recognised or parsing fails for any reason.
-    This mode **never raises**.
-
-    When *strict* is ``True``, parsing errors are propagated to the caller.
-    Unrecognised formats or type mismatches (e.g. text for a binary format)
-    still return *content* unchanged without raising.
-    """
-    if fmt == "xls":
-        return (
-            "[Unsupported format] Legacy .xls files are not supported. "
-            "Please re-save the file as .xlsx (Excel 2007+) and upload again."
-        )
-
-    try:
-        if fmt in BINARY_FORMATS:
-            parser = _BINARY_PARSERS.get(fmt)
-            if parser is None:
-                return content
-            if isinstance(content, str):
-                # Caller gave us text for a binary format — can't parse.
-                return content
-            return parser(content)
-
-        parser = _TEXT_PARSERS.get(fmt)
-        if parser is None:
-            return content
-        if isinstance(content, bytes):
-            content = content.decode("utf-8", errors="replace")
-        return parser(content)
-
-    except PARSE_EXCEPTIONS:
-        if strict:
-            raise
-        logger.debug("Structured parsing failed for format=%s, falling back", fmt)
-        return content

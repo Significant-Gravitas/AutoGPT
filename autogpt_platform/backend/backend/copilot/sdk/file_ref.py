@@ -93,6 +93,11 @@ class FileRef:
     end_line: int | None  # 1-indexed, inclusive
 
 
+# ---------------------------------------------------------------------------
+# Public API  (top-down: main functions first, helpers below)
+# ---------------------------------------------------------------------------
+
+
 def parse_file_ref(text: str) -> FileRef | None:
     """Return a :class:`FileRef` if *text* is a bare file reference token.
 
@@ -112,25 +117,6 @@ def parse_file_ref(text: str) -> FileRef | None:
     if start is not None and end is not None and end < start:
         return None
     return FileRef(uri=m.group(1), start_line=start, end_line=end)
-
-
-def _apply_line_range(text: str, start: int | None, end: int | None) -> str:
-    """Slice *text* to the requested 1-indexed line range (inclusive).
-
-    When the requested range extends beyond the file, a note is appended
-    so the LLM knows it received the entire remaining content.
-    """
-    if start is None and end is None:
-        return text
-    lines = text.splitlines(keepends=True)
-    total = len(lines)
-    s = (start - 1) if start is not None else 0
-    e = end if end is not None else total
-    selected = list(itertools.islice(lines, s, e))
-    result = "".join(selected)
-    if end is not None and end > total:
-        result += f"\n[Note: file has only {total} lines]\n"
-    return result
 
 
 async def read_file_bytes(
@@ -233,49 +219,6 @@ async def read_file_bytes(
     )
 
 
-def _to_str(content: str | bytes) -> str:
-    """Decode *content* to a string if it is bytes, otherwise return as-is."""
-    if isinstance(content, str):
-        return content
-    return content.decode("utf-8", errors="replace")
-
-
-def _check_content_size(content: str | bytes) -> None:
-    """Raise :class:`ValueError` if *content* exceeds the byte limit.
-
-    Raises ``ValueError`` (not ``FileRefExpansionError``) so that the caller
-    (``_expand_bare_ref``) can unify all resolution errors into a single
-    ``except ValueError`` → ``FileRefExpansionError`` handler, keeping the
-    error-flow consistent with ``read_file_bytes`` and ``resolve_file_ref``.
-
-    For ``bytes``, the length is the byte count directly.  For ``str``,
-    we encode to UTF-8 first because multi-byte characters (e.g. emoji)
-    mean the byte size can be up to 4x the character count.
-    """
-    if isinstance(content, bytes):
-        size = len(content)
-    else:
-        char_len = len(content)
-        # Fast lower bound: UTF-8 byte count >= char count.
-        # If char count already exceeds the limit, reject immediately
-        # without allocating an encoded copy.
-        if char_len > _MAX_BARE_REF_BYTES:
-            size = char_len  # real byte size is even larger
-        # Fast upper bound: each char is at most 4 UTF-8 bytes.
-        # If worst-case is still under the limit, skip encoding entirely.
-        elif char_len * 4 <= _MAX_BARE_REF_BYTES:
-            return
-        else:
-            # Edge case: char count is under limit but multibyte chars
-            # might push byte count over. Encode to get exact size.
-            size = len(content.encode("utf-8"))
-    if size > _MAX_BARE_REF_BYTES:
-        raise ValueError(
-            f"File too large for structured parsing "
-            f"({size} bytes, limit {_MAX_BARE_REF_BYTES})"
-        )
-
-
 async def resolve_file_ref(
     ref: FileRef,
     user_id: str | None,
@@ -355,6 +298,168 @@ async def expand_file_refs_in_string(
     return "".join(result)
 
 
+async def expand_file_refs_in_args(
+    args: dict[str, Any],
+    user_id: str | None,
+    session: ChatSession,
+    *,
+    input_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Recursively expand ``@@agptfile:...`` references in tool call arguments.
+
+    String values are expanded in-place.  Nested dicts and lists are
+    traversed.  Non-string scalars are returned unchanged.
+
+    **Bare references** (the entire argument value is a single
+    ``@@agptfile:...`` token with no surrounding text) are resolved and then
+    parsed according to the file's extension or MIME type.  See
+    :mod:`backend.util.file_content_parser` for the full list of supported
+    formats (JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel).
+
+    When *input_schema* is provided and the target property has
+    ``"type": "string"``, structured parsing is skipped — the raw file content
+    is returned as a plain string so blocks receive the original text.
+
+    If the format is unrecognised or parsing fails, the content is returned as
+    a plain string (the fallback).
+
+    **Embedded references** (``@@agptfile:`` mixed with other text) always
+    produce a plain string — structured parsing only applies to bare refs.
+
+    Raises :class:`FileRefExpansionError` if any reference fails to resolve,
+    so the tool is *not* executed with an error string as its input.  The
+    caller (the MCP tool wrapper) should convert this into an MCP error
+    response that lets the model correct the reference before retrying.
+    """
+    if not args:
+        return args
+
+    properties = (input_schema or {}).get("properties", {})
+
+    async def _expand(
+        value: Any,
+        *,
+        prop_schema: dict[str, Any] | None = None,
+    ) -> Any:
+        """Recursively expand a single argument value.
+
+        Strings are checked for ``@@agptfile:`` references and expanded
+        (bare refs get structured parsing; embedded refs get inline
+        substitution).  Dicts and lists are traversed recursively,
+        threading the corresponding sub-schema from *prop_schema* so
+        that nested fields also receive correct type-aware expansion.
+        Non-string scalars pass through unchanged.
+        """
+        if isinstance(value, str):
+            ref = parse_file_ref(value)
+            if ref is not None:
+                # MediaFileType fields: return the raw URI immediately —
+                # no file reading, no format inference, no content parsing.
+                if _is_media_file_field(prop_schema):
+                    return ref.uri
+
+                fmt = infer_format_from_uri(ref.uri)
+                # Workspace URIs by ID (workspace://abc123) have no extension.
+                # When the MIME fragment is also missing, fall back to the
+                # workspace file manager's metadata for format detection.
+                if fmt is None and ref.uri.startswith("workspace://"):
+                    fmt = await _infer_format_from_workspace(ref.uri, user_id, session)
+                return await _expand_bare_ref(ref, fmt, user_id, session, prop_schema)
+
+            # Not a bare ref — do normal inline expansion.
+            return await expand_file_refs_in_string(
+                value, user_id, session, raise_on_error=True
+            )
+        if isinstance(value, dict):
+            # When the schema says this is an object but doesn't define
+            # inner properties, skip expansion — the caller (e.g.
+            # RunBlockTool) will expand with the actual nested schema.
+            if (
+                prop_schema is not None
+                and prop_schema.get("type") == "object"
+                and "properties" not in prop_schema
+            ):
+                return value
+            nested_props = (prop_schema or {}).get("properties", {})
+            return {
+                k: await _expand(v, prop_schema=nested_props.get(k))
+                for k, v in value.items()
+            }
+        if isinstance(value, list):
+            items_schema = (prop_schema or {}).get("items")
+            return [await _expand(item, prop_schema=items_schema) for item in value]
+        return value
+
+    return {k: await _expand(v, prop_schema=properties.get(k)) for k, v in args.items()}
+
+
+# ---------------------------------------------------------------------------
+# Private helpers  (used by the public functions above)
+# ---------------------------------------------------------------------------
+
+
+def _apply_line_range(text: str, start: int | None, end: int | None) -> str:
+    """Slice *text* to the requested 1-indexed line range (inclusive).
+
+    When the requested range extends beyond the file, a note is appended
+    so the LLM knows it received the entire remaining content.
+    """
+    if start is None and end is None:
+        return text
+    lines = text.splitlines(keepends=True)
+    total = len(lines)
+    s = (start - 1) if start is not None else 0
+    e = end if end is not None else total
+    selected = list(itertools.islice(lines, s, e))
+    result = "".join(selected)
+    if end is not None and end > total:
+        result += f"\n[Note: file has only {total} lines]\n"
+    return result
+
+
+def _to_str(content: str | bytes) -> str:
+    """Decode *content* to a string if it is bytes, otherwise return as-is."""
+    if isinstance(content, str):
+        return content
+    return content.decode("utf-8", errors="replace")
+
+
+def _check_content_size(content: str | bytes) -> None:
+    """Raise :class:`ValueError` if *content* exceeds the byte limit.
+
+    Raises ``ValueError`` (not ``FileRefExpansionError``) so that the caller
+    (``_expand_bare_ref``) can unify all resolution errors into a single
+    ``except ValueError`` → ``FileRefExpansionError`` handler, keeping the
+    error-flow consistent with ``read_file_bytes`` and ``resolve_file_ref``.
+
+    For ``bytes``, the length is the byte count directly.  For ``str``,
+    we encode to UTF-8 first because multi-byte characters (e.g. emoji)
+    mean the byte size can be up to 4x the character count.
+    """
+    if isinstance(content, bytes):
+        size = len(content)
+    else:
+        char_len = len(content)
+        # Fast lower bound: UTF-8 byte count >= char count.
+        # If char count already exceeds the limit, reject immediately
+        # without allocating an encoded copy.
+        if char_len > _MAX_BARE_REF_BYTES:
+            size = char_len  # real byte size is even larger
+        # Fast upper bound: each char is at most 4 UTF-8 bytes.
+        # If worst-case is still under the limit, skip encoding entirely.
+        elif char_len * 4 <= _MAX_BARE_REF_BYTES:
+            return
+        else:
+            # Edge case: char count is under limit but multibyte chars
+            # might push byte count over. Encode to get exact size.
+            size = len(content.encode("utf-8"))
+    if size > _MAX_BARE_REF_BYTES:
+        raise ValueError(
+            f"File too large for structured parsing "
+            f"({size} bytes, limit {_MAX_BARE_REF_BYTES})"
+        )
+
+
 async def _infer_format_from_workspace(
     uri: str,
     user_id: str | None,
@@ -394,124 +499,6 @@ async def _infer_format_from_workspace(
         # else (e.g. programming errors) so they don't get silently swallowed.
         logger.debug("workspace metadata lookup failed for %s", uri, exc_info=True)
         return None
-
-
-def _is_tabular(parsed: Any) -> bool:
-    """Check if parsed data is in tabular format: [[header], [row1], ...].
-
-    Uses isinstance checks because this is a structural type guard on
-    opaque parser output (Any), not duck typing.  A Protocol wouldn't
-    help here — we need to verify exact list-of-lists shape.
-    """
-    if not isinstance(parsed, list) or len(parsed) < 2:
-        return False
-    header = parsed[0]
-    if not isinstance(header, list) or not header:
-        return False
-    if not all(isinstance(h, str) for h in header):
-        return False
-    return all(isinstance(row, list) for row in parsed[1:])
-
-
-def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
-    """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...].
-
-    Ragged rows (fewer columns than the header) get None for missing values.
-    Extra values beyond the header length are silently dropped.
-    """
-    header = parsed[0]
-    return [
-        dict(itertools.zip_longest(header, row[: len(header)], fillvalue=None))
-        for row in parsed[1:]
-    ]
-
-
-def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
-    """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}.
-
-    Ragged rows (fewer columns than the header) get None for missing values,
-    ensuring all columns have equal length.
-    """
-    header = parsed[0]
-    return {
-        col: [row[i] if i < len(row) else None for row in parsed[1:]]
-        for i, col in enumerate(header)
-    }
-
-
-def _adapt_dict_to_array(parsed: dict, prop_schema: dict[str, Any]) -> Any:
-    """Adapt a parsed dict to an array-typed field.
-
-    Extracts list-valued entries when the target item type is ``array``,
-    passes through unchanged when item type is ``string`` (lets pydantic error),
-    or wraps in ``[parsed]`` as a fallback.
-    """
-    items_type = (prop_schema.get("items") or {}).get("type")
-    if items_type == "array":
-        # Target is List[List[Any]] — extract list-typed values from the
-        # dict as inner lists.  E.g. YAML {"fruits": [{...},...]}} with
-        # ConcatenateLists (List[List[Any]]) → [[{...},...]].
-        list_values = [v for v in parsed.values() if isinstance(v, list)]
-        if list_values:
-            return list_values
-    if items_type == "string":
-        # Target is List[str] — wrapping a dict would give [dict]
-        # which can't coerce to strings.  Return unchanged and let
-        # pydantic surface a clear validation error.
-        return parsed
-    # Fallback: wrap in a single-element list so the block gets [dict]
-    # instead of pydantic flattening keys/values into a flat list.
-    return [parsed]
-
-
-def _adapt_list_to_object(parsed: list) -> Any:
-    """Adapt a parsed list to an object-typed field.
-
-    Converts tabular lists to column-dicts; raises for non-tabular lists.
-    """
-    if _is_tabular(parsed):
-        return _tabular_to_column_dict(parsed)
-    # Non-tabular list (e.g. a plain Python list from a YAML file) cannot
-    # be meaningfully coerced to an object.  Raise explicitly so callers
-    # get a clear error rather than pydantic silently wrapping the list.
-    raise FileRefExpansionError(
-        "Cannot adapt a non-tabular list to an object-typed field. "
-        "Expected a tabular structure ([[header], [row1], ...]) or a dict."
-    )
-
-
-def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
-    """Adapt a parsed file value to better fit the target schema type.
-
-    When the parser returns a natural type (e.g. dict from YAML, list from CSV)
-    that doesn't match the block's expected type, this function converts it to
-    a more useful representation instead of relying on pydantic's generic
-    coercion (which can produce awkward results like flattened dicts → lists).
-
-    Returns *parsed* unchanged when no adaptation is needed.
-    """
-    if prop_schema is None:
-        return parsed
-
-    target_type = prop_schema.get("type")
-
-    # Dict → array: delegate to helper.
-    if isinstance(parsed, dict) and target_type == "array":
-        return _adapt_dict_to_array(parsed, prop_schema)
-
-    # List → object: delegate to helper (raises for non-tabular lists).
-    if isinstance(parsed, list) and target_type == "object":
-        return _adapt_list_to_object(parsed)
-
-    # Tabular list → Any (no type): convert to list of dicts.
-    # Blocks like FindInDictionaryBlock have `input: Any` which produces
-    # a schema with no "type" key.  Tabular [[header],[rows]] is unusable
-    # for key lookup, but [{col: val}, ...] works with FindInDict's
-    # list-of-dicts branch (line 195-199 in data_manipulation.py).
-    if isinstance(parsed, list) and target_type is None and _is_tabular(parsed):
-        return _tabular_to_list_of_dicts(parsed)
-
-    return parsed
 
 
 def _is_media_file_field(prop_schema: dict[str, Any] | None) -> bool:
@@ -610,96 +597,119 @@ async def _expand_bare_ref(
     return text
 
 
-async def expand_file_refs_in_args(
-    args: dict[str, Any],
-    user_id: str | None,
-    session: ChatSession,
-    *,
-    input_schema: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Recursively expand ``@@agptfile:...`` references in tool call arguments.
+def _adapt_to_schema(parsed: Any, prop_schema: dict[str, Any] | None) -> Any:
+    """Adapt a parsed file value to better fit the target schema type.
 
-    String values are expanded in-place.  Nested dicts and lists are
-    traversed.  Non-string scalars are returned unchanged.
+    When the parser returns a natural type (e.g. dict from YAML, list from CSV)
+    that doesn't match the block's expected type, this function converts it to
+    a more useful representation instead of relying on pydantic's generic
+    coercion (which can produce awkward results like flattened dicts → lists).
 
-    **Bare references** (the entire argument value is a single
-    ``@@agptfile:...`` token with no surrounding text) are resolved and then
-    parsed according to the file's extension or MIME type.  See
-    :mod:`backend.util.file_content_parser` for the full list of supported
-    formats (JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel).
-
-    When *input_schema* is provided and the target property has
-    ``"type": "string"``, structured parsing is skipped — the raw file content
-    is returned as a plain string so blocks receive the original text.
-
-    If the format is unrecognised or parsing fails, the content is returned as
-    a plain string (the fallback).
-
-    **Embedded references** (``@@agptfile:`` mixed with other text) always
-    produce a plain string — structured parsing only applies to bare refs.
-
-    Raises :class:`FileRefExpansionError` if any reference fails to resolve,
-    so the tool is *not* executed with an error string as its input.  The
-    caller (the MCP tool wrapper) should convert this into an MCP error
-    response that lets the model correct the reference before retrying.
+    Returns *parsed* unchanged when no adaptation is needed.
     """
-    if not args:
-        return args
+    if prop_schema is None:
+        return parsed
 
-    properties = (input_schema or {}).get("properties", {})
+    target_type = prop_schema.get("type")
 
-    async def _expand(
-        value: Any,
-        *,
-        prop_schema: dict[str, Any] | None = None,
-    ) -> Any:
-        """Recursively expand a single argument value.
+    # Dict → array: delegate to helper.
+    if isinstance(parsed, dict) and target_type == "array":
+        return _adapt_dict_to_array(parsed, prop_schema)
 
-        Strings are checked for ``@@agptfile:`` references and expanded
-        (bare refs get structured parsing; embedded refs get inline
-        substitution).  Dicts and lists are traversed recursively,
-        threading the corresponding sub-schema from *prop_schema* so
-        that nested fields also receive correct type-aware expansion.
-        Non-string scalars pass through unchanged.
-        """
-        if isinstance(value, str):
-            ref = parse_file_ref(value)
-            if ref is not None:
-                # MediaFileType fields: return the raw URI immediately —
-                # no file reading, no format inference, no content parsing.
-                if _is_media_file_field(prop_schema):
-                    return ref.uri
+    # List → object: delegate to helper (raises for non-tabular lists).
+    if isinstance(parsed, list) and target_type == "object":
+        return _adapt_list_to_object(parsed)
 
-                fmt = infer_format_from_uri(ref.uri)
-                # Workspace URIs by ID (workspace://abc123) have no extension.
-                # When the MIME fragment is also missing, fall back to the
-                # workspace file manager's metadata for format detection.
-                if fmt is None and ref.uri.startswith("workspace://"):
-                    fmt = await _infer_format_from_workspace(ref.uri, user_id, session)
-                return await _expand_bare_ref(ref, fmt, user_id, session, prop_schema)
+    # Tabular list → Any (no type): convert to list of dicts.
+    # Blocks like FindInDictionaryBlock have `input: Any` which produces
+    # a schema with no "type" key.  Tabular [[header],[rows]] is unusable
+    # for key lookup, but [{col: val}, ...] works with FindInDict's
+    # list-of-dicts branch (line 195-199 in data_manipulation.py).
+    if isinstance(parsed, list) and target_type is None and _is_tabular(parsed):
+        return _tabular_to_list_of_dicts(parsed)
 
-            # Not a bare ref — do normal inline expansion.
-            return await expand_file_refs_in_string(
-                value, user_id, session, raise_on_error=True
-            )
-        if isinstance(value, dict):
-            # When the schema says this is an object but doesn't define
-            # inner properties, skip expansion — the caller (e.g.
-            # RunBlockTool) will expand with the actual nested schema.
-            if (
-                prop_schema is not None
-                and prop_schema.get("type") == "object"
-                and "properties" not in prop_schema
-            ):
-                return value
-            nested_props = (prop_schema or {}).get("properties", {})
-            return {
-                k: await _expand(v, prop_schema=nested_props.get(k))
-                for k, v in value.items()
-            }
-        if isinstance(value, list):
-            items_schema = (prop_schema or {}).get("items")
-            return [await _expand(item, prop_schema=items_schema) for item in value]
-        return value
+    return parsed
 
-    return {k: await _expand(v, prop_schema=properties.get(k)) for k, v in args.items()}
+
+def _adapt_dict_to_array(parsed: dict, prop_schema: dict[str, Any]) -> Any:
+    """Adapt a parsed dict to an array-typed field.
+
+    Extracts list-valued entries when the target item type is ``array``,
+    passes through unchanged when item type is ``string`` (lets pydantic error),
+    or wraps in ``[parsed]`` as a fallback.
+    """
+    items_type = (prop_schema.get("items") or {}).get("type")
+    if items_type == "array":
+        # Target is List[List[Any]] — extract list-typed values from the
+        # dict as inner lists.  E.g. YAML {"fruits": [{...},...]}} with
+        # ConcatenateLists (List[List[Any]]) → [[{...},...]].
+        list_values = [v for v in parsed.values() if isinstance(v, list)]
+        if list_values:
+            return list_values
+    if items_type == "string":
+        # Target is List[str] — wrapping a dict would give [dict]
+        # which can't coerce to strings.  Return unchanged and let
+        # pydantic surface a clear validation error.
+        return parsed
+    # Fallback: wrap in a single-element list so the block gets [dict]
+    # instead of pydantic flattening keys/values into a flat list.
+    return [parsed]
+
+
+def _adapt_list_to_object(parsed: list) -> Any:
+    """Adapt a parsed list to an object-typed field.
+
+    Converts tabular lists to column-dicts; raises for non-tabular lists.
+    """
+    if _is_tabular(parsed):
+        return _tabular_to_column_dict(parsed)
+    # Non-tabular list (e.g. a plain Python list from a YAML file) cannot
+    # be meaningfully coerced to an object.  Raise explicitly so callers
+    # get a clear error rather than pydantic silently wrapping the list.
+    raise FileRefExpansionError(
+        "Cannot adapt a non-tabular list to an object-typed field. "
+        "Expected a tabular structure ([[header], [row1], ...]) or a dict."
+    )
+
+
+def _is_tabular(parsed: Any) -> bool:
+    """Check if parsed data is in tabular format: [[header], [row1], ...].
+
+    Uses isinstance checks because this is a structural type guard on
+    opaque parser output (Any), not duck typing.  A Protocol wouldn't
+    help here — we need to verify exact list-of-lists shape.
+    """
+    if not isinstance(parsed, list) or len(parsed) < 2:
+        return False
+    header = parsed[0]
+    if not isinstance(header, list) or not header:
+        return False
+    if not all(isinstance(h, str) for h in header):
+        return False
+    return all(isinstance(row, list) for row in parsed[1:])
+
+
+def _tabular_to_list_of_dicts(parsed: list) -> list[dict[str, Any]]:
+    """Convert [[header], [row1], ...] → [{header[0]: row[0], ...}, ...].
+
+    Ragged rows (fewer columns than the header) get None for missing values.
+    Extra values beyond the header length are silently dropped.
+    """
+    header = parsed[0]
+    return [
+        dict(itertools.zip_longest(header, row[: len(header)], fillvalue=None))
+        for row in parsed[1:]
+    ]
+
+
+def _tabular_to_column_dict(parsed: list) -> dict[str, list]:
+    """Convert [[header], [row1], ...] → {"col1": [val1, ...], ...}.
+
+    Ragged rows (fewer columns than the header) get None for missing values,
+    ensuring all columns have equal length.
+    """
+    header = parsed[0]
+    return {
+        col: [row[i] if i < len(row) else None for row in parsed[1:]]
+        for i, col in enumerate(header)
+    }

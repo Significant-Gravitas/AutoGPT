@@ -218,15 +218,6 @@ def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
 
 
-async def get_manager(user_id: str, session_id: str) -> WorkspaceManager:
-    """Create a session-scoped WorkspaceManager.
-
-    Delegates to :func:`backend.copilot.context.get_workspace_manager`.
-    Kept here for backward-compatibility with callers inside ``tools/``.
-    """
-    return await get_workspace_manager(user_id, session_id)
-
-
 async def _resolve_file(
     manager: WorkspaceManager,
     file_id: str | None,
@@ -389,7 +380,7 @@ class ListWorkspaceFilesTool(BaseTool):
         include_all_sessions: bool = kwargs.get("include_all_sessions", False)
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             files = await manager.list_files(
                 path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
             )
@@ -539,7 +530,7 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
@@ -775,7 +766,7 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             await scan_content_safe(content, filename=filename)
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
                 content=content,
                 filename=filename,
@@ -902,7 +893,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
