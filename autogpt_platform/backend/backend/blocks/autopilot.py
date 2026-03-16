@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from backend.blocks._base import (
     Block,
@@ -15,6 +15,13 @@ from backend.data.model import SchemaField
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
+
+
+class TokenUsage(TypedDict):
+    promptTokens: int
+    completionTokens: int
+    totalTokens: int
+
 
 # Task-scoped recursion depth counter & chain-wide limit.
 # contextvars are scoped to the current asyncio task, so concurrent
@@ -119,7 +126,7 @@ class AutoPilotBlock(Block):
                 "Pass this back to continue the conversation in a future run."
             ),
         )
-        token_usage: dict = SchemaField(
+        token_usage: TokenUsage = SchemaField(
             description=(
                 "Token usage statistics: promptTokens, "
                 "completionTokens, totalTokens."
@@ -194,7 +201,7 @@ class AutoPilotBlock(Block):
         session_id: str,
         max_recursion_depth: int,
         user_id: str,
-    ) -> tuple[str, list[dict], str, str, dict]:
+    ) -> tuple[str, list[dict], str, str, TokenUsage]:
         """Invoke the copilot and collect all stream results.
 
         Follows the same path as the normal copilot: create session if needed,
@@ -224,7 +231,7 @@ class AutoPilotBlock(Block):
             response_parts: list[str] = []
             tool_calls: list[dict] = []
             tool_calls_by_id: dict[str, dict] = {}
-            total_usage = {
+            total_usage: TokenUsage = {
                 "promptTokens": 0,
                 "completionTokens": 0,
                 "totalTokens": 0,
