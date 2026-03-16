@@ -85,9 +85,14 @@ def _before_send(event, hint):
         if "marked as inactive" in exc_msg or "inactive addresses" in exc_msg:
             return None
 
-    # Also filter log-based events for known noisy messages
-    if event.get("logger") and event.get("message"):
-        msg = event["message"].lower()
+    # Also filter log-based events for known noisy messages.
+    # Sentry's LoggingIntegration stores log messages under "logentry", not "message".
+    logentry = event.get("logentry") or {}
+    log_msg = (
+        logentry.get("formatted") or logentry.get("message") or event.get("message")
+    )
+    if event.get("logger") and log_msg:
+        msg = log_msg.lower()
         noisy_patterns = [
             "amqpconnection",
             "connection_forced",
