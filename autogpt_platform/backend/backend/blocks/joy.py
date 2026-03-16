@@ -135,7 +135,11 @@ class JoyTrustVerifyBlock(Block):
             },
             test_output=[
                 ("is_trusted", True),
-                ("trust_score", lambda x: x >= 0.5),
+                ("trust_score", 1.5),
+                ("vouch_count", 10),
+                ("verified", True),
+                ("capabilities", ["github", "code"]),
+                ("error", ""),
             ],
             test_mock={
                 "_fetch_agent": lambda *args, **kwargs: {
@@ -299,7 +303,9 @@ class JoyDiscoverAgentsBlock(Block):
                 "limit": 5,
             },
             test_output=[
-                ("count", lambda x: x >= 0),
+                ("agents", lambda x: len(x) == 2),
+                ("count", 2),
+                ("error", ""),
             ],
             test_mock={
                 "_discover_agents": lambda *args, **kwargs: {
@@ -474,6 +480,7 @@ class JoyShouldTrustBlock(Block):
             },
             test_output=[
                 ("trusted", True),
+                ("reason", lambda x: "meets threshold" in x),
             ],
             test_mock={
                 "_fetch_agent": lambda *args, **kwargs: {
