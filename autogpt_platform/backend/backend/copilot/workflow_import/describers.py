@@ -4,6 +4,7 @@ Each describer is a pure function that deterministically parses the competitor
 format into a platform-agnostic WorkflowDescription. No LLM calls are made here.
 """
 
+import re
 from typing import Any
 
 from .models import CompetitorFormat, StepDescription, WorkflowDescription
@@ -208,8 +209,6 @@ def _extract_n8n_service(node_type: str) -> str:
             break
 
     # Convert camelCase to Title Case
-    import re
-
     name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
     return name.replace(".", " ").replace("-", " ").title()
 

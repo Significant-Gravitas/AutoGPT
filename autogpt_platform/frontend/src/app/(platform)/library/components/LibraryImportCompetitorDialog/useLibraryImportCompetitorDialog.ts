@@ -1,3 +1,6 @@
+import { usePostV2ImportACompetitorWorkflowN8nMakeComZapier } from "@/app/api/__generated__/endpoints/import/import";
+import type { ImportWorkflowRequest } from "@/app/api/__generated__/models/importWorkflowRequest";
+import type { ImportWorkflowResponse } from "@/app/api/__generated__/models/importWorkflowResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
@@ -8,8 +11,10 @@ import { importCompetitorFormSchema } from "./LibraryImportCompetitorDialog";
 export function useLibraryImportCompetitorDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
-  const [isConverting, setIsConverting] = useState(false);
   const [importMode, setImportMode] = useState<"file" | "url">("file");
+
+  const { mutateAsync: importWorkflow, isPending: isConverting } =
+    usePostV2ImportACompetitorWorkflowN8nMakeComZapier();
 
   const form = useForm<z.infer<typeof importCompetitorFormSchema>>({
     resolver: zodResolver(importCompetitorFormSchema),
@@ -22,10 +27,8 @@ export function useLibraryImportCompetitorDialog() {
   const onSubmit = async (
     values: z.infer<typeof importCompetitorFormSchema>,
   ) => {
-    setIsConverting(true);
-
     try {
-      let body: Record<string, unknown>;
+      let body: ImportWorkflowRequest;
 
       if (importMode === "url" && values.templateUrl) {
         body = { template_url: values.templateUrl, save: true };
@@ -44,20 +47,8 @@ export function useLibraryImportCompetitorDialog() {
         throw new Error("Please provide a workflow file or template URL");
       }
 
-      const response = await fetch("/api/import/competitor-workflow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(
-          errorData?.detail || `Import failed (${response.status})`,
-        );
-      }
-
-      const data = await response.json();
+      const response = await importWorkflow({ data: body });
+      const data = response.data as ImportWorkflowResponse;
 
       setIsOpen(false);
       form.reset();
@@ -72,7 +63,6 @@ export function useLibraryImportCompetitorDialog() {
         description: hasWarnings
           ? `Imported from ${data.source_format} with warnings. Check the builder for details.`
           : `Successfully imported "${data.source_name}" from ${data.source_format}`,
-        variant: hasWarnings ? "default" : "default",
       });
 
       if (data.graph_id) {
@@ -89,8 +79,6 @@ export function useLibraryImportCompetitorDialog() {
         variant: "destructive",
         duration: 5000,
       });
-    } finally {
-      setIsConverting(false);
     }
   };
 

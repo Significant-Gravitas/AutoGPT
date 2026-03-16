@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any
 
 import pydantic
+from pydantic import Field
 
 
 class CompetitorFormat(str, Enum):
@@ -31,4 +32,4 @@ class WorkflowDescription(pydantic.BaseModel):
     steps: list[StepDescription]
     trigger_type: str | None = None
     source_format: CompetitorFormat
-    raw_json: dict[str, Any] = {}
+    raw_json: dict[str, Any] = Field(default_factory=dict, exclude=True)

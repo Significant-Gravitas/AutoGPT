@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, HTTPException, Security
 
 from backend.copilot.workflow_import.converter import convert_competitor_workflow
 from backend.copilot.workflow_import.describers import describe_workflow
@@ -67,7 +67,10 @@ async def import_competitor_workflow(
     """
     # Step 1: Get the raw workflow JSON
     if request.template_url:
-        workflow_json = await fetch_n8n_template(request.template_url)
+        try:
+            workflow_json = await fetch_n8n_template(request.template_url)
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     else:
         workflow_json = request.workflow_json
         assert workflow_json is not None  # guaranteed by validator
@@ -75,17 +78,18 @@ async def import_competitor_workflow(
     # Step 2: Detect format
     fmt = detect_format(workflow_json)
     if fmt == CompetitorFormat.UNKNOWN:
-        raise ValueError(
-            "Could not detect workflow format. Supported formats: "
+        raise HTTPException(
+            status_code=400,
+            detail="Could not detect workflow format. Supported formats: "
             "n8n, Make.com, Zapier. Ensure you're uploading a valid "
-            "workflow export file."
+            "workflow export file.",
         )
 
     # Step 3: Describe the workflow
     desc = describe_workflow(workflow_json, fmt)
 
     # Step 4: Convert to AutoGPT agent
-    agent_json, conversion_notes = await convert_competitor_workflow(desc, user_id)
+    agent_json, conversion_notes = await convert_competitor_workflow(desc)
 
     # Step 5: Optionally save
     graph_id = None

@@ -5,6 +5,8 @@ from typing import Any
 
 from .models import CompetitorFormat
 
+_N8N_TYPE_RE = re.compile(r"^(n8n-nodes-base\.|@n8n/)")
+
 
 def detect_format(json_data: dict[str, Any]) -> CompetitorFormat:
     """Inspect a workflow JSON and determine which platform it came from.
@@ -35,11 +37,10 @@ def _is_n8n(data: dict[str, Any]) -> bool:
     if not nodes:
         return False
     # Check if at least one node has an n8n-style type
-    n8n_type_re = re.compile(r"^(n8n-nodes-base\.|@n8n/)")
     return any(
         isinstance(n, dict)
         and isinstance(n.get("type"), str)
-        and n8n_type_re.match(n["type"])
+        and _N8N_TYPE_RE.match(n["type"])
         for n in nodes
     )
 

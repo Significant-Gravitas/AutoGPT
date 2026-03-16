@@ -24,6 +24,26 @@ _AGENT_GUIDE_PATH = (
 
 _MAX_RETRIES = 1
 
+# Cached LLM client — created once on first use
+_llm_client: Any = None
+_llm_config: ChatConfig | None = None
+
+
+def _get_llm_client() -> tuple[Any, ChatConfig]:
+    """Return a cached LangfuseAsyncOpenAI client."""
+    global _llm_client, _llm_config
+    if _llm_client is None:
+        from langfuse.openai import (
+            AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
+        )
+
+        _llm_config = ChatConfig()
+        _llm_client = LangfuseAsyncOpenAI(
+            api_key=_llm_config.api_key, base_url=_llm_config.base_url
+        )
+    assert _llm_config is not None
+    return _llm_client, _llm_config
+
 
 def _load_agent_guide() -> str:
     """Load the agent generation guide markdown."""
@@ -106,13 +126,11 @@ IMPORTANT: Your previous attempt had validation errors. Fix them:
 
 async def convert_competitor_workflow(
     desc: WorkflowDescription,
-    user_id: str,
 ) -> tuple[dict[str, Any], list[str]]:
     """Convert a WorkflowDescription into an AutoGPT agent JSON.
 
     Args:
         desc: Structured description of the competitor workflow.
-        user_id: The user ID for saving.
 
     Returns:
         Tuple of (agent_json dict, conversion_notes list).
@@ -120,12 +138,7 @@ async def convert_competitor_workflow(
     Raises:
         ValueError: If conversion fails after retries.
     """
-    from langfuse.openai import (
-        AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
-    )
-
-    config = ChatConfig()
-    client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+    client, config = _get_llm_client()
 
     blocks = get_blocks_as_dicts()
     block_catalog = _build_block_catalog(blocks)
