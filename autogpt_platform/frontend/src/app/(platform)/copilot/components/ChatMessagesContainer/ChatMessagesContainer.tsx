@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -8,6 +9,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -51,6 +53,50 @@ function renderSegments(
   });
 }
 
+/**
+ * Extract graph_exec_id from tool outputs that need review.
+ * Handles both:
+ * - run_block ReviewRequiredResponse (has graph_exec_id directly)
+ * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
+ */
+function extractGraphExecId(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): string | null {
+  // Scan backwards — the most recent review output has the ID
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    for (const part of msg.parts) {
+      if ("output" in part && part.output) {
+        const out =
+          typeof part.output === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(part.output);
+                } catch {
+                  return null;
+                }
+              })()
+            : part.output;
+        if (out && typeof out === "object") {
+          // run_block: ReviewRequiredResponse has graph_exec_id
+          if ("graph_exec_id" in out) {
+            return (out as { graph_exec_id: string }).graph_exec_id;
+          }
+          // run_agent: ExecutionStartedResponse with status "REVIEW"
+          if (
+            "execution_id" in out &&
+            "status" in out &&
+            (out as { status: string }).status === "REVIEW"
+          ) {
+            return (out as { execution_id: string }).execution_id;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export function ChatMessagesContainer({
   messages,
   status,
@@ -60,6 +106,7 @@ export function ChatMessagesContainer({
   sessionID,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
+  const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -205,6 +252,7 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         )}
+        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">

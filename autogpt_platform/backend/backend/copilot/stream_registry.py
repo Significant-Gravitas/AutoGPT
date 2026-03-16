@@ -23,6 +23,11 @@ from typing import Any, Literal
 
 import orjson
 
+from backend.api.model import CopilotCompletionPayload
+from backend.data.notification_bus import (
+    AsyncRedisNotificationEventBus,
+    NotificationEvent,
+)
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
@@ -38,6 +43,7 @@ from .response_model import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+_notification_bus = AsyncRedisNotificationEventBus()
 
 # Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
 _local_sessions: dict[str, asyncio.Task] = {}
@@ -745,6 +751,29 @@ async def mark_session_completed(
 
     # Clean up local session reference if exists
     _local_sessions.pop(session_id, None)
+
+    # Publish copilot completion notification via WebSocket
+    if meta:
+        parsed = _parse_session_meta(meta, session_id)
+        if parsed.user_id:
+            try:
+                await _notification_bus.publish(
+                    NotificationEvent(
+                        user_id=parsed.user_id,
+                        payload=CopilotCompletionPayload(
+                            type="copilot_completion",
+                            event="session_completed",
+                            session_id=session_id,
+                            status=status,
+                        ),
+                    )
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to publish copilot completion notification "
+                    f"for session {session_id}: {e}"
+                )
+
     return True
 
 
