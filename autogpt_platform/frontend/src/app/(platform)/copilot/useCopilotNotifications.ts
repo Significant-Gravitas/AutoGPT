@@ -146,12 +146,19 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       if (e.key !== Key.COPILOT_COMPLETED_SESSIONS) return;
       let next: Set<string>;
       try {
-        next = e.newValue
-          ? new Set<string>(JSON.parse(e.newValue))
-          : new Set<string>();
+        if (!e.newValue) {
+          next = new Set<string>();
+        } else {
+          const parsed: unknown = JSON.parse(e.newValue);
+          next = Array.isArray(parsed)
+            ? new Set<string>(parsed.filter((v) => typeof v === "string"))
+            : new Set<string>();
+        }
       } catch {
         next = new Set<string>();
       }
+      // localStorage is the shared source of truth — adopt it directly so both
+      // additions (new completions) and removals (cleared sessions) propagate.
       useCopilotUIStore.setState({ completedSessionIDs: next });
       const count = next.size;
       document.title =
