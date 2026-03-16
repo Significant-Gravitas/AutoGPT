@@ -2,9 +2,7 @@
 Tests for content handlers (blocks, store agents, documentation).
 """
 
-import types
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -100,19 +98,6 @@ def test_get_enabled_blocks_cached():
         result2 = _get_enabled_blocks()
     assert result1 is result2
     mock_get_blocks.assert_called_once()
-
-
-def test_get_enabled_blocks_returns_immutable_mapping():
-    """The returned mapping is a MappingProxyType — mutation raises TypeError."""
-    blocks = {"b1": _make_block_class(name="B1")}
-    with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
-    ):
-        result = _get_enabled_blocks()
-    assert isinstance(result, types.MappingProxyType)
-    with pytest.raises(TypeError):
-        result_any: Any = result
-        result_any["new_key"] = object()
 
 
 # ---------------------------------------------------------------------------

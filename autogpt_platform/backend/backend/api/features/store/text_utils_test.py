@@ -1,8 +1,8 @@
-"""Tests for text_utils helpers."""
+"""Tests for split_camelcase (now in backend.util.text)."""
 
 import pytest
 
-from backend.api.features.store.text_utils import split_camelcase
+from backend.util.text import split_camelcase
 
 # ---------------------------------------------------------------------------
 # split_camelcase
@@ -37,6 +37,12 @@ from backend.api.features.store.text_utils import split_camelcase
         # char so the uppercase-run rule cannot fire, producing "3 DRenderer"
         # rather than the ideal "3D Renderer".
         ("3DRenderer", "3 DRenderer"),
+        # Exception list — compound terms that should stay together
+        ("YouTubeBlock", "YouTube Block"),
+        ("OpenAIBlock", "OpenAI Block"),
+        ("AutoGPTAgent", "AutoGPT Agent"),
+        ("GitHubIntegration", "GitHub Integration"),
+        ("LinkedInBlock", "LinkedIn Block"),
     ],
 )
 def test_split_camelcase(input_text: str, expected: str):

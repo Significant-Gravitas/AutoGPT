@@ -11,7 +11,6 @@ import asyncio
 import functools
 import itertools
 import logging
-import types
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,13 +18,13 @@ from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.text_utils import split_camelcase
 from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+from backend.util.text import split_camelcase
 
 if TYPE_CHECKING:
-    from backend.blocks._base import Block
+    from backend.blocks._base import AnyBlockSchema
 
 logger = logging.getLogger(__name__)
 
@@ -166,38 +165,25 @@ class StoreAgentHandler(ContentHandler):
 
 
 @functools.lru_cache(maxsize=1)
-def _get_enabled_blocks() -> types.MappingProxyType[str, Block[Any, Any]]:
+def _get_enabled_blocks() -> dict[str, AnyBlockSchema]:
     """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
 
     Disabled blocks and blocks that fail to instantiate are silently skipped
     (with a warning log), so callers never need their own try/except loop.
 
-    **Caching:** Results are cached for the lifetime of the process via
-    ``lru_cache``.  This is intentional — blocks are registered at import time
-    and their set never changes while the process is running.  The returned
-    mapping is wrapped in ``MappingProxyType`` so callers cannot accidentally
-    mutate the cached data.
-
-    The cached block instances are lightweight singletons (no heavy resources
-    or open connections), so pinning them for the process lifetime is fine.
-
-    .. note::
-
-       No TTL is needed here, unlike the upstream ``get_blocks()`` which uses
-       a 1-hour TTL because it queries DB-backed block metadata.  This layer
-       only caches in-memory class instances that are defined at import time
-       and are immutable for the life of the process.
+    Results are cached for the process lifetime via ``lru_cache`` because
+    blocks are registered at import time and never change while running.
     """
-    enabled: dict[str, Block[Any, Any]] = {}
+    enabled: dict[str, AnyBlockSchema] = {}
     for block_id, block_cls in get_blocks().items():
         try:
             instance = block_cls()
         except Exception as e:
-            logger.warning("Skipping block %s: init failed: %s", block_id, e)
+            logger.warning(f"Skipping block {block_id}: init failed: {e}")
             continue
         if not instance.disabled:
             enabled[block_id] = instance
-    return types.MappingProxyType(enabled)
+    return enabled
 
 
 class BlockHandler(ContentHandler):
@@ -239,6 +225,10 @@ class BlockHandler(ContentHandler):
         for block_id, block in itertools.islice(missing, batch_size):
             try:
                 # Build searchable text from block metadata
+                if not block.name:
+                    logger.warning(
+                        f"Block {block_id} has no name — using block_id as fallback"
+                    )
                 display_name = split_camelcase(block.name) if block.name else ""
                 parts = []
                 if display_name:
@@ -292,7 +282,7 @@ class BlockHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning("Failed to process block %s: %s", block_id, e)
+                logger.warning(f"Failed to process block {block_id}: {e}")
                 continue
 
         return items
@@ -377,7 +367,7 @@ class DocumentationHandler(ContentHandler):
             # If no title found, use filename
             return file_path.stem.replace("-", " ").replace("_", " ").title()
         except Exception as e:
-            logger.warning("Failed to read title from %s: %s", file_path, e)
+            logger.warning(f"Failed to read title from {file_path}: {e}")
             return file_path.stem.replace("-", " ").replace("_", " ").title()
 
     def _chunk_markdown_by_headings(
@@ -397,7 +387,7 @@ class DocumentationHandler(ContentHandler):
         try:
             content = file_path.read_text(encoding="utf-8")
         except Exception as e:
-            logger.warning("Failed to read %s: %s", file_path, e)
+            logger.warning(f"Failed to read {file_path}: {e}")
             return []
 
         lines = content.split("\n")
@@ -522,7 +512,7 @@ class DocumentationHandler(ContentHandler):
         docs_root = self._get_docs_root()
 
         if not docs_root.exists():
-            logger.warning("Documentation root not found: %s", docs_root)
+            logger.warning(f"Documentation root not found: {docs_root}")
             return []
 
         # Find all .md and .mdx files
@@ -598,7 +588,7 @@ class DocumentationHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning("Failed to process section %s: %s", content_id, e)
+                logger.warning(f"Failed to process section {content_id}: {e}")
                 continue
 
         return items
