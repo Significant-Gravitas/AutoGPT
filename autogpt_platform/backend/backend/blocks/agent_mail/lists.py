@@ -158,6 +158,7 @@ class AgentMailCreateListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            is_sensitive_action=True,
         )
 
     async def run(
@@ -262,6 +263,7 @@ class AgentMailDeleteListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            is_sensitive_action=True,
         )
 
     async def run(
