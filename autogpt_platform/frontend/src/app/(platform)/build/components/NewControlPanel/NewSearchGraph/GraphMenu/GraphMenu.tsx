@@ -14,6 +14,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
+import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
@@ -23,6 +24,13 @@ export function GraphSearchMenu() {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const { graphSearchOpen, setGraphSearchOpen } = useControlPanelStore();
   const reactFlow = useReactFlow();
+
+  const isMac = useMemo(
+    () =>
+      typeof navigator !== "undefined" &&
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform),
+    [],
+  );
 
   const { searchQuery, setSearchQuery, filteredNodes, handleNodeSelect } =
     useGraphMenu({
@@ -49,7 +57,7 @@ export function GraphSearchMenu() {
     >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
-          <PopoverTrigger className="hover:cursor-pointer">
+          <PopoverTrigger asChild className="hover:cursor-pointer">
             <ControlPanelButton
               data-id="graph-search-control-popover-trigger"
               data-testid="graph-search-control-button"
@@ -60,7 +68,9 @@ export function GraphSearchMenu() {
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="right">Search Graph (Cmd+F)</TooltipContent>
+        <TooltipContent side="right">
+          Search Graph ({isMac ? "Cmd" : "Ctrl"}+F)
+        </TooltipContent>
       </Tooltip>
 
       <PopoverContent

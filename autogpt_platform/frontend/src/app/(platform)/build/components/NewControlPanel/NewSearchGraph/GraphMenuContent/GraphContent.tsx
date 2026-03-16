@@ -4,6 +4,7 @@ import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { ArrowBendUpRight } from "@phosphor-icons/react";
 import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";
+import { getNodeInputOutputSummary } from "./helpers";
 import { useGraphContent } from "./useGraphContent";
 
 interface Props {
@@ -25,6 +26,8 @@ export function GraphSearchContent({
     onNodeSelect,
   });
 
+  const trimmedQuery = searchQuery?.trim();
+
   return (
     <div className="flex h-full w-full flex-col">
       <GraphMenuSearchBar
@@ -36,7 +39,7 @@ export function GraphSearchContent({
       <Separator className="h-[1px] w-full text-zinc-300" />
 
       <div className="flex-1 overflow-hidden">
-        {searchQuery && (
+        {trimmedQuery && (
           <div className="px-4 pt-3 text-xs text-zinc-500">
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
@@ -46,7 +49,7 @@ export function GraphSearchContent({
           <div className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
               <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
-                {searchQuery
+                {trimmedQuery
                   ? "No nodes found matching your search"
                   : "Start typing to search nodes"}
               </div>
@@ -109,25 +112,4 @@ export function GraphSearchContent({
       </div>
     </div>
   );
-}
-
-function getNodeInputOutputSummary(node: SearchableNode) {
-  if (!node?.data) return "";
-
-  const inputs = Object.keys(node.data.inputSchema?.properties || {});
-  const outputs = Object.keys(node.data.outputSchema?.properties || {});
-  const parts = [];
-
-  if (inputs.length > 0) {
-    parts.push(
-      `Inputs: ${inputs.slice(0, 3).join(", ")}${inputs.length > 3 ? "..." : ""}`,
-    );
-  }
-  if (outputs.length > 0) {
-    parts.push(
-      `Outputs: ${outputs.slice(0, 3).join(", ")}${outputs.length > 3 ? "..." : ""}`,
-    );
-  }
-
-  return parts.join(" | ");
 }

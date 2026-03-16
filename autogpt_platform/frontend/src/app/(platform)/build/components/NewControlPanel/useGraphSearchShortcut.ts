@@ -6,6 +6,16 @@ export function useGraphSearchShortcut() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const el = document.activeElement as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
         setGraphSearchOpen(true);

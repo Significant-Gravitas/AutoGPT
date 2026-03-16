@@ -27,7 +27,14 @@ export function useGraphContent({
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
     } else if (e.key === "Enter" && filteredNodes.length > 0) {
       e.preventDefault();
-      onNodeSelect(filteredNodes[selectedIndex].id);
+      const safeIndex = Math.max(
+        0,
+        Math.min(selectedIndex, filteredNodes.length - 1),
+      );
+      const node = filteredNodes[safeIndex];
+      if (node) {
+        onNodeSelect(node.id);
+      }
     }
   }
 
