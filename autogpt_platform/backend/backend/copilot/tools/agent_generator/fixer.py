@@ -31,6 +31,14 @@ _GET_CURRENT_DATE_BLOCK_ID = "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1"
 _GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
 _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 
+# Defaults applied to SmartDecisionMakerBlock nodes by the fixer.
+_SDM_DEFAULTS: dict[str, object] = {
+    "agent_mode_max_iterations": -1,
+    "conversation_compaction": True,
+    "retry": 3,
+    "multiple_tool_calls": False,
+}
+
 
 class AgentFixer:
     """
@@ -1648,13 +1656,6 @@ class AgentFixer:
         """
         nodes = agent.get("nodes", [])
 
-        _DEFAULTS: dict[str, object] = {
-            "agent_mode_max_iterations": -1,
-            "conversation_compaction": True,
-            "retry": 3,
-            "multiple_tool_calls": False,
-        }
-
         for node in nodes:
             if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
                 continue
@@ -1662,7 +1663,7 @@ class AgentFixer:
             node_id = node.get("id", "unknown")
             input_default = node.setdefault("input_default", {})
 
-            for field, default_value in _DEFAULTS.items():
+            for field, default_value in _SDM_DEFAULTS.items():
                 if field not in input_default:
                     input_default[field] = default_value
                     self.add_fix_log(

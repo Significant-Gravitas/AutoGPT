@@ -151,7 +151,9 @@ call in a loop until the task is complete:
    (ID: `3b191d9f-356f-482d-8238-ba04b6d18381`)
 2. Set `input_default`:
    - `agent_mode_max_iterations`: `-1` (infinite loop — AI calls tools until
-     done) or a positive number for bounded iterations
+     done) or a positive number for bounded iterations. Do NOT use `0`
+     (traditional mode) — it requires complex external conversation-history
+     loop wiring that the agent generator does not produce.
    - `conversation_compaction`: `true` (recommended to avoid context overflow)
    - Optional: `sys_prompt` for extra LLM context about how to orchestrate
 3. Wire the `prompt` input from an `AgentInputBlock` (the user's task)
