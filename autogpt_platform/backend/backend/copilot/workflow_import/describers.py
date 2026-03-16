@@ -108,13 +108,10 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     """Extract a structured description from a Make.com scenario blueprint."""
     flow = json_data.get("flow", [])
+    valid_modules = [m for m in flow if isinstance(m, dict)]
     steps: list[StepDescription] = []
-    valid_count = 0
 
-    for module in flow:
-        if not isinstance(module, dict):
-            continue
-
+    for i, module in enumerate(valid_modules):
         module_ref = module.get("module", "unknown:unknown")
         if not isinstance(module_ref, str):
             module_ref = "unknown:unknown"
@@ -136,18 +133,17 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
             clean_params["_has_routes"] = len(routes)
         else:
             # Make.com flows are sequential by default; each step connects to next
-            connections_to = [valid_count + 1] if valid_count < len(flow) - 1 else []
+            connections_to = [i + 1] if i < len(valid_modules) - 1 else []
 
         steps.append(
             StepDescription(
-                order=valid_count,
+                order=i,
                 action=action,
                 service=service,
                 parameters=clean_params,
                 connections_to=connections_to,
             )
         )
-        valid_count += 1
 
     # Detect trigger
     trigger_type = None
@@ -171,13 +167,10 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     """Extract a structured description from a Zapier Zap JSON."""
     zap_steps = json_data.get("steps", [])
+    valid_steps = [s for s in zap_steps if isinstance(s, dict)]
     steps: list[StepDescription] = []
-    valid_count = 0
 
-    for step in zap_steps:
-        if not isinstance(step, dict):
-            continue
-
+    for i, step in enumerate(valid_steps):
         app = step.get("app", "Unknown")
         action = step.get("action", "process")
         action_desc = f"{str(action).replace('_', ' ').title()} via {app}"
@@ -186,22 +179,21 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
 
         # Zapier zaps are linear: each step connects to next
-        connections_to = [valid_count + 1] if valid_count < len(zap_steps) - 1 else []
+        connections_to = [i + 1] if i < len(valid_steps) - 1 else []
 
         steps.append(
             StepDescription(
-                order=valid_count,
+                order=i,
                 action=action_desc,
                 service=app,
                 parameters=clean_params,
                 connections_to=connections_to,
             )
         )
-        valid_count += 1
 
     trigger_type = None
-    if zap_steps and isinstance(zap_steps[0], dict):
-        trigger_type = zap_steps[0].get("app")
+    if valid_steps:
+        trigger_type = valid_steps[0].get("app")
 
     return WorkflowDescription(
         name=json_data.get("name", json_data.get("title", "Imported Zapier Zap")),

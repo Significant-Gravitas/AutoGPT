@@ -54,7 +54,6 @@ class ImportWorkflowResponse(pydantic.BaseModel):
 @router.post(
     path="/workflow",
     summary="Import a workflow from another tool (n8n, Make.com, Zapier)",
-    tags=["import"],
     dependencies=[Security(requires_user)],
 )
 async def import_workflow(

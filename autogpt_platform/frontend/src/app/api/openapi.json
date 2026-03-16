@@ -2922,7 +2922,7 @@
     },
     "/api/import/workflow": {
       "post": {
-        "tags": ["v2", "import", "import"],
+        "tags": ["v2", "import"],
         "summary": "Import a workflow from another tool (n8n, Make.com, Zapier)",
         "description": "Import a workflow from another automation platform and convert it to an\nAutoGPT agent.\n\nAccepts either raw workflow JSON or a template URL (n8n only for now).\nThe workflow is parsed, described, and then converted to an AutoGPT graph\nusing LLM-powered block mapping.",
         "operationId": "postV2Import a workflow from another tool (n8n, make.com, zapier)",
