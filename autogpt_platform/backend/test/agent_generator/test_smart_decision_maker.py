@@ -222,6 +222,32 @@ class TestFixSmartDecisionMakerBlocks:
         assert "input_default" in result["nodes"][0]
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == -1
 
+    def test_treats_none_values_as_missing(self):
+        """Explicit None values are overwritten with defaults."""
+        fixer = AgentFixer()
+        agent = {
+            "nodes": [
+                _make_sdm_node(
+                    input_default={
+                        "agent_mode_max_iterations": None,
+                        "conversation_compaction": None,
+                        "retry": 3,
+                        "multiple_tool_calls": False,
+                    }
+                )
+            ],
+            "links": [],
+        }
+
+        result = fixer.fix_smart_decision_maker_blocks(agent)
+
+        defaults = result["nodes"][0]["input_default"]
+        assert defaults["agent_mode_max_iterations"] == -1  # None → default
+        assert defaults["conversation_compaction"] is True  # None → default
+        assert defaults["retry"] == 3  # kept
+        assert defaults["multiple_tool_calls"] is False  # kept
+        assert len(fixer.fixes_applied) == 2
+
     def test_multiple_sdm_nodes(self):
         """Multiple SDM nodes are all fixed independently."""
         fixer = AgentFixer()
@@ -355,6 +381,27 @@ class TestValidateSmartDecisionMakerBlocks:
         assert result is False
         assert len(validator.errors) == 1
         assert sdm_invalid["id"] in validator.errors[0]
+
+    def test_sdm_with_only_interface_block_links_fails(self):
+        """Links to AgentInput/OutputBlocks don't count as tool connections."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node()
+        input_node = _make_input_node()
+        output_node = _make_output_node()
+        agent = {
+            "nodes": [sdm, input_node, output_node],
+            "links": [
+                # These link to interface blocks, not real tools
+                _link(sdm["id"], "tools", input_node["id"], "name"),
+                _link(sdm["id"], "tools", output_node["id"], "value"),
+            ],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is False
+        assert len(validator.errors) == 1
+        assert "no downstream tool blocks" in validator.errors[0]
 
     def test_registered_in_validate(self):
         """validate_smart_decision_maker_blocks runs as part of validate()."""
@@ -566,6 +613,9 @@ class TestSmartDecisionMakerE2EPipeline:
 
         validator = AgentValidator()
         is_valid, error_msg = validator.validate(fixed, blocks)
+
+        # Full graph validation should pass
+        assert is_valid, f"Validation failed: {error_msg}"
 
         # SDM-specific validation should pass (has tool links)
         sdm_errors = [e for e in validator.errors if "SmartDecisionMakerBlock" in e]

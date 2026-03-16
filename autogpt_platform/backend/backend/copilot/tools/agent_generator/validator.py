@@ -822,6 +822,8 @@ class AgentValidator:
         valid = True
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
+        node_lookup = {node.get("id", ""): node for node in nodes}
+        non_tool_block_ids = {AGENT_INPUT_BLOCK_ID, AGENT_OUTPUT_BLOCK_ID}
 
         for node in nodes:
             if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
@@ -833,7 +835,10 @@ class AgentValidator:
             )
 
             has_tools = any(
-                link.get("source_id") == node_id and link.get("source_name") == "tools"
+                link.get("source_id") == node_id
+                and link.get("source_name") == "tools"
+                and node_lookup.get(link.get("sink_id", ""), {}).get("block_id")
+                not in non_tool_block_ids
                 for link in links
             )
 
