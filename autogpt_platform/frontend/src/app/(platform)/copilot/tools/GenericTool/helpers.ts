@@ -144,6 +144,23 @@ export function truncate(text: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + "\u2026";
 }
 
+const STRIPPABLE_EXTENSIONS =
+  /\.(md|csv|json|txt|yaml|yml|xml|html|js|ts|py|sh|toml|cfg|ini|log|pdf|png|jpg|jpeg|gif|svg|mp4|mp3|wav|zip|tar|gz)$/i;
+
+export function humanizeFileName(filePath: string): string {
+  const fileName = filePath.split("/").pop() ?? filePath;
+  const stem = fileName.replace(STRIPPABLE_EXTENSIONS, "");
+  const words = stem
+    .replace(/[_-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => {
+      if (w === w.toUpperCase()) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+  return `"${words.join(" ")}"`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Exit code helper                                                   */
 /* ------------------------------------------------------------------ */
@@ -191,16 +208,16 @@ export function getAnimationText(
             ? `Browsing ${shortSummary}`
             : "Interacting with browser\u2026";
         case "file-read":
-          return shortSummary
-            ? `Reading ${shortSummary}`
+          return summary
+            ? `Reading ${humanizeFileName(summary)}`
             : "Reading file\u2026";
         case "file-write":
-          return shortSummary
-            ? `Writing ${shortSummary}`
+          return summary
+            ? `Writing ${humanizeFileName(summary)}`
             : "Writing file\u2026";
         case "file-delete":
-          return shortSummary
-            ? `Deleting ${shortSummary}`
+          return summary
+            ? `Deleting ${humanizeFileName(summary)}`
             : "Deleting file\u2026";
         case "file-list":
           return shortSummary
@@ -211,8 +228,8 @@ export function getAnimationText(
             ? `Searching for "${shortSummary}"`
             : "Searching\u2026";
         case "edit":
-          return shortSummary
-            ? `Editing ${shortSummary}`
+          return summary
+            ? `Editing ${humanizeFileName(summary)}`
             : "Editing file\u2026";
         case "todo":
           return shortSummary ? `${shortSummary}` : "Updating task list\u2026";
@@ -246,11 +263,17 @@ export function getAnimationText(
             ? `Browsed ${shortSummary}`
             : "Browser action completed";
         case "file-read":
-          return shortSummary ? `Read ${shortSummary}` : "File read completed";
+          return summary
+            ? `Read ${humanizeFileName(summary)}`
+            : "File read completed";
         case "file-write":
-          return shortSummary ? `Wrote ${shortSummary}` : "File written";
+          return summary
+            ? `Wrote ${humanizeFileName(summary)}`
+            : "File written";
         case "file-delete":
-          return shortSummary ? `Deleted ${shortSummary}` : "File deleted";
+          return summary
+            ? `Deleted ${humanizeFileName(summary)}`
+            : "File deleted";
         case "file-list":
           return "Listed files";
         case "search":
@@ -258,7 +281,9 @@ export function getAnimationText(
             ? `Searched for "${shortSummary}"`
             : "Search completed";
         case "edit":
-          return shortSummary ? `Edited ${shortSummary}` : "Edit completed";
+          return summary
+            ? `Edited ${humanizeFileName(summary)}`
+            : "Edit completed";
         case "todo":
           return "Updated task list";
         case "compaction":
