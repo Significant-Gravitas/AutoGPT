@@ -10,7 +10,9 @@ Create a new email inbox for an AI agent via AgentMail. Each inbox gets a unique
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the AgentMail API to provision a new inbox. You can optionally specify a username (local part of the address), a custom domain, and a display name. Any parameters left empty use sensible defaults — the username is auto-generated and the domain defaults to `agentmail.to`.
+
+The API returns the newly created inbox object, from which the block extracts the inbox ID and full email address as separate outputs. The complete inbox metadata is also available as a dictionary for downstream blocks that need additional fields. If the API call fails, the error propagates to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +34,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Per-Customer Support Agents** — Spin up a dedicated inbox for each customer so an AI agent can handle their support requests through a personalized email address.
+
+**Campaign-Specific Outreach** — Create a branded inbox for each marketing campaign so replies are automatically routed to the agent managing that campaign.
+
+**Ephemeral Verification Workflows** — Generate a temporary inbox on the fly to receive a sign-up confirmation code, then pass the address to a registration block.
 <!-- END MANUAL -->
 
 ---
@@ -44,7 +50,9 @@ Permanently delete an AgentMail inbox and all its messages, threads, and drafts.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a delete request to the AgentMail API using the provided inbox ID. The API permanently removes the inbox along with all associated messages, threads, and drafts. This action is irreversible.
+
+On success the block outputs `success=True`. If the API returns an error (e.g., the inbox does not exist), the exception propagates to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +70,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Cleanup After Task Completion** — Delete a temporary inbox once an agent finishes processing a one-off workflow like order confirmation or password reset.
+
+**User Offboarding** — Remove an agent's inbox when a customer cancels their account to avoid accumulating unused resources.
+
+**Test Environment Teardown** — Automatically delete inboxes created during integration tests so the organization stays clean between runs.
 <!-- END MANUAL -->
 
 ---
@@ -74,7 +86,9 @@ Retrieve details of an existing AgentMail inbox including its email address, dis
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the AgentMail API to retrieve the details of a single inbox identified by its inbox ID (which is also its email address). The API returns the full inbox object including its email address, display name, and any other metadata.
+
+The block extracts the inbox ID, email address, and display name as individual outputs for easy wiring to downstream blocks. The complete inbox object is also returned as a dictionary. If the inbox does not exist or the request fails, the error propagates to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -95,7 +109,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Pre-Send Validation** — Fetch inbox details before sending an email to confirm the inbox still exists and verify its display name is correct.
+
+**Dashboard Display** — Retrieve inbox metadata to show the agent's email address and display name in a monitoring dashboard.
+
+**Conditional Routing** — Look up an inbox's properties to decide which downstream workflow should handle incoming messages for that address.
 <!-- END MANUAL -->
 
 ---
@@ -107,7 +125,9 @@ List all email inboxes in your AgentMail organization with pagination support.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the AgentMail API to list all inboxes in the organization. You can control page size with the `limit` parameter (1-100) and paginate through results using the `page_token` returned from a previous call. Only non-empty parameters are sent in the request.
+
+The block outputs the list of inbox objects, a count of inboxes returned, and a `next_page_token` for fetching additional pages. When there are no more results, `next_page_token` is empty. If the API call fails, the error propagates to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -128,7 +148,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Organization Audit** — Enumerate all inboxes to generate a report of active agent email accounts and their configurations.
+
+**Bulk Operations** — Iterate through every inbox to perform batch updates, such as rotating API keys or updating display names across all agents.
+
+**Stale Inbox Detection** — List all inboxes and cross-reference with recent activity to identify accounts that can be cleaned up.
 <!-- END MANUAL -->
 
 ---
@@ -140,7 +164,9 @@ Update the display name of an AgentMail inbox. Changes the 'From' name shown whe
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the AgentMail API to update an existing inbox's display name. It sends the inbox ID and the new display name to the update endpoint. The display name controls the "From" label recipients see when the agent sends emails.
+
+The block outputs the inbox ID and the full updated inbox object as a dictionary. If the inbox does not exist or the request fails, the error propagates to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -160,7 +186,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Rebranding an Agent** — Change the display name when an agent is reassigned from one team to another so outgoing emails reflect the new identity.
+
+**Personalized Sender Names** — Update the display name dynamically to include a customer's name or ticket number for a more personal touch in automated replies.
+
+**A/B Testing Email Identity** — Swap the display name between variations to test which sender identity gets higher open rates.
 <!-- END MANUAL -->
 
 ---

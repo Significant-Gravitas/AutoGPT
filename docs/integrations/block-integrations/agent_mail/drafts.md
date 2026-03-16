@@ -264,11 +264,11 @@ The block returns the updated `draft_id`, `send_status`, and the complete draft 
 |-------|-------------|------|----------|
 | inbox_id | Inbox ID or email address the draft belongs to | str | Yes |
 | draft_id | Draft ID to update | str | Yes |
-| to | Updated recipient email addresses (replaces existing list) | List[str] | No |
-| subject | Updated subject line | str | No |
-| text | Updated plain text body | str | No |
-| html | Updated HTML body | str | No |
-| send_at | Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z') | str | No |
+| to | Updated recipient email addresses (replaces existing list). Omit to keep current value. | Optional[List[str]] | No |
+| subject | Updated subject line. Omit to keep current value. | Optional[str] | No |
+| text | Updated plain text body. Omit to keep current value. | Optional[str] | No |
+| html | Updated HTML body. Omit to keep current value. | Optional[str] | No |
+| send_at | Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z'). Omit to keep current value. | Optional[str] | No |
 
 ### Outputs
 
