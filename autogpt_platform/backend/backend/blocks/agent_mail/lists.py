@@ -13,7 +13,7 @@ direction (send/receive) and type (allow/block).
 
 from enum import Enum
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -29,8 +29,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class ListDirection(str, Enum):
@@ -101,7 +101,7 @@ class AgentMailListEntriesBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.lists.list(
+        response = await client.lists.list(
             input_data.direction.value, input_data.list_type.value, **params
         )
         entries = [
@@ -169,7 +169,7 @@ class AgentMailCreateListEntryBlock(Block):
         if input_data.reason and input_data.list_type == ListType.BLOCK:
             params["reason"] = input_data.reason
 
-        result = client.lists.create(
+        result = await client.lists.create(
             input_data.direction.value, input_data.list_type.value, **params
         )
         result_dict = result.__dict__ if hasattr(result, "__dict__") else {}
@@ -218,7 +218,7 @@ class AgentMailGetListEntryBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        result = client.lists.get(
+        result = await client.lists.get(
             input_data.direction.value,
             input_data.list_type.value,
             entry=input_data.entry,
@@ -270,7 +270,7 @@ class AgentMailDeleteListEntryBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        client.lists.delete(
+        await client.lists.delete(
             input_data.direction.value,
             input_data.list_type.value,
             entry=input_data.entry,

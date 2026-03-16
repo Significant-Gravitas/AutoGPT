@@ -6,7 +6,7 @@ created automatically when a new message is sent and grow as replies are added.
 Threads can be queried per-inbox or across the entire organization.
 """
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -22,8 +22,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailListInboxThreadsBlock(Block):
@@ -87,7 +87,9 @@ class AgentMailListInboxThreadsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.inboxes.threads.list(inbox_id=input_data.inbox_id, **params)
+        response = await client.inboxes.threads.list(
+            inbox_id=input_data.inbox_id, **params
+        )
         threads = [
             t.__dict__ if hasattr(t, "__dict__") else t
             for t in getattr(response, "threads", [])
@@ -141,7 +143,7 @@ class AgentMailGetInboxThreadBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        thread = client.inboxes.threads.get(
+        thread = await client.inboxes.threads.get(
             inbox_id=input_data.inbox_id,
             thread_id=input_data.thread_id,
         )
@@ -195,7 +197,7 @@ class AgentMailDeleteInboxThreadBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        client.inboxes.threads.delete(
+        await client.inboxes.threads.delete(
             inbox_id=input_data.inbox_id,
             thread_id=input_data.thread_id,
         )
@@ -261,7 +263,7 @@ class AgentMailListOrgThreadsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.threads.list(**params)
+        response = await client.threads.list(**params)
         threads = [
             t.__dict__ if hasattr(t, "__dict__") else t
             for t in getattr(response, "threads", [])
@@ -313,7 +315,7 @@ class AgentMailGetOrgThreadBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        thread = client.threads.get(thread_id=input_data.thread_id)
+        thread = await client.threads.get(thread_id=input_data.thread_id)
         messages = [
             m.__dict__ if hasattr(m, "__dict__") else m
             for m in getattr(thread, "messages", [])

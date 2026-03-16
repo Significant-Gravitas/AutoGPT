@@ -6,7 +6,7 @@ a unique email address and can send, receive, and manage emails via the
 AgentMail API. You can create thousands of inboxes on demand.
 """
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 from agentmail.inboxes.types import CreateInboxRequest
 
 from backend.sdk import (
@@ -23,8 +23,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailCreateInboxBlock(Block):
@@ -89,7 +89,7 @@ class AgentMailCreateInboxBlock(Block):
         if input_data.display_name:
             params["display_name"] = input_data.display_name
 
-        inbox = client.inboxes.create(request=CreateInboxRequest(**params))
+        inbox = await client.inboxes.create(request=CreateInboxRequest(**params))
         result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
 
         yield "inbox_id", inbox.inbox_id
@@ -137,7 +137,7 @@ class AgentMailGetInboxBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        inbox = client.inboxes.get(inbox_id=input_data.inbox_id)
+        inbox = await client.inboxes.get(inbox_id=input_data.inbox_id)
         result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
 
         yield "inbox_id", inbox.inbox_id
@@ -199,7 +199,7 @@ class AgentMailListInboxesBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.inboxes.list(**params)
+        response = await client.inboxes.list(**params)
         inboxes = [
             inbox.__dict__ if hasattr(inbox, "__dict__") else inbox
             for inbox in getattr(response, "inboxes", [])
@@ -251,7 +251,7 @@ class AgentMailUpdateInboxBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        inbox = client.inboxes.update(
+        inbox = await client.inboxes.update(
             inbox_id=input_data.inbox_id,
             display_name=input_data.display_name,
         )
@@ -298,5 +298,5 @@ class AgentMailDeleteInboxBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        client.inboxes.delete(inbox_id=input_data.inbox_id)
+        await client.inboxes.delete(inbox_id=input_data.inbox_id)
         yield "success", True

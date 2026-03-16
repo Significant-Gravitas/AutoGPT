@@ -6,7 +6,7 @@ A Message is an individual email within a Thread. Agents can send new messages
 labels for state tracking (e.g. read/unread, campaign tags).
 """
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -22,8 +22,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailSendMessageBlock(Block):
@@ -116,7 +116,7 @@ class AgentMailSendMessageBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        msg = client.inboxes.messages.send(input_data.inbox_id, **params)
+        msg = await client.inboxes.messages.send(input_data.inbox_id, **params)
         result = msg.__dict__ if hasattr(msg, "__dict__") else {}
 
         yield "message_id", msg.message_id
@@ -186,7 +186,7 @@ class AgentMailListMessagesBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.inboxes.messages.list(input_data.inbox_id, **params)
+        response = await client.inboxes.messages.list(input_data.inbox_id, **params)
         messages = [
             m.__dict__ if hasattr(m, "__dict__") else m
             for m in getattr(response, "messages", [])
@@ -249,7 +249,7 @@ class AgentMailGetMessageBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        msg = client.inboxes.messages.get(
+        msg = await client.inboxes.messages.get(
             inbox_id=input_data.inbox_id,
             message_id=input_data.message_id,
         )
@@ -317,7 +317,7 @@ class AgentMailReplyToMessageBlock(Block):
         if input_data.html:
             params["html"] = input_data.html
 
-        reply = client.inboxes.messages.reply(
+        reply = await client.inboxes.messages.reply(
             inbox_id=input_data.inbox_id,
             message_id=input_data.message_id,
             **params,
@@ -417,7 +417,7 @@ class AgentMailForwardMessageBlock(Block):
         if input_data.html:
             params["html"] = input_data.html
 
-        fwd = client.inboxes.messages.forward(
+        fwd = await client.inboxes.messages.forward(
             inbox_id=input_data.inbox_id,
             message_id=input_data.message_id,
             **params,
@@ -481,7 +481,7 @@ class AgentMailUpdateMessageBlock(Block):
         if input_data.remove_labels:
             params["remove_labels"] = input_data.remove_labels
 
-        msg = client.inboxes.messages.update(
+        msg = await client.inboxes.messages.update(
             inbox_id=input_data.inbox_id,
             message_id=input_data.message_id,
             **params,

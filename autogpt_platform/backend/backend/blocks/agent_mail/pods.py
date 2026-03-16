@@ -7,7 +7,7 @@ Use pods when building SaaS platforms, agency tools, or AI agent fleets that
 serve multiple customers.
 """
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -23,8 +23,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailCreatePodBlock(Block):
@@ -67,7 +67,7 @@ class AgentMailCreatePodBlock(Block):
         if input_data.client_id:
             params["client_id"] = input_data.client_id
 
-        pod = client.pods.create(**params)
+        pod = await client.pods.create(**params)
         result = pod.__dict__ if hasattr(pod, "__dict__") else {}
 
         yield "pod_id", pod.pod_id
@@ -106,7 +106,7 @@ class AgentMailGetPodBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        pod = client.pods.get(pod_id=input_data.pod_id)
+        pod = await client.pods.get(pod_id=input_data.pod_id)
         result = pod.__dict__ if hasattr(pod, "__dict__") else {}
 
         yield "pod_id", pod.pod_id
@@ -164,7 +164,7 @@ class AgentMailListPodsBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.pods.list(**params)
+        response = await client.pods.list(**params)
         pods = [
             p.__dict__ if hasattr(p, "__dict__") else p
             for p in getattr(response, "pods", [])
@@ -213,7 +213,7 @@ class AgentMailDeletePodBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        client.pods.delete(pod_id=input_data.pod_id)
+        await client.pods.delete(pod_id=input_data.pod_id)
         yield "success", True
 
 
@@ -269,7 +269,7 @@ class AgentMailListPodInboxesBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.pods.inboxes.list(pod_id=input_data.pod_id, **params)
+        response = await client.pods.inboxes.list(pod_id=input_data.pod_id, **params)
         inboxes = [
             i.__dict__ if hasattr(i, "__dict__") else i
             for i in getattr(response, "inboxes", [])
@@ -342,7 +342,7 @@ class AgentMailListPodThreadsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.pods.threads.list(pod_id=input_data.pod_id, **params)
+        response = await client.pods.threads.list(pod_id=input_data.pod_id, **params)
         threads = [
             t.__dict__ if hasattr(t, "__dict__") else t
             for t in getattr(response, "threads", [])
@@ -407,7 +407,7 @@ class AgentMailListPodDraftsBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.pods.drafts.list(pod_id=input_data.pod_id, **params)
+        response = await client.pods.drafts.list(pod_id=input_data.pod_id, **params)
         drafts = [
             d.__dict__ if hasattr(d, "__dict__") else d
             for d in getattr(response, "drafts", [])
@@ -478,7 +478,7 @@ class AgentMailCreatePodInboxBlock(Block):
         if input_data.display_name:
             params["display_name"] = input_data.display_name
 
-        inbox = client.pods.inboxes.create(pod_id=input_data.pod_id, **params)
+        inbox = await client.pods.inboxes.create(pod_id=input_data.pod_id, **params)
         result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
 
         yield "inbox_id", inbox.inbox_id

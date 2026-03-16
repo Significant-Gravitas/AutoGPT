@@ -8,7 +8,7 @@ and complex multi-step email composition workflows.
 
 from typing import Optional
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -24,8 +24,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailCreateDraftBlock(Block):
@@ -116,7 +116,7 @@ class AgentMailCreateDraftBlock(Block):
         if input_data.send_at:
             params["send_at"] = input_data.send_at
 
-        draft = client.inboxes.drafts.create(input_data.inbox_id, **params)
+        draft = await client.inboxes.drafts.create(input_data.inbox_id, **params)
         result = draft.__dict__ if hasattr(draft, "__dict__") else {}
 
         yield "draft_id", draft.draft_id
@@ -167,7 +167,7 @@ class AgentMailGetDraftBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        draft = client.inboxes.drafts.get(
+        draft = await client.inboxes.drafts.get(
             inbox_id=input_data.inbox_id,
             draft_id=input_data.draft_id,
         )
@@ -241,7 +241,7 @@ class AgentMailListDraftsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.inboxes.drafts.list(input_data.inbox_id, **params)
+        response = await client.inboxes.drafts.list(input_data.inbox_id, **params)
         drafts = [
             d.__dict__ if hasattr(d, "__dict__") else d
             for d in getattr(response, "drafts", [])
@@ -325,7 +325,7 @@ class AgentMailUpdateDraftBlock(Block):
         if input_data.send_at is not None:
             params["send_at"] = input_data.send_at
 
-        draft = client.inboxes.drafts.update(
+        draft = await client.inboxes.drafts.update(
             inbox_id=input_data.inbox_id,
             draft_id=input_data.draft_id,
             **params,
@@ -379,7 +379,7 @@ class AgentMailSendDraftBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        msg = client.inboxes.drafts.send(
+        msg = await client.inboxes.drafts.send(
             inbox_id=input_data.inbox_id,
             draft_id=input_data.draft_id,
         )
@@ -429,7 +429,7 @@ class AgentMailDeleteDraftBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         client = _client(credentials)
-        client.inboxes.drafts.delete(
+        await client.inboxes.drafts.delete(
             inbox_id=input_data.inbox_id,
             draft_id=input_data.draft_id,
         )
@@ -488,7 +488,7 @@ class AgentMailListOrgDraftsBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.drafts.list(**params)
+        response = await client.drafts.list(**params)
         drafts = [
             d.__dict__ if hasattr(d, "__dict__") else d
             for d in getattr(response, "drafts", [])

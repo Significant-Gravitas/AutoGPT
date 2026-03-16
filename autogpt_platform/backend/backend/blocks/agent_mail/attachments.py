@@ -11,7 +11,7 @@ then use these blocks to retrieve the file content as base64.
 
 import base64
 
-from agentmail import AgentMail
+from agentmail import AsyncAgentMail
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -27,8 +27,8 @@ from backend.sdk import (
 from ._config import agent_mail
 
 
-def _client(credentials: APIKeyCredentials) -> AgentMail:
-    return AgentMail(api_key=credentials.api_key.get_secret_value())
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
 
 
 class AgentMailGetMessageAttachmentBlock(Block):
@@ -77,7 +77,7 @@ class AgentMailGetMessageAttachmentBlock(Block):
     ) -> BlockOutput:
         try:
             client = _client(credentials)
-            data = client.inboxes.messages.get_attachment(
+            data = await client.inboxes.messages.get_attachment(
                 inbox_id=input_data.inbox_id,
                 message_id=input_data.message_id,
                 attachment_id=input_data.attachment_id,
@@ -141,7 +141,7 @@ class AgentMailGetThreadAttachmentBlock(Block):
     ) -> BlockOutput:
         try:
             client = _client(credentials)
-            data = client.inboxes.threads.get_attachment(
+            data = await client.inboxes.threads.get_attachment(
                 inbox_id=input_data.inbox_id,
                 thread_id=input_data.thread_id,
                 attachment_id=input_data.attachment_id,
