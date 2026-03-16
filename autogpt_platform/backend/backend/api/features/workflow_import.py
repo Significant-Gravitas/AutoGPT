@@ -68,7 +68,7 @@ async def import_competitor_workflow(
     using LLM-powered block mapping.
     """
     # Step 1: Get the raw workflow JSON
-    if request.template_url:
+    if request.template_url is not None:
         try:
             workflow_json = await fetch_n8n_template(request.template_url)
         except (ValueError, RuntimeError) as e:
