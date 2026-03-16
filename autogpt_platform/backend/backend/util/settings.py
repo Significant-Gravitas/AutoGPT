@@ -89,6 +89,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    tally_extraction_llm_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="OpenRouter model ID used for extracting business understanding from Tally form data",
+    )
     ollama_host: str = Field(
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
@@ -116,6 +120,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
+    )
+    enable_invite_gate: bool = Field(
+        default=True,
+        description="If the invite-only signup gate is enforced",
     )
     enable_credit: bool = Field(
         default=False,
