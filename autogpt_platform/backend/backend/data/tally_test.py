@@ -429,6 +429,7 @@ async def test_extract_business_understanding_themed_prompts():
         result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
+    assert result.suggested_prompts is not None
     assert len(result.suggested_prompts) == 4
     assert len(result.suggested_prompts["Learn"]) == 5
 
@@ -457,6 +458,7 @@ async def test_extract_themed_prompts_filters_long_and_unknown_keys():
     with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
         result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
 
+    assert result.suggested_prompts is not None
     # Unknown key dropped
     assert "UnknownTheme" not in result.suggested_prompts
     # Long prompt filtered
