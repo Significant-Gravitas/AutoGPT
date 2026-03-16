@@ -17,7 +17,7 @@ from backend.api.features.store.hybrid_search import (
     tokenize,
     unified_hybrid_search,
 )
-from backend.api.features.store.text_utils import split_camelcase
+from backend.util.text import split_camelcase
 
 # ---------------------------------------------------------------------------
 # split_camelcase

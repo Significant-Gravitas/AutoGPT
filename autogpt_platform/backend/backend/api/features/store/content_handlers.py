@@ -13,21 +13,11 @@ from typing import Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.text_utils import split_camelcase
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+from backend.util.text import split_camelcase
 
 logger = logging.getLogger(__name__)
-
-
-def _contains_type(annotation: Any, target: type) -> bool:
-    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
-    if annotation is target:
-        return True
-    origin = get_origin(annotation)
-    if origin is None:
-        return False
-    return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
 @dataclass
@@ -155,26 +145,6 @@ class StoreAgentHandler(ContentHandler):
         }
 
 
-def _get_enabled_blocks() -> dict[str, Any]:
-    """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
-
-    Disabled blocks and blocks that fail to instantiate are silently skipped
-    (with a warning log), so callers never need their own try/except loop.
-    """
-    from backend.blocks import get_blocks
-
-    enabled: dict[str, Any] = {}
-    for block_id, block_cls in get_blocks().items():
-        try:
-            instance = block_cls()
-        except Exception as e:
-            logger.warning("Skipping block %s: init failed: %s", block_id, e)
-            continue
-        if not instance.disabled:
-            enabled[block_id] = instance
-    return enabled
-
-
 class BlockHandler(ContentHandler):
     """Handler for block definitions (Python classes)."""
 
@@ -300,6 +270,36 @@ class BlockHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_blocks - with_embeddings,
         }
+
+
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
+
+
+def _get_enabled_blocks() -> dict[str, Any]:
+    """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
+
+    Disabled blocks and blocks that fail to instantiate are silently skipped
+    (with a warning log), so callers never need their own try/except loop.
+    """
+    from backend.blocks import get_blocks
+
+    enabled: dict[str, Any] = {}
+    for block_id, block_cls in get_blocks().items():
+        try:
+            instance = block_cls()
+        except Exception as e:
+            logger.warning("Skipping block %s: init failed: %s", block_id, e)
+            continue
+        if not instance.disabled:
+            enabled[block_id] = instance
+    return enabled
 
 
 @dataclass

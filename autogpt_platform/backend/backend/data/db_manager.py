@@ -233,7 +233,7 @@ class DatabaseManager(AppService):
 
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
-    get_credits = _(_get_credits, name="get_credits")
+    get_credit_balance = _(_get_credits, name="get_credit_balance")
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
@@ -364,7 +364,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Credits
     spend_credits = _(d.spend_credits)
-    get_credits = _(d.get_credits)
+    get_credit_balance = _(d.get_credit_balance)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -514,7 +514,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Credits ============ #
     spend_credits = d.spend_credits
-    get_credits = d.get_credits
+    get_credit_balance = d.get_credit_balance
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding

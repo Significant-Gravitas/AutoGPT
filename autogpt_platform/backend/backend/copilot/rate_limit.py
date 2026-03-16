@@ -18,7 +18,7 @@ from backend.data.redis_client import get_redis_async
 logger = logging.getLogger(__name__)
 
 # Redis key prefixes
-_PREFIX = "copilot:usage"
+_USAGE_KEY_PREFIX = "copilot:usage"
 
 
 class UsageWindow(BaseModel):
@@ -55,36 +55,6 @@ class RateLimitExceeded(Exception):
         super().__init__(
             f"You've reached your {window} usage limit. Resets in {time_str}."
         )
-
-
-def _daily_key(user_id: str, now: datetime | None = None) -> str:
-    if now is None:
-        now = datetime.now(UTC)
-    return f"{_PREFIX}:daily:{user_id}:{now.strftime('%Y-%m-%d')}"
-
-
-def _weekly_key(user_id: str, now: datetime | None = None) -> str:
-    if now is None:
-        now = datetime.now(UTC)
-    year, week, _ = now.isocalendar()
-    return f"{_PREFIX}:weekly:{user_id}:{year}-W{week:02d}"
-
-
-def _daily_reset_time(now: datetime | None = None) -> datetime:
-    """Calculate when the current daily window resets (next midnight UTC)."""
-    if now is None:
-        now = datetime.now(UTC)
-    return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-
-
-def _weekly_reset_time(now: datetime | None = None) -> datetime:
-    """Calculate when the current weekly window resets (next Monday 00:00 UTC)."""
-    if now is None:
-        now = datetime.now(UTC)
-    days_until_monday = (7 - now.weekday()) % 7 or 7
-    return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
-        days=days_until_monday
-    )
 
 
 async def get_usage_status(
@@ -259,3 +229,38 @@ async def record_token_usage(
             "Redis unavailable for recording token usage (tokens=%d)",
             total,
         )
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _daily_key(user_id: str, now: datetime | None = None) -> str:
+    if now is None:
+        now = datetime.now(UTC)
+    return f"{_USAGE_KEY_PREFIX}:daily:{user_id}:{now.strftime('%Y-%m-%d')}"
+
+
+def _weekly_key(user_id: str, now: datetime | None = None) -> str:
+    if now is None:
+        now = datetime.now(UTC)
+    year, week, _ = now.isocalendar()
+    return f"{_USAGE_KEY_PREFIX}:weekly:{user_id}:{year}-W{week:02d}"
+
+
+def _daily_reset_time(now: datetime | None = None) -> datetime:
+    """Calculate when the current daily window resets (next midnight UTC)."""
+    if now is None:
+        now = datetime.now(UTC)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+
+def _weekly_reset_time(now: datetime | None = None) -> datetime:
+    """Calculate when the current weekly window resets (next Monday 00:00 UTC)."""
+    if now is None:
+        now = datetime.now(UTC)
+    days_until_monday = (7 - now.weekday()) % 7 or 7
+    return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+        days=days_until_monday
+    )

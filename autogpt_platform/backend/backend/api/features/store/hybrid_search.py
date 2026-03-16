@@ -20,8 +20,8 @@ from backend.api.features.store.embeddings import (
     embed_query,
     embedding_to_vector_string,
 )
-from backend.api.features.store.text_utils import split_camelcase
 from backend.data.db import query_raw_with_schema
+from backend.util.text import split_camelcase
 
 logger = logging.getLogger(__name__)
 

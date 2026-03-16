@@ -194,21 +194,35 @@ class StreamUsage(StreamBaseResponse):
     """
 
     type: ResponseType = ResponseType.USAGE
-    promptTokens: int = Field(..., description="Number of uncached prompt tokens")
-    completionTokens: int = Field(..., description="Number of completion tokens")
-    totalTokens: int = Field(
-        ..., description="Total number of tokens (raw, not weighted)"
+    prompt_tokens: int = Field(
+        ...,
+        serialization_alias="promptTokens",
+        description="Number of uncached prompt tokens",
     )
-    cacheReadTokens: int = Field(
-        default=0, description="Prompt tokens served from cache (10% cost)"
+    completion_tokens: int = Field(
+        ...,
+        serialization_alias="completionTokens",
+        description="Number of completion tokens",
     )
-    cacheCreationTokens: int = Field(
-        default=0, description="Prompt tokens written to cache (25% cost)"
+    total_tokens: int = Field(
+        ...,
+        serialization_alias="totalTokens",
+        description="Total number of tokens (raw, not weighted)",
+    )
+    cache_read_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheReadTokens",
+        description="Prompt tokens served from cache (10% cost)",
+    )
+    cache_creation_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheCreationTokens",
+        description="Prompt tokens written to cache (25% cost)",
     )
 
     def to_sse(self) -> str:
         """Emit as SSE comment so the AI SDK parser ignores it."""
-        return f": usage {self.model_dump_json(exclude_none=True)}\n\n"
+        return f": usage {self.model_dump_json(exclude_none=True, by_alias=True)}\n\n"
 
 
 class StreamError(StreamBaseResponse):

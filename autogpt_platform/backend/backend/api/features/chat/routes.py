@@ -235,7 +235,6 @@ async def list_sessions(
 
 @router.post(
     "/sessions",
-    dependencies=[Security(auth.requires_user)],
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
@@ -357,7 +356,7 @@ async def update_session_title_route(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Security(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -416,7 +415,6 @@ async def get_session(
 
 @router.get(
     "/usage",
-    dependencies=[Security(auth.requires_user)],
 )
 async def get_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
@@ -438,7 +436,7 @@ async def get_copilot_usage(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Security(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -483,7 +481,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Security(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -500,7 +498,7 @@ async def stream_chat_post(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
-        user_id: Optional authenticated user ID.
+        user_id: Authenticated user ID.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -508,13 +506,8 @@ async def stream_chat_post(
     import asyncio
     import time
 
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     stream_start_time = time.perf_counter()
-    log_meta = {"component": "ChatStream", "session_id": session_id}
-    if user_id:
-        log_meta["user_id"] = user_id
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
         f"[TIMING] stream_chat_post STARTED, session={session_id}, "
@@ -778,7 +771,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Security(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.

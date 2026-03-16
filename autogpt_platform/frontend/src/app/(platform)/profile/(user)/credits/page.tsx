@@ -12,7 +12,8 @@ import {
 import { RefundModal } from "./RefundModal";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 import { UsagePanelContent } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
-import { useUsageLimits } from "@/app/(platform)/copilot/components/UsageLimits/useUsageLimits";
+import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
   Table,
@@ -25,7 +26,13 @@ import {
 
 function CoPilotUsageSection() {
   const router = useRouter();
-  const { data: usage, isLoading } = useUsageLimits();
+  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+    query: {
+      select: (res) => res.data as CoPilotUsageStatus,
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  });
 
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;

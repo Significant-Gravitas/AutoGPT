@@ -493,9 +493,9 @@ async def stream_chat_completion_baseline(
     # are harmless; on normal completion they reach the SSE stream.
     if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
         yield StreamUsage(
-            promptTokens=turn_prompt_tokens,
-            completionTokens=turn_completion_tokens,
-            totalTokens=turn_prompt_tokens + turn_completion_tokens,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            total_tokens=turn_prompt_tokens + turn_completion_tokens,
         )
 
     yield StreamFinish()

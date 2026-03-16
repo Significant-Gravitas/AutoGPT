@@ -2,10 +2,10 @@ import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsageLimits } from "../UsageLimits";
 
-// Mock the useUsageLimits hook
-const mockUseUsageLimits = vi.fn();
-vi.mock("../useUsageLimits", () => ({
-  useUsageLimits: () => mockUseUsageLimits(),
+// Mock the generated Orval hook
+const mockUseGetV2GetCopilotUsage = vi.fn();
+vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2GetCopilotUsage: (opts: unknown) => mockUseGetV2GetCopilotUsage(opts),
 }));
 
 // Mock Popover to render children directly (Radix portals don't work in happy-dom)
@@ -23,7 +23,7 @@ vi.mock("@/components/molecules/Popover/Popover", () => ({
 
 afterEach(() => {
   cleanup();
-  mockUseUsageLimits.mockReset();
+  mockUseGetV2GetCopilotUsage.mockReset();
 });
 
 function makeUsage({
@@ -46,13 +46,16 @@ function makeUsage({
 
 describe("UsageLimits", () => {
   it("renders nothing while loading", () => {
-    mockUseUsageLimits.mockReturnValue({ data: undefined, isLoading: true });
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    });
     const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
   });
 
   it("renders nothing when no limits are configured", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyLimit: 0, weeklyLimit: 0 }),
       isLoading: false,
     });
@@ -61,7 +64,7 @@ describe("UsageLimits", () => {
   });
 
   it("renders the usage button when limits exist", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
       isLoading: false,
     });
@@ -70,7 +73,7 @@ describe("UsageLimits", () => {
   });
 
   it("displays daily and weekly usage percentages", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyUsed: 5000, dailyLimit: 10000 }),
       isLoading: false,
     });
@@ -83,7 +86,7 @@ describe("UsageLimits", () => {
   });
 
   it("shows only weekly bar when daily limit is 0", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({
         dailyLimit: 0,
         weeklyUsed: 25000,
@@ -98,7 +101,7 @@ describe("UsageLimits", () => {
   });
 
   it("caps percentage at 100% when over limit", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyUsed: 15000, dailyLimit: 10000 }),
       isLoading: false,
     });
@@ -108,7 +111,7 @@ describe("UsageLimits", () => {
   });
 
   it("shows learn more link to credits page", () => {
-    mockUseUsageLimits.mockReturnValue({
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
       isLoading: false,
     });
