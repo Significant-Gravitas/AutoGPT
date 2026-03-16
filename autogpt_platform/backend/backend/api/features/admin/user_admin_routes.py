@@ -4,7 +4,10 @@ import math
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, File, HTTPException, Query, Security, UploadFile
 
-from backend.copilot.autopilot import trigger_autopilot_session_for_user
+from backend.copilot.autopilot import (
+    send_pending_copilot_emails_for_user,
+    trigger_autopilot_session_for_user,
+)
 from backend.data.invited_user import (
     bulk_create_invited_users_from_file,
     create_invited_user,
@@ -23,6 +26,8 @@ from .model import (
     CreateInvitedUserRequest,
     InvitedUserResponse,
     InvitedUsersResponse,
+    SendCopilotEmailsRequest,
+    SendCopilotEmailsResponse,
     TriggerCopilotSessionRequest,
     TriggerCopilotSessionResponse,
 )
@@ -202,3 +207,34 @@ async def trigger_copilot_session_route(
         session_id=session.session_id,
         start_type=request.start_type,
     )
+
+
+@router.post(
+    "/copilot/send-emails",
+    response_model=SendCopilotEmailsResponse,
+    summary="Send Pending Copilot Emails",
+    operation_id="postV2SendPendingCopilotEmails",
+)
+async def send_pending_copilot_emails_route(
+    request: SendCopilotEmailsRequest,
+    admin_user_id: str = Security(get_user_id),
+) -> SendCopilotEmailsResponse:
+    logger.info(
+        "Admin user %s manually triggered pending Copilot emails for user %s",
+        admin_user_id,
+        request.user_id,
+    )
+    result = await send_pending_copilot_emails_for_user(request.user_id)
+    logger.info(
+        "Admin user %s completed pending Copilot email sweep for user %s "
+        "(candidates=%s, sent=%s, skipped=%s, repairs=%s, running=%s, failed=%s)",
+        admin_user_id,
+        request.user_id,
+        result.candidate_count,
+        result.sent_count,
+        result.skipped_count,
+        result.repair_queued_count,
+        result.running_count,
+        result.failed_count,
+    )
+    return SendCopilotEmailsResponse(**result.model_dump())

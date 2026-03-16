@@ -126,3 +126,17 @@ class TriggerCopilotSessionRequest(BaseModel):
 class TriggerCopilotSessionResponse(BaseModel):
     session_id: str
     start_type: ChatSessionStartType
+
+
+class SendCopilotEmailsRequest(BaseModel):
+    user_id: str
+
+
+class SendCopilotEmailsResponse(BaseModel):
+    candidate_count: int
+    processed_count: int
+    sent_count: int
+    skipped_count: int
+    repair_queued_count: int
+    running_count: int
+    failed_count: int

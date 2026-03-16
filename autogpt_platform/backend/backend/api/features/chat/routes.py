@@ -15,7 +15,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.autopilot import consume_callback_token, strip_internal_content
+from backend.copilot.autopilot import (
+    consume_callback_token,
+    strip_internal_content,
+    unwrap_internal_content,
+)
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
@@ -582,6 +586,11 @@ async def get_session(
         payload = message.model_dump()
         if message.role == "user":
             visible_content = strip_internal_content(message.content)
+            if (
+                visible_content is None
+                and session.start_type != ChatSessionStartType.MANUAL
+            ):
+                visible_content = unwrap_internal_content(message.content)
             if visible_content is None:
                 continue
             payload["content"] = visible_content

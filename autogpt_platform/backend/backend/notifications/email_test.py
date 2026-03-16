@@ -2,8 +2,37 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from backend.api.test_helpers import override_config
+from backend.copilot.autopilot_email import _markdown_to_email_html
 from backend.notifications.email import EmailSender, settings
 from backend.util.settings import AppEnvironment
+
+
+def test_markdown_to_email_html_renders_bold_and_italic() -> None:
+    html = _markdown_to_email_html("**bold** and *italic*")
+    assert "<strong>bold</strong>" in html
+    assert "<em>italic</em>" in html
+    assert 'style="' in html
+
+
+def test_markdown_to_email_html_renders_links() -> None:
+    html = _markdown_to_email_html("[click here](https://example.com)")
+    assert 'href="https://example.com"' in html
+    assert "click here" in html
+    assert "color: #7733F5" in html
+
+
+def test_markdown_to_email_html_renders_bullet_list() -> None:
+    html = _markdown_to_email_html("- item one\n- item two")
+    assert "<ul" in html
+    assert "<li" in html
+    assert "item one" in html
+    assert "item two" in html
+
+
+def test_markdown_to_email_html_handles_empty_input() -> None:
+    assert _markdown_to_email_html(None) == ""
+    assert _markdown_to_email_html("") == ""
+    assert _markdown_to_email_html("   ") == ""
 
 
 def test_send_template_renders_nightly_copilot_email(mocker) -> None:
@@ -16,10 +45,10 @@ def test_send_template_renders_nightly_copilot_email(mocker) -> None:
         subject="Autopilot update",
         template_name="nightly_copilot.html.jinja2",
         data={
-            "email_body_paragraphs": [
-                "I found something useful for you.",
-                "Open Copilot and I will walk you through it.",
-            ],
+            "email_body_html": _markdown_to_email_html(
+                "I found something useful for you.\n\n"
+                "Open Copilot and I will walk you through it."
+            ),
             "cta_url": "https://example.com/copilot?callbackToken=token-1",
             "cta_label": "Open Copilot",
         },
@@ -45,10 +74,12 @@ def test_send_template_renders_nightly_copilot_approval_block(mocker) -> None:
         subject="Autopilot update",
         template_name="nightly_copilot.html.jinja2",
         data={
-            "email_body_paragraphs": ["I prepared a change worth reviewing."],
-            "approval_summary_paragraphs": [
+            "email_body_html": _markdown_to_email_html(
+                "I prepared a change worth reviewing."
+            ),
+            "approval_summary_html": _markdown_to_email_html(
                 "I drafted a follow-up because it matches your recent activity."
-            ],
+            ),
             "cta_url": "https://example.com/copilot?sessionId=session-1&showAutopilot=1",
             "cta_label": "Review in Copilot",
         },
@@ -71,9 +102,9 @@ def test_send_template_renders_nightly_copilot_callback_email(mocker) -> None:
         subject="Autopilot update",
         template_name="nightly_copilot_callback.html.jinja2",
         data={
-            "email_body_paragraphs": [
+            "email_body_html": _markdown_to_email_html(
                 "I prepared a follow-up based on your recent work."
-            ],
+            ),
             "cta_url": "https://example.com/copilot?callbackToken=token-1",
             "cta_label": "Open Copilot",
         },
@@ -95,12 +126,12 @@ def test_send_template_renders_nightly_copilot_callback_approval_block(mocker) -
         subject="Autopilot update",
         template_name="nightly_copilot_callback.html.jinja2",
         data={
-            "email_body_paragraphs": [
+            "email_body_html": _markdown_to_email_html(
                 "I prepared a follow-up based on your recent work."
-            ],
-            "approval_summary_paragraphs": [
+            ),
+            "approval_summary_html": _markdown_to_email_html(
                 "I want your approval before I apply the next step."
-            ],
+            ),
             "cta_url": "https://example.com/copilot?sessionId=session-1&showAutopilot=1",
             "cta_label": "Review in Copilot",
         },
@@ -122,9 +153,9 @@ def test_send_template_renders_nightly_copilot_invite_cta_email(mocker) -> None:
         subject="Autopilot update",
         template_name="nightly_copilot_invite_cta.html.jinja2",
         data={
-            "email_body_paragraphs": [
+            "email_body_html": _markdown_to_email_html(
                 "I put together an example of how Autopilot could help you."
-            ],
+            ),
             "cta_url": "https://example.com/copilot?callbackToken=token-1",
             "cta_label": "Try Copilot",
         },
@@ -149,12 +180,12 @@ def test_send_template_renders_nightly_copilot_invite_cta_approval_block(
         subject="Autopilot update",
         template_name="nightly_copilot_invite_cta.html.jinja2",
         data={
-            "email_body_paragraphs": [
+            "email_body_html": _markdown_to_email_html(
                 "I put together an example of how Autopilot could help you."
-            ],
-            "approval_summary_paragraphs": [
+            ),
+            "approval_summary_html": _markdown_to_email_html(
                 "If this looks useful, approve the next step to try it."
-            ],
+            ),
             "cta_url": "https://example.com/copilot?sessionId=session-1&showAutopilot=1",
             "cta_label": "Review in Copilot",
         },
@@ -177,7 +208,9 @@ def test_send_template_still_sends_in_production(mocker) -> None:
             subject="Autopilot update",
             template_name="nightly_copilot.html.jinja2",
             data={
-                "email_body_paragraphs": ["I found something useful for you."],
+                "email_body_html": _markdown_to_email_html(
+                    "I found something useful for you."
+                ),
                 "cta_url": "https://example.com/copilot?callbackToken=token-1",
                 "cta_label": "Open Copilot",
             },

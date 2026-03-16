@@ -20,10 +20,12 @@ from backend.copilot.autopilot import (
     _get_recent_sent_email_context,
     _get_recent_session_summary_context,
     _resolve_timezone_name,
+    _send_completion_email,
     consume_callback_token,
     dispatch_nightly_copilot,
     handle_non_manual_session_completion,
     send_nightly_copilot_emails,
+    send_pending_copilot_emails_for_user,
     strip_internal_content,
     trigger_autopilot_session_for_user,
     wrap_internal_message,
@@ -69,6 +71,34 @@ def test_wrap_and_strip_internal_content() -> None:
         strip_internal_content("Visible<internal>secret</internal> text")
         == "Visible text"
     )
+
+
+@pytest.mark.asyncio
+async def test_send_completion_email_links_back_to_source_session(mocker) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report()
+
+    sender = SimpleNamespace(send_template=mocker.Mock())
+    mocker.patch("backend.copilot.autopilot_email.EmailSender", return_value=sender)
+    mocker.patch(
+        "backend.copilot.autopilot_email.user_db",
+        return_value=SimpleNamespace(
+            get_user_by_id=AsyncMock(
+                return_value=SimpleNamespace(email="user@example.com")
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_frontend_base_url",
+        return_value="https://example.com",
+    )
+
+    await _send_completion_email(session)
+
+    assert sender.send_template.call_args.kwargs["data"]["cta_url"] == (
+        f"https://example.com/copilot?sessionId={session.session_id}&showAutopilot=1"
+    )
+    assert sender.send_template.call_args.kwargs["data"]["cta_label"] == "Open Copilot"
 
 
 def test_resolve_timezone_name_falls_back_to_utc() -> None:
@@ -790,6 +820,56 @@ async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) 
     assert processed == 1
     assert session.notification_email_skipped_at is not None
     send_email.assert_not_called()
+    upsert.assert_awaited_once_with(session)
+
+
+@pytest.mark.asyncio
+async def test_send_pending_copilot_emails_for_user_returns_summary(mocker) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report()
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions_for_user=AsyncMock(
+            return_value=[candidate]
+        )
+    )
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.stream_registry.get_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
+        new_callable=AsyncMock,
+        return_value=(0, None),
+    )
+    send_email = mocker.patch(
+        "backend.copilot.autopilot_email._send_completion_email",
+        new_callable=AsyncMock,
+    )
+    upsert = mocker.patch(
+        "backend.copilot.autopilot_email.upsert_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    result = await send_pending_copilot_emails_for_user("user-1")
+
+    assert result.model_dump() == {
+        "candidate_count": 1,
+        "processed_count": 1,
+        "sent_count": 1,
+        "skipped_count": 0,
+        "repair_queued_count": 0,
+        "running_count": 0,
+        "failed_count": 0,
+    }
+    send_email.assert_awaited_once_with(session)
     upsert.assert_awaited_once_with(session)
 
 

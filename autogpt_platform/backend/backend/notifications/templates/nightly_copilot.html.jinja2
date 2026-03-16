@@ -1,29 +1,49 @@
-<div style="font-family: 'Poppins', sans-serif; color: #070629;">
-  {% for paragraph in email_body_paragraphs %}
-  <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 16px;">
-    {{ paragraph }}
-  </p>
-  {% endfor %}
+<div style="font-family: 'Poppins', sans-serif; color: #1F1F20;">
+  {{ email_body_html|safe }}
 
-  {% if approval_summary_paragraphs %}
-  <div
-    style="margin-top: 16px; padding: 16px; border-radius: 12px; background: #fff7ed; border: 1px solid #fdba74;">
-    <h3 style="margin: 0 0 8px;">Approval needed</h3>
-    {% for paragraph in approval_summary_paragraphs %}
-    <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 12px;">
-      {{ paragraph }}
-    </p>
-    {% endfor %}
-    <p style="font-size: 16px; line-height: 165%; margin-top: 0; margin-bottom: 0;">
-      I thought this was a good idea. If you want it to happen, please hit approve.
-    </p>
-  </div>
+  {% if approval_summary_html %}
+  <!-- Approval Callout -->
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 24px; margin-bottom: 8px;">
+    <tr>
+      <td
+        style="background-color: #F1EBFE; border: 1px solid #C0A1FA; border-radius: 12px; padding: 20px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="padding-bottom: 12px;">
+              <span
+                style="display: inline-block; background-color: #7733F5; color: #FFFFFF; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px;">
+                Approval needed
+              </span>
+            </td>
+          </tr>
+        </table>
+        {{ approval_summary_html|safe }}
+        <p style="font-size: 14px; line-height: 165%; margin-top: 0; margin-bottom: 0; color: #505057;">
+          I thought this was a good idea. If you want it to happen, please hit approve.
+        </p>
+      </td>
+    </tr>
+  </table>
   {% endif %}
 
-  <div style="margin-top: 24px;">
-    <a href="{{ cta_url }}"
-      style="display: inline-block; padding: 12px 18px; border-radius: 999px; background: #111827; color: #ffffff; text-decoration: none; font-weight: 600;">
-      {{ cta_label }}
-    </a>
-  </div>
+  <!-- CTA Button -->
+  <table cellpadding="0" cellspacing="0" border="0" style="margin-top: 28px;">
+    <tr>
+      <td align="center"
+        style="background-color: #7733F5; border-radius: 999px; mso-padding-alt: 14px 28px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ cta_url }}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="50%" fillcolor="#7733F5" stroke="f">
+          <w:anchorlock/>
+          <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:600;">{{ cta_label }}</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{ cta_url }}"
+          style="display: inline-block; padding: 14px 28px; background-color: #7733F5; color: #FFFFFF; text-decoration: none; font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 15px; border-radius: 999px; line-height: 1;">
+          {{ cta_label }}
+        </a>
+        <!--<![endif]-->
+      </td>
+    </tr>
+  </table>
 </div>

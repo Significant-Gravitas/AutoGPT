@@ -44,14 +44,14 @@ from backend.copilot.autopilot_dispatch import (  # noqa: F401
     trigger_autopilot_session_for_user,
 )
 from backend.copilot.autopilot_email import (  # noqa: F401
-    _build_callback_link,
+    PendingCopilotEmailSweepResult,
     _build_session_link,
-    _create_callback_token,
     _get_completion_email_template_name,
+    _markdown_to_email_html,
     _send_completion_email,
     _send_nightly_copilot_emails,
-    _split_email_paragraphs,
     send_nightly_copilot_emails,
+    send_pending_copilot_emails_for_user,
 )
 from backend.copilot.autopilot_prompts import (  # noqa: F401
     AUTOPILOT_CALLBACK_EMAIL_TEMPLATE,
@@ -72,6 +72,7 @@ from backend.copilot.autopilot_prompts import (  # noqa: F401
     _get_recent_sent_email_context,
     _get_recent_session_summary_context,
     strip_internal_content,
+    unwrap_internal_content,
     wrap_internal_message,
 )
 from backend.copilot.model import ChatMessage, create_chat_session

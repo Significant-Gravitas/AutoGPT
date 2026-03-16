@@ -239,7 +239,59 @@ def test_consume_callback_token_route_returns_404_on_invalid_token(
     assert response.json() == {"detail": "Callback token not found"}
 
 
-def test_get_session_hides_internal_only_messages_and_strips_internal_content(
+def test_get_session_hides_internal_only_messages_for_manual_sessions(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        TEST_USER_ID,
+        start_type=ChatSessionStartType.MANUAL,
+    )
+    session.messages = [
+        ChatMessage(role="user", content="<internal>hidden</internal>"),
+        ChatMessage(
+            role="user",
+            content="Visible<internal>hidden</internal> text",
+        ),
+        ChatMessage(role="assistant", content="Public response"),
+    ]
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get(f"/sessions/{session.session_id}")
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == [
+        {
+            "role": "user",
+            "content": "Visible text",
+            "name": None,
+            "tool_call_id": None,
+            "refusal": None,
+            "tool_calls": None,
+            "function_call": None,
+        },
+        {
+            "role": "assistant",
+            "content": "Public response",
+            "name": None,
+            "tool_call_id": None,
+            "refusal": None,
+            "tool_calls": None,
+            "function_call": None,
+        },
+    ]
+
+
+def test_get_session_shows_cleaned_internal_kickoff_for_autopilot_sessions(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     session = ChatSession.new(
@@ -271,6 +323,15 @@ def test_get_session_hides_internal_only_messages_and_strips_internal_content(
 
     assert response.status_code == 200
     assert response.json()["messages"] == [
+        {
+            "role": "user",
+            "content": "hidden",
+            "name": None,
+            "tool_call_id": None,
+            "refusal": None,
+            "tool_calls": None,
+            "function_call": None,
+        },
         {
             "role": "user",
             "content": "Visible text",

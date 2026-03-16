@@ -347,6 +347,9 @@ class DatabaseManager(AppService):
     get_pending_notification_chat_sessions = _(
         chat_db.get_pending_notification_chat_sessions
     )
+    get_pending_notification_chat_sessions_for_user = _(
+        chat_db.get_pending_notification_chat_sessions_for_user
+    )
     get_recent_completion_report_chat_sessions = _(
         chat_db.get_recent_completion_report_chat_sessions
     )
@@ -568,6 +571,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_chat_session = d.create_chat_session
     get_manual_chat_sessions_since = d.get_manual_chat_sessions_since
     get_pending_notification_chat_sessions = d.get_pending_notification_chat_sessions
+    get_pending_notification_chat_sessions_for_user = (
+        d.get_pending_notification_chat_sessions_for_user
+    )
     get_recent_completion_report_chat_sessions = (
         d.get_recent_completion_report_chat_sessions
     )

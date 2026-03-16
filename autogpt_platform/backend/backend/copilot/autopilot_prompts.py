@@ -110,6 +110,13 @@ def strip_internal_content(content: str | None) -> str | None:
     return stripped or None
 
 
+def unwrap_internal_content(content: str | None) -> str | None:
+    if content is None:
+        return None
+    unwrapped = content.replace("<internal>", "").replace("</internal>", "").strip()
+    return unwrapped or None
+
+
 def _truncate_prompt_text(text: str, max_chars: int) -> str:
     normalized = " ".join(text.split())
     if len(normalized) <= max_chars:

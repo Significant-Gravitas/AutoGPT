@@ -6721,6 +6721,47 @@
         }
       }
     },
+    "/api/users/admin/copilot/send-emails": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Send Pending Copilot Emails",
+        "operationId": "postV2SendPendingCopilotEmails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCopilotEmailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendCopilotEmailsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/users/admin/copilot/trigger": {
       "post": {
         "tags": ["v2", "admin", "users", "admin"],
@@ -12374,6 +12415,37 @@
         "type": "object",
         "required": ["items", "search_id", "total_items", "pagination"],
         "title": "SearchResponse"
+      },
+      "SendCopilotEmailsRequest": {
+        "properties": { "user_id": { "type": "string", "title": "User Id" } },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "SendCopilotEmailsRequest"
+      },
+      "SendCopilotEmailsResponse": {
+        "properties": {
+          "candidate_count": { "type": "integer", "title": "Candidate Count" },
+          "processed_count": { "type": "integer", "title": "Processed Count" },
+          "sent_count": { "type": "integer", "title": "Sent Count" },
+          "skipped_count": { "type": "integer", "title": "Skipped Count" },
+          "repair_queued_count": {
+            "type": "integer",
+            "title": "Repair Queued Count"
+          },
+          "running_count": { "type": "integer", "title": "Running Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" }
+        },
+        "type": "object",
+        "required": [
+          "candidate_count",
+          "processed_count",
+          "sent_count",
+          "skipped_count",
+          "repair_queued_count",
+          "running_count",
+          "failed_count"
+        ],
+        "title": "SendCopilotEmailsResponse"
       },
       "SessionDetailResponse": {
         "properties": {

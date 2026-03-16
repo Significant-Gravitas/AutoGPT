@@ -8,6 +8,7 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+from backend.copilot.autopilot_email import PendingCopilotEmailSweepResult
 from backend.copilot.model import ChatSession
 from backend.copilot.session_types import ChatSessionStartType
 from backend.data.invited_user import (
@@ -251,3 +252,39 @@ def test_trigger_copilot_session_returns_not_found(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found with ID: missing-user"
+
+
+def test_send_pending_copilot_emails(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    send_emails = mocker.patch(
+        "backend.api.features.admin.user_admin_routes.send_pending_copilot_emails_for_user",
+        AsyncMock(
+            return_value=PendingCopilotEmailSweepResult(
+                candidate_count=1,
+                processed_count=1,
+                sent_count=1,
+                skipped_count=0,
+                repair_queued_count=0,
+                running_count=0,
+                failed_count=0,
+            )
+        ),
+    )
+
+    response = client.post(
+        "/admin/copilot/send-emails",
+        json={"user_id": "user-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "candidate_count": 1,
+        "processed_count": 1,
+        "sent_count": 1,
+        "skipped_count": 0,
+        "repair_queued_count": 0,
+        "running_count": 0,
+        "failed_count": 0,
+    }
+    send_emails.assert_awaited_once_with("user-1")

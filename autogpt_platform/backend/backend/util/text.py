@@ -86,6 +86,7 @@ class TextFormatter:
             "i",
             "img",
             "li",
+            "ol",
             "p",
             "span",
             "strong",

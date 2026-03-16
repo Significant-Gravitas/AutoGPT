@@ -429,6 +429,23 @@ async def get_pending_notification_chat_sessions(
     return [ChatSessionInfo.from_db(session) for session in sessions]
 
 
+async def get_pending_notification_chat_sessions_for_user(
+    user_id: str,
+    limit: int = 200,
+) -> list[ChatSessionInfo]:
+    sessions = await PrismaChatSession.prisma().find_many(
+        where={
+            "userId": user_id,
+            "startType": {"not": ChatSessionStartType.MANUAL.value},
+            "notificationEmailSentAt": None,
+            "notificationEmailSkippedAt": None,
+        },
+        order={"updatedAt": "asc"},
+        take=limit,
+    )
+    return [ChatSessionInfo.from_db(session) for session in sessions]
+
+
 async def get_recent_sent_email_chat_sessions(
     user_id: str,
     limit: int,
