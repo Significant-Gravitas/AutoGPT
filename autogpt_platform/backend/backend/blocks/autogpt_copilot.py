@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 _copilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
     "_copilot_recursion_depth", default=0
 )
+# Chain-wide effective recursion limit. Once the first caller sets a limit,
+# nested calls cannot raise it — they can only lower it.
+_copilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "_copilot_recursion_limit", default=None
+)
 
 
 class AutogptCopilotBlock(Block):
@@ -192,13 +197,21 @@ class AutogptCopilotBlock(Block):
 
         # -- Recursion guard --
         current_depth = _copilot_recursion_depth.get()
-        if current_depth >= max_recursion_depth:
+        inherited_limit = _copilot_recursion_limit.get()
+        effective_limit = (
+            max_recursion_depth
+            if inherited_limit is None
+            else min(inherited_limit, max_recursion_depth)
+        )
+
+        if current_depth >= effective_limit:
             raise RuntimeError(
-                f"Copilot recursion depth limit reached ({max_recursion_depth}). "
+                f"Copilot recursion depth limit reached ({effective_limit}). "
                 "The copilot has called itself too many times."
             )
 
-        token = _copilot_recursion_depth.set(current_depth + 1)
+        depth_token = _copilot_recursion_depth.set(current_depth + 1)
+        limit_token = _copilot_recursion_limit.set(effective_limit)
         try:
             # -- Session management --
             if session_id:
@@ -276,7 +289,8 @@ class AutogptCopilotBlock(Block):
                 total_usage,
             )
         finally:
-            _copilot_recursion_depth.reset(token)
+            _copilot_recursion_depth.reset(depth_token)
+            _copilot_recursion_limit.reset(limit_token)
 
     async def run(
         self,
