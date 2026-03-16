@@ -23,6 +23,15 @@ gh pr view {N}
 gh pr diff {N}
 ```
 
+## Fetch existing review comments
+
+Before posting anything, fetch existing inline comments to avoid duplicates:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
+```
+
 ## What to check
 
 **Correctness:** logic errors, off-by-one, missing edge cases, race conditions (TOCTOU in file access, credit charging), error handling gaps, async correctness (missing `await`, unclosed resources).
@@ -37,9 +46,29 @@ gh pr diff {N}
 
 ## Output format
 
-Three tiers:
-1. **Blockers** — must fix before merge
-2. **Should Fix** — important improvements
-3. **Nice to Have** — minor suggestions
+Every comment **must** be prefixed with `🤖` and a criticality badge:
 
-For each: file path, line number, description, suggested fix.
+| Tier | Badge | Meaning |
+|---|---|---|
+| Blocker | `🔴 **Blocker**` | Must fix before merge |
+| Should Fix | `🟠 **Should Fix**` | Important improvement |
+| Nice to Have | `🟡 **Nice to Have**` | Minor suggestion |
+| Nit | `🔵 **Nit**` | Style / wording |
+
+Example: `🤖 🔴 **Blocker**: Missing error handling for X — suggest wrapping in try/except.`
+
+## Post inline comments
+
+For each finding, post an inline comment on the PR (do not just write a local report):
+
+```bash
+# Get the latest commit SHA for the PR
+COMMIT_SHA=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.head.sha')
+
+# Post an inline comment on a specific file/line
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments \
+  -f body="🤖 🔴 **Blocker**: <description>" \
+  -f commit_id="$COMMIT_SHA" \
+  -f path="<file path>" \
+  -F line=<line number>
+```
