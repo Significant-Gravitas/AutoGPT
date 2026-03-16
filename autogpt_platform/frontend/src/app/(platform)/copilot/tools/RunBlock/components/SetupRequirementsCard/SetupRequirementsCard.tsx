@@ -23,12 +23,16 @@ interface Props {
   /** Override the label shown above the credentials section.
    * Defaults to "Block credentials". */
   credentialsLabel?: string;
+  /** Called after Proceed is clicked so the parent can persist the dismissed state
+   * across remounts (avoids re-enabling the Proceed button on remount). */
+  onComplete?: () => void;
 }
 
 export function SetupRequirementsCard({
   output,
   retryInstruction,
   credentialsLabel,
+  onComplete,
 }: Props) {
   const { onSend } = useCopilotChatActions();
 
@@ -78,6 +82,7 @@ export function SetupRequirementsCard({
 
   function handleRun() {
     setHasSent(true);
+    onComplete?.();
 
     const parts: string[] = [];
     if (needsCredentials) {

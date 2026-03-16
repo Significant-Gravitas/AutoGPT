@@ -189,6 +189,8 @@ class IntegrationCredentialsManager:
 
                 fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                 await self.store.update_creds(user_id, fresh_credentials)
+                # Bust copilot cache so the refreshed token is picked up immediately.
+                _bust_copilot_cache(user_id, fresh_credentials.provider)
                 if _lock and (await _lock.locked()) and (await _lock.owned()):
                     try:
                         await _lock.release()
