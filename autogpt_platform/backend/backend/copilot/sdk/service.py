@@ -37,7 +37,6 @@ from backend.util.settings import Settings
 
 from ..config import ChatConfig
 from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
-from ..integration_creds import get_integration_env_vars
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -785,24 +784,6 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 return None
-
-            # Configure git to use the gh credential helper on every sandbox
-            # connect/reconnect so that git HTTPS operations work automatically.
-            # Non-fatal: failure is logged at debug level and never blocks the turn.
-            if user_id:
-                try:
-                    integration_env = await get_integration_env_vars(user_id)
-                    if integration_env.get("GH_TOKEN"):
-                        await sandbox.commands.run(
-                            "gh auth setup-git",
-                            envs=integration_env,
-                            timeout=10,
-                        )
-                except Exception:
-                    logger.debug(
-                        "[E2B] [%s] gh auth setup-git failed (non-fatal)",
-                        session_id[:12],
-                    )
 
             return sandbox
 
