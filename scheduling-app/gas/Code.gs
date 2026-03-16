@@ -44,6 +44,14 @@
 /** Your Google Calendar ID. Usually your Gmail address. */
 const OWNER_CALENDAR_ID = 'your-email@gmail.com'
 
+/**
+ * Google Sheet ID where bookings are logged.
+ * Create a Sheet, copy its ID from the URL:
+ *   https://docs.google.com/spreadsheets/d/SHEET_ID/edit
+ * Leave empty ('') to skip logging.
+ */
+const BOOKINGS_SHEET_ID = ''
+
 /** Timezone for your working hours (IANA format). */
 const OWNER_TZ = 'Asia/Jerusalem'
 
@@ -83,6 +91,8 @@ function handleRequest(e, body) {
         return jsonResponse(getBusySlots(e.parameter))
       case 'createEvent':
         return jsonResponse(createEvent(body))
+      case 'saveBooking':
+        return jsonResponse(saveBookingToSheet(body))
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400)
     }
@@ -265,6 +275,51 @@ function createEvent(body) {
     startISO: createdEvent.start.dateTime,
     endISO:   createdEvent.end.dateTime,
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SAVE BOOKING TO SHEET
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Append a confirmed booking row to a Google Sheet.
+ *
+ * Body params:
+ *   name, email, subject, startISO, endISO,
+ *   duration, meetLink, eventId, userTz
+ *
+ * Sheet columns (auto-created on first run):
+ *   Timestamp | Name | Email | Subject | Start | End | Duration | Meet Link | Event ID | Timezone
+ */
+function saveBookingToSheet(body) {
+  if (!BOOKINGS_SHEET_ID) return { ok: true, skipped: true }
+
+  const ss     = SpreadsheetApp.openById(BOOKINGS_SHEET_ID)
+  const sheet  = ss.getSheetByName('Bookings') || ss.insertSheet('Bookings')
+
+  // Add header row if the sheet is empty
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      'Timestamp', 'Name', 'Email', 'Subject',
+      'Start', 'End', 'Duration (min)', 'Meet Link', 'Event ID', 'Timezone',
+    ])
+    sheet.setFrozenRows(1)
+  }
+
+  sheet.appendRow([
+    new Date().toISOString(),
+    body.name        || '',
+    body.email       || '',
+    body.subject     || '',
+    body.startISO    || '',
+    body.endISO      || '',
+    body.duration    || '',
+    body.meetLink    || '',
+    body.eventId     || '',
+    body.userTz      || '',
+  ])
+
+  return { ok: true }
 }
 
 // ─────────────────────────────────────────────────────────────

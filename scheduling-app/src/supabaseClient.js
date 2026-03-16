@@ -1,35 +1,43 @@
-import { createClient } from '@supabase/supabase-js'
+/**
+ * Booking persistence via Google Apps Script / Google Sheet.
+ * No external service required — uses the same GAS deployment as the calendar.
+ *
+ * The GAS endpoint must have a `saveBooking` action that appends a row
+ * to the configured Google Sheet (BOOKINGS_SHEET_ID in Code.gs).
+ *
+ * If GAS_URL is not configured the call is silently skipped.
+ */
 
-const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  || ''
-const supabaseKey  = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-
-// Client is null-safe: if env vars are missing the app still works,
-// but booking records won't be persisted to Supabase.
-export const supabase =
-  supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey)
-    : null
+const GAS_URL =
+  import.meta.env.VITE_GAS_URL ||
+  'https://script.google.com/macros/s/AKfycbxIt5jVoSmstOxBh2Ojej3hwSNPHxuWc-gu6CT5-A5iwJEO_8bJYFxg269UJaa0mt09/exec'
 
 /**
- * Persist a confirmed booking record to Supabase.
- * Silently skips if Supabase is not configured.
+ * Persist a confirmed booking record to the Google Sheet via GAS.
+ * Silently skips if GAS_URL is not configured.
  */
 export async function saveBooking(booking) {
-  if (!supabase) return
+  if (!GAS_URL) return
 
-  const { error } = await supabase.from('bookings').insert({
-    name:         booking.name,
-    email:        booking.email,
-    subject:      booking.subject,
-    start_time:   booking.startISO,
-    end_time:     booking.endISO,
-    duration_mins: booking.duration,
-    meet_link:    booking.meetLink,
-    event_id:     booking.eventId,
-    user_tz:      booking.userTz,
-  })
-
-  if (error) {
-    console.warn('[Supabase] Failed to save booking:', error.message)
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // avoids CORS preflight
+      body: JSON.stringify({
+        action:   'saveBooking',
+        name:     booking.name,
+        email:    booking.email,
+        subject:  booking.subject,
+        startISO: booking.startISO,
+        endISO:   booking.endISO,
+        duration: booking.duration,
+        meetLink: booking.meetLink,
+        eventId:  booking.eventId,
+        userTz:   booking.userTz,
+      }),
+    })
+  } catch (err) {
+    // Non-blocking: booking was already confirmed in Google Calendar
+    console.warn('[Sheet] Failed to save booking record:', err.message)
   }
 }
