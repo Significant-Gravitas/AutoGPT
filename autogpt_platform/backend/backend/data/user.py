@@ -62,9 +62,19 @@ async def get_user_by_id(user_id: str) -> User:
     return User.from_db(user)
 
 
-async def list_users() -> list[User]:
+async def list_users(
+    limit: int = 500,
+    cursor: str | None = None,
+) -> list[User]:
     try:
-        users = await PrismaUser.prisma().find_many()
+        kwargs: dict = {
+            "take": limit,
+            "order": {"id": "asc"},
+        }
+        if cursor is not None:
+            kwargs["cursor"] = {"id": cursor}
+            kwargs["skip"] = 1
+        users = await PrismaUser.prisma().find_many(**kwargs)
         return [User.from_db(user) for user in users]
     except Exception as e:
         raise DatabaseError(f"Failed to list users: {e}") from e

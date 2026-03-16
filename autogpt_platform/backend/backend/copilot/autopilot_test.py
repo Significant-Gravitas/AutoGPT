@@ -138,7 +138,7 @@ async def test_get_recent_manual_session_context_strips_internal_content(
             ]
         ),
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_prompts.chat_db", return_value=chat_store)
 
     context = await _get_recent_manual_session_context(
         "user-1",
@@ -165,7 +165,7 @@ async def test_get_recent_sent_email_context_formats_sent_emails(mocker) -> None
     chat_store = SimpleNamespace(
         get_recent_sent_email_chat_sessions=AsyncMock(return_value=[sent_session])
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_prompts.chat_db", return_value=chat_store)
 
     context = await _get_recent_sent_email_context("user-1")
 
@@ -193,7 +193,7 @@ async def test_get_recent_session_summary_context_formats_completion_reports(
             return_value=[summary_session]
         )
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_prompts.chat_db", return_value=chat_store)
 
     context = await _get_recent_session_summary_context("user-1")
 
@@ -218,7 +218,7 @@ async def test_build_autopilot_system_prompt_selects_langfuse_prompt(
     expected_prompt_name: str,
 ) -> None:
     mocker.patch(
-        "backend.copilot.autopilot.chat_config",
+        "backend.copilot.autopilot_prompts.chat_config",
         new=SimpleNamespace(
             langfuse_autopilot_nightly_prompt_name="CoPilot Nightly",
             langfuse_autopilot_callback_prompt_name="CoPilot Callback",
@@ -229,30 +229,30 @@ async def test_build_autopilot_system_prompt_selects_langfuse_prompt(
         get_business_understanding=AsyncMock(return_value=object())
     )
     mocker.patch(
-        "backend.copilot.autopilot.understanding_db",
+        "backend.copilot.autopilot_prompts.understanding_db",
         return_value=understanding_store,
     )
     mocker.patch(
-        "backend.copilot.autopilot.format_understanding_for_prompt",
+        "backend.copilot.autopilot_prompts.format_understanding_for_prompt",
         return_value="business understanding",
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_recent_sent_email_context",
+        "backend.copilot.autopilot_prompts._get_recent_sent_email_context",
         new_callable=AsyncMock,
         return_value="recent emails",
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_recent_session_summary_context",
+        "backend.copilot.autopilot_prompts._get_recent_session_summary_context",
         new_callable=AsyncMock,
         return_value="recent summaries",
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_recent_manual_session_context",
+        "backend.copilot.autopilot_prompts._get_recent_manual_session_context",
         new_callable=AsyncMock,
         return_value="recent manual sessions",
     )
     compile_prompt = mocker.patch(
-        "backend.copilot.autopilot._get_system_prompt_template",
+        "backend.copilot.autopilot_prompts._get_system_prompt_template",
         new_callable=AsyncMock,
         return_value="compiled prompt",
     )
@@ -340,17 +340,17 @@ async def test_handle_non_manual_session_completion_saves_report(mocker) -> None
     ]
 
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_completion.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_completion._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(0, None),
     )
     upsert = mocker.patch(
-        "backend.copilot.autopilot.upsert_chat_session",
+        "backend.copilot.autopilot_completion.upsert_chat_session",
         new_callable=AsyncMock,
     )
 
@@ -369,21 +369,21 @@ async def test_handle_non_manual_session_completion_queues_repair(mocker) -> Non
     session.messages = [ChatMessage(role="assistant", content="Done.")]
 
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_completion.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_completion._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(1, "copilot-session-session-1"),
     )
     upsert = mocker.patch(
-        "backend.copilot.autopilot.upsert_chat_session",
+        "backend.copilot.autopilot_completion.upsert_chat_session",
         new_callable=AsyncMock,
     )
     enqueue = mocker.patch(
-        "backend.copilot.autopilot._enqueue_session_turn",
+        "backend.copilot.autopilot_completion._enqueue_session_turn",
         new_callable=AsyncMock,
     )
 
@@ -432,22 +432,22 @@ async def test_create_autopilot_session_disables_configured_tools(mocker) -> Non
     )
 
     mocker.patch(
-        "backend.copilot.autopilot._session_exists_for_execution_tag",
+        "backend.copilot.autopilot_dispatch._session_exists_for_execution_tag",
         new_callable=AsyncMock,
         return_value=False,
     )
     mocker.patch(
-        "backend.copilot.autopilot._build_autopilot_system_prompt",
+        "backend.copilot.autopilot_dispatch._build_autopilot_system_prompt",
         new_callable=AsyncMock,
         return_value="system prompt",
     )
     create_chat_session = mocker.patch(
-        "backend.copilot.autopilot.create_chat_session",
+        "backend.copilot.autopilot_dispatch.create_chat_session",
         new_callable=AsyncMock,
         return_value=created_session,
     )
     enqueue = mocker.patch(
-        "backend.copilot.autopilot._enqueue_session_turn",
+        "backend.copilot.autopilot_dispatch._enqueue_session_turn",
         new_callable=AsyncMock,
     )
 
@@ -477,21 +477,21 @@ async def test_handle_non_manual_session_completion_stops_after_max_repairs(
     session.messages = [ChatMessage(role="assistant", content="Done.")]
 
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_completion.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_completion._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(0, None),
     )
     upsert = mocker.patch(
-        "backend.copilot.autopilot.upsert_chat_session",
+        "backend.copilot.autopilot_completion.upsert_chat_session",
         new_callable=AsyncMock,
     )
     enqueue = mocker.patch(
-        "backend.copilot.autopilot._enqueue_session_turn",
+        "backend.copilot.autopilot_completion._enqueue_session_turn",
         new_callable=AsyncMock,
     )
 
@@ -507,7 +507,7 @@ async def test_handle_non_manual_session_completion_stops_after_max_repairs(
 async def test_dispatch_nightly_copilot_respects_cohort_priority(mocker) -> None:
     fixed_now = datetime(2026, 3, 17, 0, 5, tzinfo=UTC)
     datetime_mock = mocker.patch(
-        "backend.copilot.autopilot.datetime",
+        "backend.copilot.autopilot_dispatch.datetime",
         wraps=datetime,
     )
     datetime_mock.now.return_value = fixed_now
@@ -541,39 +541,39 @@ async def test_dispatch_nightly_copilot_respects_cohort_priority(mocker) -> None
     invited_user_store = SimpleNamespace(
         list_invited_users_for_auth_users=AsyncMock(return_value=[invited])
     )
-    mocker.patch("backend.copilot.autopilot.user_db", return_value=user_store)
+    mocker.patch("backend.copilot.autopilot_dispatch.user_db", return_value=user_store)
     mocker.patch(
-        "backend.copilot.autopilot.invited_user_db",
+        "backend.copilot.autopilot_dispatch.invited_user_db",
         return_value=invited_user_store,
     )
     mocker.patch(
-        "backend.copilot.autopilot.is_feature_enabled",
+        "backend.copilot.autopilot_dispatch.is_feature_enabled",
         new_callable=AsyncMock,
         side_effect=lambda _flag, user_id, default=False: user_id != "disabled-user",
     )
     mocker.patch(
-        "backend.copilot.autopilot._crosses_local_midnight",
+        "backend.copilot.autopilot_dispatch._crosses_local_midnight",
         side_effect=lambda *_args, **_kwargs: date(2026, 3, 17),
     )
     mocker.patch(
-        "backend.copilot.autopilot._user_has_recent_manual_message",
+        "backend.copilot.autopilot_dispatch._user_has_recent_manual_message",
         new_callable=AsyncMock,
         side_effect=lambda user_id, _since: user_id == "nightly-user",
     )
     mocker.patch(
-        "backend.copilot.autopilot._user_has_session_since",
+        "backend.copilot.autopilot_dispatch._user_has_session_since",
         new_callable=AsyncMock,
         side_effect=lambda user_id, _since: (
             user_id in {"nightly-user", "callback-user"}
         ),
     )
     mocker.patch(
-        "backend.copilot.autopilot._session_exists_for_execution_tag",
+        "backend.copilot.autopilot_dispatch._session_exists_for_execution_tag",
         new_callable=AsyncMock,
         return_value=False,
     )
     create_autopilot_session = mocker.patch(
-        "backend.copilot.autopilot._create_autopilot_session",
+        "backend.copilot.autopilot_dispatch._create_autopilot_session",
         new_callable=AsyncMock,
         side_effect=[
             object(),
@@ -604,7 +604,7 @@ async def test_trigger_autopilot_session_for_user_uses_local_date_for_nightly(
 ) -> None:
     fixed_now = datetime(2026, 3, 16, 18, 30, tzinfo=UTC)
     datetime_mock = mocker.patch(
-        "backend.copilot.autopilot.datetime",
+        "backend.copilot.autopilot_dispatch.datetime",
         wraps=datetime,
     )
     datetime_mock.now.return_value = fixed_now
@@ -623,13 +623,13 @@ async def test_trigger_autopilot_session_for_user_uses_local_date_for_nightly(
         start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
     )
     create_autopilot_session = mocker.patch(
-        "backend.copilot.autopilot._create_autopilot_session",
+        "backend.copilot.autopilot_dispatch._create_autopilot_session",
         new_callable=AsyncMock,
         return_value=session,
     )
-    mocker.patch("backend.copilot.autopilot.user_db", return_value=user_store)
+    mocker.patch("backend.copilot.autopilot_dispatch.user_db", return_value=user_store)
     mocker.patch(
-        "backend.copilot.autopilot.invited_user_db",
+        "backend.copilot.autopilot_dispatch.invited_user_db",
         return_value=invited_user_store,
     )
 
@@ -659,9 +659,9 @@ async def test_send_nightly_copilot_emails_queues_repair_for_missing_report(
     chat_store = SimpleNamespace(
         get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_email.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
@@ -671,12 +671,12 @@ async def test_send_nightly_copilot_emails_queues_repair_for_missing_report(
         return_value=None,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(0, None),
     )
     queue_repair = mocker.patch(
-        "backend.copilot.autopilot._queue_completion_report_repair",
+        "backend.copilot.autopilot_email._queue_completion_report_repair",
         new_callable=AsyncMock,
     )
 
@@ -705,9 +705,9 @@ async def test_send_nightly_copilot_emails_sends_and_marks_sent(mocker) -> None:
     chat_store = SimpleNamespace(
         get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_email.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
@@ -717,16 +717,16 @@ async def test_send_nightly_copilot_emails_sends_and_marks_sent(mocker) -> None:
         return_value=None,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(1, "copilot-session-session-1"),
     )
     send_email = mocker.patch(
-        "backend.copilot.autopilot._send_completion_email",
+        "backend.copilot.autopilot_email._send_completion_email",
         new_callable=AsyncMock,
     )
     upsert = mocker.patch(
-        "backend.copilot.autopilot.upsert_chat_session",
+        "backend.copilot.autopilot_email.upsert_chat_session",
         new_callable=AsyncMock,
     )
 
@@ -760,9 +760,9 @@ async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) 
     chat_store = SimpleNamespace(
         get_pending_notification_chat_sessions=AsyncMock(return_value=[candidate])
     )
-    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
     mocker.patch(
-        "backend.copilot.autopilot.get_chat_session",
+        "backend.copilot.autopilot_email.get_chat_session",
         new_callable=AsyncMock,
         return_value=session,
     )
@@ -772,16 +772,16 @@ async def test_send_nightly_copilot_emails_skips_when_should_not_notify(mocker) 
         return_value=None,
     )
     mocker.patch(
-        "backend.copilot.autopilot._get_pending_approval_metadata",
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
         new_callable=AsyncMock,
         return_value=(0, None),
     )
     upsert = mocker.patch(
-        "backend.copilot.autopilot.upsert_chat_session",
+        "backend.copilot.autopilot_email.upsert_chat_session",
         new_callable=AsyncMock,
     )
     send_email = mocker.patch(
-        "backend.copilot.autopilot._send_completion_email",
+        "backend.copilot.autopilot_email._send_completion_email",
         new_callable=AsyncMock,
     )
 

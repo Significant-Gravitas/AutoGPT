@@ -118,6 +118,13 @@ class EmailSender:
         data: dict[str, Any] | None = None,
         user_unsubscribe_link: str | None = None,
     ) -> None:
+        """Send an email using a named Jinja2 template file.
+
+        Unlike ``send_templated`` (which resolves templates via
+        ``NotificationType``), this method accepts a template filename
+        directly.  Both delegate to the shared ``_format_template_email``
+        + ``_send_email`` pipeline.
+        """
         if not self.postmark:
             logger.warning("Postmark client not initialized, email not sent")
             return
@@ -231,10 +238,14 @@ class EmailSender:
         if not self.postmark:
             logger.warning("Email tried to send without postmark configured")
             return
+        sender_email = settings.config.postmark_sender_email
+        if not sender_email:
+            logger.warning("postmark_sender_email not configured, email not sent")
+            return
         unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
         logger.debug(f"Sending email to {user_email} with subject {subject}")
         self.postmark.emails.send(
-            From=settings.config.postmark_sender_email,
+            From=sender_email,
             To=user_email,
             Subject=subject,
             HtmlBody=body,
