@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "./store";
 
 const ORIGINAL_TITLE = "AutoGPT";
-const NOTIFICATION_SOUND_PATH = "/notification.wav";
+const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
