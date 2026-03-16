@@ -579,6 +579,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
+| [Autogpt Copilot](block-integrations/misc.md#autogpt-copilot) | Execute tasks using the AutoGPT Copilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
 
 ## CRM Services
 
