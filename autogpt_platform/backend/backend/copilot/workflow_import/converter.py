@@ -162,6 +162,8 @@ async def convert_competitor_workflow(
         except Exception as e:
             raise ValueError(f"LLM call failed: {e}") from e
 
+        if not response.choices:
+            raise ValueError("LLM returned no choices")
         raw_content = response.choices[0].message.content or ""
 
         # Strip markdown fences if present

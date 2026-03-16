@@ -48,6 +48,8 @@ export function useLibraryImportCompetitorDialog() {
       }
 
       const response = await importWorkflow({ data: body });
+      // Cast needed: generated client returns union with error types,
+      // but errors throw before reaching here
       const data = response.data as ImportWorkflowResponse;
 
       setIsOpen(false);

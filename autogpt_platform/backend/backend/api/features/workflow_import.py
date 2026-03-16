@@ -71,8 +71,10 @@ async def import_competitor_workflow(
     if request.template_url is not None:
         try:
             workflow_json = await fetch_n8n_template(request.template_url)
-        except (ValueError, RuntimeError) as e:
+        except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
     else:
         workflow_json = request.workflow_json
         assert workflow_json is not None  # guaranteed by validator
@@ -115,9 +117,10 @@ async def import_competitor_workflow(
             conversion_notes.append(f"Agent saved as '{created_graph.name}'")
         except Exception as e:
             logger.error(f"Failed to save imported agent: {e}", exc_info=True)
-            conversion_notes.append(
-                f"Save failed: {e}. You can try saving manually from the builder."
-            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Workflow was converted but could not be saved: {e}",
+            ) from e
 
     return ImportWorkflowResponse(
         graph=agent_json,
