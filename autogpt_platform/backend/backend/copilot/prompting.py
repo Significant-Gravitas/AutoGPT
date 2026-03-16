@@ -70,6 +70,8 @@ _E2B_TOOL_NOTES = """
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
+- If the token changes mid-session (e.g. user reconnects with a new token),
+  run `gh auth setup-git` to re-register the credential helper.
 - If `gh` or `git` fails with an authentication error (e.g. "authentication
   required", "could not read Username", or exit code 128), call
   `connect_integration(provider="github")` to surface the GitHub credentials
