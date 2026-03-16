@@ -349,7 +349,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     :func:`get_sdk_disallowed_tools`.
     """
 
-    def _truncating(fn, tool_name: str):
+    def _truncating(fn, tool_name: str, input_schema: dict[str, Any] | None = None):
         """Wrap a tool handler so its response is truncated to stay under the
         SDK's 10 MB JSON buffer, and stash the (truncated) output for the
         response adapter before the SDK can apply its own head-truncation.
@@ -363,7 +363,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             user_id, session = get_execution_context()
             if session is not None:
                 try:
-                    args = await expand_file_refs_in_args(args, user_id, session)
+                    args = await expand_file_refs_in_args(
+                        args, user_id, session, input_schema=input_schema
+                    )
                 except FileRefExpansionError as exc:
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
@@ -391,11 +393,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
+        schema = _build_input_schema(base_tool)
         decorated = tool(
             tool_name,
             base_tool.description,
-            _build_input_schema(base_tool),
-        )(_truncating(handler, tool_name))
+            schema,
+        )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.

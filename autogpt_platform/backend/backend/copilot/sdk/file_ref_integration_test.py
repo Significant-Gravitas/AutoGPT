@@ -176,6 +176,199 @@ async def test_expand_args_replaces_file_ref_in_nested_dict():
 
 
 # ---------------------------------------------------------------------------
+# expand_file_refs_in_args — bare ref structured parsing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_json_returns_parsed_dict():
+    """Bare ref to a .json file returns parsed dict, not raw string."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        json_file = os.path.join(sdk_cwd, "data.json")
+        with open(json_file, "w") as f:
+            f.write('{"key": "value", "count": 42}')
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"data": f"@@agptfile:{json_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["data"] == {"key": "value", "count": 42}
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_csv_returns_parsed_table():
+    """Bare ref to a .csv file returns list[list[str]] table."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        csv_file = os.path.join(sdk_cwd, "data.csv")
+        with open(csv_file, "w") as f:
+            f.write("Name,Score\nAlice,90\nBob,85")
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"input": f"@@agptfile:{csv_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["input"] == [
+            ["Name", "Score"],
+            ["Alice", "90"],
+            ["Bob", "85"],
+        ]
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_unknown_extension_returns_string():
+    """Bare ref to a file with unknown extension returns plain string."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        txt_file = os.path.join(sdk_cwd, "readme.txt")
+        with open(txt_file, "w") as f:
+            f.write("plain text content")
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"data": f"@@agptfile:{txt_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["data"] == "plain text content"
+        assert isinstance(result["data"], str)
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_invalid_json_falls_back_to_string():
+    """Bare ref to a .json file with invalid JSON falls back to string."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        json_file = os.path.join(sdk_cwd, "bad.json")
+        with open(json_file, "w") as f:
+            f.write("not valid json {{{")
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"data": f"@@agptfile:{json_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["data"] == "not valid json {{{"
+        assert isinstance(result["data"], str)
+
+
+@pytest.mark.asyncio
+async def test_embedded_ref_always_returns_string_even_for_json():
+    """Embedded ref (text around it) returns plain string, not parsed JSON."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        json_file = os.path.join(sdk_cwd, "data.json")
+        with open(json_file, "w") as f:
+            f.write('{"key": "value"}')
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"data": f"prefix @@agptfile:{json_file} suffix"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert isinstance(result["data"], str)
+        assert result["data"].startswith("prefix ")
+        assert result["data"].endswith(" suffix")
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_yaml_returns_parsed_dict():
+    """Bare ref to a .yaml file returns parsed dict."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        yaml_file = os.path.join(sdk_cwd, "config.yaml")
+        with open(yaml_file, "w") as f:
+            f.write("name: test\ncount: 42\n")
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"config": f"@@agptfile:{yaml_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["config"] == {"name": "test", "count": 42}
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_binary_with_line_range_ignores_range():
+    """Bare ref to a binary file (.parquet) with line range parses the full file.
+
+    Binary formats (parquet, xlsx) ignore line ranges — the full content is
+    parsed and the range is silently dropped with a log warning.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        pytest.skip("pandas not installed")
+    try:
+        import pyarrow  # noqa: F401  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        pytest.skip("pyarrow not installed")
+
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        parquet_file = os.path.join(sdk_cwd, "data.parquet")
+        import io as _io
+
+        df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        buf = _io.BytesIO()
+        df.to_parquet(buf, index=False)
+        with open(parquet_file, "wb") as f:
+            f.write(buf.getvalue())
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            # Line range [1-2] should be silently ignored for binary formats.
+            result = await expand_file_refs_in_args(
+                {"data": f"@@agptfile:{parquet_file}[1-2]"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        # Full file is returned despite the line range.
+        assert result["data"] == [["A", "B"], [1, 4], [2, 5], [3, 6]]
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_toml_returns_parsed_dict():
+    """Bare ref to a .toml file returns parsed dict."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        toml_file = os.path.join(sdk_cwd, "config.toml")
+        with open(toml_file, "w") as f:
+            f.write('name = "test"\ncount = 42\n')
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"config": f"@@agptfile:{toml_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["config"] == {"name": "test", "count": 42}
+
+
+# ---------------------------------------------------------------------------
 # _read_file_handler — extended to accept workspace:// and local paths
 # ---------------------------------------------------------------------------
 
@@ -219,7 +412,7 @@ async def test_read_file_handler_workspace_uri():
         "backend.copilot.sdk.tool_adapter.get_execution_context",
         return_value=("user-1", mock_session),
     ), patch(
-        "backend.copilot.sdk.file_ref.get_manager",
+        "backend.copilot.sdk.file_ref.get_workspace_manager",
         new=AsyncMock(return_value=mock_manager),
     ):
         result = await _read_file_handler(
@@ -276,7 +469,7 @@ async def test_read_file_bytes_workspace_virtual_path():
     mock_manager.read_file.return_value = b"virtual path content"
 
     with patch(
-        "backend.copilot.sdk.file_ref.get_manager",
+        "backend.copilot.sdk.file_ref.get_workspace_manager",
         new=AsyncMock(return_value=mock_manager),
     ):
         result = await read_file_bytes("workspace:///reports/q1.md", "user-1", session)
