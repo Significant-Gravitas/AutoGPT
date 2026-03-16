@@ -8,6 +8,7 @@ from backend.blocks.github.pull_requests import (
     GithubMergePullRequestBlock,
     prepare_pr_api_url,
 )
+from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 
 # ── prepare_pr_api_url tests ──
@@ -97,7 +98,11 @@ async def test_multi_file_commit_error_path():
         "credentials": TEST_CREDENTIALS_INPUT,
     }
     with pytest.raises(BlockExecutionError, match="ref update failed"):
-        async for _ in block.execute(input_data, credentials=TEST_CREDENTIALS):
+        async for _ in block.execute(
+            input_data,
+            credentials=TEST_CREDENTIALS,
+            execution_context=ExecutionContext(),
+        ):
             pass
 
 
