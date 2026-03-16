@@ -1661,7 +1661,10 @@ class AgentFixer:
                 continue
 
             node_id = node.get("id", "unknown")
-            input_default = node.setdefault("input_default", {})
+            input_default = node.get("input_default")
+            if not isinstance(input_default, dict):
+                input_default = {}
+                node["input_default"] = input_default
 
             for field, default_value in _SDM_DEFAULTS.items():
                 if field not in input_default or input_default[field] is None:

@@ -839,7 +839,16 @@ class AgentValidator:
             # that the agent generator does not produce.
             input_default = node.get("input_default", {})
             max_iter = input_default.get("agent_mode_max_iterations")
-            if max_iter == 0:
+            if isinstance(max_iter, int) and max_iter < -1:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has invalid "
+                    f"agent_mode_max_iterations={max_iter}. "
+                    f"Use -1 for infinite or a positive number for "
+                    f"bounded iterations."
+                )
+                valid = False
+            elif max_iter == 0:
                 self.add_error(
                     f"SmartDecisionMakerBlock node '{customized_name}' "
                     f"({node_id}) has agent_mode_max_iterations=0 "

@@ -222,6 +222,22 @@ class TestFixSmartDecisionMakerBlocks:
         assert "input_default" in result["nodes"][0]
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == -1
 
+    def test_handles_none_input_default(self):
+        """Node with input_default set to None gets a dict created."""
+        fixer = AgentFixer()
+        node = {
+            "id": _uid(),
+            "block_id": SMART_DECISION_MAKER_BLOCK_ID,
+            "input_default": None,
+            "metadata": {},
+        }
+        agent = {"nodes": [node], "links": []}
+
+        result = fixer.fix_smart_decision_maker_blocks(agent)
+
+        assert isinstance(result["nodes"][0]["input_default"], dict)
+        assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == -1
+
     def test_treats_none_values_as_missing(self):
         """Explicit None values are overwritten with defaults."""
         fixer = AgentFixer()
@@ -396,6 +412,21 @@ class TestValidateSmartDecisionMakerBlocks:
 
         assert result is False
         assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
+
+    def test_sdm_with_negative_iterations_below_minus_one_fails(self):
+        """agent_mode_max_iterations < -1 is rejected."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": -5})
+        tool = _make_agent_executor_node()
+        agent = {
+            "nodes": [sdm, tool],
+            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is False
+        assert any("invalid" in e and "-5" in e for e in validator.errors)
 
     def test_sdm_with_only_interface_block_links_fails(self):
         """Links to AgentInput/OutputBlocks don't count as tool connections."""
