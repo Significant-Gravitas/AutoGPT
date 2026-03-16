@@ -12,17 +12,61 @@ export function getInputPlaceholder(width?: number) {
   return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
 
-const DEFAULT_QUICK_ACTIONS = [
-  "I don't know where to start, just ask me stuff",
-  "I do the same thing every week and it's killing me",
-  "Help me find where I'm wasting my time",
+export interface SuggestionTheme {
+  name: string;
+  prompts: string[];
+}
+
+export const DEFAULT_THEMES: SuggestionTheme[] = [
+  {
+    name: "Learn",
+    prompts: [
+      "What can AutoGPT do for me?",
+      "Show me how agents work",
+      "What integrations are available?",
+      "How do I schedule an agent?",
+      "What are the most popular agents?",
+    ],
+  },
+  {
+    name: "Create",
+    prompts: [
+      "Draft a weekly status report",
+      "Generate social media posts for my business",
+      "Create a competitive analysis summary",
+      "Write onboarding emails for new hires",
+      "Build a content calendar for next month",
+    ],
+  },
+  {
+    name: "Automate",
+    prompts: [
+      "Monitor my competitors' websites for changes",
+      "Send me a daily news digest on my industry",
+      "Auto-reply to common customer questions",
+      "Track price changes on products I sell",
+      "Summarize my emails every morning",
+    ],
+  },
+  {
+    name: "Organize",
+    prompts: [
+      "Sort my bookmarks into categories",
+      "Create a project timeline from my notes",
+      "Prioritize my task list by urgency",
+      "Build a decision matrix for vendor selection",
+      "Organize my meeting notes into action items",
+    ],
+  },
 ];
 
-export function getQuickActions(customPrompts?: string[]) {
-  if (customPrompts && customPrompts.length > 0) {
-    return customPrompts;
+export function getSuggestionThemes(
+  apiThemes?: SuggestionTheme[],
+): SuggestionTheme[] {
+  if (apiThemes && apiThemes.length > 0) {
+    return apiThemes;
   }
-  return DEFAULT_QUICK_ACTIONS;
+  return DEFAULT_THEMES;
 }
 
 export function getGreetingName(user?: User | null) {
