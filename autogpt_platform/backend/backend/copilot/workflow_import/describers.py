@@ -108,15 +108,15 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         params = module.get("mapper", module.get("parameters", {}))
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
 
-        # Make.com flows are sequential by default; each step connects to next
-        connections_to = [i + 1] if i < len(flow) - 1 else []
-
-        # Note: Make.com routes contain nested sub-flows that we don't flatten
-        # into additional steps yet. We record route existence in parameters
-        # so the LLM converter knows about branching.
+        # Check for routes (branching) — routers don't connect sequentially
         routes = module.get("routes", [])
         if routes:
+            # Router modules branch; don't assign sequential connections
+            connections_to: list[int] = []
             clean_params["_has_routes"] = len(routes)
+        else:
+            # Make.com flows are sequential by default; each step connects to next
+            connections_to = [i + 1] if i < len(flow) - 1 else []
 
         steps.append(
             StepDescription(

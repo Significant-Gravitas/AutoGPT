@@ -54,6 +54,12 @@ async def fetch_n8n_template(url: str) -> dict[str, Any]:
     except Exception as e:
         raise RuntimeError(f"Failed to fetch n8n template {template_id}: {e}") from e
 
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"Unexpected response format from n8n API for template {template_id}: "
+            "expected JSON object"
+        )
+
     # n8n API wraps the workflow in a `workflow` key
     workflow = data.get("workflow", data)
     if not isinstance(workflow, dict):
