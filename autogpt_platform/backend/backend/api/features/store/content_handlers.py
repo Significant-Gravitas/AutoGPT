@@ -15,9 +15,18 @@ from prisma.enums import ContentType
 
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
-from backend.util.text import split_camelcase
 
 logger = logging.getLogger(__name__)
+
+
+def _contains_type(annotation: Any, target: type) -> bool:
+    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
+    if annotation is target:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
 @dataclass
@@ -154,11 +163,16 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
-        enabled = _get_enabled_blocks()
-        if not enabled:
+        from backend.blocks import get_blocks
+
+        # Get all available blocks
+        all_blocks = get_blocks()
+
+        # Check which ones have embeddings
+        if not all_blocks:
             return []
 
-        block_ids = list(enabled.keys())
+        block_ids = list(all_blocks.keys())
 
         # Query for existing embeddings
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
@@ -173,41 +187,52 @@ class BlockHandler(ContentHandler):
         )
 
         existing_ids = {row["contentId"] for row in existing_result}
+        missing_blocks = [
+            (block_id, block_cls)
+            for block_id, block_cls in all_blocks.items()
+            if block_id not in existing_ids
+        ]
 
-        # Convert to ContentItem — disabled filtering already done by
-        # _get_enabled_blocks so batch_size won't be exhausted by disabled blocks.
+        # Convert to ContentItem
         items = []
-        for block_id, block in enabled.items():
-            if block_id in existing_ids:
-                continue
-            if len(items) >= batch_size:
-                break
-
+        for block_id, block_cls in missing_blocks[:batch_size]:
             try:
+                block_instance = block_cls()
+
+                if block_instance.disabled:
+                    continue
+
                 # Build searchable text from block metadata
                 parts = []
-                if block.name:
-                    parts.append(split_camelcase(block.name))
-                if block.description:
-                    parts.append(block.description)
-                if block.categories:
-                    parts.append(" ".join(str(cat.value) for cat in block.categories))
+                if block_instance.name:
+                    parts.append(block_instance.name)
+                if block_instance.description:
+                    parts.append(block_instance.description)
+                if block_instance.categories:
+                    parts.append(
+                        " ".join(str(cat.value) for cat in block_instance.categories)
+                    )
 
                 # Add input schema field descriptions
+                block_input_fields = block_instance.input_schema.model_fields
                 parts += [
                     f"{field_name}: {field_info.description}"
-                    for field_name, field_info in block.input_schema.model_fields.items()
+                    for field_name, field_info in block_input_fields.items()
                     if field_info.description
                 ]
 
                 searchable_text = " ".join(parts)
 
                 categories_list = (
-                    [cat.value for cat in block.categories] if block.categories else []
+                    [cat.value for cat in block_instance.categories]
+                    if block_instance.categories
+                    else []
                 )
 
                 # Extract provider names from credentials fields
-                credentials_info = block.input_schema.get_credentials_fields_info()
+                credentials_info = (
+                    block_instance.input_schema.get_credentials_fields_info()
+                )
                 is_integration = len(credentials_info) > 0
                 provider_names = [
                     provider.value.lower()
@@ -218,7 +243,7 @@ class BlockHandler(ContentHandler):
                 # Check if block has LlmModel field in input schema
                 has_llm_model_field = any(
                     _contains_type(field.annotation, LlmModel)
-                    for field in block.input_schema.model_fields.values()
+                    for field in block_instance.input_schema.model_fields.values()
                 )
 
                 items.append(
@@ -227,30 +252,39 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": block.name,
+                            "name": block_instance.name,
                             "categories": categories_list,
                             "providers": provider_names,
                             "has_llm_model_field": has_llm_model_field,
                             "is_integration": is_integration,
                         },
-                        user_id=None,
+                        user_id=None,  # Blocks are public
                     )
                 )
             except Exception as e:
-                logger.warning("Failed to process block %s: %s", block_id, e)
+                logger.warning(f"Failed to process block {block_id}: {e}")
                 continue
 
         return items
 
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about block embedding coverage."""
-        enabled = _get_enabled_blocks()
-        total_blocks = len(enabled)
+        from backend.blocks import get_blocks
+
+        all_blocks = get_blocks()
+
+        # Filter out disabled blocks - they're not indexed
+        enabled_block_ids = [
+            block_id
+            for block_id, block_cls in all_blocks.items()
+            if not block_cls().disabled
+        ]
+        total_blocks = len(enabled_block_ids)
 
         if total_blocks == 0:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
-        block_ids = list(enabled.keys())
+        block_ids = enabled_block_ids
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
 
         embedded_result = await query_raw_with_schema(
@@ -270,36 +304,6 @@ class BlockHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_blocks - with_embeddings,
         }
-
-
-def _contains_type(annotation: Any, target: type) -> bool:
-    """Check if an annotation is or contains the target type (handles Optional/Union/Annotated)."""
-    if annotation is target:
-        return True
-    origin = get_origin(annotation)
-    if origin is None:
-        return False
-    return any(_contains_type(arg, target) for arg in get_args(annotation))
-
-
-def _get_enabled_blocks() -> dict[str, Any]:
-    """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
-
-    Disabled blocks and blocks that fail to instantiate are silently skipped
-    (with a warning log), so callers never need their own try/except loop.
-    """
-    from backend.blocks import get_blocks
-
-    enabled: dict[str, Any] = {}
-    for block_id, block_cls in get_blocks().items():
-        try:
-            instance = block_cls()
-        except Exception as e:
-            logger.warning("Skipping block %s: init failed: %s", block_id, e)
-            continue
-        if not instance.disabled:
-            enabled[block_id] = instance
-    return enabled
 
 
 @dataclass

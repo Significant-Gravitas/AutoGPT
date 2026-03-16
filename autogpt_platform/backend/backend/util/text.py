@@ -1,5 +1,4 @@
 import logging
-import re
 
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
@@ -155,19 +154,3 @@ class TextFormatter:
         )
 
         return rendered_subject_template, rendered_base_template
-
-
-def split_camelcase(text: str) -> str:
-    """Split CamelCase into separate words.
-
-    Examples::
-
-        >>> split_camelcase("AITextGeneratorBlock")
-        'AI Text Generator Block'
-        >>> split_camelcase("HTTPRequestBlock")
-        'HTTP Request Block'
-    """
-    text = text[:500]  # Bound input length to prevent regex DoS
-    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", r" ", text)
-    text = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", r" ", text)
-    return text

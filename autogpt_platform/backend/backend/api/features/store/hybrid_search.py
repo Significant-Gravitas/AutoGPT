@@ -21,7 +21,6 @@ from backend.api.features.store.embeddings import (
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
-from backend.util.text import split_camelcase
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 — lowercase and split on word boundaries.
-
-    CamelCase is split first so "AITextGeneratorBlock" becomes
-    ``["ai", "text", "generator", "block"]``.
-    """
+    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
     if not text:
         return []
-    return re.findall(r"\b\w+\b", split_camelcase(text).lower())
+    # Lowercase and split on non-alphanumeric characters
+    tokens = re.findall(r"\b\w+\b", text.lower())
+    return tokens
 
 
 def bm25_rerank(

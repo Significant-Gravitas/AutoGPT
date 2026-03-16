@@ -14,49 +14,8 @@ from backend.api.features.store.hybrid_search import (
     HybridSearchWeights,
     UnifiedSearchWeights,
     hybrid_search,
-    tokenize,
     unified_hybrid_search,
 )
-from backend.util.text import split_camelcase
-
-# ---------------------------------------------------------------------------
-# split_camelcase
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "input_text, expected",
-    [
-        ("AITextGeneratorBlock", "AI Text Generator Block"),
-        ("HTTPRequestBlock", "HTTP Request Block"),
-        ("simpleWord", "simple Word"),
-        ("already spaced", "already spaced"),
-        ("XMLParser", "XML Parser"),
-        ("getHTTPResponse", "get HTTP Response"),
-        ("Block", "Block"),
-        ("", ""),
-    ],
-)
-def test_split_camelcase(input_text: str, expected: str):
-    assert split_camelcase(input_text) == expected
-
-
-# ---------------------------------------------------------------------------
-# tokenize (BM25)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "input_text, expected",
-    [
-        ("AITextGeneratorBlock", ["ai", "text", "generator", "block"]),
-        ("hello world", ["hello", "world"]),
-        ("", []),
-        ("HTTPRequest", ["http", "request"]),
-    ],
-)
-def test_tokenize(input_text: str, expected: list[str]):
-    assert tokenize(input_text) == expected
 
 
 @pytest.mark.asyncio(loop_scope="session")
