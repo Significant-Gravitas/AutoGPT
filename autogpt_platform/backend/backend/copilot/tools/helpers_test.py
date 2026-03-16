@@ -46,17 +46,16 @@ def _patch_credit_db(
     get_credits_return: int = 100,
     spend_credits_side_effect: Any = None,
 ):
-    """Patch get_user_credit_model to return a mock credit model."""
+    """Patch credit_db accessor to return a mock credit adapter."""
     mock_credit = MagicMock()
-    mock_credit.get_credits = AsyncMock(return_value=get_credits_return)
+    mock_credit.get_credit_balance = AsyncMock(return_value=get_credits_return)
     if spend_credits_side_effect is not None:
         mock_credit.spend_credits = AsyncMock(side_effect=spend_credits_side_effect)
     else:
         mock_credit.spend_credits = AsyncMock()
     return (
         patch(
-            "backend.copilot.tools.helpers.get_user_credit_model",
-            new_callable=AsyncMock,
+            "backend.copilot.tools.helpers.credit_db",
             return_value=mock_credit,
         ),
         mock_credit,
@@ -152,7 +151,7 @@ class TestExecuteBlockCreditCharging:
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
         # Credit functions should not be called at all for zero-cost blocks
-        mock_credit.get_credits.assert_not_awaited()
+        mock_credit.get_credit_balance.assert_not_awaited()
         mock_credit.spend_credits.assert_not_awaited()
 
     async def test_returns_output_on_post_exec_insufficient_balance(self):

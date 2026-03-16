@@ -8,8 +8,8 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.data.db_accessors import workspace_db
+from backend.data.credit import UsageTransactionMetadata
+from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.utils import block_usage_cost
@@ -117,18 +117,12 @@ async def execute_block(
         # Coerce non-matching data types to the expected input schema.
         coerce_inputs_to_schema(input_data, block.input_schema)
 
-        # Pre-execution credit check
-        # TODO: Replace this check-then-act pattern with an atomic
-        #  reserve-and-charge mechanism to eliminate the TOCTOU race
-        #  between the balance check and the post-execution charge.
+        # Pre-execution credit check (courtesy; spend_credits is atomic)
         cost, cost_filter = block_usage_cost(block, input_data)
         has_cost = cost > 0
-        # Resolve the credit model once and reuse for both the balance
-        # check and the post-execution charge to avoid redundant
-        # LaunchDarkly flag evaluations.
-        credit_model = await get_user_credit_model(user_id)
+        _credit_db = credit_db()
         if has_cost:
-            balance = await credit_model.get_credits(user_id)
+            balance = await _credit_db.get_credit_balance(user_id)
             if balance < cost:
                 return ErrorResponse(
                     message=(
@@ -149,7 +143,7 @@ async def execute_block(
         # Charge credits for block execution
         if has_cost:
             try:
-                await credit_model.spend_credits(
+                await _credit_db.spend_credits(
                     user_id=user_id,
                     cost=cost,
                     metadata=UsageTransactionMetadata(

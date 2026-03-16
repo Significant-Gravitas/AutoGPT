@@ -148,6 +148,11 @@ async def _get_credits(user_id: str) -> int:
     return await user_credit_model.get_credits(user_id)
 
 
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_credit_balance = _get_credits
+spend_credits = _spend_credits
+
+
 class DatabaseManager(AppService):
     """Database connection pooling service.
 
