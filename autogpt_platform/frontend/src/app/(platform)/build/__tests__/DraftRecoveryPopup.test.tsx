@@ -32,15 +32,21 @@ vi.mock("framer-motion", () => ({
       props: Record<string, unknown>,
       ref: React.Ref<HTMLDivElement>,
     ) {
-      const { children, initial, animate, exit, transition, ...rest } =
-        props as {
-          children?: React.ReactNode;
-          initial?: unknown;
-          animate?: unknown;
-          exit?: unknown;
-          transition?: unknown;
-          [key: string]: unknown;
-        };
+      const {
+        children,
+        initial: _initial,
+        animate: _animate,
+        exit: _exit,
+        transition: _transition,
+        ...rest
+      } = props as {
+        children?: React.ReactNode;
+        initial?: unknown;
+        animate?: unknown;
+        exit?: unknown;
+        transition?: unknown;
+        [key: string]: unknown;
+      };
       return (
         <div ref={ref} {...rest}>
           {children}
