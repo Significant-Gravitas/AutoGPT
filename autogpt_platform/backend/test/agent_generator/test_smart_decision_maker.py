@@ -136,7 +136,7 @@ class TestFixSmartDecisionMakerBlocks:
         result = fixer.fix_smart_decision_maker_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
-        assert defaults["agent_mode_max_iterations"] == -1
+        assert defaults["agent_mode_max_iterations"] == 10
         assert defaults["conversation_compaction"] is True
         assert defaults["retry"] == 3
         assert defaults["multiple_tool_calls"] is False
@@ -220,7 +220,7 @@ class TestFixSmartDecisionMakerBlocks:
         result = fixer.fix_smart_decision_maker_blocks(agent)
 
         assert "input_default" in result["nodes"][0]
-        assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == -1
+        assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
 
     def test_handles_none_input_default(self):
         """Node with input_default set to None gets a dict created."""
@@ -236,7 +236,7 @@ class TestFixSmartDecisionMakerBlocks:
         result = fixer.fix_smart_decision_maker_blocks(agent)
 
         assert isinstance(result["nodes"][0]["input_default"], dict)
-        assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == -1
+        assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
 
     def test_treats_none_values_as_missing(self):
         """Explicit None values are overwritten with defaults."""
@@ -258,7 +258,7 @@ class TestFixSmartDecisionMakerBlocks:
         result = fixer.fix_smart_decision_maker_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
-        assert defaults["agent_mode_max_iterations"] == -1  # None → default
+        assert defaults["agent_mode_max_iterations"] == 10  # None → default
         assert defaults["conversation_compaction"] is True  # None → default
         assert defaults["retry"] == 3  # kept
         assert defaults["multiple_tool_calls"] is False  # kept
@@ -280,7 +280,7 @@ class TestFixSmartDecisionMakerBlocks:
         # First node: 3 defaults filled (agent_mode was already set)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 3
         # Second node: all 4 defaults filled
-        assert result["nodes"][1]["input_default"]["agent_mode_max_iterations"] == -1
+        assert result["nodes"][1]["input_default"]["agent_mode_max_iterations"] == 10
         assert len(fixer.fixes_applied) == 7  # 3 + 4
 
     def test_registered_in_apply_all_fixes(self):
@@ -294,7 +294,7 @@ class TestFixSmartDecisionMakerBlocks:
         result = fixer.apply_all_fixes(agent)
 
         defaults = result["nodes"][0]["input_default"]
-        assert defaults["agent_mode_max_iterations"] == -1
+        assert defaults["agent_mode_max_iterations"] == 10
         assert any("SmartDecisionMakerBlock" in fix for fix in fixer.fixes_applied)
 
 
@@ -528,7 +528,7 @@ class TestSmartDecisionMakerE2EPipeline:
             n for n in fixed["nodes"] if n["block_id"] == SMART_DECISION_MAKER_BLOCK_ID
         ]
         assert len(sdm_nodes) == 1
-        assert sdm_nodes[0]["input_default"]["agent_mode_max_iterations"] == -1
+        assert sdm_nodes[0]["input_default"]["agent_mode_max_iterations"] == 10
         assert sdm_nodes[0]["input_default"]["conversation_compaction"] is True
 
         # Validate (standalone SDM check)
@@ -557,7 +557,7 @@ class TestSmartDecisionMakerE2EPipeline:
         # Fix fills defaults fine
         fixer = AgentFixer()
         fixed = fixer.apply_all_fixes(agent)
-        assert fixed["nodes"][1]["input_default"]["agent_mode_max_iterations"] == -1
+        assert fixed["nodes"][1]["input_default"]["agent_mode_max_iterations"] == 10
 
         # Validate catches missing tools
         validator = AgentValidator()

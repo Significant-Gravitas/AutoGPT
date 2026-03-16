@@ -33,7 +33,7 @@ _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 
 # Defaults applied to SmartDecisionMakerBlock nodes by the fixer.
 _SDM_DEFAULTS: dict[str, object] = {
-    "agent_mode_max_iterations": -1,
+    "agent_mode_max_iterations": 10,
     "conversation_compaction": True,
     "retry": 3,
     "multiple_tool_calls": False,
