@@ -220,14 +220,14 @@ def get_default_model_slug() -> str | None:
     """Get the default model slug (first recommended, or first enabled)."""
     # Sort once and use next() to short-circuit on first match
     models = sorted(_dynamic_models.values(), key=lambda m: m.display_name)
-    
+
     # Prefer recommended models
     recommended = next(
         (m.slug for m in models if m.is_recommended and m.is_enabled), None
     )
     if recommended:
         return recommended
-    
+
     # Fallback to first enabled model
     return next((m.slug for m in models if m.is_enabled), None)
 
