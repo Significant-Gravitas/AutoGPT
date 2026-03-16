@@ -149,7 +149,7 @@ class AgentMailGetInboxThreadBlock(Block):
             m.__dict__ if hasattr(m, "__dict__") else m
             for m in getattr(thread, "messages", [])
         ]
-        result = thread.__dict__ if hasattr(thread, "__dict__") else {}
+        result = dict(thread.__dict__) if hasattr(thread, "__dict__") else {}
         if "messages" in result:
             result["messages"] = messages
 
@@ -317,7 +317,7 @@ class AgentMailGetOrgThreadBlock(Block):
             m.__dict__ if hasattr(m, "__dict__") else m
             for m in getattr(thread, "messages", [])
         ]
-        result = thread.__dict__ if hasattr(thread, "__dict__") else {}
+        result = dict(thread.__dict__) if hasattr(thread, "__dict__") else {}
         if "messages" in result:
             result["messages"] = messages
 
