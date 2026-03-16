@@ -62,13 +62,10 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
-    BlockExecutionError,
-    BlockInputError,
-    BlockOutputError,
+    GraphNotFoundError,
     InsufficientBalanceError,
-    InvalidInputError,
     ModerationError,
-    NotAuthorizedError,
+    NotFoundError,
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
@@ -384,20 +381,13 @@ async def execute_node(
             yield output_name, output_data
     except Exception as ex:
         # Only capture unexpected errors to Sentry, not user-caused ones.
-        # Use explicit exception types instead of broad isinstance(ValueError)
-        # to avoid accidentally suppressing platform errors like NotFoundError.
-        if not isinstance(
-            ex,
-            (
-                BlockInputError,
-                BlockOutputError,
-                BlockExecutionError,
-                InsufficientBalanceError,
-                ModerationError,
-                InvalidInputError,
-                NotAuthorizedError,
-            ),
-        ):
+        # Most ValueError subclasses here are expected (BlockExecutionError,
+        # InsufficientBalanceError, plain ValueError for auth/disabled blocks, etc.)
+        # but NotFoundError/GraphNotFoundError could indicate real platform issues.
+        is_expected = isinstance(ex, ValueError) and not isinstance(
+            ex, (NotFoundError, GraphNotFoundError)
+        )
+        if not is_expected:
             sentry_sdk.capture_exception(error=ex, scope=scope)
             sentry_sdk.flush()
         # Re-raise to maintain normal error flow
