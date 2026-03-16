@@ -1,0 +1,16 @@
+{
+  "name": "Book a Meeting",
+  "short_name": "Scheduler",
+  "description": "Schedule a meeting directly to Google Calendar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5e9",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "scheduling-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js",
+    "bot": "node bot.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "express": "^4.18.2",
+    "lucide-react": "^0.344.0",
+    "node-fetch": "^3.3.2",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "date-fns": "^3.3.1",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.1.4"
+  }
+}
