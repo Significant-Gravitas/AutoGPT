@@ -186,6 +186,7 @@ export function SidebarRunsList({
                     selected={selectedRunId === s.id}
                     onClick={() => onSelectRun(s.id, "scheduled")}
                     onDeleted={() => onScheduleDeleted?.(s.id)}
+                    onRunCreated={(runID) => onSelectRun(runID, "runs")}
                   />
                 </div>
               ))
