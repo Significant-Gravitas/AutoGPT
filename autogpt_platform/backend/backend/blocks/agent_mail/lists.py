@@ -165,7 +165,7 @@ class AgentMailCreateListEntryBlock(Block):
     ) -> BlockOutput:
         client = _client(credentials)
         params: dict = {"entry": input_data.entry}
-        if input_data.reason:
+        if input_data.reason and input_data.list_type == ListType.BLOCK:
             params["reason"] = input_data.reason
 
         result = client.lists.create(
