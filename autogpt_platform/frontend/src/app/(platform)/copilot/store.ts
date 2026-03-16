@@ -6,6 +6,24 @@ export interface DeleteTarget {
   title: string | null | undefined;
 }
 
+function loadCompletedSessions(): Set<string> {
+  const raw = storage.get(Key.COPILOT_COMPLETED_SESSIONS);
+  if (!raw) return new Set();
+  try {
+    return new Set(JSON.parse(raw));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistCompletedSessions(ids: Set<string>) {
+  if (ids.size === 0) {
+    storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
+  } else {
+    storage.set(Key.COPILOT_COMPLETED_SESSIONS, JSON.stringify([...ids]));
+  }
+}
+
 interface CopilotUIState {
   sessionToDelete: DeleteTarget | null;
   setSessionToDelete: (target: DeleteTarget | null) => void;
@@ -37,21 +55,25 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   isDrawerOpen: false,
   setDrawerOpen: (open) => set({ isDrawerOpen: open }),
 
-  completedSessionIDs: new Set<string>(),
+  completedSessionIDs: loadCompletedSessions(),
   addCompletedSession: (id) =>
     set((state) => {
       const next = new Set(state.completedSessionIDs);
       next.add(id);
+      persistCompletedSessions(next);
       return { completedSessionIDs: next };
     }),
   clearCompletedSession: (id) =>
     set((state) => {
       const next = new Set(state.completedSessionIDs);
       next.delete(id);
+      persistCompletedSessions(next);
       return { completedSessionIDs: next };
     }),
-  clearAllCompletedSessions: () =>
-    set({ completedSessionIDs: new Set<string>() }),
+  clearAllCompletedSessions: () => {
+    persistCompletedSessions(new Set());
+    set({ completedSessionIDs: new Set<string>() });
+  },
 
   isNotificationsEnabled:
     storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
@@ -78,6 +100,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+    storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,

@@ -124,7 +124,7 @@ export function ChatSidebar() {
     clearCompletedSession(sessionId);
     const remaining = completedSessionIDs.size - 1;
     document.title =
-      remaining > 0 ? `(${remaining}) Otto is ready - AutoGPT` : "AutoGPT";
+      remaining > 0 ? `(${remaining}) AutoPilot is ready - AutoGPT` : "AutoGPT";
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   const sessions =

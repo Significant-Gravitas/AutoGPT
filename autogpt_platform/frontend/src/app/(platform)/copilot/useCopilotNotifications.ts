@@ -1,10 +1,51 @@
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
+import { Key } from "@/services/storage/local-storage";
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "./store";
 
 const ORIGINAL_TITLE = "AutoGPT";
 const NOTIFICATION_SOUND_PATH = "/sounds/notification.mp3";
+
+/**
+ * Show a browser notification, using ServiceWorkerRegistration.showNotification()
+ * when available (required in PWA / service-worker contexts) and falling back to
+ * the Notification constructor for normal browser tabs.
+ */
+function showBrowserNotification(
+  title: string,
+  opts: { body: string; icon: string; sessionID: string },
+) {
+  const notificationOpts = { body: opts.body, icon: opts.icon };
+
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready
+      .then((reg) => reg.showNotification(title, notificationOpts))
+      .catch(() => {
+        // Registration not available — fall back to constructor
+        createFallbackNotification(title, notificationOpts, opts.sessionID);
+      });
+    return;
+  }
+
+  createFallbackNotification(title, notificationOpts, opts.sessionID);
+}
+
+function createFallbackNotification(
+  title: string,
+  opts: NotificationOptions,
+  sessionID: string,
+) {
+  const n = new Notification(title, opts);
+  n.onclick = () => {
+    window.focus();
+    const url = new URL(window.location.href);
+    url.searchParams.set("sessionId", sessionID);
+    window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    n.close();
+  };
+}
 
 /**
  * Listens for copilot completion notifications via WebSocket.
@@ -17,12 +58,17 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   activeSessionRef.current = activeSessionID;
   const windowFocusedRef = useRef(true);
 
-  // Pre-load audio element
+  // Pre-load audio element and sync document title with persisted state
   useEffect(() => {
     if (typeof window === "undefined") return;
     const audio = new Audio(NOTIFICATION_SOUND_PATH);
     audio.volume = 0.5;
     audioRef.current = audio;
+
+    const count = useCopilotUIStore.getState().completedSessionIDs.size;
+    if (count > 0) {
+      document.title = `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`;
+    }
   }, []);
 
   // Listen for WebSocket notifications
@@ -49,7 +95,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Always update UI state (checkmark + title) regardless of notification setting
       state.addCompletedSession(sessionID);
       const count = useCopilotUIStore.getState().completedSessionIDs.size;
-      document.title = `(${count}) Otto is ready - ${ORIGINAL_TITLE}`;
+      document.title = `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`;
 
       // Sound and browser notifications are gated by the user setting
       if (!state.isNotificationsEnabled) return;
@@ -65,18 +111,11 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         Notification.permission === "granted" &&
         isUserAway
       ) {
-        const n = new Notification("Otto is ready", {
+        showBrowserNotification("AutoPilot is ready", {
           body: "A response is waiting for you.",
           icon: "/favicon.ico",
+          sessionID,
         });
-        n.onclick = () => {
-          window.focus();
-          const url = new URL(window.location.href);
-          url.searchParams.set("sessionId", sessionID);
-          window.history.pushState({}, "", url.toString());
-          window.dispatchEvent(new PopStateEvent("popstate"));
-          n.close();
-        };
       }
     }
 
@@ -114,5 +153,28 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
+  }, []);
+
+  // Sync completedSessionIDs across tabs via localStorage storage events
+  useEffect(() => {
+    function handleStorage(e: StorageEvent) {
+      if (e.key !== Key.COPILOT_COMPLETED_SESSIONS) return;
+      let next: Set<string>;
+      try {
+        next = e.newValue
+          ? new Set<string>(JSON.parse(e.newValue))
+          : new Set<string>();
+      } catch {
+        next = new Set<string>();
+      }
+      useCopilotUIStore.setState({ completedSessionIDs: next });
+      const count = next.size;
+      document.title =
+        count > 0
+          ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
+          : ORIGINAL_TITLE;
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 }
