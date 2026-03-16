@@ -7,6 +7,7 @@ AgentMail API. You can create thousands of inboxes on demand.
 """
 
 from agentmail import AgentMail
+from agentmail.inboxes.types import CreateInboxRequest
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -42,14 +43,17 @@ class AgentMailCreateInboxBlock(Block):
         username: str = SchemaField(
             description="Local part of the email address (e.g. 'support' for support@domain.com). Leave empty to auto-generate.",
             default="",
+            advanced=False,
         )
         domain: str = SchemaField(
             description="Email domain (e.g. 'mydomain.com'). Defaults to agentmail.to if empty.",
             default="",
+            advanced=False,
         )
         display_name: str = SchemaField(
             description="Friendly name shown in the 'From' field of sent emails (e.g. 'Support Agent')",
             default="",
+            advanced=False,
         )
 
     class Output(BlockSchemaOutput):
@@ -85,7 +89,7 @@ class AgentMailCreateInboxBlock(Block):
         if input_data.display_name:
             params["display_name"] = input_data.display_name
 
-        inbox = client.inboxes.create(**params)
+        inbox = client.inboxes.create(request=CreateInboxRequest(**params))
         result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
 
         yield "inbox_id", inbox.inbox_id
@@ -111,9 +115,7 @@ class AgentMailGetInboxBlock(Block):
 
     class Output(BlockSchemaOutput):
         inbox_id: str = SchemaField(description="Unique identifier of the inbox")
-        email_address: str = SchemaField(
-            description="Full email address of the inbox"
-        )
+        email_address: str = SchemaField(description="Full email address of the inbox")
         display_name: str = SchemaField(
             description="Friendly name shown in the 'From' field", default=""
         )

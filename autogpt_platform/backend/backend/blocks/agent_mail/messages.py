@@ -45,9 +45,7 @@ class AgentMailSendMessageBlock(Block):
         to: str = SchemaField(
             description="Recipient email address (e.g. 'user@example.com')"
         )
-        subject: str = SchemaField(
-            description="Email subject line"
-        )
+        subject: str = SchemaField(description="Email subject line")
         text: str = SchemaField(
             description="Plain text body of the email. Always provide this as a fallback for email clients that don't render HTML."
         )
@@ -214,9 +212,7 @@ class AgentMailGetMessageBlock(Block):
 
     class Output(BlockSchemaOutput):
         message_id: str = SchemaField(description="Unique identifier of the message")
-        thread_id: str = SchemaField(
-            description="Thread this message belongs to"
-        )
+        thread_id: str = SchemaField(description="Thread this message belongs to")
         subject: str = SchemaField(description="Email subject line")
         text: str = SchemaField(
             description="Full plain text body (may include quoted reply history)"
@@ -225,9 +221,7 @@ class AgentMailGetMessageBlock(Block):
             description="Just the new reply content with quoted history stripped. Best for AI processing.",
             default="",
         )
-        html: str = SchemaField(
-            description="HTML body of the email", default=""
-        )
+        html: str = SchemaField(description="HTML body of the email", default="")
         result: dict = SchemaField(
             description="Complete message object with all fields including sender, recipients, attachments, labels"
         )
@@ -279,9 +273,7 @@ class AgentMailReplyToMessageBlock(Block):
         message_id: str = SchemaField(
             description="Message ID to reply to (e.g. '<abc123@agentmail.to>')"
         )
-        text: str = SchemaField(
-            description="Plain text body of the reply"
-        )
+        text: str = SchemaField(description="Plain text body of the reply")
         html: str = SchemaField(
             description="Rich HTML body of the reply",
             default="",
@@ -292,9 +284,7 @@ class AgentMailReplyToMessageBlock(Block):
         message_id: str = SchemaField(
             description="Unique identifier of the reply message"
         )
-        thread_id: str = SchemaField(
-            description="Thread ID the reply was added to"
-        )
+        thread_id: str = SchemaField(description="Thread ID the reply was added to")
         result: dict = SchemaField(
             description="Complete reply message object with all metadata"
         )
@@ -344,12 +334,8 @@ class AgentMailForwardMessageBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address to forward from"
         )
-        message_id: str = SchemaField(
-            description="Message ID to forward"
-        )
-        to: str = SchemaField(
-            description="Email address to forward the message to"
-        )
+        message_id: str = SchemaField(description="Message ID to forward")
+        to: str = SchemaField(description="Email address to forward the message to")
         subject: str = SchemaField(
             description="Override the subject line (defaults to 'Fwd: <original subject>')",
             default="",
@@ -425,9 +411,7 @@ class AgentMailUpdateMessageBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address the message belongs to"
         )
-        message_id: str = SchemaField(
-            description="Message ID to update labels on"
-        )
+        message_id: str = SchemaField(description="Message ID to update labels on")
         add_labels: list[str] = SchemaField(
             description="Labels to add (e.g. ['read', 'processed', 'high-priority'])",
             default_factory=list,

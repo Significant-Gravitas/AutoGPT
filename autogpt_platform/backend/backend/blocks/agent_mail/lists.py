@@ -143,7 +143,9 @@ class AgentMailCreateListEntryBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        entry: str = SchemaField(description="The email address or domain that was added")
+        entry: str = SchemaField(
+            description="The email address or domain that was added"
+        )
         result: dict = SchemaField(description="Complete entry object")
         error: str = SchemaField(description="Error message if the operation failed")
 
@@ -191,12 +193,12 @@ class AgentMailGetListEntryBlock(Block):
         list_type: ListType = SchemaField(
             description="'allow' for whitelist, 'block' for blacklist"
         )
-        entry: str = SchemaField(
-            description="Email address or domain to look up"
-        )
+        entry: str = SchemaField(description="Email address or domain to look up")
 
     class Output(BlockSchemaOutput):
-        entry: str = SchemaField(description="The email address or domain that was found")
+        entry: str = SchemaField(
+            description="The email address or domain that was found"
+        )
         result: dict = SchemaField(description="Complete entry object with metadata")
         error: str = SchemaField(description="Error message if the operation failed")
 

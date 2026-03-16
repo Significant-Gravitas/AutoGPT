@@ -87,9 +87,7 @@ class AgentMailListInboxThreadsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.inboxes.threads.list(
-            inbox_id=input_data.inbox_id, **params
-        )
+        response = client.inboxes.threads.list(inbox_id=input_data.inbox_id, **params)
         threads = [
             t.__dict__ if hasattr(t, "__dict__") else t
             for t in getattr(response, "threads", [])
@@ -116,9 +114,7 @@ class AgentMailGetInboxThreadBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address the thread belongs to"
         )
-        thread_id: str = SchemaField(
-            description="Thread ID to retrieve"
-        )
+        thread_id: str = SchemaField(description="Thread ID to retrieve")
 
     class Output(BlockSchemaOutput):
         thread_id: str = SchemaField(description="Unique identifier of the thread")
@@ -173,9 +169,7 @@ class AgentMailDeleteInboxThreadBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address the thread belongs to"
         )
-        thread_id: str = SchemaField(
-            description="Thread ID to permanently delete"
-        )
+        thread_id: str = SchemaField(description="Thread ID to permanently delete")
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(

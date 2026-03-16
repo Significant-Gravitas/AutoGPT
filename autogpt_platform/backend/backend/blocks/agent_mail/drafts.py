@@ -46,20 +46,20 @@ class AgentMailCreateDraftBlock(Block):
         to: list[str] = SchemaField(
             description="Recipient email addresses (e.g. ['user@example.com'])"
         )
-        subject: str = SchemaField(
-            description="Email subject line", default=""
-        )
-        text: str = SchemaField(
-            description="Plain text body of the draft", default=""
-        )
+        subject: str = SchemaField(description="Email subject line", default="")
+        text: str = SchemaField(description="Plain text body of the draft", default="")
         html: str = SchemaField(
             description="Rich HTML body of the draft", default="", advanced=True
         )
         cc: list[str] = SchemaField(
-            description="CC recipient email addresses", default_factory=list, advanced=True
+            description="CC recipient email addresses",
+            default_factory=list,
+            advanced=True,
         )
         bcc: list[str] = SchemaField(
-            description="BCC recipient email addresses", default_factory=list, advanced=True
+            description="BCC recipient email addresses",
+            default_factory=list,
+            advanced=True,
         )
         in_reply_to: str = SchemaField(
             description="Message ID this draft replies to, for threading follow-up drafts",
@@ -73,7 +73,9 @@ class AgentMailCreateDraftBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        draft_id: str = SchemaField(description="Unique identifier of the created draft")
+        draft_id: str = SchemaField(
+            description="Unique identifier of the created draft"
+        )
         send_status: str = SchemaField(
             description="'scheduled' if send_at was set, empty otherwise. Values: scheduled, sending, failed.",
             default="",
@@ -147,9 +149,7 @@ class AgentMailGetDraftBlock(Block):
         send_at: str = SchemaField(
             description="Scheduled send time (ISO 8601) if set", default=""
         )
-        result: dict = SchemaField(
-            description="Complete draft object with all fields"
-        )
+        result: dict = SchemaField(description="Complete draft object with all fields")
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
@@ -271,12 +271,8 @@ class AgentMailUpdateDraftBlock(Block):
             description="Updated recipient email addresses (replaces existing list)",
             default_factory=list,
         )
-        subject: str = SchemaField(
-            description="Updated subject line", default=""
-        )
-        text: str = SchemaField(
-            description="Updated plain text body", default=""
-        )
+        subject: str = SchemaField(description="Updated subject line", default="")
+        text: str = SchemaField(description="Updated plain text body", default="")
         html: str = SchemaField(
             description="Updated HTML body", default="", advanced=True
         )
@@ -288,12 +284,8 @@ class AgentMailUpdateDraftBlock(Block):
 
     class Output(BlockSchemaOutput):
         draft_id: str = SchemaField(description="The updated draft ID")
-        send_status: str = SchemaField(
-            description="Updated send status", default=""
-        )
-        result: dict = SchemaField(
-            description="Complete updated draft object"
-        )
+        send_status: str = SchemaField(description="Updated send status", default="")
+        result: dict = SchemaField(description="Complete updated draft object")
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
@@ -358,9 +350,7 @@ class AgentMailSendDraftBlock(Block):
         thread_id: str = SchemaField(
             description="Thread ID the sent message belongs to"
         )
-        result: dict = SchemaField(
-            description="Complete sent message object"
-        )
+        result: dict = SchemaField(description="Complete sent message object")
         error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
@@ -402,7 +392,9 @@ class AgentMailDeleteDraftBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address the draft belongs to"
         )
-        draft_id: str = SchemaField(description="Draft ID to delete (also cancels scheduled sends)")
+        draft_id: str = SchemaField(
+            description="Draft ID to delete (also cancels scheduled sends)"
+        )
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(

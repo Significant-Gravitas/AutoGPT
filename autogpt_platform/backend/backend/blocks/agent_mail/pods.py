@@ -226,9 +226,7 @@ class AgentMailListPodInboxesBlock(Block):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
             description="AgentMail API key from https://console.agentmail.to"
         )
-        pod_id: str = SchemaField(
-            description="Pod ID to list inboxes from"
-        )
+        pod_id: str = SchemaField(description="Pod ID to list inboxes from")
         limit: int = SchemaField(
             description="Maximum number of inboxes to return per page (1-100)",
             default=20,
@@ -292,9 +290,7 @@ class AgentMailListPodThreadsBlock(Block):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
             description="AgentMail API key from https://console.agentmail.to"
         )
-        pod_id: str = SchemaField(
-            description="Pod ID to list threads from"
-        )
+        pod_id: str = SchemaField(description="Pod ID to list threads from")
         limit: int = SchemaField(
             description="Maximum number of threads to return per page (1-100)",
             default=20,
@@ -364,9 +360,7 @@ class AgentMailListPodDraftsBlock(Block):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
             description="AgentMail API key from https://console.agentmail.to"
         )
-        pod_id: str = SchemaField(
-            description="Pod ID to list drafts from"
-        )
+        pod_id: str = SchemaField(description="Pod ID to list drafts from")
         limit: int = SchemaField(
             description="Maximum number of drafts to return per page (1-100)",
             default=20,
@@ -430,9 +424,7 @@ class AgentMailCreatePodInboxBlock(Block):
         credentials: CredentialsMetaInput = agent_mail.credentials_field(
             description="AgentMail API key from https://console.agentmail.to"
         )
-        pod_id: str = SchemaField(
-            description="Pod ID to create the inbox in"
-        )
+        pod_id: str = SchemaField(description="Pod ID to create the inbox in")
         username: str = SchemaField(
             description="Local part of the email address (e.g. 'support'). Leave empty to auto-generate.",
             default="",
@@ -450,9 +442,7 @@ class AgentMailCreatePodInboxBlock(Block):
         inbox_id: str = SchemaField(
             description="Unique identifier of the created inbox"
         )
-        email_address: str = SchemaField(
-            description="Full email address of the inbox"
-        )
+        email_address: str = SchemaField(description="Full email address of the inbox")
         result: dict = SchemaField(
             description="Complete inbox object with all metadata"
         )

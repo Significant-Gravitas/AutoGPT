@@ -81,7 +81,9 @@ class AgentMailGetMessageAttachmentBlock(Block):
             message_id=input_data.message_id,
             attachment_id=input_data.attachment_id,
         )
-        encoded = base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
+        encoded = (
+            base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
+        )
 
         yield "content_base64", encoded
         yield "attachment_id", input_data.attachment_id
@@ -103,9 +105,7 @@ class AgentMailGetThreadAttachmentBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address the thread belongs to"
         )
-        thread_id: str = SchemaField(
-            description="Thread ID containing the attachment"
-        )
+        thread_id: str = SchemaField(description="Thread ID containing the attachment")
         attachment_id: str = SchemaField(
             description="Attachment ID to download (from a message's attachments array within the thread)"
         )
@@ -137,7 +137,9 @@ class AgentMailGetThreadAttachmentBlock(Block):
             thread_id=input_data.thread_id,
             attachment_id=input_data.attachment_id,
         )
-        encoded = base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
+        encoded = (
+            base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
+        )
 
         yield "content_base64", encoded
         yield "attachment_id", input_data.attachment_id
