@@ -25,6 +25,7 @@ from .config import ChatConfig
 from .model import (
     ChatSessionInfo,
     _get_session_lock,
+    _upsert_chat_session_unlocked,
     get_chat_session,
     upsert_chat_session,
 )
@@ -219,5 +220,5 @@ async def assign_user_to_session(
                 f"Not authorized to claim session {session_id}"
             )
         session.user_id = user_id
-        session = await upsert_chat_session(session)
+        session = await _upsert_chat_session_unlocked(session)
     return session
