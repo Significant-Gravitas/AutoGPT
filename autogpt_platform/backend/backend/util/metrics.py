@@ -21,6 +21,73 @@ class DiscordChannel(str, Enum):
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
 
 
+def _before_send(event, hint):
+    """Filter out expected/transient errors from Sentry to reduce noise."""
+    if "exc_info" in hint:
+        exc_type, exc_value, _ = hint["exc_info"]
+        exc_msg = str(exc_value).lower() if exc_value else ""
+
+        # AMQP/RabbitMQ transient connection errors — expected during deploys
+        amqp_keywords = [
+            "amqpconnection",
+            "amqpconnector",
+            "connection refused",
+            "connection_forced",
+            "channelinvalidstateerror",
+            "no active transport",
+        ]
+        if any(kw in exc_msg for kw in amqp_keywords):
+            return None
+
+        # User-caused credential/auth errors — not platform bugs
+        user_auth_keywords = [
+            "incorrect api key",
+            "invalid x-api-key",
+            "missing authentication header",
+            "invalid api token",
+            "authentication_error",
+        ]
+        if any(kw in exc_msg for kw in user_auth_keywords):
+            return None
+
+        # Expected business logic — insufficient balance
+        if "insufficient balance" in exc_msg:
+            return None
+
+        # Expected security check — blocked IP access
+        if "access to blocked or private ip" in exc_msg:
+            return None
+
+        # Discord bot token misconfiguration — not a platform error
+        if "improper token has been passed" in exc_msg or (
+            exc_type and exc_type.__name__ == "Forbidden" and "50001" in exc_msg
+        ):
+            return None
+
+        # Google metadata DNS errors — expected in non-GCP environments
+        if "metadata.google.internal" in exc_msg:
+            return None
+
+        # Inactive email recipients — expected for bounced addresses
+        if "marked as inactive" in exc_msg and "inactive addresses" in exc_msg:
+            return None
+
+    # Also filter log-based events for known noisy messages
+    if event.get("logger") and event.get("message"):
+        msg = event["message"].lower()
+        noisy_patterns = [
+            "amqpconnection",
+            "connection refused",
+            "connection_forced",
+            "unclosed client session",
+            "unclosed connector",
+        ]
+        if any(p in msg for p in noisy_patterns):
+            return None
+
+    return event
+
+
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
@@ -35,6 +102,7 @@ def sentry_init():
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
         _experiments={"enable_logs": True},
+        before_send=_before_send,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(sentry_logs_level=logging.INFO),

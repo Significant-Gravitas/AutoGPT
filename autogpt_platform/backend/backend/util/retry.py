@@ -64,7 +64,7 @@ def send_rate_limited_discord_alert(
         return True
 
     except Exception as alert_error:
-        logger.error(f"Failed to send Discord alert: {alert_error}")
+        logger.warning(f"Failed to send Discord alert: {alert_error}")
         return False
 
 
@@ -182,7 +182,7 @@ def conn_retry(
         func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            logger.error(f"{prefix} {action_name} failed after retries: {exception}")
+            logger.warning(f"{prefix} {action_name} failed after retries: {exception}")
         else:
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 if send_rate_limited_discord_alert(
@@ -225,7 +225,7 @@ def conn_retry(
                 logger.info(f"{prefix} {action_name} completed successfully.")
                 return result
             except Exception as e:
-                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                logger.warning(f"{prefix} {action_name} failed after retries: {e}")
                 raise
 
         @wraps(func)
@@ -237,7 +237,7 @@ def conn_retry(
                 logger.info(f"{prefix} {action_name} completed successfully.")
                 return result
             except Exception as e:
-                logger.error(f"{prefix} {action_name} failed after retries: {e}")
+                logger.warning(f"{prefix} {action_name} failed after retries: {e}")
                 raise
 
         return async_wrapper if is_coroutine else sync_wrapper
