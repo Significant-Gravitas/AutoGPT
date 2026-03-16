@@ -61,7 +61,15 @@ from backend.util.decorator import (
     error_logged,
     time_measured,
 )
-from backend.util.exceptions import InsufficientBalanceError, ModerationError
+from backend.util.exceptions import (
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    InsufficientBalanceError,
+    InvalidInputError,
+    ModerationError,
+    NotAuthorizedError,
+)
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
@@ -376,9 +384,20 @@ async def execute_node(
             yield output_name, output_data
     except Exception as ex:
         # Only capture unexpected errors to Sentry, not user-caused ones.
-        # ValueError subclasses (BlockExecutionError, BlockInputError,
-        # InsufficientBalanceError, etc.) are expected user/validation errors.
-        if not isinstance(ex, ValueError):
+        # Use explicit exception types instead of broad isinstance(ValueError)
+        # to avoid accidentally suppressing platform errors like NotFoundError.
+        if not isinstance(
+            ex,
+            (
+                BlockInputError,
+                BlockOutputError,
+                BlockExecutionError,
+                InsufficientBalanceError,
+                ModerationError,
+                InvalidInputError,
+                NotAuthorizedError,
+            ),
+        ):
             sentry_sdk.capture_exception(error=ex, scope=scope)
             sentry_sdk.flush()
         # Re-raise to maintain normal error flow

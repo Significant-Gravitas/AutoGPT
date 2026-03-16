@@ -10,7 +10,7 @@ from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util import feature_flag
-from backend.util.settings import Settings
+from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
 logger = logging.getLogger(__name__)
@@ -75,7 +75,10 @@ def _before_send(event, hint):
             return None
 
         # Google metadata DNS errors — expected in non-GCP environments
-        if "metadata.google.internal" in exc_msg:
+        if (
+            "metadata.google.internal" in exc_msg
+            and settings.config.behave_as != BehaveAs.CLOUD
+        ):
             return None
 
         # Inactive email recipients — expected for bounced addresses
@@ -87,12 +90,16 @@ def _before_send(event, hint):
         msg = event["message"].lower()
         noisy_patterns = [
             "amqpconnection",
-            "connection refused",
             "connection_forced",
             "unclosed client session",
             "unclosed connector",
         ]
         if any(p in msg for p in noisy_patterns):
+            return None
+        # "connection refused" in logs only when AMQP-related context is present
+        if "connection refused" in msg and any(
+            ind in msg for ind in ("amqp", "pika", "rabbitmq", "aio_pika", "aiormq")
+        ):
             return None
 
     return event
