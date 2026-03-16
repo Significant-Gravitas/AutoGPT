@@ -8,6 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pydantic
 import pytest
 
+try:
+    import pyarrow as _pa  # noqa: F401  # pyright: ignore[reportMissingImports]
+
+    _has_pyarrow = True
+except ImportError:
+    _has_pyarrow = False
+
 from backend.copilot.sdk.file_ref import (
     _MAX_BARE_REF_BYTES,
     _MAX_EXPAND_CHARS,
@@ -1905,6 +1912,7 @@ async def test_adapt_dict_to_list_str_target_not_wrapped():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_bare_ref_binary_format_ignores_line_range():
     """Binary bare refs (parquet/xlsx) silently ignore line ranges and
@@ -1937,6 +1945,7 @@ async def test_bare_ref_binary_format_ignores_line_range():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
 @pytest.mark.asyncio
 async def test_bare_ref_parquet_nan_replaced_with_none():
     """NaN values in Parquet bare refs must become None for JSON serializability."""

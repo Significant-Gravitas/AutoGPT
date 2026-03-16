@@ -201,8 +201,25 @@ async def read_file_bytes(
             ) from exc
         try:
             data = bytes(await sandbox.files.read(remote, format="bytes"))
-        except Exception as exc:
+        except (FileNotFoundError, OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
+        except Exception as exc:
+            # E2B SDK raises SandboxException subclasses (NotFoundException,
+            # TimeoutException, NotEnoughSpaceException, etc.) which don't
+            # inherit from standard exceptions.  Import lazily to avoid a
+            # hard dependency on e2b at module level.
+            try:
+                from e2b.exceptions import SandboxException  # noqa: PLC0415
+
+                if isinstance(exc, SandboxException):
+                    raise ValueError(
+                        f"Failed to read from sandbox: {plain}: {exc}"
+                    ) from exc
+            except ImportError:
+                pass
+            # Re-raise unexpected exceptions (TypeError, AttributeError, etc.)
+            # so they surface as real bugs rather than being silently masked.
+            raise
         # NOTE: E2B sandbox API does not support pre-read size checks;
         # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
@@ -380,7 +397,12 @@ async def _infer_format_from_workspace(
 
 
 def _is_tabular(parsed: Any) -> bool:
-    """Check if parsed data is in tabular format: [[header], [row1], ...]."""
+    """Check if parsed data is in tabular format: [[header], [row1], ...].
+
+    Uses isinstance checks because this is a structural type guard on
+    opaque parser output (Any), not duck typing.  A Protocol wouldn't
+    help here — we need to verify exact list-of-lists shape.
+    """
     if not isinstance(parsed, list) or len(parsed) < 2:
         return False
     header = parsed[0]

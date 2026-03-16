@@ -308,6 +308,66 @@ async def test_bare_ref_yaml_returns_parsed_dict():
         assert result["config"] == {"name": "test", "count": 42}
 
 
+@pytest.mark.asyncio
+async def test_bare_ref_binary_with_line_range_ignores_range():
+    """Bare ref to a binary file (.parquet) with line range parses the full file.
+
+    Binary formats (parquet, xlsx) ignore line ranges — the full content is
+    parsed and the range is silently dropped with a log warning.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        pytest.skip("pandas not installed")
+    try:
+        import pyarrow  # noqa: F401  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        pytest.skip("pyarrow not installed")
+
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        parquet_file = os.path.join(sdk_cwd, "data.parquet")
+        import io as _io
+
+        df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        buf = _io.BytesIO()
+        df.to_parquet(buf, index=False)
+        with open(parquet_file, "wb") as f:
+            f.write(buf.getvalue())
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            # Line range [1-2] should be silently ignored for binary formats.
+            result = await expand_file_refs_in_args(
+                {"data": f"@@agptfile:{parquet_file}[1-2]"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        # Full file is returned despite the line range.
+        assert result["data"] == [["A", "B"], [1, 4], [2, 5], [3, 6]]
+
+
+@pytest.mark.asyncio
+async def test_bare_ref_toml_returns_parsed_dict():
+    """Bare ref to a .toml file returns parsed dict."""
+    with tempfile.TemporaryDirectory() as sdk_cwd:
+        toml_file = os.path.join(sdk_cwd, "config.toml")
+        with open(toml_file, "w") as f:
+            f.write('name = "test"\ncount = 42\n')
+
+        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var:
+            mock_cwd_var.get.return_value = sdk_cwd
+
+            result = await expand_file_refs_in_args(
+                {"config": f"@@agptfile:{toml_file}"},
+                user_id="u1",
+                session=_make_session(),
+            )
+
+        assert result["config"] == {"name": "test", "count": 42}
+
+
 # ---------------------------------------------------------------------------
 # _read_file_handler — extended to accept workspace:// and local paths
 # ---------------------------------------------------------------------------

@@ -4,8 +4,19 @@ This module provides the integration layer between the Claude Agent SDK
 and the existing CoPilot tool system, enabling drop-in replacement of
 the current LLM orchestration with the battle-tested Claude Agent SDK.
 
-Submodule imports are deferred (PEP 562) to avoid circular imports:
-tools → sdk → service → prompting → tools.
+Submodule imports are deferred via PEP 562 ``__getattr__`` to break a
+circular import cycle::
+
+    sdk/__init__ → tool_adapter → copilot.tools (TOOL_REGISTRY)
+    copilot.tools → run_block → sdk.file_ref  (no cycle here, but…)
+    sdk/__init__ → service → copilot.prompting → copilot.tools  (cycle!)
+
+``tool_adapter`` uses ``TOOL_REGISTRY`` at **module level** to build the
+static ``COPILOT_TOOL_NAMES`` list, so the import cannot be deferred to
+function scope without a larger refactor (moving tool-name registration
+to a separate lightweight module).  The lazy-import pattern here is the
+least invasive way to break the cycle while keeping module-level constants
+intact.
 """
 
 from typing import Any
