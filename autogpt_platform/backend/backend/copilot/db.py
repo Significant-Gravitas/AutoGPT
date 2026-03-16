@@ -194,6 +194,7 @@ async def update_chat_session(
 ) -> ChatSession | None:
     """Update a chat session's metadata."""
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
+    should_clear_completion_report = completion_report is None
 
     if credentials is not None:
         data["credentials"] = SafeJson(credentials)
@@ -213,10 +214,8 @@ async def update_chat_session(
         data["executionTag"] = execution_tag
     if session_config is not None:
         data["sessionConfig"] = SafeJson(session_config)
-    if completion_report is not _UNSET:
-        data["completionReport"] = (
-            SafeJson(completion_report) if completion_report is not None else None
-        )
+    if completion_report is not _UNSET and completion_report is not None:
+        data["completionReport"] = SafeJson(completion_report)
     if completion_report_repair_count is not None:
         data["completionReportRepairCount"] = completion_report_repair_count
     if completion_report_repair_queued_at is not _UNSET:
@@ -233,6 +232,17 @@ async def update_chat_session(
         data=data,
         include={"Messages": {"order_by": {"sequence": "asc"}}},
     )
+
+    if should_clear_completion_report:
+        await db.execute_raw_with_schema(
+            'UPDATE {schema_prefix}"ChatSession" SET "completionReport" = NULL WHERE "id" = $1',
+            session_id,
+        )
+        session = await PrismaChatSession.prisma().find_unique(
+            where={"id": session_id},
+            include={"Messages": {"order_by": {"sequence": "asc"}}},
+        )
+
     return ChatSession.from_db(session) if session else None
 
 
