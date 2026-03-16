@@ -106,9 +106,6 @@ CREATE INDEX "LlmModel_providerId_isEnabled_idx" ON "LlmModel"("providerId", "is
 -- CreateIndex
 CREATE INDEX "LlmModel_creatorId_idx" ON "LlmModel"("creatorId");
 
--- CreateIndex
-CREATE INDEX "LlmModelCost_credentialProvider_idx" ON "LlmModelCost"("credentialProvider");
-
 -- CreateIndex (partial unique for default costs - no specific credential)
 CREATE UNIQUE INDEX "LlmModelCost_default_cost_key" ON "LlmModelCost"("llmModelId", "credentialProvider", "unit") WHERE "credentialId" IS NULL;
 
@@ -117,9 +114,6 @@ CREATE UNIQUE INDEX "LlmModelCost_credential_cost_key" ON "LlmModelCost"("llmMod
 
 -- CreateIndex
 CREATE INDEX "LlmModelMigration_targetModelSlug_idx" ON "LlmModelMigration"("targetModelSlug");
-
--- CreateIndex
-CREATE INDEX "LlmModelMigration_isReverted_idx" ON "LlmModelMigration"("isReverted");
 
 -- CreateIndex
 CREATE INDEX "LlmModelMigration_sourceModelSlug_isReverted_idx" ON "LlmModelMigration"("sourceModelSlug", "isReverted");
@@ -135,6 +129,12 @@ ALTER TABLE "LlmModel" ADD CONSTRAINT "LlmModel_creatorId_fkey" FOREIGN KEY ("cr
 
 -- AddForeignKey
 ALTER TABLE "LlmModelCost" ADD CONSTRAINT "LlmModelCost_llmModelId_fkey" FOREIGN KEY ("llmModelId") REFERENCES "LlmModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LlmModelMigration" ADD CONSTRAINT "LlmModelMigration_sourceModelSlug_fkey" FOREIGN KEY ("sourceModelSlug") REFERENCES "LlmModel"("slug") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LlmModelMigration" ADD CONSTRAINT "LlmModelMigration_targetModelSlug_fkey" FOREIGN KEY ("targetModelSlug") REFERENCES "LlmModel"("slug") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddCheckConstraints (enforce data integrity)
 ALTER TABLE "LlmModel"
