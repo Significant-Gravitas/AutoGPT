@@ -7,7 +7,6 @@ import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { Button } from "@/components/atoms/Button/Button";
 import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Tab } from "../LibraryTabs/LibraryTabs";
@@ -136,22 +135,21 @@ export function LibraryAgentList({
       <div>
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="small"
+            <button
+              type="button"
               onClick={() => onFolderSelect(null)}
-              className="gap-1 text-zinc-500 hover:text-zinc-900"
+              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
             >
               <ArrowLeftIcon className="h-4 w-4" />
               My Library
-            </Button>
+            </button>
             {currentFolder && (
               <>
-                <Text variant="small" className="text-zinc-400">
+                <Text variant="body" className="text-zinc-400">
                   /
                 </Text>
-                <Text variant="h4" className="text-zinc-700">
-                  {currentFolder.icon} {currentFolder.name}
+                <Text variant="large" className="text-zinc-700">
+                  {currentFolder.name}
                 </Text>
               </>
             )}

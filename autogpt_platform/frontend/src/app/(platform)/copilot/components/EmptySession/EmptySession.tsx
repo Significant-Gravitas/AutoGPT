@@ -1,7 +1,9 @@
 "use client";
 
+import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { Button } from "@/components/atoms/Button/Button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { SpinnerGapIcon } from "@phosphor-icons/react";
@@ -33,15 +35,38 @@ export function EmptySession({
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
-  const quickActions = getQuickActions();
+
+  const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
+    useGetV2GetSuggestedPrompts({
+      query: { staleTime: Infinity },
+    });
+  const customPrompts =
+    suggestedPromptsResponse?.status === 200
+      ? suggestedPromptsResponse.data.prompts
+      : undefined;
+  const quickActions = getQuickActions(customPrompts);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),
   );
 
+  // Use matchMedia instead of resize event — fires only when crossing
+  // the 500px and 1081px breakpoints defined in getInputPlaceholder(),
+  // rather than dozens of times per second during a window drag.
   useEffect(() => {
-    setInputPlaceholder(getInputPlaceholder(window.innerWidth));
-  }, [window.innerWidth]);
+    function update() {
+      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+    }
+    const mq500 = window.matchMedia("(min-width: 500px)");
+    const mq1081 = window.matchMedia("(min-width: 1081px)");
+    update();
+    mq500.addEventListener("change", update);
+    mq1081.addEventListener("change", update);
+    return () => {
+      mq500.removeEventListener("change", update);
+      mq1081.removeEventListener("change", update);
+    };
+  }, []);
 
   async function handleQuickActionClick(action: string) {
     if (isCreatingSession || loadingAction) return;
@@ -91,28 +116,32 @@ export function EmptySession({
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {quickActions.map((action) => (
-            <Button
-              key={action}
-              type="button"
-              variant="outline"
-              size="small"
-              onClick={() => void handleQuickActionClick(action)}
-              disabled={isCreatingSession || loadingAction !== null}
-              aria-busy={loadingAction === action}
-              leftIcon={
-                loadingAction === action ? (
-                  <SpinnerGapIcon
-                    className="h-4 w-4 animate-spin"
-                    weight="bold"
-                  />
-                ) : null
-              }
-              className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
-            >
-              {action}
-            </Button>
-          ))}
+          {isLoadingPrompts
+            ? Array.from({ length: 3 }, (_, i) => (
+                <Skeleton key={i} className="h-10 w-64 shrink-0 rounded-full" />
+              ))
+            : quickActions.map((action) => (
+                <Button
+                  key={action}
+                  type="button"
+                  variant="outline"
+                  size="small"
+                  onClick={() => void handleQuickActionClick(action)}
+                  disabled={isCreatingSession || loadingAction !== null}
+                  aria-busy={loadingAction === action}
+                  leftIcon={
+                    loadingAction === action ? (
+                      <SpinnerGapIcon
+                        className="h-4 w-4 animate-spin"
+                        weight="bold"
+                      />
+                    ) : null
+                  }
+                  className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
+                >
+                  {action}
+                </Button>
+              ))}
         </div>
       </motion.div>
     </div>
