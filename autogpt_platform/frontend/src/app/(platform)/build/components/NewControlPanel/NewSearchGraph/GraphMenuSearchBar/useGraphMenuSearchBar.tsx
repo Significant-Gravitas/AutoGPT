@@ -62,7 +62,7 @@ function calculateNodeScore(
 
   // Prepare searchable text with defensive checks
   const nodeTitle = (node.data?.title || "").toLowerCase(); // This includes the ID
-  const nodeId = (node.id || "").toLowerCase();
+  const nodeID = (node.id || "").toLowerCase();
   const nodeDescription = (node.data?.description || "").toLowerCase();
   const blockType = (node.data?.title || "").toLowerCase();
   const beautifiedBlockType = beautifyString(blockType).toLowerCase();
@@ -82,7 +82,7 @@ function calculateNodeScore(
   if (
     customizedName.includes(query) ||
     nodeTitle.includes(query) ||
-    nodeId.includes(query) ||
+    nodeID.includes(query) ||
     blockType.includes(query) ||
     beautifiedBlockType.includes(query)
   ) {
@@ -130,7 +130,7 @@ function calculateNodeScore(
     const titleSimilarity = Math.max(
       jaro(customizedName, query),
       jaro(nodeTitle, query),
-      jaro(nodeId, query),
+      jaro(nodeID, query),
       jaro(beautifiedBlockType, query),
     );
 

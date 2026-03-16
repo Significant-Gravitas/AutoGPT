@@ -20,11 +20,12 @@ export function GraphSearchContent({
   filteredNodes,
   onNodeSelect,
 }: Props) {
-  const { selectedIndex, setSelectedIndex, handleKeyDown } = useGraphContent({
-    searchQuery,
-    filteredNodes,
-    onNodeSelect,
-  });
+  const { selectedIndex, setSelectedIndex, setItemRef, handleKeyDown } =
+    useGraphContent({
+      searchQuery,
+      filteredNodes,
+      onNodeSelect,
+    });
 
   const trimmedQuery = searchQuery?.trim();
 
@@ -74,6 +75,7 @@ export function GraphSearchContent({
                 return (
                   <div
                     key={node.id}
+                    ref={(el) => setItemRef(index, el)}
                     className={cn(
                       "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem]",
                       index === selectedIndex
