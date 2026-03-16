@@ -73,6 +73,7 @@ import { BuildActionBar } from "../BuildActionBar";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { useFlowRealtime } from "@/app/(platform)/build/components/FlowEditor/Flow/useFlowRealtime";
 import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
+import { formatAgentExecutorTitle } from "../../helper";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -730,14 +731,22 @@ const FlowEditor: React.FC<{
         }
       }
 
+      const blockDisplayName =
+        blockID === SpecialBlockID.AGENT
+          ? formatAgentExecutorTitle(
+              hardcodedValues.agent_name || blockName,
+              hardcodedValues.graph_version,
+            ) || blockName
+          : blockName;
+
       const newNode: CustomNode = {
         id: nodeId.toString(),
         type: "custom",
         position,
         data: {
-          blockType: blockName,
+          blockType: blockDisplayName,
           blockCosts: nodeSchema.costs || [],
-          title: `${blockName} ${nodeId}`,
+          title: `${blockDisplayName} ${nodeId}`,
           description: nodeSchema.description,
           categories: nodeSchema.categories,
           inputSchema: inputSchema,
@@ -875,10 +884,17 @@ const FlowEditor: React.FC<{
       const node = nodes.find((n) => n.data.backend_id === nodeID);
       if (!node) return null;
 
+      const agentTitle =
+        node.data.uiType == BlockUIType.AGENT
+          ? formatAgentExecutorTitle(
+              node.data.hardcodedValues.agent_name,
+              node.data.hardcodedValues.graph_version,
+            )
+          : null;
+
       return (
         node.data.metadata?.customized_name ||
-        (node.data.uiType == BlockUIType.AGENT &&
-          node.data.hardcodedValues.agent_name) ||
+        agentTitle ||
         node.data.blockType.replace(/Block$/, "")
       );
     },

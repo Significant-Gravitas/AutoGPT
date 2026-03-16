@@ -1,14 +1,14 @@
-import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import {
+import type { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
+import type {
   CustomNode,
   CustomNodeData,
 } from "./FlowEditor/nodes/CustomNode/CustomNode";
-import { BlockUIType } from "./types";
-import { NodeModel } from "@/app/api/__generated__/models/nodeModel";
-import { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
-import { Link } from "@/app/api/__generated__/models/link";
-import { CustomEdge } from "./FlowEditor/edges/CustomEdge";
-import { XYPosition } from "@xyflow/react";
+import type { BlockUIType } from "./types";
+import type { NodeModel } from "@/app/api/__generated__/models/nodeModel";
+import type { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
+import type { Link } from "@/app/api/__generated__/models/link";
+import type { CustomEdge } from "./FlowEditor/edges/CustomEdge";
+import type { XYPosition } from "@xyflow/react";
 
 export const convertBlockInfoIntoCustomNodeData = (
   block: BlockInfo,
@@ -28,6 +28,23 @@ export const convertBlockInfoIntoCustomNodeData = (
   };
   return customNodeData;
 };
+
+export function formatAgentExecutorTitle(
+  agentName?: string | null,
+  graphVersion?: number | null,
+) {
+  const normalizedName = agentName?.trim();
+
+  if (!normalizedName) {
+    return null;
+  }
+
+  if (typeof graphVersion !== "number" || Number.isNaN(graphVersion)) {
+    return normalizedName;
+  }
+
+  return `${normalizedName} v${graphVersion}`;
+}
 
 export const convertNodesPlusBlockInfoIntoCustomNodes = (
   node: NodeModel,

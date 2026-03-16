@@ -6,6 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { formatAgentExecutorTitle } from "@/app/(platform)/build/components/helper";
 import { beautifyString, cn } from "@/lib/utils";
 import { useState } from "react";
 import { CustomNodeData } from "../CustomNode";
@@ -20,9 +21,13 @@ type Props = {
 
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
+  const agentTitle = formatAgentExecutorTitle(
+    data.hardcodedValues?.agent_name,
+    data.hardcodedValues?.graph_version,
+  );
   const title =
     (data.metadata?.customized_name as string) ||
-    data.hardcodedValues?.agent_name ||
+    agentTitle ||
     data.title;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);

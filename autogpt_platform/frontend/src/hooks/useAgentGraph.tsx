@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
+import { formatAgentExecutorTitle } from "@/app/(platform)/build/components/helper";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -214,6 +215,7 @@ export default function useAgentGraph(
     const { position, ...metadata } = node.metadata;
     const subGraphName =
       (block.uiType == BlockUIType.AGENT && _getSubGraphName(node)) || null;
+    const blockType = subGraphName || block.name;
 
     return {
       id: node.id,
@@ -226,11 +228,11 @@ export default function useAgentGraph(
         isOutputOpen: false,
         ...prevNode?.data,
         block_id: block.id,
-        blockType: subGraphName || block.name,
+        blockType: blockType,
         blockCosts: block.costs,
         categories: block.categories,
         description: block.description,
-        title: `${block.name} ${node.id}`,
+        title: `${blockType} ${node.id}`,
         inputSchema: block.inputSchema,
         outputSchema: block.outputSchema,
         isOutputStatic: block.staticOutput,
@@ -252,13 +254,24 @@ export default function useAgentGraph(
   }
 
   const _getSubGraphName = (node: Node) => {
-    if (node.input_default.agent_name) {
-      return node.input_default.agent_name;
-    }
-    return (
-      availableFlows.find((flow) => flow.id === node.input_default.graph_id)
-        ?.name || null
+    const graphVersion =
+      typeof node.input_default.graph_version === "number"
+        ? node.input_default.graph_version
+        : null;
+
+    const hardcodedAgentTitle = formatAgentExecutorTitle(
+      node.input_default.agent_name,
+      graphVersion,
     );
+    if (hardcodedAgentTitle) {
+      return hardcodedAgentTitle;
+    }
+
+    const flowName = availableFlows.find(
+      (flow) => flow.id === node.input_default.graph_id,
+    )?.name;
+
+    return formatAgentExecutorTitle(flowName, graphVersion);
   };
 
   const getFrontendId = useCallback(
@@ -581,10 +594,21 @@ export default function useAgentGraph(
         return {};
       }
 
-      return rebuildObjectUsingSchema(
+      const preparedInputData = rebuildObjectUsingSchema(
         blockSchema,
         pruneEmptyValues(node.data.hardcodedValues),
       );
+
+      if (node.data.uiType !== BlockUIType.AGENT) {
+        return preparedInputData;
+      }
+
+      return {
+        ...preparedInputData,
+        graph_id: node.data.hardcodedValues.graph_id,
+        graph_version: node.data.hardcodedValues.graph_version,
+        agent_name: node.data.hardcodedValues.agent_name,
+      };
     },
     [availableBlocks],
   );

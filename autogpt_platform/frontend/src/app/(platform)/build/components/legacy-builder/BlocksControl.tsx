@@ -130,6 +130,7 @@ export function BlocksControl({
           hardcodedValues: {
             graph_id: flow.id,
             graph_version: flow.version,
+            agent_name: flow.name,
             // Schemas will be fetched on-demand when block is added
           },
         };

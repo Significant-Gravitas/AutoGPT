@@ -71,6 +71,7 @@ import {
   createUpdatedAgentNodeInputs,
   getBrokenEdgeIDs,
 } from "../../../hooks/useSubAgentUpdate";
+import { formatAgentExecutorTitle } from "../../helper";
 
 export type ConnectedEdge = {
   id: string;
@@ -373,9 +374,19 @@ export const CustomNode = React.memo(
       [handleTitleSave, data.metadata],
     );
 
+    const agentTitle =
+      data.uiType === BlockUIType.AGENT
+        ? formatAgentExecutorTitle(
+            data.hardcodedValues?.agent_name,
+            data.hardcodedValues?.graph_version,
+          )
+        : null;
+
     const displayTitle =
       customTitle ||
-      beautifyString(data.blockType?.replace(/Block$/, "") || data.title);
+      beautifyString(
+        agentTitle || data.blockType?.replace(/Block$/, "") || data.title,
+      );
 
     useEffect(() => {
       isInitialSetup.current = false;
