@@ -149,10 +149,10 @@ export function getAnimationText(part: {
       }
       if (isRunAgentNeedLoginOutput(output))
         return "Sign in required to run agent";
-      return "Error running agent";
+      return "Something went wrong";
     }
     case "output-error":
-      return "Error running agent";
+      return "Something went wrong";
     default:
       return actionPhrase;
   }
