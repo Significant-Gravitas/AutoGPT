@@ -14,7 +14,6 @@ from backend.blocks._base import (
 from backend.data.model import SchemaField
 
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
     from backend.executor.utils import ExecutionContext
 
 # Task-scoped recursion depth counter & chain-wide limit.
@@ -26,6 +25,27 @@ _copilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
 _copilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "_copilot_recursion_limit", default=None
 )
+
+
+def _check_recursion(max_depth: int) -> tuple:
+    """Check and increment recursion depth. Returns tokens to reset on exit."""
+    current = _copilot_recursion_depth.get()
+    inherited = _copilot_recursion_limit.get()
+    limit = max_depth if inherited is None else min(inherited, max_depth)
+    if current >= limit:
+        raise RuntimeError(
+            f"Copilot recursion depth limit reached ({limit}). "
+            "The copilot has called itself too many times."
+        )
+    return (
+        _copilot_recursion_depth.set(current + 1),
+        _copilot_recursion_limit.set(limit),
+    )
+
+
+def _reset_recursion(tokens: tuple) -> None:
+    _copilot_recursion_depth.reset(tokens[0])
+    _copilot_recursion_limit.reset(tokens[1])
 
 
 class AutogptCopilotBlock(Block):
@@ -159,45 +179,6 @@ class AutogptCopilotBlock(Block):
             },
         )
 
-    @staticmethod
-    def _check_recursion(max_recursion_depth: int) -> tuple:
-        """Check and increment recursion depth. Returns tokens to reset later."""
-        current_depth = _copilot_recursion_depth.get()
-        inherited_limit = _copilot_recursion_limit.get()
-        effective_limit = (
-            max_recursion_depth
-            if inherited_limit is None
-            else min(inherited_limit, max_recursion_depth)
-        )
-        if current_depth >= effective_limit:
-            raise RuntimeError(
-                f"Copilot recursion depth limit reached ({effective_limit}). "
-                "The copilot has called itself too many times."
-            )
-        return (
-            _copilot_recursion_depth.set(current_depth + 1),
-            _copilot_recursion_limit.set(effective_limit),
-        )
-
-    @staticmethod
-    def _reset_recursion(tokens: tuple) -> None:
-        _copilot_recursion_depth.reset(tokens[0])
-        _copilot_recursion_limit.reset(tokens[1])
-
-    @staticmethod
-    async def _get_or_create_session(session_id: str, user_id: str) -> ChatSession:
-        from backend.copilot.model import create_chat_session, get_chat_session
-
-        if session_id:
-            session = await get_chat_session(session_id, user_id)
-            if not session:
-                raise ValueError(
-                    f"Copilot session {session_id} not found. "
-                    "Use an empty session_id to start a new session."
-                )
-            return session
-        return await create_chat_session(user_id)
-
     async def execute_copilot(
         self,
         prompt: str,
@@ -206,8 +187,13 @@ class AutogptCopilotBlock(Block):
         max_recursion_depth: int,
         user_id: str,
     ) -> tuple[str, list[dict], str, str, dict]:
-        """Invoke the copilot and collect all stream results."""
-        from backend.copilot.model import get_chat_session
+        """Invoke the copilot and collect all stream results.
+
+        Follows the same path as the normal copilot: create session if needed,
+        then let stream_chat_completion_sdk handle everything (session loading,
+        message append, lock, transcript, cleanup).
+        """
+        from backend.copilot.model import create_chat_session, get_chat_session
         from backend.copilot.response_model import (
             StreamError,
             StreamTextDelta,
@@ -217,14 +203,22 @@ class AutogptCopilotBlock(Block):
         )
         from backend.copilot.sdk.service import stream_chat_completion_sdk
 
-        tokens = self._check_recursion(max_recursion_depth)
+        tokens = _check_recursion(max_recursion_depth)
         try:
-            session = await self._get_or_create_session(session_id, user_id)
+            # Create session if needed — same as the chat API route.
+            # If session_id is provided, stream_chat_completion_sdk loads it.
+            if not session_id:
+                session = await create_chat_session(user_id)
+                session_id = session.session_id
 
             effective_prompt = prompt
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
+            # Consume the stream — same as the executor processor.
+            # Do NOT pass a session object; let the SDK load it internally
+            # so all session management (lock, persist, transcript) is handled
+            # by the SDK's own finally block.
             response_parts: list[str] = []
             tool_calls: list[dict] = []
             tool_calls_by_id: dict[str, dict] = {}
@@ -234,14 +228,11 @@ class AutogptCopilotBlock(Block):
                 "totalTokens": 0,
             }
 
-            # No asyncio.timeout — the SDK's internal stream must not be
-            # cancelled mid-flight (see sdk/service.py L998-1001).
             async for event in stream_chat_completion_sdk(
-                session_id=session.session_id,
+                session_id=session_id,
                 message=effective_prompt,
                 is_user_message=True,
                 user_id=user_id,
-                session=session,
             ):
                 if isinstance(event, StreamTextDelta):
                     response_parts.append(event.delta)
@@ -266,7 +257,9 @@ class AutogptCopilotBlock(Block):
                 elif isinstance(event, StreamError):
                     raise RuntimeError(f"Copilot error: {event.errorText}")
 
-            updated_session = await get_chat_session(session.session_id, user_id)
+            # Session was persisted by the SDK's finally block.
+            # Re-fetch for conversation history output.
+            updated_session = await get_chat_session(session_id, user_id)
             history_json = "[]"
             if updated_session and updated_session.messages:
                 history_json = json.dumps(
@@ -278,11 +271,11 @@ class AutogptCopilotBlock(Block):
                 "".join(response_parts),
                 tool_calls,
                 history_json,
-                session.session_id,
+                session_id,
                 total_usage,
             )
         finally:
-            self._reset_recursion(tokens)
+            _reset_recursion(tokens)
 
     async def run(
         self,
