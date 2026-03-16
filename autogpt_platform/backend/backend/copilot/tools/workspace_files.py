@@ -10,11 +10,11 @@ from pydantic import BaseModel
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
+    get_workspace_manager,
     resolve_sandbox_path,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
-from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
@@ -218,12 +218,6 @@ def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
 
 
-async def get_manager(user_id: str, session_id: str) -> WorkspaceManager:
-    """Create a session-scoped WorkspaceManager."""
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
-
-
 async def _resolve_file(
     manager: WorkspaceManager,
     file_id: str | None,
@@ -373,7 +367,7 @@ class ListWorkspaceFilesTool(BaseTool):
         include_all_sessions: bool = kwargs.get("include_all_sessions", False)
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             files = await manager.list_files(
                 path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
             )
@@ -497,7 +491,7 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
@@ -707,7 +701,7 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             await scan_content_safe(content, filename=filename)
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
                 content=content,
                 filename=filename,
@@ -826,7 +820,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved

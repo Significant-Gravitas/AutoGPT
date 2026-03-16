@@ -33,7 +33,13 @@ Examples:
 @@agptfile:/home/user/script.py
 ```
 
+**Structured data**: When the entire argument is a single file reference, the platform auto-parses by extension/MIME. Supported: JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel (.xlsx only). Unrecognised formats return plain string.
+
 **Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).
+
+### Media file inputs (format: "file")
+Inputs with `"format": "file"` accept `workspace://<file_id>` or `data:<mime>;base64,<payload>`.
+Pass the `workspace://` URI directly (do NOT wrap in `@@agptfile:`). This avoids large payloads and preserves binary content.
 
 ### Sub-agent tasks
 - Task tool: NEVER set `run_in_background` to true.
