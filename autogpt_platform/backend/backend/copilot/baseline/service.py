@@ -40,7 +40,7 @@ from backend.copilot.response_model import (
 from backend.copilot.service import (
     _build_system_prompt,
     _generate_session_title,
-    client,
+    _get_openai_client,
     config,
 )
 from backend.copilot.tools import execute_tool, get_available_tools
@@ -89,7 +89,7 @@ async def _compress_session_messages(
         result = await compress_context(
             messages=messages_dict,
             model=config.model,
-            client=client,
+            client=_get_openai_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
@@ -235,7 +235,7 @@ async def stream_chat_completion_baseline(
             )
             if tools:
                 create_kwargs["tools"] = tools
-            response = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
+            response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
             # Accumulate streamed response (text + tool calls)
             round_text = ""
