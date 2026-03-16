@@ -142,7 +142,7 @@ class AgentMailGetInboxBlock(Block):
 
         yield "inbox_id", inbox.inbox_id
         yield "email_address", getattr(inbox, "email_address", inbox.inbox_id)
-        yield "display_name", getattr(inbox, "display_name", "")
+        yield "display_name", getattr(inbox, "display_name", None) or ""
         yield "result", result
 
 

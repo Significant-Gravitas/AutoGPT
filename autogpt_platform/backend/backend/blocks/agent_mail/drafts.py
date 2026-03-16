@@ -120,7 +120,7 @@ class AgentMailCreateDraftBlock(Block):
         result = draft.__dict__ if hasattr(draft, "__dict__") else {}
 
         yield "draft_id", draft.draft_id
-        yield "send_status", getattr(draft, "send_status", "")
+        yield "send_status", getattr(draft, "send_status", None) or ""
         yield "result", result
 
 
@@ -174,9 +174,9 @@ class AgentMailGetDraftBlock(Block):
         result = draft.__dict__ if hasattr(draft, "__dict__") else {}
 
         yield "draft_id", draft.draft_id
-        yield "subject", getattr(draft, "subject", "")
-        yield "send_status", getattr(draft, "send_status", "")
-        yield "send_at", getattr(draft, "send_at", "")
+        yield "subject", getattr(draft, "subject", None) or ""
+        yield "send_status", getattr(draft, "send_status", None) or ""
+        yield "send_at", getattr(draft, "send_at", None) or ""
         yield "result", result
 
 
@@ -333,7 +333,7 @@ class AgentMailUpdateDraftBlock(Block):
         result = draft.__dict__ if hasattr(draft, "__dict__") else {}
 
         yield "draft_id", draft.draft_id
-        yield "send_status", getattr(draft, "send_status", "")
+        yield "send_status", getattr(draft, "send_status", None) or ""
         yield "result", result
 
 
@@ -385,7 +385,7 @@ class AgentMailSendDraftBlock(Block):
         result = msg.__dict__ if hasattr(msg, "__dict__") else {}
 
         yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", "")
+        yield "thread_id", getattr(msg, "thread_id", None) or ""
         yield "result", result
 
 

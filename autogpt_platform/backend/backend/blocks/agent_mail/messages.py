@@ -119,7 +119,7 @@ class AgentMailSendMessageBlock(Block):
         result = msg.__dict__ if hasattr(msg, "__dict__") else {}
 
         yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", "")
+        yield "thread_id", getattr(msg, "thread_id", None) or ""
         yield "result", result
 
 
@@ -255,11 +255,11 @@ class AgentMailGetMessageBlock(Block):
         result = msg.__dict__ if hasattr(msg, "__dict__") else {}
 
         yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", "")
-        yield "subject", getattr(msg, "subject", "")
-        yield "text", getattr(msg, "text", "")
-        yield "extracted_text", getattr(msg, "extracted_text", "")
-        yield "html", getattr(msg, "html", "")
+        yield "thread_id", getattr(msg, "thread_id", None) or ""
+        yield "subject", getattr(msg, "subject", None) or ""
+        yield "text", getattr(msg, "text", None) or ""
+        yield "extracted_text", getattr(msg, "extracted_text", None) or ""
+        yield "html", getattr(msg, "html", None) or ""
         yield "result", result
 
 
@@ -323,7 +323,7 @@ class AgentMailReplyToMessageBlock(Block):
         result = reply.__dict__ if hasattr(reply, "__dict__") else {}
 
         yield "message_id", reply.message_id
-        yield "thread_id", getattr(reply, "thread_id", "")
+        yield "thread_id", getattr(reply, "thread_id", None) or ""
         yield "result", result
 
 
@@ -422,7 +422,7 @@ class AgentMailForwardMessageBlock(Block):
         result = fwd.__dict__ if hasattr(fwd, "__dict__") else {}
 
         yield "message_id", fwd.message_id
-        yield "thread_id", getattr(fwd, "thread_id", "")
+        yield "thread_id", getattr(fwd, "thread_id", None) or ""
         yield "result", result
 
 
