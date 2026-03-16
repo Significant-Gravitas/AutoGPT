@@ -1013,7 +1013,10 @@ class NotificationManager(AppService):
                         # Let message.process() handle the rejection
                         pass
                     except Exception as e:
-                        logger.warning(f"Error processing message in {queue_name}: {e}")
+                        logger.warning(
+                            f"Error processing message in {queue_name}: {e}",
+                            exc_info=True,
+                        )
                         # Let message.process() handle the rejection
                         raise
         except asyncio.CancelledError:

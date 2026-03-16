@@ -182,7 +182,8 @@ def conn_retry(
         func_name = getattr(retry_state.fn, "__name__", "unknown")
 
         if retry_state.outcome.failed and retry_state.next_action is None:
-            logger.warning(f"{prefix} {action_name} failed after retries: {exception}")
+            # Final failure is logged by sync_wrapper/async_wrapper — skip here to avoid duplicates
+            pass
         else:
             if attempt_number == EXCESSIVE_RETRY_THRESHOLD:
                 if send_rate_limited_discord_alert(

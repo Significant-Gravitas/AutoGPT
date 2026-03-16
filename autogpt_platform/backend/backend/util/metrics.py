@@ -31,13 +31,23 @@ def _before_send(event, hint):
         amqp_keywords = [
             "amqpconnection",
             "amqpconnector",
-            "connection refused",
             "connection_forced",
             "channelinvalidstateerror",
             "no active transport",
         ]
         if any(kw in exc_msg for kw in amqp_keywords):
             return None
+
+        # "connection refused" only for AMQP-related exceptions (not other services)
+        if "connection refused" in exc_msg:
+            exc_module = getattr(exc_type, "__module__", "") or ""
+            exc_name = getattr(exc_type, "__name__", "") or ""
+            amqp_indicators = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
+            if any(
+                ind in exc_module.lower() or ind in exc_name.lower()
+                for ind in amqp_indicators
+            ) or any(kw in exc_msg for kw in ["amqp", "pika", "rabbitmq"]):
+                return None
 
         # User-caused credential/auth errors — not platform bugs
         user_auth_keywords = [
@@ -51,7 +61,7 @@ def _before_send(event, hint):
             return None
 
         # Expected business logic — insufficient balance
-        if "insufficient balance" in exc_msg:
+        if "insufficient balance" in exc_msg or "no credits left" in exc_msg:
             return None
 
         # Expected security check — blocked IP access
@@ -69,7 +79,7 @@ def _before_send(event, hint):
             return None
 
         # Inactive email recipients — expected for bounced addresses
-        if "marked as inactive" in exc_msg and "inactive addresses" in exc_msg:
+        if "marked as inactive" in exc_msg or "inactive addresses" in exc_msg:
             return None
 
     # Also filter log-based events for known noisy messages
