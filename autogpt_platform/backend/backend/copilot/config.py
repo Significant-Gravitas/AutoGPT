@@ -65,6 +65,18 @@ class ChatConfig(BaseSettings):
         default="CoPilot Prompt",
         description="Name of the prompt in Langfuse to fetch",
     )
+    langfuse_autopilot_nightly_prompt_name: str = Field(
+        default="CoPilot Nightly",
+        description="Langfuse prompt name for nightly Autopilot sessions",
+    )
+    langfuse_autopilot_callback_prompt_name: str = Field(
+        default="CoPilot Callback",
+        description="Langfuse prompt name for callback Autopilot sessions",
+    )
+    langfuse_autopilot_invite_cta_prompt_name: str = Field(
+        default="CoPilot Beta Invite CTA",
+        description="Langfuse prompt name for beta invite CTA Autopilot sessions",
+    )
     langfuse_prompt_cache_ttl: int = Field(
         default=300,
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",

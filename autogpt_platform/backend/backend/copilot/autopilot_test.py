@@ -12,10 +12,13 @@ from backend.copilot.autopilot import (
     AUTOPILOT_DISABLED_TOOLS,
     AUTOPILOT_INVITE_CTA_EMAIL_TEMPLATE,
     AUTOPILOT_NIGHTLY_EMAIL_TEMPLATE,
+    _build_autopilot_system_prompt,
     _create_autopilot_session,
     _crosses_local_midnight,
     _get_completion_email_template_name,
     _get_recent_manual_session_context,
+    _get_recent_sent_email_context,
+    _get_recent_session_summary_context,
     _resolve_timezone_name,
     consume_callback_token,
     dispatch_nightly_copilot,
@@ -32,6 +35,27 @@ def _build_autopilot_session() -> ChatSession:
     return ChatSession.new(
         "user-1",
         start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+    )
+
+
+def _build_completion_report(
+    *,
+    thoughts: str = "Did useful work.",
+    email_title: str = "Autopilot update",
+    email_body: str = "I found something useful for you.",
+    callback_session_message: str = "Open this chat",
+) -> StoredCompletionReport:
+    return StoredCompletionReport(
+        thoughts=thoughts,
+        should_notify_user=True,
+        email_title=email_title,
+        email_body=email_body,
+        callback_session_message=callback_session_message,
+        approval_summary=None,
+        has_pending_approvals=False,
+        pending_approval_count=0,
+        pending_approval_graph_exec_id=None,
+        saved_at=datetime.now(UTC),
     )
 
 
@@ -124,6 +148,141 @@ async def test_get_recent_manual_session_context_strips_internal_content(
     assert "Visible text" in context
     assert "Completed a useful task for the user." in context
     assert "hidden" not in context
+
+
+@pytest.mark.asyncio
+async def test_get_recent_sent_email_context_formats_sent_emails(mocker) -> None:
+    sent_session = SimpleNamespace(
+        start_type=ChatSessionStartType.AUTOPILOT_CALLBACK,
+        notification_email_sent_at=datetime(2026, 3, 14, 10, 0, tzinfo=UTC),
+        completion_report=_build_completion_report(
+            email_title="Follow-up",
+            email_body="Try this workflow next.",
+            callback_session_message="Open the session",
+        ),
+    )
+    chat_store = SimpleNamespace(
+        get_recent_sent_email_chat_sessions=AsyncMock(return_value=[sent_session])
+    )
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+
+    context = await _get_recent_sent_email_context("user-1")
+
+    assert "Follow-up" in context
+    assert "Try this workflow next." in context
+    assert "Open the session" in context
+    assert "Callback" in context
+
+
+@pytest.mark.asyncio
+async def test_get_recent_session_summary_context_formats_completion_reports(
+    mocker,
+) -> None:
+    summary_session = SimpleNamespace(
+        start_type=ChatSessionStartType.AUTOPILOT_NIGHTLY,
+        updated_at=datetime(2026, 3, 14, 12, 0, tzinfo=UTC),
+        title="Nightly run",
+        completion_report=_build_completion_report(
+            thoughts="Prepared a concrete plan for the user.",
+            email_title="Nightly summary",
+        ),
+    )
+    chat_store = SimpleNamespace(
+        get_recent_completion_report_chat_sessions=AsyncMock(
+            return_value=[summary_session]
+        )
+    )
+    mocker.patch("backend.copilot.autopilot.chat_db", return_value=chat_store)
+
+    context = await _get_recent_session_summary_context("user-1")
+
+    assert "Nightly session updated" in context
+    assert "Prepared a concrete plan for the user." in context
+    assert "Nightly summary" in context
+    assert "Nightly run" in context
+
+
+@pytest.mark.parametrize(
+    ("start_type", "expected_prompt_name"),
+    [
+        (ChatSessionStartType.AUTOPILOT_NIGHTLY, "CoPilot Nightly"),
+        (ChatSessionStartType.AUTOPILOT_CALLBACK, "CoPilot Callback"),
+        (ChatSessionStartType.AUTOPILOT_INVITE_CTA, "CoPilot Beta Invite CTA"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_build_autopilot_system_prompt_selects_langfuse_prompt(
+    mocker,
+    start_type: ChatSessionStartType,
+    expected_prompt_name: str,
+) -> None:
+    mocker.patch(
+        "backend.copilot.autopilot.chat_config",
+        new=SimpleNamespace(
+            langfuse_autopilot_nightly_prompt_name="CoPilot Nightly",
+            langfuse_autopilot_callback_prompt_name="CoPilot Callback",
+            langfuse_autopilot_invite_cta_prompt_name="CoPilot Beta Invite CTA",
+        ),
+    )
+    understanding_store = SimpleNamespace(
+        get_business_understanding=AsyncMock(return_value=object())
+    )
+    mocker.patch(
+        "backend.copilot.autopilot.understanding_db",
+        return_value=understanding_store,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot.format_understanding_for_prompt",
+        return_value="business understanding",
+    )
+    mocker.patch(
+        "backend.copilot.autopilot._get_recent_sent_email_context",
+        new_callable=AsyncMock,
+        return_value="recent emails",
+    )
+    mocker.patch(
+        "backend.copilot.autopilot._get_recent_session_summary_context",
+        new_callable=AsyncMock,
+        return_value="recent summaries",
+    )
+    mocker.patch(
+        "backend.copilot.autopilot._get_recent_manual_session_context",
+        new_callable=AsyncMock,
+        return_value="recent manual sessions",
+    )
+    compile_prompt = mocker.patch(
+        "backend.copilot.autopilot._get_system_prompt_template",
+        new_callable=AsyncMock,
+        return_value="compiled prompt",
+    )
+
+    invited_user = (
+        SimpleNamespace(tally_understanding={"company": "Example"})
+        if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA
+        else None
+    )
+
+    prompt = await _build_autopilot_system_prompt(
+        cast(Any, SimpleNamespace(id="user-1", name="User")),
+        start_type=start_type,
+        timezone_name="UTC",
+        target_local_date=date(2026, 3, 16),
+        invited_user=cast(Any, invited_user),
+    )
+
+    assert prompt == "compiled prompt"
+    assert compile_prompt.await_args.kwargs["prompt_name"] == expected_prompt_name
+    compiled_context = compile_prompt.await_args.args[0]
+    assert "business understanding" in compiled_context
+    assert "## Recent Copilot Emails Sent To User\nrecent emails" in compiled_context
+    assert "## Recent Copilot Session Summaries\nrecent summaries" in compiled_context
+    if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
+        assert (
+            "## Recent Manual Sessions Since Previous Nightly Run\n"
+            "recent manual sessions"
+        ) in compiled_context
+    if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA:
+        assert "## Beta Application Context" in compiled_context
 
 
 @pytest.mark.asyncio

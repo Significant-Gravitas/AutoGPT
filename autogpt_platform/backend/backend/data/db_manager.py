@@ -347,6 +347,10 @@ class DatabaseManager(AppService):
     get_pending_notification_chat_sessions = _(
         chat_db.get_pending_notification_chat_sessions
     )
+    get_recent_completion_report_chat_sessions = _(
+        chat_db.get_recent_completion_report_chat_sessions
+    )
+    get_recent_sent_email_chat_sessions = _(chat_db.get_recent_sent_email_chat_sessions)
     has_recent_manual_message = _(chat_db.has_recent_manual_message)
     has_session_since = _(chat_db.has_session_since)
     mark_chat_session_callback_token_consumed = _(
@@ -403,6 +407,12 @@ class DatabaseManagerClient(AppServiceClient):
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
     list_users = _(d.list_users)
+
+    # CoPilot Chat Sessions
+    get_recent_completion_report_chat_sessions = _(
+        d.get_recent_completion_report_chat_sessions
+    )
+    get_recent_sent_email_chat_sessions = _(d.get_recent_sent_email_chat_sessions)
 
     # Library
     list_library_agents = _(d.list_library_agents)
@@ -558,6 +568,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_chat_session = d.create_chat_session
     get_manual_chat_sessions_since = d.get_manual_chat_sessions_since
     get_pending_notification_chat_sessions = d.get_pending_notification_chat_sessions
+    get_recent_completion_report_chat_sessions = (
+        d.get_recent_completion_report_chat_sessions
+    )
+    get_recent_sent_email_chat_sessions = d.get_recent_sent_email_chat_sessions
     has_recent_manual_message = d.has_recent_manual_message
     has_session_since = d.has_session_since
     mark_chat_session_callback_token_consumed = (
