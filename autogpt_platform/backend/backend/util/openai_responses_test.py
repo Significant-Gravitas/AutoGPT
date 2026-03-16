@@ -3,49 +3,12 @@
 from unittest.mock import MagicMock
 
 from backend.util.openai_responses import (
-    CHAT_COMPLETIONS_ONLY_MODELS,
     convert_tools_to_responses_format,
     extract_responses_content,
     extract_responses_reasoning,
     extract_responses_tool_calls,
     extract_responses_usage,
-    requires_chat_completions,
 )
-
-
-class TestRequiresChatCompletions:
-    """Tests for the requires_chat_completions function."""
-
-    def test_gpt35_requires_chat_completions(self):
-        """gpt-3.5-turbo models should require Chat Completions API."""
-        assert requires_chat_completions("gpt-3.5-turbo") is True
-        assert requires_chat_completions("gpt-3.5-turbo-0125") is True
-
-    def test_modern_gpt_models_do_not_require_chat_completions(self):
-        """Modern GPT models should NOT require Chat Completions (use Responses API)."""
-        assert requires_chat_completions("gpt-4o") is False
-        assert requires_chat_completions("gpt-4o-mini") is False
-        assert requires_chat_completions("gpt-4-turbo") is False
-        assert requires_chat_completions("gpt-4.1-2025-04-14") is False
-        assert requires_chat_completions("gpt-5-2025-08-07") is False
-        assert requires_chat_completions("gpt-5-mini-2025-08-07") is False
-
-    def test_reasoning_models_do_not_require_chat_completions(self):
-        """Reasoning models should NOT require Chat Completions (use Responses API)."""
-        assert requires_chat_completions("o1") is False
-        assert requires_chat_completions("o1-mini") is False
-        assert requires_chat_completions("o3") is False
-        assert requires_chat_completions("o3-mini") is False
-
-    def test_other_models_do_not_require_chat_completions(self):
-        """Other provider models should NOT require Chat Completions."""
-        assert requires_chat_completions("claude-3-opus") is False
-        assert requires_chat_completions("llama-3.3-70b") is False
-        assert requires_chat_completions("gemini-pro") is False
-
-    def test_empty_string_does_not_require_chat_completions(self):
-        """Empty string should not require Chat Completions."""
-        assert requires_chat_completions("") is False
 
 
 class TestConvertToolsToResponsesFormat:
@@ -347,16 +310,3 @@ class TestExtractResponsesReasoning:
         response.output = [reasoning_item]
 
         assert extract_responses_reasoning(response) is None
-
-
-class TestChatCompletionsOnlyModels:
-    """Tests for the CHAT_COMPLETIONS_ONLY_MODELS constant."""
-
-    def test_is_frozenset(self):
-        """CHAT_COMPLETIONS_ONLY_MODELS should be a frozenset (immutable)."""
-        assert isinstance(CHAT_COMPLETIONS_ONLY_MODELS, frozenset)
-
-    def test_contains_expected_models(self):
-        """Should contain the legacy gpt-3.5-turbo models."""
-        expected = {"gpt-3.5-turbo", "gpt-3.5-turbo-0125"}
-        assert CHAT_COMPLETIONS_ONLY_MODELS == expected

@@ -1,32 +1,10 @@
 """Helpers for OpenAI Responses API.
 
 This module provides utilities for using OpenAI's Responses API, which is the
-default for all modern OpenAI models. Legacy models (gpt-3.5-turbo) that do not
-support the Responses API fall back to Chat Completions.
+default for all OpenAI models supported by the platform.
 """
 
 from typing import Any
-
-# Legacy models that do NOT support the Responses API.
-# These must use chat.completions.create instead of responses.create.
-CHAT_COMPLETIONS_ONLY_MODELS = frozenset(
-    {
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-0125",
-    }
-)
-
-
-def requires_chat_completions(model: str) -> bool:
-    """Check if model requires the legacy Chat Completions API (exact match).
-
-    Args:
-        model: The model identifier string (e.g., "gpt-3.5-turbo", "gpt-4o")
-
-    Returns:
-        True if the model requires chat.completions.create, False otherwise
-    """
-    return model in CHAT_COMPLETIONS_ONLY_MODELS
 
 
 def convert_tools_to_responses_format(tools: list[dict] | None) -> list[dict]:
