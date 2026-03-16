@@ -1664,7 +1664,7 @@ class AgentFixer:
             input_default = node.setdefault("input_default", {})
 
             for field, default_value in _SDM_DEFAULTS.items():
-                if field not in input_default:
+                if field not in input_default or input_default[field] is None:
                     input_default[field] = default_value
                     self.add_fix_log(
                         f"SmartDecisionMakerBlock {node_id}: "
