@@ -13,6 +13,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError
+from backend.util.type import coerce_inputs_to_schema
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
@@ -110,6 +111,9 @@ async def execute_block(
                     message=f"Failed to retrieve credentials for {field_name}",
                     session_id=session_id,
                 )
+
+        # Coerce non-matching data types to the expected input schema.
+        coerce_inputs_to_schema(input_data, block.input_schema)
 
         # Execute the block and collect outputs
         outputs: dict[str, list[Any]] = defaultdict(list)
