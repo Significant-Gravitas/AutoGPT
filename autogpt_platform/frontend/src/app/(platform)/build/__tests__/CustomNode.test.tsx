@@ -5,13 +5,20 @@ import React from "react";
 import { BlockUIType } from "../components/types";
 import type { CustomNodeData } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import type { NodeProps } from "@xyflow/react";
+import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
 // ---- Mock sub-components ----
 
 vi.mock(
   "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeContainer",
   () => ({
-    NodeContainer: ({ children, hasErrors }: any) => (
+    NodeContainer: ({
+      children,
+      hasErrors,
+    }: {
+      children: React.ReactNode;
+      hasErrors: boolean;
+    }) => (
       <div data-testid="node-container" data-has-errors={String(!!hasErrors)}>
         {children}
       </div>
@@ -22,7 +29,7 @@ vi.mock(
 vi.mock(
   "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeHeader",
   () => ({
-    NodeHeader: ({ data }: any) => (
+    NodeHeader: ({ data }: { data: CustomNodeData }) => (
       <div data-testid="node-header">{data.title}</div>
     ),
   }),
@@ -31,7 +38,7 @@ vi.mock(
 vi.mock(
   "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock",
   () => ({
-    StickyNoteBlock: ({ data }: any) => (
+    StickyNoteBlock: ({ data }: { data: CustomNodeData }) => (
       <div data-testid="sticky-note-block">{data.title}</div>
     ),
   }),
@@ -61,7 +68,7 @@ vi.mock(
 vi.mock(
   "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeRightClickMenu",
   () => ({
-    NodeRightClickMenu: ({ children }: any) => (
+    NodeRightClickMenu: ({ children }: { children: React.ReactNode }) => (
       <div data-testid="node-right-click-menu">{children}</div>
     ),
   }),
@@ -105,7 +112,7 @@ vi.mock(
 vi.mock(
   "@/components/renderers/InputRenderer/utils/input-schema-pre-processor",
   () => ({
-    preprocessInputSchema: (schema: any) => schema,
+    preprocessInputSchema: (schema: unknown) => schema,
   }),
 );
 
@@ -133,7 +140,9 @@ vi.mock("@xyflow/react", async () => {
     }),
     useNodeId: () => "test-node-id",
     useUpdateNodeInternals: () => vi.fn(),
-    Handle: ({ children }: any) => <div>{children}</div>,
+    Handle: ({ children }: { children: React.ReactNode }) => (
+      <div>{children}</div>
+    ),
     Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
   };
 });
@@ -161,8 +170,8 @@ function buildNodeData(
 
 function buildNodeProps(
   dataOverrides: Partial<CustomNodeData> = {},
-  propsOverrides: Partial<NodeProps<any>> = {},
-): any {
+  propsOverrides: Partial<NodeProps<CustomNodeData>> = {},
+): NodeProps<CustomNodeData> {
   return {
     id: "node-1",
     data: buildNodeData(dataOverrides),
@@ -183,10 +192,31 @@ function buildNodeProps(
 
 function renderCustomNode(
   dataOverrides: Partial<CustomNodeData> = {},
-  propsOverrides: Partial<NodeProps<any>> = {},
+  propsOverrides: Partial<NodeProps<CustomNodeData>> = {},
 ) {
   const props = buildNodeProps(dataOverrides, propsOverrides);
   return render(<CustomNode {...props} />);
+}
+
+function createExecutionResult(
+  overrides: Partial<NodeExecutionResult> = {},
+): NodeExecutionResult {
+  return {
+    node_exec_id: overrides.node_exec_id ?? "exec-1",
+    node_id: overrides.node_id ?? "node-1",
+    graph_exec_id: overrides.graph_exec_id ?? "graph-exec-1",
+    graph_id: overrides.graph_id ?? "graph-1",
+    graph_version: overrides.graph_version ?? 1,
+    user_id: overrides.user_id ?? "test-user",
+    block_id: overrides.block_id ?? "block-1",
+    status: overrides.status ?? "COMPLETED",
+    input_data: overrides.input_data ?? {},
+    output_data: overrides.output_data ?? {},
+    add_time: overrides.add_time ?? new Date("2024-01-01T00:00:00Z"),
+    queue_time: overrides.queue_time ?? new Date("2024-01-01T00:00:00Z"),
+    start_time: overrides.start_time ?? new Date("2024-01-01T00:00:01Z"),
+    end_time: overrides.end_time ?? new Date("2024-01-01T00:00:02Z"),
+  };
 }
 
 // ---- Tests ----
@@ -333,9 +363,9 @@ describe("CustomNode", () => {
     it("sets hasErrors when last execution result has error in output_data", () => {
       renderCustomNode({
         nodeExecutionResults: [
-          {
+          createExecutionResult({
             output_data: { error: "Something went wrong" },
-          } as any,
+          }),
         ],
       });
 
@@ -346,9 +376,9 @@ describe("CustomNode", () => {
     it("does not set hasErrors when execution results have no error", () => {
       renderCustomNode({
         nodeExecutionResults: [
-          {
+          createExecutionResult({
             output_data: { result: "success" },
-          } as any,
+          }),
         ],
       });
 

@@ -149,7 +149,7 @@ describe("NewSaveControl", () => {
     expect(screen.queryByTestId("save-control-version-output")).toBeNull();
   });
 
-  it("enables save button when isSaving is false and disables when true", () => {
+  it("enables save button when isSaving is false", () => {
     useControlPanelStore.setState({ saveControlOpen: true });
     setupMock({ isSaving: false });
     render(
@@ -160,6 +160,19 @@ describe("NewSaveControl", () => {
 
     const saveButton = screen.getByTestId("save-control-save-agent-button");
     expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("disables save button when isSaving is true", () => {
+    useControlPanelStore.setState({ saveControlOpen: true });
+    setupMock({ isSaving: true });
+    render(
+      <TooltipProvider>
+        <NewSaveControl />
+      </TooltipProvider>,
+    );
+
+    const saveButton = screen.getByRole("button", { name: /save agent/i });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("calls handleSave on form submission with valid data", async () => {
