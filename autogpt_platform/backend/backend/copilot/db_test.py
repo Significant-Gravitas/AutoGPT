@@ -101,6 +101,18 @@ async def test_before_sequence_filters_correctly(mock_find_many: AsyncMock):
     assert where["sequence"] == {"lt": 5}
 
 
+@pytest.mark.asyncio
+async def test_user_id_filter_applied_to_where(mock_find_many: AsyncMock):
+    """user_id adds a Session.userId filter to the Prisma query."""
+    mock_find_many.return_value = [_make_msg(1)]
+
+    await get_chat_messages_paginated(SESSION_ID, limit=50, user_id="user-abc")
+
+    call_kwargs = mock_find_many.call_args
+    where = call_kwargs.kwargs.get("where") or call_kwargs[1].get("where")
+    assert where["Session"] == {"is": {"userId": "user-abc"}}
+
+
 # ---------- Backward boundary expansion ----------
 
 

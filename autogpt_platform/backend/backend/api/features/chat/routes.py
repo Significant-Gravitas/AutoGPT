@@ -372,13 +372,16 @@ async def get_session(
         SessionDetailResponse: Details for the requested session, including
             active_stream info and pagination metadata.
     """
-    # Lightweight ownership validation (no message loading)
-    session_info = await get_chat_session_metadata(session_id, user_id)
+    # Run ownership check and paginated message query in parallel.
+    # Both filter by user_id independently for defense-in-depth.
+    session_info, page = await asyncio.gather(
+        get_chat_session_metadata(session_id, user_id),
+        get_chat_messages_paginated(
+            session_id, limit, before_sequence, user_id=user_id
+        ),
+    )
     if not session_info:
         raise NotFoundError(f"Session {session_id} not found.")
-
-    # Paginated message query
-    page = await get_chat_messages_paginated(session_id, limit, before_sequence)
     messages = [message.model_dump() for message in page.messages]
 
     # Only check active stream on initial load (not on "load more" requests)

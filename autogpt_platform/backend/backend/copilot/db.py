@@ -53,11 +53,22 @@ async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
     before_sequence: int | None = None,
+    user_id: str | None = None,
 ) -> PaginatedMessages:
-    """Get paginated messages for a session, newest first."""
+    """Get paginated messages for a session, newest first.
+
+    Args:
+        session_id: The chat session ID.
+        limit: Max messages to return.
+        before_sequence: Cursor — return messages with sequence < this value.
+        user_id: If provided, filters via ``Session.userId`` so only the
+            session owner's messages are returned (acts as an ownership guard).
+    """
     where: dict[str, Any] = {"sessionId": session_id}
     if before_sequence is not None:
         where["sequence"] = {"lt": before_sequence}
+    if user_id is not None:
+        where["Session"] = {"is": {"userId": user_id}}
 
     results = await PrismaChatMessage.prisma().find_many(
         where=where,
