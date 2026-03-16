@@ -246,8 +246,8 @@ class AgentMailListDraftsBlock(Block):
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", len(drafts))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailUpdateDraftBlock(Block):
@@ -489,5 +489,5 @@ class AgentMailListOrgDraftsBlock(Block):
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", len(drafts))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""

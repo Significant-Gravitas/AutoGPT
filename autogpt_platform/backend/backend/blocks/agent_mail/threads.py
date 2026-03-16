@@ -96,8 +96,8 @@ class AgentMailListInboxThreadsBlock(Block):
         ]
 
         yield "threads", threads
-        yield "count", getattr(response, "count", len(threads))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(threads)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailGetInboxThreadBlock(Block):
@@ -269,8 +269,8 @@ class AgentMailListOrgThreadsBlock(Block):
         ]
 
         yield "threads", threads
-        yield "count", getattr(response, "count", len(threads))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(threads)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailGetOrgThreadBlock(Block):

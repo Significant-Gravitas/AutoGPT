@@ -188,8 +188,8 @@ class AgentMailListMessagesBlock(Block):
         ]
 
         yield "messages", messages
-        yield "count", getattr(response, "count", len(messages))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(messages)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailGetMessageBlock(Block):

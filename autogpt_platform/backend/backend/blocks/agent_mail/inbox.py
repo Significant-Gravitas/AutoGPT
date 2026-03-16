@@ -204,8 +204,8 @@ class AgentMailListInboxesBlock(Block):
         ]
 
         yield "inboxes", inboxes
-        yield "count", getattr(response, "count", len(inboxes))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(inboxes)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailUpdateInboxBlock(Block):

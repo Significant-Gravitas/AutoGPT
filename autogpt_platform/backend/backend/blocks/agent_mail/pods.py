@@ -171,8 +171,8 @@ class AgentMailListPodsBlock(Block):
         ]
 
         yield "pods", pods
-        yield "count", getattr(response, "count", len(pods))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(pods)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailDeletePodBlock(Block):
@@ -275,8 +275,8 @@ class AgentMailListPodInboxesBlock(Block):
         ]
 
         yield "inboxes", inboxes
-        yield "count", getattr(response, "count", len(inboxes))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(inboxes)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailListPodThreadsBlock(Block):
@@ -348,8 +348,8 @@ class AgentMailListPodThreadsBlock(Block):
         ]
 
         yield "threads", threads
-        yield "count", getattr(response, "count", len(threads))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(threads)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailListPodDraftsBlock(Block):
@@ -413,8 +413,8 @@ class AgentMailListPodDraftsBlock(Block):
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", len(drafts))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailCreatePodInboxBlock(Block):

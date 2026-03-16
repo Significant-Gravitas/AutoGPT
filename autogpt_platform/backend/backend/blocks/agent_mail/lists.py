@@ -110,8 +110,8 @@ class AgentMailListEntriesBlock(Block):
         ]
 
         yield "entries", entries
-        yield "count", getattr(response, "count", len(entries))
-        yield "next_page_token", getattr(response, "next_page_token", "")
+        yield "count", getattr(response, "count", None) or len(entries)
+        yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
 class AgentMailCreateListEntryBlock(Block):
