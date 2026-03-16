@@ -127,7 +127,7 @@ def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
-    on_compact: Callable[[], None] | None = None,
+    on_compact: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -142,6 +142,7 @@ def create_security_hooks(
         sdk_cwd: SDK working directory for workspace-scoped tool validation
         max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
+            Receives the transcript_path from the hook input.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -301,11 +302,21 @@ def create_security_hooks(
             """
             _ = context, tool_use_id
             trigger = input_data.get("trigger", "auto")
+            # Sanitize untrusted input before logging to prevent log injection
+            transcript_path = (
+                str(input_data.get("transcript_path", ""))
+                .replace("\n", "")
+                .replace("\r", "")
+            )
             logger.info(
-                f"[SDK] Context compaction triggered: {trigger}, user={user_id}"
+                "[SDK] Context compaction triggered: %s, user=%s, "
+                "transcript_path=%s",
+                trigger,
+                user_id,
+                transcript_path,
             )
             if on_compact is not None:
-                on_compact()
+                on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
         hooks: dict[str, Any] = {
