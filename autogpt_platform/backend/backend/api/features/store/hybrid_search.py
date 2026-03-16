@@ -20,7 +20,6 @@ from backend.api.features.store.embeddings import (
     embed_query,
     embedding_to_vector_string,
 )
-from backend.api.features.store.text_utils import split_camelcase
 from backend.data.db import query_raw_with_schema
 
 logger = logging.getLogger(__name__)
@@ -32,19 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 — lowercase and split on word boundaries.
-
-    CamelCase is split first so "AITextGeneratorBlock" becomes
-    ``["ai", "text", "generator", "block"]``.
-
-    ``split_camelcase`` is applied to *all* content types (agents, blocks,
-    docs), not only block names.  For normal prose the function is effectively
-    a no-op (no CamelCase boundaries to split), while for code identifiers
-    that may appear in documentation it improves token coverage.
-    """
+    """Tokenize text for BM25."""
     if not text:
         return []
-    return re.findall(r"\b\w+\b", split_camelcase(text).lower())
+    return re.findall(r"\b\w+\b", text.lower())
 
 
 def bm25_rerank(

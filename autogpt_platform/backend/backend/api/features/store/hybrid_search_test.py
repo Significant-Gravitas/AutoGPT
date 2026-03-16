@@ -26,10 +26,10 @@ from backend.api.features.store.hybrid_search import (
 @pytest.mark.parametrize(
     "input_text, expected",
     [
-        ("AITextGeneratorBlock", ["ai", "text", "generator", "block"]),
+        ("AITextGeneratorBlock", ["aitextgeneratorblock"]),
         ("hello world", ["hello", "world"]),
         ("", []),
-        ("HTTPRequest", ["http", "request"]),
+        ("HTTPRequest", ["httprequest"]),
     ],
 )
 def test_tokenize(input_text: str, expected: list[str]):
