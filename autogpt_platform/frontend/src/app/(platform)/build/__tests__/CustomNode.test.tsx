@@ -3,7 +3,10 @@ import { screen, cleanup } from "@testing-library/react";
 import { render } from "@/tests/integrations/test-utils";
 import React from "react";
 import { BlockUIType } from "../components/types";
-import type { CustomNodeData } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
+import type {
+  CustomNodeData,
+  CustomNode as CustomNodeType,
+} from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import type { NodeProps } from "@xyflow/react";
 import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
@@ -170,8 +173,8 @@ function buildNodeData(
 
 function buildNodeProps(
   dataOverrides: Partial<CustomNodeData> = {},
-  propsOverrides: Partial<NodeProps<CustomNodeData>> = {},
-): NodeProps<CustomNodeData> {
+  propsOverrides: Partial<NodeProps<CustomNodeType>> = {},
+): NodeProps<CustomNodeType> {
   return {
     id: "node-1",
     data: buildNodeData(dataOverrides),
@@ -183,16 +186,21 @@ function buildNodeProps(
     zIndex: 0,
     dragging: false,
     dragHandle: undefined,
+    draggable: true,
     selectable: true,
     deletable: true,
     parentId: undefined,
+    width: undefined,
+    height: undefined,
+    sourcePosition: undefined,
+    targetPosition: undefined,
     ...propsOverrides,
   };
 }
 
 function renderCustomNode(
   dataOverrides: Partial<CustomNodeData> = {},
-  propsOverrides: Partial<NodeProps<CustomNodeData>> = {},
+  propsOverrides: Partial<NodeProps<CustomNodeType>> = {},
 ) {
   const props = buildNodeProps(dataOverrides, propsOverrides);
   return render(<CustomNode {...props} />);
@@ -364,7 +372,7 @@ describe("CustomNode", () => {
       renderCustomNode({
         nodeExecutionResults: [
           createExecutionResult({
-            output_data: { error: "Something went wrong" },
+            output_data: { error: ["Something went wrong"] },
           }),
         ],
       });
@@ -377,7 +385,7 @@ describe("CustomNode", () => {
       renderCustomNode({
         nodeExecutionResults: [
           createExecutionResult({
-            output_data: { result: "success" },
+            output_data: { result: ["success"] },
           }),
         ],
       });

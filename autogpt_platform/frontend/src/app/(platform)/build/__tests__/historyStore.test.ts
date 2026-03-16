@@ -42,7 +42,7 @@ function createTestEdge(
 }
 
 async function flushMicrotasks() {
-  await new Promise((resolve) => queueMicrotask(resolve));
+  await new Promise<void>((resolve) => queueMicrotask(resolve));
 }
 
 beforeEach(() => {
