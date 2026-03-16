@@ -75,18 +75,26 @@ class AgentMailGetMessageAttachmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        data = client.inboxes.messages.get_attachment(
-            inbox_id=input_data.inbox_id,
-            message_id=input_data.message_id,
-            attachment_id=input_data.attachment_id,
-        )
-        encoded = (
-            base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
-        )
+        try:
+            client = _client(credentials)
+            data = client.inboxes.messages.get_attachment(
+                inbox_id=input_data.inbox_id,
+                message_id=input_data.message_id,
+                attachment_id=input_data.attachment_id,
+            )
+            if isinstance(data, bytes):
+                encoded = base64.b64encode(data).decode()
+            elif isinstance(data, str):
+                encoded = base64.b64encode(data.encode("utf-8")).decode()
+            else:
+                raise TypeError(
+                    f"Unexpected attachment data type: {type(data).__name__}"
+                )
 
-        yield "content_base64", encoded
-        yield "attachment_id", input_data.attachment_id
+            yield "content_base64", encoded
+            yield "attachment_id", input_data.attachment_id
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetThreadAttachmentBlock(Block):
@@ -131,15 +139,23 @@ class AgentMailGetThreadAttachmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        data = client.inboxes.threads.get_attachment(
-            inbox_id=input_data.inbox_id,
-            thread_id=input_data.thread_id,
-            attachment_id=input_data.attachment_id,
-        )
-        encoded = (
-            base64.b64encode(data).decode() if isinstance(data, bytes) else str(data)
-        )
+        try:
+            client = _client(credentials)
+            data = client.inboxes.threads.get_attachment(
+                inbox_id=input_data.inbox_id,
+                thread_id=input_data.thread_id,
+                attachment_id=input_data.attachment_id,
+            )
+            if isinstance(data, bytes):
+                encoded = base64.b64encode(data).decode()
+            elif isinstance(data, str):
+                encoded = base64.b64encode(data.encode("utf-8")).decode()
+            else:
+                raise TypeError(
+                    f"Unexpected attachment data type: {type(data).__name__}"
+                )
 
-        yield "content_base64", encoded
-        yield "attachment_id", input_data.attachment_id
+            yield "content_base64", encoded
+            yield "attachment_id", input_data.attachment_id
+        except Exception as e:
+            yield "error", str(e)

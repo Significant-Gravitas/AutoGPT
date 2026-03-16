@@ -206,7 +206,9 @@ class AgentMailListInboxesBlock(Block):
         ]
 
         yield "inboxes", inboxes
-        yield "count", getattr(response, "count", None) or len(inboxes)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(inboxes)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 

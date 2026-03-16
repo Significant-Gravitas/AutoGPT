@@ -171,7 +171,9 @@ class AgentMailListPodsBlock(Block):
         ]
 
         yield "pods", pods
-        yield "count", getattr(response, "count", None) or len(pods)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(pods)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
@@ -266,14 +268,16 @@ class AgentMailListPodInboxesBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.pods.inboxes.list(input_data.pod_id, **params)
+        response = client.pods.inboxes.list(pod_id=input_data.pod_id, **params)
         inboxes = [
             i.__dict__ if hasattr(i, "__dict__") else i
             for i in getattr(response, "inboxes", [])
         ]
 
         yield "inboxes", inboxes
-        yield "count", getattr(response, "count", None) or len(inboxes)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(inboxes)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
@@ -337,14 +341,16 @@ class AgentMailListPodThreadsBlock(Block):
         if input_data.labels:
             params["labels"] = input_data.labels
 
-        response = client.pods.threads.list(input_data.pod_id, **params)
+        response = client.pods.threads.list(pod_id=input_data.pod_id, **params)
         threads = [
             t.__dict__ if hasattr(t, "__dict__") else t
             for t in getattr(response, "threads", [])
         ]
 
         yield "threads", threads
-        yield "count", getattr(response, "count", None) or len(threads)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(threads)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
@@ -400,14 +406,16 @@ class AgentMailListPodDraftsBlock(Block):
         if input_data.page_token:
             params["page_token"] = input_data.page_token
 
-        response = client.pods.drafts.list(input_data.pod_id, **params)
+        response = client.pods.drafts.list(pod_id=input_data.pod_id, **params)
         drafts = [
             d.__dict__ if hasattr(d, "__dict__") else d
             for d in getattr(response, "drafts", [])
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(drafts)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
@@ -469,7 +477,7 @@ class AgentMailCreatePodInboxBlock(Block):
         if input_data.display_name:
             params["display_name"] = input_data.display_name
 
-        inbox = client.pods.inboxes.create(input_data.pod_id, **params)
+        inbox = client.pods.inboxes.create(pod_id=input_data.pod_id, **params)
         result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
 
         yield "inbox_id", inbox.inbox_id

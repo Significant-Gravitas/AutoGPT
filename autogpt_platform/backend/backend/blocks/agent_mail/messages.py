@@ -42,8 +42,8 @@ class AgentMailSendMessageBlock(Block):
         inbox_id: str = SchemaField(
             description="Inbox ID or email address to send from (e.g. 'agent@agentmail.to')"
         )
-        to: str = SchemaField(
-            description="Recipient email address (e.g. 'user@example.com')"
+        to: list[str] = SchemaField(
+            description="Recipient email addresses (e.g. ['user@example.com'])"
         )
         subject: str = SchemaField(description="Email subject line")
         text: str = SchemaField(
@@ -54,14 +54,14 @@ class AgentMailSendMessageBlock(Block):
             default="",
             advanced=True,
         )
-        cc: str = SchemaField(
-            description="CC recipient email address for human-in-the-loop oversight",
-            default="",
+        cc: list[str] = SchemaField(
+            description="CC recipient email addresses for human-in-the-loop oversight",
+            default_factory=list,
             advanced=True,
         )
-        bcc: str = SchemaField(
-            description="BCC recipient email address (hidden from other recipients)",
-            default="",
+        bcc: list[str] = SchemaField(
+            description="BCC recipient email addresses (hidden from other recipients)",
+            default_factory=list,
             advanced=True,
         )
         labels: list[str] = SchemaField(
@@ -94,6 +94,12 @@ class AgentMailSendMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
+        if total > 50:
+            raise ValueError(
+                f"Max 50 combined recipients across to, cc, and bcc (got {total})"
+            )
+
         client = _client(credentials)
         params: dict = {
             "to": input_data.to,
@@ -186,7 +192,9 @@ class AgentMailListMessagesBlock(Block):
         ]
 
         yield "messages", messages
-        yield "count", getattr(response, "count", None) or len(messages)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(messages)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 

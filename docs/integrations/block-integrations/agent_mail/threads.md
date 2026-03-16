@@ -10,7 +10,9 @@ Permanently delete a conversation thread and all its messages. This action canno
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block calls the AgentMail API to permanently delete a thread and all of its messages from the specified inbox. It requires both the inbox ID (or email address) and the thread ID.
+
+On success the block outputs `success=True`. If the API returns an error (for example, the thread does not exist), the error propagates to the global error handler and the block outputs an error message instead.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **GDPR Data Removal** — Permanently delete conversation threads when a user requests erasure of their personal data.
+- **Spam Cleanup** — Automatically remove threads flagged as spam by an upstream classification block.
+- **Conversation Archival Pipeline** — Delete threads from the live inbox after they have been exported to long-term storage.
 <!-- END MANUAL -->
 
 ---
@@ -41,7 +45,9 @@ Retrieve a conversation thread with all its messages. Use for getting full conve
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block fetches a single thread from a specific inbox by calling the AgentMail API with the inbox ID and thread ID. It returns the thread ID, the full list of messages in chronological order, and the complete thread object as a dictionary.
+
+Any API error (such as an invalid thread ID or insufficient permissions) propagates to the global error handler, and the block outputs an error message.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +68,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Context-Aware Replies** — Retrieve the full conversation history before generating an AI-drafted reply to ensure continuity.
+- **Conversation Summarization** — Pull all messages in a thread and pass them to a summarization block for a digest.
+- **Support Ticket Review** — Fetch a specific customer thread so a QA agent can evaluate response quality.
 <!-- END MANUAL -->
 
 ---
@@ -74,7 +82,9 @@ Retrieve a conversation thread by ID from anywhere in the organization, without 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block performs an organization-wide thread lookup by calling the AgentMail API with only the thread ID. Unlike the inbox-scoped variant, no inbox ID is required because the API resolves the thread across all inboxes in the organization.
+
+It returns the thread ID, all messages in chronological order, and the complete thread object. Errors propagate to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -94,7 +104,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Cross-Inbox Thread Tracking** — Look up a thread by ID when the originating inbox is unknown, such as from a webhook or external reference.
+- **Supervisor Agent Oversight** — Allow a manager agent to inspect any conversation across the organization without needing inbox-level routing.
+- **Audit and Compliance** — Retrieve a specific thread for compliance review when only the thread ID is available from a log or report.
 <!-- END MANUAL -->
 
 ---
@@ -106,7 +118,9 @@ List all conversation threads in an AgentMail inbox. Filter by labels for campai
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block lists conversation threads within a single inbox by calling the AgentMail API with the inbox ID and optional pagination and filtering parameters. You can set a limit (1-100), pass a page token for pagination, and filter by labels so that only threads matching all specified labels are returned.
+
+The block outputs the list of thread objects, the count of threads returned in this page, and a next-page token for retrieving additional results. Errors propagate to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -129,7 +143,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Inbox Dashboard** — List all threads in a support inbox to display an overview of active conversations.
+- **Campaign Monitoring** — Filter threads by a campaign label to track how many conversations a specific outreach effort has generated.
+- **Stale Thread Detection** — Paginate through all threads in an inbox to identify conversations that have not received a reply within a set time window.
 <!-- END MANUAL -->
 
 ---
@@ -141,7 +157,9 @@ List threads across ALL inboxes in your organization. Use for supervisor agents,
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block lists threads across all inboxes in the organization by calling the AgentMail API without an inbox ID. It accepts optional limit, page-token, and label-filter parameters, which are forwarded directly to the API.
+
+Results include threads from every inbox the organization owns. The block outputs the list of thread objects, the count for the current page, and a next-page token for pagination. Errors propagate to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -163,7 +181,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Organization-Wide Activity Feed** — Build a real-time dashboard showing the latest conversations across every agent inbox.
+- **Cross-Agent Analytics** — Aggregate thread counts and labels across all inboxes to measure overall communication volume and topic distribution.
+- **Escalation Routing** — Scan all org threads for a specific label (e.g., "urgent") and route matching threads to a dedicated escalation agent.
 <!-- END MANUAL -->
 
 ---

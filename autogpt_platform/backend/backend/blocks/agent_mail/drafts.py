@@ -6,6 +6,8 @@ Drafts enable human-in-the-loop review, scheduled sending (via send_at),
 and complex multi-step email composition workflows.
 """
 
+from typing import Optional
+
 from agentmail import AgentMail
 
 from backend.sdk import (
@@ -246,7 +248,9 @@ class AgentMailListDraftsBlock(Block):
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(drafts)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""
 
 
@@ -267,18 +271,26 @@ class AgentMailUpdateDraftBlock(Block):
             description="Inbox ID or email address the draft belongs to"
         )
         draft_id: str = SchemaField(description="Draft ID to update")
-        to: list[str] = SchemaField(
-            description="Updated recipient email addresses (replaces existing list)",
-            default_factory=list,
+        to: Optional[list[str]] = SchemaField(
+            description="Updated recipient email addresses (replaces existing list). Omit to keep current value.",
+            default=None,
         )
-        subject: str = SchemaField(description="Updated subject line", default="")
-        text: str = SchemaField(description="Updated plain text body", default="")
-        html: str = SchemaField(
-            description="Updated HTML body", default="", advanced=True
+        subject: Optional[str] = SchemaField(
+            description="Updated subject line. Omit to keep current value.",
+            default=None,
         )
-        send_at: str = SchemaField(
-            description="Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z')",
-            default="",
+        text: Optional[str] = SchemaField(
+            description="Updated plain text body. Omit to keep current value.",
+            default=None,
+        )
+        html: Optional[str] = SchemaField(
+            description="Updated HTML body. Omit to keep current value.",
+            default=None,
+            advanced=True,
+        )
+        send_at: Optional[str] = SchemaField(
+            description="Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z'). Omit to keep current value.",
+            default=None,
             advanced=True,
         )
 
@@ -302,15 +314,15 @@ class AgentMailUpdateDraftBlock(Block):
     ) -> BlockOutput:
         client = _client(credentials)
         params: dict = {}
-        if input_data.to:
+        if input_data.to is not None:
             params["to"] = input_data.to
-        if input_data.subject:
+        if input_data.subject is not None:
             params["subject"] = input_data.subject
-        if input_data.text:
+        if input_data.text is not None:
             params["text"] = input_data.text
-        if input_data.html:
+        if input_data.html is not None:
             params["html"] = input_data.html
-        if input_data.send_at:
+        if input_data.send_at is not None:
             params["send_at"] = input_data.send_at
 
         draft = client.inboxes.drafts.update(
@@ -481,5 +493,7 @@ class AgentMailListOrgDraftsBlock(Block):
         ]
 
         yield "drafts", drafts
-        yield "count", getattr(response, "count", None) or len(drafts)
+        yield "count", (
+            c if (c := getattr(response, "count", None)) is not None else len(drafts)
+        )
         yield "next_page_token", getattr(response, "next_page_token", "") or ""

@@ -10,7 +10,9 @@ Create a new pod for multi-tenant customer isolation. Use client_id to map to yo
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to provision a new pod, passing an optional `client_id` parameter. When a `client_id` is provided, AgentMail maps it to the pod so you can later reference the pod using your own internal tenant identifier instead of the AgentMail-assigned `pod_id`.
+
+The block returns the newly created `pod_id` along with the complete pod object containing all metadata. Any API errors propagate directly to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **SaaS Customer Onboarding** — Automatically provision an isolated email workspace when a new customer signs up for your platform.
+- **AI Agent Fleet Management** — Create a dedicated pod for each AI agent so its email activity is fully isolated from other agents.
+- **White-Label Email Service** — Spin up tenant-scoped pods mapped to your internal customer IDs to power a branded email product.
 <!-- END MANUAL -->
 
 ---
@@ -41,7 +45,9 @@ Create a new email inbox within a pod. The inbox is scoped to the customer works
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to create a new inbox scoped to the specified pod. You can optionally provide a `username`, `domain`, and `display_name` to customize the email address and sender identity. If omitted, the username is auto-generated and the domain defaults to `agentmail.to`.
+
+The block returns the `inbox_id`, the full `email_address`, and the complete inbox metadata object. The inbox is fully isolated within the pod, meaning it only appears in that pod's inbox listings and its threads stay separate from other pods.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -64,7 +70,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Per-Customer Support Addresses** — Create a `support@clientdomain.com` inbox inside each customer's pod so inbound support emails are automatically routed to the right tenant.
+- **Branded Outbound Campaigns** — Provision inboxes with custom display names and domains for each customer's marketing agent to send branded emails.
+- **Multi-Department Agent Setup** — Create separate inboxes (sales, billing, support) within a single customer pod so different AI agents handle different functions.
 <!-- END MANUAL -->
 
 ---
@@ -76,7 +84,9 @@ Permanently delete a pod. All inboxes and domains must be removed first.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to permanently delete the specified pod. The API enforces a precondition: all inboxes and custom domains must be removed from the pod before deletion is allowed. If any remain, the API returns an error that propagates to the global error handler.
+
+On success the block returns `success=True`. This operation is irreversible -- the pod and its associated `client_id` mapping are permanently removed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -94,7 +104,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Customer Offboarding** — Automatically delete a customer's pod after they cancel their subscription and all their inboxes have been cleaned up.
+- **Development Environment Cleanup** — Tear down temporary pods created during testing or staging so they do not accumulate over time.
+- **Compliance Data Removal** — Permanently remove a tenant's email workspace as part of a GDPR or data-deletion request workflow.
 <!-- END MANUAL -->
 
 ---
@@ -106,7 +118,9 @@ Retrieve details of an existing pod including its client_id mapping and metadata
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API with the given `pod_id` to fetch the full pod record. The returned object includes the pod's `client_id` mapping, creation timestamp, and any other metadata stored on the pod.
+
+The block outputs both the `pod_id` and the complete result dictionary. If the pod does not exist, the API error propagates directly to the global error handler.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -125,7 +139,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Tenant Dashboard Display** — Fetch pod details to show a customer's workspace status, creation date, and associated client ID on an admin dashboard.
+- **Pre-Action Validation** — Retrieve pod metadata before performing operations like inbox creation to confirm the pod exists and is correctly mapped.
+- **Audit Logging** — Pull pod details as part of an automated audit trail that records which tenant workspace was accessed and when.
 <!-- END MANUAL -->
 
 ---
@@ -137,7 +153,9 @@ List all drafts across all inboxes within a pod. View pending emails for a custo
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to retrieve drafts across all inboxes within the specified pod. Optional `limit` and `page_token` parameters control pagination. Only non-empty parameters are sent to the API.
+
+The block returns the list of draft objects, a `count` of drafts in the current page, and a `next_page_token` for fetching subsequent pages. This provides a pod-wide view of unsent emails without needing to query each inbox individually.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -159,7 +177,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Draft Review Queue** — Surface all pending drafts across a customer's inboxes so a human reviewer can approve or discard them before sending.
+- **Stuck Draft Detection** — Periodically list pod drafts to find emails that have been sitting unsent for too long and alert the responsible agent or operator.
+- **Customer Activity Summary** — Include draft counts in a tenant dashboard to show how many outbound emails are queued and awaiting dispatch.
 <!-- END MANUAL -->
 
 ---
@@ -171,7 +191,9 @@ List all inboxes within a pod. View email accounts scoped to a specific customer
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to list all inboxes belonging to the specified pod. Optional `limit` and `page_token` parameters enable paginated retrieval. Only non-empty parameters are included in the API call.
+
+The block returns the list of inbox objects, a `count` of inboxes in the current page, and a `next_page_token` for fetching additional pages. Each inbox object includes its ID, email address, display name, and other metadata.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -193,7 +215,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Customer Inbox Inventory** — Display all email addresses belonging to a tenant on their settings page so they can manage or remove unused inboxes.
+- **Pre-Deletion Validation** — List a pod's inboxes before attempting to delete the pod, ensuring all inboxes have been removed as required by the API.
+- **Multi-Inbox Routing Overview** — Show operators which inboxes exist in a customer's pod so they can configure routing rules for each address.
 <!-- END MANUAL -->
 
 ---
@@ -205,7 +229,9 @@ List all conversation threads across all inboxes within a pod. View all email ac
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to retrieve conversation threads across all inboxes in the specified pod. Supports optional `limit`, `page_token`, and `labels` parameters. When `labels` are provided, only threads matching all specified labels are returned.
+
+The block returns the list of thread objects, a `count` for the current page, and a `next_page_token` for pagination. This gives a unified, cross-inbox view of all email conversations within a customer's workspace.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -228,7 +254,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Unified Customer Inbox View** — Aggregate all email threads from every inbox in a customer's pod into a single activity feed for support agents or dashboards.
+- **Label-Based Ticket Triage** — Filter pod threads by labels like "urgent" or "billing" to route conversations to the appropriate AI agent or human team.
+- **Conversation Volume Monitoring** — Periodically list pod threads to track email volume per tenant and trigger alerts when activity spikes or drops.
 <!-- END MANUAL -->
 
 ---
@@ -240,7 +268,9 @@ List all tenant pods in your organization. See all customer workspaces at a glan
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls the AgentMail API to list all pods in your organization. Optional `limit` and `page_token` parameters control pagination. Only non-empty parameters are included in the request.
+
+The block returns a list of pod objects (each containing `pod_id`, `client_id`, creation time, and other metadata), a `count` for the current page, and a `next_page_token` for retrieving additional pages.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -261,7 +291,9 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- **Admin Tenant Overview** — Display all customer pods on an internal admin dashboard so operators can monitor workspace count and health at a glance.
+- **Automated Tenant Reconciliation** — Periodically list all pods and compare against your internal customer database to detect orphaned or missing workspaces.
+- **Usage Reporting** — Enumerate all pods to generate per-tenant usage reports or billing summaries based on workspace activity.
 <!-- END MANUAL -->
 
 ---
