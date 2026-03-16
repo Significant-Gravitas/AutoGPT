@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextvars
 import json
 from typing import TYPE_CHECKING
@@ -183,9 +185,7 @@ class AutogptCopilotBlock(Block):
         _copilot_recursion_limit.reset(tokens[1])
 
     @staticmethod
-    async def _get_or_create_session(
-        session_id: str, user_id: str
-    ) -> "ChatSession":  # noqa: F821
+    async def _get_or_create_session(session_id: str, user_id: str) -> ChatSession:
         from backend.copilot.model import create_chat_session, get_chat_session
 
         if session_id:
@@ -288,7 +288,7 @@ class AutogptCopilotBlock(Block):
         self,
         input_data: Input,
         *,
-        execution_context: "ExecutionContext",
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.prompt.strip():
