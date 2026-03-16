@@ -99,6 +99,8 @@ class JoyTrustVerifyBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyTrustVerifyBlock."""
+
         agent_id: str = SchemaField(description="Joy agent ID to verify (e.g., 'ag_xxx')")
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
@@ -110,6 +112,8 @@ class JoyTrustVerifyBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyTrustVerifyBlock."""
+
         is_trusted: bool = SchemaField(description="Whether the agent meets trust criteria")
         trust_score: float = SchemaField(description="Agent's trust score (0.0-2.0)")
         vouch_count: int = SchemaField(description="Number of vouches the agent has received")
@@ -118,6 +122,7 @@ class JoyTrustVerifyBlock(Block):
         error: str = SchemaField(description="Error message if verification failed")
 
     def __init__(self):
+        """Initialize the JoyTrustVerifyBlock with default configuration."""
         super().__init__(
             id="a7b3c8d9-e0f1-4a2b-8c3d-9e0f1a2b3c4d",
             description=(
@@ -270,6 +275,8 @@ class JoyDiscoverAgentsBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyDiscoverAgentsBlock."""
+
         capability: str = SchemaField(
             description="Capability to search for (e.g., 'github', 'email', 'code')",
             default="",
@@ -282,11 +289,14 @@ class JoyDiscoverAgentsBlock(Block):
         limit: int = SchemaField(description="Maximum number of agents to return", default=10)
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyDiscoverAgentsBlock."""
+
         agents: list = SchemaField(description="List of trusted agents matching criteria")
         count: int = SchemaField(description="Number of agents found")
         error: str = SchemaField(description="Error message if discovery failed")
 
     def __init__(self):
+        """Initialize the JoyDiscoverAgentsBlock with default configuration."""
         super().__init__(
             id="b8c4d9e0-f1a2-4b3c-9d4e-0f1a2b3c4d5e",
             description=(
@@ -453,6 +463,8 @@ class JoyShouldTrustBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyShouldTrustBlock."""
+
         agent_id: str = SchemaField(description="Joy agent ID to check (e.g., 'ag_xxx')")
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
@@ -460,10 +472,13 @@ class JoyShouldTrustBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyShouldTrustBlock."""
+
         trusted: bool = SchemaField(description="Whether the agent should be trusted")
         reason: str = SchemaField(description="Reason for the trust decision")
 
     def __init__(self):
+        """Initialize the JoyShouldTrustBlock with default configuration."""
         super().__init__(
             id="c9d5e0f1-a2b3-4c4d-ae5f-1a2b3c4d5e6f",
             description=(
