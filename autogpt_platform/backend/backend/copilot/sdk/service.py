@@ -943,25 +943,6 @@ async def stream_chat_completion_sdk(
                 )
                 return
 
-            # Pre-compaction rate limit check: context can grow fast with
-            # context-heavy workloads, so re-check limits before the
-            # (potentially expensive) compaction + LLM call.
-            if user_id:
-                from ..rate_limit import RateLimitExceeded, check_rate_limit
-
-                try:
-                    await check_rate_limit(
-                        user_id=user_id,
-                        daily_token_limit=config.daily_token_limit,
-                        weekly_token_limit=config.weekly_token_limit,
-                    )
-                except RateLimitExceeded as e:
-                    yield StreamError(
-                        errorText=str(e),
-                        code="rate_limit_exceeded",
-                    )
-                    return
-
             query_message, was_compacted = await _build_query_message(
                 current_message,
                 session,
