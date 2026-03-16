@@ -179,7 +179,7 @@ def _get_enabled_blocks() -> dict[str, AnyBlockSchema]:
         try:
             instance = block_cls()
         except Exception as e:
-            logger.warning(f"Skipping block {block_id}: init failed: {e}")
+            logger.warning("Skipping block %s: init failed: %s", block_id, e)
             continue
         if not instance.disabled:
             enabled[block_id] = instance
@@ -227,7 +227,8 @@ class BlockHandler(ContentHandler):
                 # Build searchable text from block metadata
                 if not block.name:
                     logger.warning(
-                        f"Block {block_id} has no name — using block_id as fallback"
+                        "Block %s has no name — using block_id as fallback",
+                        block_id,
                     )
                 display_name = split_camelcase(block.name) if block.name else ""
                 parts = []
@@ -282,7 +283,7 @@ class BlockHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning(f"Failed to process block {block_id}: {e}")
+                logger.warning("Failed to process block %s: %s", block_id, e)
                 continue
 
         return items
@@ -367,7 +368,7 @@ class DocumentationHandler(ContentHandler):
             # If no title found, use filename
             return file_path.stem.replace("-", " ").replace("_", " ").title()
         except Exception as e:
-            logger.warning(f"Failed to read title from {file_path}: {e}")
+            logger.warning("Failed to read title from %s: %s", file_path, e)
             return file_path.stem.replace("-", " ").replace("_", " ").title()
 
     def _chunk_markdown_by_headings(
@@ -387,7 +388,7 @@ class DocumentationHandler(ContentHandler):
         try:
             content = file_path.read_text(encoding="utf-8")
         except Exception as e:
-            logger.warning(f"Failed to read {file_path}: {e}")
+            logger.warning("Failed to read %s: %s", file_path, e)
             return []
 
         lines = content.split("\n")
@@ -512,7 +513,7 @@ class DocumentationHandler(ContentHandler):
         docs_root = self._get_docs_root()
 
         if not docs_root.exists():
-            logger.warning(f"Documentation root not found: {docs_root}")
+            logger.warning("Documentation root not found: %s", docs_root)
             return []
 
         # Find all .md and .mdx files
@@ -588,7 +589,7 @@ class DocumentationHandler(ContentHandler):
                     )
                 )
             except Exception as e:
-                logger.warning(f"Failed to process section {content_id}: {e}")
+                logger.warning("Failed to process section %s: %s", content_id, e)
                 continue
 
         return items
