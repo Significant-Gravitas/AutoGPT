@@ -134,7 +134,14 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    try:
+        await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    except Exception as e:
+        logger.warning(
+            f"Failed to migrate LLM models at startup: {e}. "
+            "This is expected in test environments without AgentNode table."
+        )
+
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
