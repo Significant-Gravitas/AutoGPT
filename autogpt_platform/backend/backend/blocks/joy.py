@@ -17,6 +17,13 @@ Example usage:
     Use JoyTrustVerifyBlock before delegating sensitive tasks to check
     if an external agent meets your minimum trust requirements.
 
+Use Cases:
+    1. Trust Verification: Check an agent's reputation before delegation
+    2. Agent Discovery: Find trusted agents with specific capabilities
+    3. Safety Checkpoint: Gate sensitive operations on trust thresholds
+    4. Trust Auditing: Log and monitor trust decisions in workflows
+    5. Capability Inventory: Discover what trusted agents can do
+
 Learn more: https://choosejoy.com.au
 """
 
@@ -71,6 +78,77 @@ def _validate_agent_id(agent_id: str) -> str:
     return agent_id
 
 
+async def _fetch_agent_data(agent_id: str) -> dict[str, Any]:
+    """Fetch agent data from the Joy API.
+
+    Shared helper function used by multiple blocks to retrieve trust metrics
+    for a specific agent including trust score, verification status, vouch
+    count, and registered capabilities.
+
+    Args:
+        agent_id: The Joy agent identifier to look up. Must match the
+            pattern 'ag_' followed by 24 hexadecimal characters.
+
+    Returns:
+        Dictionary containing agent data with keys:
+            - id: The agent's unique identifier
+            - name: Display name of the agent
+            - trust_score: Float from 0.0 to 2.0+
+            - vouch_count: Number of vouches received
+            - verified: Boolean verification status
+            - capabilities: List of capability strings
+
+    Raises:
+        ValueError: If agent_id format is invalid.
+        httpx.HTTPStatusError: If the API request fails.
+    """
+    validated_id = _validate_agent_id(agent_id)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{JOY_API_URL}/agents/{quote(validated_id, safe='')}",
+            headers={"User-Agent": "autogpt-joy/1.0.0"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def _discover_agents_data(
+    capability: str, query: str, limit: int
+) -> dict[str, Any]:
+    """Discover agents from the Joy API with filtering.
+
+    Shared helper function to search the Joy network for agents matching
+    the specified criteria. Results are ordered by trust score descending.
+
+    Args:
+        capability: Optional capability tag to filter by (e.g., 'github').
+        query: Optional free-text search query.
+        limit: Maximum number of agents to return.
+
+    Returns:
+        Dictionary containing:
+            - agents: List of agent dictionaries with trust metrics
+            - count: Total number of matching agents
+
+    Raises:
+        httpx.HTTPStatusError: If the API request fails.
+    """
+    params: dict[str, Any] = {"limit": limit}
+    if capability:
+        params["capability"] = capability
+    if query:
+        params["query"] = query
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{JOY_API_URL}/agents/discover",
+            params=params,
+            headers={"User-Agent": "autogpt-joy/1.0.0"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
 class JoyTrustVerifyBlock(Block):
     """Verify an agent's trustworthiness using the Joy trust network.
 
@@ -96,6 +174,16 @@ class JoyTrustVerifyBlock(Block):
                 "min_trust_score": 0.5,
                 "require_verified": True
             }
+
+        Trust auditing - log all trust decisions::
+
+            result = await block.run(input_data, execution_context=ctx)
+            audit_log.record(agent_id, result.is_trusted, result.trust_score)
+
+        Safety checkpoint before sensitive operations::
+
+            if not result.is_trusted:
+                raise SecurityError("Agent does not meet trust requirements")
     """
 
     class Input(BlockSchemaInput):
@@ -159,36 +247,8 @@ class JoyTrustVerifyBlock(Block):
         )
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
-        """Fetch agent data from the Joy API.
-
-        Retrieves trust metrics for a specific agent including trust score,
-        verification status, vouch count, and registered capabilities.
-
-        Args:
-            agent_id: The Joy agent identifier to look up. Must match the
-                pattern 'ag_' followed by 24 hexadecimal characters.
-
-        Returns:
-            Dictionary containing agent data with keys:
-                - id: The agent's unique identifier
-                - name: Display name of the agent
-                - trust_score: Float from 0.0 to 2.0+
-                - vouch_count: Number of vouches received
-                - verified: Boolean verification status
-                - capabilities: List of capability strings
-
-        Raises:
-            ValueError: If agent_id format is invalid.
-            httpx.HTTPStatusError: If the API request fails.
-        """
-        validated_id = _validate_agent_id(agent_id)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{JOY_API_URL}/agents/{quote(validated_id, safe='')}",
-                headers={"User-Agent": "autogpt-joy/1.0.0"},
-            )
-            response.raise_for_status()
-            return response.json()
+        """Fetch agent data from the Joy API."""
+        return await _fetch_agent_data(agent_id)
 
     async def run(
         self,
@@ -272,6 +332,12 @@ class JoyDiscoverAgentsBlock(Block):
                 "min_trust_score": 0.7,
                 "limit": 5
             }
+
+        Capability inventory - discover what agents can do::
+
+            for cap in ["code", "research", "email", "calendar"]:
+                agents = await discover_block.run({"capability": cap}, ctx)
+                inventory[cap] = agents.count
     """
 
     class Input(BlockSchemaInput):
@@ -347,38 +413,8 @@ class JoyDiscoverAgentsBlock(Block):
     async def _discover_agents(
         self, capability: str, query: str, limit: int
     ) -> dict[str, Any]:
-        """Discover agents from the Joy API with filtering.
-
-        Searches the Joy network for agents matching the specified criteria.
-        Results are ordered by trust score descending.
-
-        Args:
-            capability: Optional capability tag to filter by (e.g., 'github').
-            query: Optional free-text search query.
-            limit: Maximum number of agents to return.
-
-        Returns:
-            Dictionary containing:
-                - agents: List of agent dictionaries with trust metrics
-                - count: Total number of matching agents
-
-        Raises:
-            httpx.HTTPStatusError: If the API request fails.
-        """
-        params: dict[str, Any] = {"limit": limit}
-        if capability:
-            params["capability"] = capability
-        if query:
-            params["query"] = query
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{JOY_API_URL}/agents/discover",
-                params=params,
-                headers={"User-Agent": "autogpt-joy/1.0.0"},
-            )
-            response.raise_for_status()
-            return response.json()
+        """Discover agents from the Joy API with filtering."""
+        return await _discover_agents_data(capability, query, limit)
 
     async def run(
         self,
@@ -460,6 +496,15 @@ class JoyShouldTrustBlock(Block):
                 "min_trust_score": 0.5
             }
             # Output: {"trusted": True, "reason": "Trust score 1.50 meets threshold 0.5"}
+
+        Safety checkpoint - block untrusted agents::
+
+            if not result.trusted:
+                workflow.abort(f"Blocked: {result.reason}")
+
+        Trust auditing with logging::
+
+            logger.info(f"Trust decision for {agent_id}: {result.reason}")
     """
 
     class Input(BlockSchemaInput):
@@ -510,29 +555,8 @@ class JoyShouldTrustBlock(Block):
         )
 
     async def _fetch_agent(self, agent_id: str) -> dict[str, Any]:
-        """Fetch agent data from the Joy API.
-
-        Retrieves the agent's trust score for threshold comparison.
-
-        Args:
-            agent_id: The Joy agent identifier to look up. Must match the
-                pattern 'ag_' followed by 24 hexadecimal characters.
-
-        Returns:
-            Dictionary containing agent data including trust_score.
-
-        Raises:
-            ValueError: If agent_id format is invalid.
-            httpx.HTTPStatusError: If the API request fails.
-        """
-        validated_id = _validate_agent_id(agent_id)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{JOY_API_URL}/agents/{quote(validated_id, safe='')}",
-                headers={"User-Agent": "autogpt-joy/1.0.0"},
-            )
-            response.raise_for_status()
-            return response.json()
+        """Fetch agent data from the Joy API."""
+        return await _fetch_agent_data(agent_id)
 
     async def run(
         self,
@@ -575,5 +599,6 @@ class JoyShouldTrustBlock(Block):
                 )
 
         except Exception as e:
+            logger.error(f"Joy trust gate check failed: {e}")
             yield "trusted", False
             yield "reason", f"Verification failed: {e}"
