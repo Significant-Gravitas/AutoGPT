@@ -1643,7 +1643,7 @@ class AgentFixer:
         """Fix SmartDecisionMakerBlock nodes to ensure agent-mode defaults.
 
         Ensures:
-        1. ``agent_mode_max_iterations`` defaults to ``-1`` (infinite agent mode)
+        1. ``agent_mode_max_iterations`` defaults to ``10`` (bounded agent mode)
         2. ``conversation_compaction`` defaults to ``True``
         3. ``retry`` defaults to ``3``
         4. ``multiple_tool_calls`` defaults to ``False``
