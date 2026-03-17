@@ -13,18 +13,25 @@ function loadCompletedSessions(): Set<string> {
   const raw = storage.get(Key.COPILOT_COMPLETED_SESSIONS);
   if (!raw) return new Set();
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set<string>(parsed.filter((v) => typeof v === "string"))
+      : new Set();
   } catch {
     return new Set();
   }
 }
 
 function persistCompletedSessions(ids: Set<string>) {
-  if (ids.size === 0) {
-    storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
-  } else {
-    storage.set(Key.COPILOT_COMPLETED_SESSIONS, JSON.stringify([...ids]));
+  if (!isClient) return;
+  try {
+    if (ids.size === 0) {
+      storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
+    } else {
+      storage.set(Key.COPILOT_COMPLETED_SESSIONS, JSON.stringify([...ids]));
+    }
+  } catch {
+    // Keep in-memory state authoritative if persistence is unavailable
   }
 }
 
