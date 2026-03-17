@@ -6,9 +6,10 @@ external LLM calls.
 
 Enable test mode with CHAT_TEST_MODE=true environment variable (or in .env).
 
-Note: StreamFinish is NOT emitted by the dummy service — it is published
-by mark_session_completed in the processor layer.  These tests only cover
-the service-level streaming output (StreamStart + StreamTextDelta).
+The dummy service emits the full AI SDK protocol event sequence:
+StreamStart → StreamStartStep → StreamTextStart → StreamTextDelta(s) →
+StreamTextEnd → StreamFinishStep → StreamFinish.
+The processor skips StreamFinish and publishes its own via mark_session_completed.
 """
 
 import asyncio
@@ -20,9 +21,14 @@ import pytest
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import (
     StreamError,
+    StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
 )
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 
@@ -110,9 +116,14 @@ async def test_streaming_event_types():
     ):
         event_types.add(type(event).__name__)
 
-    # Required event types (StreamFinish is published by processor, not service)
+    # Required event types for full AI SDK protocol
     assert "StreamStart" in event_types, "Missing StreamStart"
+    assert "StreamStartStep" in event_types, "Missing StreamStartStep"
+    assert "StreamTextStart" in event_types, "Missing StreamTextStart"
     assert "StreamTextDelta" in event_types, "Missing StreamTextDelta"
+    assert "StreamTextEnd" in event_types, "Missing StreamTextEnd"
+    assert "StreamFinishStep" in event_types, "Missing StreamFinishStep"
+    assert "StreamFinish" in event_types, "Missing StreamFinish"
 
     print(f"✅ Event types: {sorted(event_types)}")
 
@@ -327,20 +338,28 @@ async def test_stream_completeness():
     ):
         events.append(event)
 
-    # Check for required events (StreamFinish is published by processor)
-    has_start = any(isinstance(e, StreamStart) for e in events)
-    has_text = any(isinstance(e, StreamTextDelta) for e in events)
-
-    assert has_start, "Stream must include StreamStart"
-    assert has_text, "Stream must include text deltas"
+    # Check for all required event types
+    assert any(isinstance(e, StreamStart) for e in events), "Missing StreamStart"
+    assert any(
+        isinstance(e, StreamStartStep) for e in events
+    ), "Missing StreamStartStep"
+    assert any(
+        isinstance(e, StreamTextStart) for e in events
+    ), "Missing StreamTextStart"
+    assert any(
+        isinstance(e, StreamTextDelta) for e in events
+    ), "Missing StreamTextDelta"
+    assert any(isinstance(e, StreamTextEnd) for e in events), "Missing StreamTextEnd"
+    assert any(
+        isinstance(e, StreamFinishStep) for e in events
+    ), "Missing StreamFinishStep"
+    assert any(isinstance(e, StreamFinish) for e in events), "Missing StreamFinish"
 
     # Verify exactly one start
     start_count = sum(1 for e in events if isinstance(e, StreamStart))
     assert start_count == 1, f"Should have exactly 1 StreamStart, got {start_count}"
 
-    print(
-        f"✅ Completeness: 1 start, {sum(1 for e in events if isinstance(e, StreamTextDelta))} text deltas"
-    )
+    print(f"✅ Completeness: {len(events)} events, full protocol sequence")
 
 
 @pytest.mark.asyncio

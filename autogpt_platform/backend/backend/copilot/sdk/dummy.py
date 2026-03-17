@@ -25,8 +25,13 @@ from ..model import ChatSession
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
+    StreamFinish,
+    StreamFinishStep,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,15 +69,19 @@ async def stream_chat_completion_dummy(
     message_id = str(uuid.uuid4())
     text_block_id = str(uuid.uuid4())
 
-    # Start the stream
+    # Start the stream (matches baseline: StreamStart → StreamStartStep)
     yield StreamStart(messageId=message_id, sessionId=session_id)
+    yield StreamStartStep()
 
     # --- Magic keyword: transient error (retryable) -------------------------
     if _has_keyword(message, "__test_transient_error__"):
         # Stream some partial text first (simulates mid-stream failure)
+        yield StreamTextStart(id=text_block_id)
         for word in ["Working", "on", "it..."]:
             yield StreamTextDelta(id=text_block_id, delta=f"{word} ")
             await asyncio.sleep(0.1)
+        yield StreamTextEnd(id=text_block_id)
+        yield StreamFinishStep()
         # Then emit a retryable error — frontend should show "Try Again"
         yield StreamError(
             errorText=FRIENDLY_TRANSIENT_MSG,
@@ -82,6 +91,7 @@ async def stream_chat_completion_dummy(
 
     # --- Magic keyword: fatal error (non-retryable) -------------------------
     if _has_keyword(message, "__test_fatal_error__"):
+        yield StreamFinishStep()
         yield StreamError(
             errorText="Internal SDK error: model refused to respond",
             code="sdk_error",
@@ -95,8 +105,12 @@ async def stream_chat_completion_dummy(
     dummy_response = "I counted: 1... 2... 3. All done!"
     words = dummy_response.split()
 
+    yield StreamTextStart(id=text_block_id)
     for i, word in enumerate(words):
         # Add space except for last word
         text = word if i == len(words) - 1 else f"{word} "
         yield StreamTextDelta(id=text_block_id, delta=text)
         await asyncio.sleep(delay)
+    yield StreamTextEnd(id=text_block_id)
+    yield StreamFinishStep()
+    yield StreamFinish()
