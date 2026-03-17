@@ -68,7 +68,7 @@ export class BuildPage extends BasePage {
 
   private getBlockCardByName(name: string): Locator {
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const exactName = new RegExp(`^\\s*${escapedName}\\s*$`);
+    const exactName = new RegExp(`^\\s*${escapedName}\\s*$`, "i");
     return this.page
       .locator('[data-id^="block-card-"]')
       .filter({ has: this.page.locator("span", { hasText: exactName }) })
