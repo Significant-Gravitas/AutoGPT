@@ -127,7 +127,7 @@ class FindBlockTool(BaseTool):
                 if block:
                     if block.disabled:
                         return NoResultsResponse(
-                            message=f"Block '{block.name}' (ID: {query}) is disabled and cannot be used.",
+                            message=f"Block '{block.name}' (ID: {block.id}) is disabled and cannot be used.",
                             suggestions=["Search for an alternative block by name"],
                             session_id=session_id,
                         )
