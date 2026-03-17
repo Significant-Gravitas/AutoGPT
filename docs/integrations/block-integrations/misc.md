@@ -3,113 +3,6 @@
 Miscellaneous blocks including agent execution, scheduling, HTTP requests, webhooks, and other utility functions.
 <!-- END MANUAL -->
 
-## Joy Discover Agents
-
-### What it is
-Discover trusted agents from the Joy network. Search by capability or query to find agents that meet your minimum trust threshold.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block searches the Joy trust network to find AI agents with specific capabilities. You can search by capability type (e.g., 'github', 'email', 'code') or use a free-text query. Results are filtered to only include agents meeting your minimum trust score.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| capability | Capability to search for (e.g., 'github', 'email', 'code') | str | No |
-| query | Free text search query | str | No |
-| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
-| limit | Maximum number of agents to return | int | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| agents | List of trusted agents matching criteria | list |
-| count | Number of agents found | int |
-| error | Error message if discovery failed | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Finding Collaborators**: Discover trusted agents with specific capabilities to collaborate on complex tasks.
-
-**Building Agent Teams**: Assemble teams of trusted agents with complementary skills.
-<!-- END MANUAL -->
-
----
-
-## Joy Should Trust
-
-### What it is
-Simple trust gate for agent verification. Returns true/false for use in conditional workflows. Use before delegating tasks to external agents.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block provides a simple boolean trust check for use in conditional workflow logic. Given an agent ID and minimum trust score threshold, it queries the Joy network and returns a true/false answer with a reason.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| agent_id | Joy agent ID to check (e.g., 'ag_xxx') | str | Yes |
-| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| trusted | Whether the agent should be trusted | bool |
-| reason | Reason for the trust decision | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Conditional Routing**: Use as a branching condition to route workflow execution based on agent trust.
-
-**Access Control**: Gate access to sensitive operations behind trust verification.
-<!-- END MANUAL -->
-
----
-
-## Joy Trust Verify
-
-### What it is
-Verify an agent's trustworthiness using the Joy trust network. Returns trust score, vouch count, and whether the agent meets your minimum trust threshold. Use before delegating tasks.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block queries the Joy trust network API to retrieve trust information about a specific agent. Joy is a decentralized reputation system where AI agents vouch for each other, building trust scores over time.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| agent_id | Joy agent ID to verify (e.g., 'ag_xxx') | str | Yes |
-| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
-| require_verified | Only trust agents with verified badge | bool | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| is_trusted | Whether the agent meets trust criteria | bool |
-| trust_score | Agent's trust score (0.0-2.0) | float |
-| vouch_count | Number of vouches the agent has received | int |
-| verified | Whether the agent has a verified badge | bool |
-| capabilities | List of agent capabilities | list |
-| error | Error message if verification failed | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Safe Task Delegation**: Verify agent trustworthiness before delegating sensitive tasks.
-
-**Automated Agent Selection**: Filter which agents are allowed to participate in collaborative tasks.
-<!-- END MANUAL -->
-
----
-
 ## Agent Executor
 
 ### What it is
@@ -833,6 +726,114 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 **Persistent State**: Create a sandbox with loaded models or data that multiple workflow branches can access.
 
 **Custom Environments**: Configure specialized environments with specific package versions for reproducible execution.
+<!-- END MANUAL -->
+
+---
+
+## Joy Discover Agents
+
+### What it is
+Discover trusted agents from the Joy network. Search by capability or query to find agents that meet your minimum trust threshold.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block searches the Joy trust network to find AI agents with specific capabilities. You can search by capability type (e.g., 'github', 'email', 'code') or use a free-text query. Results are filtered to only include agents meeting your minimum trust score.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| capability | Capability to search for (e.g., 'github', 'email') | str | No |
+| query | Free text search query | str | No |
+| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
+| limit | Maximum number of agents to return | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if discovery failed | str |
+| agents | List of trusted agents matching criteria | List[Any] |
+| count | Number of agents found | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Finding Collaborators**: Discover trusted agents with specific capabilities to collaborate on complex tasks.
+
+**Building Agent Teams**: Assemble teams of trusted agents with complementary skills.
+<!-- END MANUAL -->
+
+---
+
+## Joy Should Trust
+
+### What it is
+Simple trust gate for agent verification. Returns true/false for use in conditional workflows. Use before delegating tasks to external agents.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block provides a simple boolean trust check for use in conditional workflow logic. Given an agent ID and minimum trust score threshold, it queries the Joy network and returns a true/false answer with a reason.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| agent_id | Joy agent ID to check (e.g., 'ag_xxx') | str | Yes |
+| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| trusted | Whether the agent should be trusted | bool |
+| reason | Reason for the trust decision | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Conditional Routing**: Use as a branching condition to route workflow execution based on agent trust.
+
+**Access Control**: Gate access to sensitive operations behind trust verification.
+<!-- END MANUAL -->
+
+---
+
+## Joy Trust Verify
+
+### What it is
+Verify an agent's trustworthiness using the Joy trust network. Returns trust score, vouch count, and whether the agent meets your minimum trust threshold. Use before delegating tasks.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block queries the Joy trust network API to retrieve trust information about a specific agent. Joy is a decentralized reputation system where AI agents vouch for each other, building trust scores over time.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| agent_id | Joy agent ID to verify (e.g., 'ag_xxx') | str | Yes |
+| min_trust_score | Minimum trust score required (0.0-2.0) | float | No |
+| require_verified | Only trust agents with verified badge | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if verification failed | str |
+| is_trusted | Whether the agent meets trust criteria | bool |
+| trust_score | Agent's trust score (0.0-2.0) | float |
+| vouch_count | Number of vouches the agent has received | int |
+| verified | Whether the agent has a verified badge | bool |
+| capabilities | List of agent capabilities | List[Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Safe Task Delegation**: Verify agent trustworthiness before delegating sensitive tasks.
+
+**Automated Agent Selection**: Filter which agents are allowed to participate in collaborative tasks.
 <!-- END MANUAL -->
 
 ---

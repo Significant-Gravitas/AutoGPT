@@ -635,7 +635,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [Joy Trust Verify](block-integrations/misc.md#joy-trust-verify) | Verify an agent's trustworthiness using the Joy trust network |
 | [Nvidia Deepfake Detect](block-integrations/nvidia/deepfake.md#nvidia-deepfake-detect) | Detects potential deepfakes in images using Nvidia's AI API |
 
 ## Issue Tracking
