@@ -234,6 +234,11 @@ class AutoPilotBlock(Block):
         )
         from backend.copilot.sdk.service import stream_chat_completion_sdk
 
+        # NOTE: This calls stream_chat_completion_sdk directly in the graph
+        # executor process rather than proxying through the Copilot Executor
+        # service.  If the copilot executor env diverges (different SDK version,
+        # tool set, or model config) this block will follow the graph executor's
+        # env.  Keep shared copilot deps aligned or proxy via the executor.
         tokens = _check_recursion(max_recursion_depth)
         try:
             effective_prompt = prompt
