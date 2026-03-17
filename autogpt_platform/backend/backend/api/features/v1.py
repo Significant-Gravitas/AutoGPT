@@ -24,7 +24,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -134,7 +134,7 @@ _tally_background_tasks: set[asyncio.Task] = set()
 
 
 class CheckInviteRequest(BaseModel):
-    email: str
+    email: EmailStr
 
 
 class CheckInviteResponse(BaseModel):
@@ -157,12 +157,10 @@ async def check_invite_route(
     if not settings.config.enable_invite_gate:
         return CheckInviteResponse(allowed=True)
 
-    email = normalize_email(request.email)
-
-    if email.endswith("@agpt.co"):
+    if normalize_email(request.email).endswith("@agpt.co"):
         return CheckInviteResponse(allowed=True)
 
-    allowed = await check_invite_eligibility(email)
+    allowed = await check_invite_eligibility(request.email)
     return CheckInviteResponse(allowed=allowed)
 
 

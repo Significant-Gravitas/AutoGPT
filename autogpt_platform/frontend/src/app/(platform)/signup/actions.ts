@@ -46,9 +46,14 @@ export async function signup(
         if (!allowed) {
           return { success: false, error: "not_allowed" };
         }
+      } else {
+        Sentry.captureMessage(
+          `Invite pre-check returned HTTP ${checkResponse.status}`,
+          { level: "warning", tags: { flow: "signup_precheck" } },
+        );
       }
-      // If the check fails (backend unreachable), fall through to signup —
-      // the backend-level check in get_or_activate_user() still catches it.
+      // If the check fails (non-OK or backend unreachable), fall through to
+      // signup — the backend-level check in get_or_activate_user() catches it.
     } catch (precheckError) {
       Sentry.captureException(precheckError, {
         tags: { flow: "signup_precheck" },
