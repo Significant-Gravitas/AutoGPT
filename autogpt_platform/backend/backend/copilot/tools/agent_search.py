@@ -43,6 +43,7 @@ async def search_agents(
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
+    """Search marketplace agents, with direct creator/slug lookup fallback."""
     query = query.strip()
     if not query:
         return ErrorResponse(
@@ -106,6 +107,7 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
 async def _search_library(
     query: str, session_id: str | None, user_id: str | None
 ) -> ToolResponseBase:
+    """Search user's library agents, with direct UUID lookup fallback."""
     if not user_id:
         return ErrorResponse(
             message="User authentication required to search library",
