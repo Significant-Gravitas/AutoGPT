@@ -4,15 +4,19 @@ Pure unit tests with no external dependencies (no E2B, no sandbox).
 """
 
 import os
+import shutil
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.context import _current_project_dir
+from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
 
-from .e2b_file_tools import _read_local, resolve_sandbox_path
-
-_SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
-
+from .e2b_file_tools import (
+    _check_sandbox_symlink_escape,
+    _read_local,
+    resolve_sandbox_path,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_sandbox_path — sandbox path normalisation & boundary enforcement
@@ -21,46 +25,48 @@ _SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
 
 class TestResolveSandboxPath:
     def test_relative_path_resolved(self):
-        assert resolve_sandbox_path("src/main.py") == "/home/user/src/main.py"
+        assert resolve_sandbox_path("src/main.py") == f"{E2B_WORKDIR}/src/main.py"
 
     def test_absolute_within_sandbox(self):
-        assert resolve_sandbox_path("/home/user/file.txt") == "/home/user/file.txt"
+        assert (
+            resolve_sandbox_path(f"{E2B_WORKDIR}/file.txt") == f"{E2B_WORKDIR}/file.txt"
+        )
 
     def test_workdir_itself(self):
-        assert resolve_sandbox_path("/home/user") == "/home/user"
+        assert resolve_sandbox_path(E2B_WORKDIR) == E2B_WORKDIR
 
     def test_relative_dotslash(self):
-        assert resolve_sandbox_path("./README.md") == "/home/user/README.md"
+        assert resolve_sandbox_path("./README.md") == f"{E2B_WORKDIR}/README.md"
 
     def test_traversal_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("../../etc/passwd")
 
     def test_absolute_traversal_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
-            resolve_sandbox_path("/home/user/../../etc/passwd")
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+            resolve_sandbox_path(f"{E2B_WORKDIR}/../../etc/passwd")
 
     def test_absolute_outside_sandbox_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/etc/passwd")
 
     def test_root_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/")
 
     def test_home_other_user_blocked(self):
-        with pytest.raises(ValueError, match="must be within /home/user"):
+        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
             resolve_sandbox_path("/home/other/file.txt")
 
     def test_deep_nested_allowed(self):
-        assert resolve_sandbox_path("a/b/c/d/e.txt") == "/home/user/a/b/c/d/e.txt"
+        assert resolve_sandbox_path("a/b/c/d/e.txt") == f"{E2B_WORKDIR}/a/b/c/d/e.txt"
 
     def test_trailing_slash_normalised(self):
-        assert resolve_sandbox_path("src/") == "/home/user/src"
+        assert resolve_sandbox_path("src/") == f"{E2B_WORKDIR}/src"
 
     def test_double_dots_within_sandbox_ok(self):
-        """Path that resolves back within /home/user is allowed."""
-        assert resolve_sandbox_path("a/b/../c.txt") == "/home/user/a/c.txt"
+        """Path that resolves back within E2B_WORKDIR is allowed."""
+        assert resolve_sandbox_path("a/b/../c.txt") == f"{E2B_WORKDIR}/a/c.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -73,9 +79,13 @@ class TestResolveSandboxPath:
 
 
 class TestReadLocal:
+    _CONV_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
     def _make_tool_results_file(self, encoded: str, filename: str, content: str) -> str:
-        """Create a tool-results file and return its path."""
-        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
+        """Create a tool-results file under <encoded>/<uuid>/tool-results/."""
+        tool_results_dir = os.path.join(
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+        )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, filename)
         with open(filepath, "w") as f:
@@ -107,7 +117,9 @@ class TestReadLocal:
     def test_read_nonexistent_tool_results(self):
         """A tool-results path that doesn't exist returns FileNotFoundError."""
         encoded = "-tmp-copilot-e2b-test-nofile"
-        tool_results_dir = os.path.join(_SDK_PROJECTS_DIR, encoded, "tool-results")
+        tool_results_dir = os.path.join(
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-results"
+        )
         os.makedirs(tool_results_dir, exist_ok=True)
         filepath = os.path.join(tool_results_dir, "nonexistent.txt")
         token = _current_project_dir.set(encoded)
@@ -117,7 +129,7 @@ class TestReadLocal:
             assert "not found" in result["content"][0]["text"].lower()
         finally:
             _current_project_dir.reset(token)
-            os.rmdir(tool_results_dir)
+            shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
 
     def test_read_traversal_path_blocked(self):
         """A traversal attempt that escapes allowed directories is blocked."""
@@ -152,3 +164,66 @@ class TestReadLocal:
         """Without _current_project_dir set, all paths are blocked."""
         result = _read_local("/tmp/anything.txt", offset=0, limit=10)
         assert result["isError"] is True
+
+
+# ---------------------------------------------------------------------------
+# _check_sandbox_symlink_escape — symlink escape detection
+# ---------------------------------------------------------------------------
+
+
+def _make_sandbox(stdout: str, exit_code: int = 0) -> SimpleNamespace:
+    """Build a minimal sandbox mock whose commands.run returns a fixed result."""
+    run_result = SimpleNamespace(stdout=stdout, exit_code=exit_code)
+    commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+    return SimpleNamespace(commands=commands)
+
+
+class TestCheckSandboxSymlinkEscape:
+    @pytest.mark.asyncio
+    async def test_canonical_path_within_workdir_returns_path(self):
+        """When readlink -f resolves to a path inside E2B_WORKDIR, returns it."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/src\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
+        assert result == f"{E2B_WORKDIR}/src"
+
+    @pytest.mark.asyncio
+    async def test_workdir_itself_returns_workdir(self):
+        """When readlink -f resolves to E2B_WORKDIR exactly, returns E2B_WORKDIR."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, E2B_WORKDIR)
+        assert result == E2B_WORKDIR
+
+    @pytest.mark.asyncio
+    async def test_symlink_escape_returns_none(self):
+        """When readlink -f resolves outside E2B_WORKDIR (symlink escape), returns None."""
+        sandbox = _make_sandbox(stdout="/etc\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/evil")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_nonzero_exit_code_returns_none(self):
+        """A non-zero exit code from readlink -f returns None."""
+        sandbox = _make_sandbox(stdout="", exit_code=1)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_empty_stdout_returns_none(self):
+        """Empty stdout from readlink (e.g. path doesn't exist yet) returns None."""
+        sandbox = _make_sandbox(stdout="", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/src")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_prefix_collision_returns_none(self):
+        """A path prefixed with E2B_WORKDIR but not within it is rejected."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}-evil\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}-evil")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_deeply_nested_path_within_workdir(self):
+        """Deep nested paths inside E2B_WORKDIR are allowed."""
+        sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/a/b/c/d\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/a/b/c/d")
+        assert result == f"{E2B_WORKDIR}/a/b/c/d"

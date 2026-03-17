@@ -18,11 +18,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/build");
   await buildPage.closeTutorial();
 
-  const [dictionaryBlock] = await buildPage.getFilteredBlocksFromAPI(
-    (block) => block.name === "AddToDictionaryBlock",
-  );
-
-  await buildPage.addBlock(dictionaryBlock);
+  await buildPage.addBlockByClick("Add to Dictionary");
+  await buildPage.waitForNodeOnCanvas(1);
 
   await buildPage.saveAgent("Test Agent", "Test Description");
   await test

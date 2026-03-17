@@ -115,9 +115,21 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
+    use_openrouter: bool = Field(
+        default=True,
+        description="Enable routing API calls through the OpenRouter proxy. "
+        "The actual decision also requires ``api_key`` and ``base_url`` — "
+        "use the ``openrouter_active`` property for the final answer.",
+    )
     use_claude_code_subscription: bool = Field(
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
+    )
+    test_mode: bool = Field(
+        default=False,
+        description="Use dummy service instead of real LLM calls. "
+        "Send __test_transient_error__, __test_fatal_error__, or "
+        "__test_slow_response__ to trigger specific scenarios.",
     )
 
     # E2B Sandbox Configuration
@@ -147,6 +159,21 @@ class ChatConfig(BaseSettings):
     )
 
     @property
+    def openrouter_active(self) -> bool:
+        """True when OpenRouter is enabled AND credentials are usable.
+
+        Single source of truth for "will the SDK route through OpenRouter?".
+        Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
+        present — mirrors the fallback logic in ``_build_sdk_env``.
+        """
+        if not self.use_openrouter:
+            return False
+        base = (self.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        return bool(self.api_key and base and base.startswith("http"))
+
+    @property
     def e2b_active(self) -> bool:
         """True when E2B is enabled and the API key is present.
 
@@ -167,15 +194,6 @@ class ChatConfig(BaseSettings):
                 # E2B is active; api_key is narrowed to str
         """
         return self.e2b_api_key if self.e2b_active else None
-
-    @field_validator("use_e2b_sandbox", mode="before")
-    @classmethod
-    def get_use_e2b_sandbox(cls, v):
-        """Get use_e2b_sandbox from environment if not provided."""
-        env_val = os.getenv("CHAT_USE_E2B_SANDBOX", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        return True if v is None else v
 
     @field_validator("e2b_api_key", mode="before")
     @classmethod
@@ -219,26 +237,6 @@ class ChatConfig(BaseSettings):
                 v = OPENROUTER_BASE_URL
         return v
 
-    @field_validator("use_claude_agent_sdk", mode="before")
-    @classmethod
-    def get_use_claude_agent_sdk(cls, v):
-        """Get use_claude_agent_sdk from environment if not provided."""
-        # Check environment variable - default to True if not set
-        env_val = os.getenv("CHAT_USE_CLAUDE_AGENT_SDK", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        # Default to True (SDK enabled by default)
-        return True if v is None else v
-
-    @field_validator("use_claude_code_subscription", mode="before")
-    @classmethod
-    def get_use_claude_code_subscription(cls, v):
-        """Get use_claude_code_subscription from environment if not provided."""
-        env_val = os.getenv("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        return False if v is None else v
-
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
         "default": "prompts/chat_system.md",
@@ -248,6 +246,7 @@ class ChatConfig(BaseSettings):
     class Config:
         """Pydantic config."""
 
+        env_prefix = "CHAT_"
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"  # Ignore extra environment variables
