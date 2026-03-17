@@ -75,6 +75,7 @@
     "@xyflow/react": "12.9.2",
     "ai": "6.0.59",
     "boring-avatars": "1.11.2",
+    "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
