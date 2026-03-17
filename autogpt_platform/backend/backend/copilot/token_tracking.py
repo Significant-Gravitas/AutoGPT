@@ -47,7 +47,12 @@ async def persist_and_record_usage(
     cache_read_tokens = max(0, cache_read_tokens)
     cache_creation_tokens = max(0, cache_creation_tokens)
 
-    if prompt_tokens <= 0 and completion_tokens <= 0:
+    if (
+        prompt_tokens <= 0
+        and completion_tokens <= 0
+        and cache_read_tokens <= 0
+        and cache_creation_tokens <= 0
+    ):
         return 0
 
     # total_tokens = prompt + completion. Cache tokens are tracked
