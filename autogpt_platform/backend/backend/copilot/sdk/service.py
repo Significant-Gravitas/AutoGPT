@@ -268,6 +268,11 @@ def _build_sdk_env(
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     # ``openrouter_active`` checks the flag *and* credential presence.
     if not config.openrouter_active:
+        if config.use_openrouter:
+            logger.warning(
+                "[SDK] OpenRouter enabled but api_key/base_url missing or "
+                "invalid; falling back to direct Anthropic mode"
+            )
         return {}
 
     # --- Mode 3: OpenRouter proxy ---

@@ -2,7 +2,6 @@
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
-import { useCallback } from "react";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -51,7 +50,7 @@ export const ChatContainer = ({
   const inputLayoutId = "copilot-2-chat-input";
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors)
-  const handleRetry = useCallback(() => {
+  function handleRetry() {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
     const lastText = lastUserMsg?.parts
       .filter(
@@ -62,7 +61,7 @@ export const ChatContainer = ({
     if (lastText) {
       onSend(lastText);
     }
-  }, [messages, onSend]);
+  }
 
   return (
     <CopilotChatActionsProvider onSend={onSend}>
