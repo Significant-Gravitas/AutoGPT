@@ -1093,6 +1093,7 @@ async def stream_chat_completion_sdk(
                     # so we can debug Anthropic API 400s surfaced by the CLI.
                     sdk_error = getattr(sdk_msg, "error", None)
                     if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        error_text = str(sdk_error)
                         error_preview = str(sdk_msg.content)[:500]
                         logger.error(
                             "[SDK] [%s] AssistantMessage has error=%s, "
@@ -1107,7 +1108,10 @@ async def stream_chat_completion_sdk(
                         # ECONNRESET) — replace raw message with a
                         # user-friendly error and mark as retryable so the
                         # frontend can offer a retry button.
-                        if is_transient_api_error(error_preview):
+                        # Check both the error field and content for patterns.
+                        if is_transient_api_error(error_text) or is_transient_api_error(
+                            error_preview
+                        ):
                             logger.warning(
                                 "%s Transient Anthropic API error detected, "
                                 "suppressing raw error text",
