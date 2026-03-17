@@ -474,6 +474,11 @@ class AgentMailUpdateMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.add_labels and not input_data.remove_labels:
+            raise ValueError(
+                "Must specify at least one label operation: add_labels or remove_labels"
+            )
+
         client = _client(credentials)
         params: dict = {}
         if input_data.add_labels:
