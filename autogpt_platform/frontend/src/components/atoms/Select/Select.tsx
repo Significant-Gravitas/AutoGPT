@@ -79,7 +79,11 @@ export function Select({
   );
 
   const select = (
-    <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
+    <BaseSelect
+      value={value ?? ""}
+      onValueChange={onValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         className={triggerStyles}
         {...(hideLabel ? { "aria-label": label } : {})}
