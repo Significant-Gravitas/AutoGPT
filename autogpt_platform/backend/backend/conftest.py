@@ -46,7 +46,7 @@ def target_user_id() -> str:
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def setup_test_user(test_user_id):
     """Create test user in database before tests."""
     from backend.data.user import get_or_create_user
@@ -61,7 +61,7 @@ async def setup_test_user(test_user_id):
     return test_user_id
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def setup_admin_user(admin_user_id):
     """Create admin user in database before tests."""
     from backend.data.user import get_or_create_user
