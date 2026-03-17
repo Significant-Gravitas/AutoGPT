@@ -129,3 +129,16 @@ def review_db():
         review_db = get_database_manager_async_client()
 
     return review_db
+
+
+def credit_db():
+    if db.is_connected():
+        from backend.data import db_manager as _credit_db
+
+        credit_db = _credit_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        credit_db = get_database_manager_async_client()
+
+    return credit_db

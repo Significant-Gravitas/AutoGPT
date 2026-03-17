@@ -146,7 +146,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         event.set()
 
 
-async def wait_for_stash(timeout: float = 0.5) -> bool:
+async def wait_for_stash(timeout: float = 2.0) -> bool:
     """Wait for a PostToolUse hook to stash tool output.
 
     The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
@@ -155,12 +155,12 @@ async def wait_for_stash(timeout: float = 0.5) -> bool:
     by waiting on the ``_stash_event``, which is signaled by
     :func:`stash_pending_tool_output`.
 
-    After the event fires, callers should ``await asyncio.sleep(0)`` to
-    give any remaining concurrent hooks a chance to complete.
-
     Returns ``True`` if a stash signal was received, ``False`` on timeout.
-    The timeout is a safety net — normally the stash happens within
-    microseconds of yielding to the event loop.
+
+    The 2.0 s default was chosen based on production metrics: the original
+    0.5 s caused frequent timeouts under load (parallel tool calls, large
+    outputs).  2.0 s gives a comfortable margin while still failing fast
+    when the hook genuinely will not fire.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -285,7 +285,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(resolved) as f:
+        with open(resolved, encoding="utf-8", errors="replace") as f:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
@@ -347,7 +347,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     :func:`get_sdk_disallowed_tools`.
     """
 
-    def _truncating(fn, tool_name: str):
+    def _truncating(fn, tool_name: str, input_schema: dict[str, Any] | None = None):
         """Wrap a tool handler so its response is truncated to stay under the
         SDK's 10 MB JSON buffer, and stash the (truncated) output for the
         response adapter before the SDK can apply its own head-truncation.
@@ -361,7 +361,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             user_id, session = get_execution_context()
             if session is not None:
                 try:
-                    args = await expand_file_refs_in_args(args, user_id, session)
+                    args = await expand_file_refs_in_args(
+                        args, user_id, session, input_schema=input_schema
+                    )
                 except FileRefExpansionError as exc:
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
@@ -389,11 +391,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
+        schema = _build_input_schema(base_tool)
         decorated = tool(
             tool_name,
             base_tool.description,
-            _build_input_schema(base_tool),
-        )(_truncating(handler, tool_name))
+            schema,
+        )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.

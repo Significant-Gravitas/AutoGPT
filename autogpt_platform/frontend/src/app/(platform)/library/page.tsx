@@ -5,11 +5,11 @@ import { HeartIcon, ListIcon } from "@phosphor-icons/react";
 import { JumpBackIn } from "./components/JumpBackIn/JumpBackIn";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
-import { Tab } from "./components/LibraryTabs/LibraryTabs";
 import { useLibraryListPage } from "./components/useLibraryListPage";
 import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
+import { LibraryTab } from "./types";
 
-const LIBRARY_TABS: Tab[] = [
+const LIBRARY_TABS: LibraryTab[] = [
   { id: "all", title: "All", icon: ListIcon },
   { id: "favorites", title: "Favorites", icon: HeartIcon },
 ];

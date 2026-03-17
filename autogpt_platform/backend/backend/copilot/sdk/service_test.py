@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .service import _prepare_file_attachments
+from .service import _prepare_file_attachments, _resolve_sdk_model
 
 
 @dataclass
@@ -20,7 +20,7 @@ class _FakeFileInfo:
     size_bytes: int
 
 
-_PATCH_TARGET = "backend.copilot.sdk.service.get_manager"
+_PATCH_TARGET = "backend.copilot.sdk.service.get_workspace_manager"
 
 
 class TestPrepareFileAttachments:
@@ -288,3 +288,214 @@ class TestPromptSupplement:
             # Count how many times this tool appears as a bullet point
             count = docs.count(f"- **`{tool_name}`**")
             assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
+
+
+# ---------------------------------------------------------------------------
+# _cleanup_sdk_tool_results — orchestration + rate-limiting
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupSdkToolResults:
+    """Tests for _cleanup_sdk_tool_results orchestration and sweep rate-limiting."""
+
+    # All valid cwds must start with /tmp/copilot- (the _SDK_CWD_PREFIX).
+    _CWD_PREFIX = "/tmp/copilot-"
+
+    @pytest.mark.asyncio
+    async def test_removes_cwd_directory(self):
+        """Cleanup removes the session working directory."""
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-cleanup-remove"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
+            import backend.copilot.sdk.service as svc_mod
+
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        assert not os.path.exists(cwd)
+
+    @pytest.mark.asyncio
+    async def test_sweep_runs_when_interval_elapsed(self):
+        """cleanup_stale_project_dirs is called when 5-minute interval has elapsed."""
+
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-sweep-elapsed"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            # Set last sweep to a time far in the past
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        mock_sweep.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sweep_skipped_within_interval(self):
+        """cleanup_stale_project_dirs is NOT called when within 5-minute interval."""
+        import time
+
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-sweep-ratelimit"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            # Set last sweep to now — interval not elapsed
+            svc_mod._last_sweep_time = time.time()
+            await _cleanup_sdk_tool_results(cwd)
+
+        mock_sweep.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_outside_prefix(self, tmp_path):
+        """Cleanup rejects a cwd that does not start with the expected prefix."""
+        from .service import _cleanup_sdk_tool_results
+
+        evil_cwd = str(tmp_path / "evil-path")
+        os.makedirs(evil_cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            await _cleanup_sdk_tool_results(evil_cwd)
+
+        # Directory should NOT have been removed (rejected early)
+        assert os.path.exists(evil_cwd)
+        mock_sweep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Env vars that ChatConfig validators read — must be cleared so explicit
+# constructor values are used.
+# ---------------------------------------------------------------------------
+_CONFIG_ENV_VARS = (
+    "CHAT_USE_OPENROUTER",
+    "CHAT_API_KEY",
+    "OPEN_ROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "CHAT_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "OPENAI_BASE_URL",
+    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
+    "CHAT_USE_CLAUDE_AGENT_SDK",
+)
+
+
+@pytest.fixture()
+def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for var in _CONFIG_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+class TestResolveSdkModel:
+    """Tests for _resolve_sdk_model — model ID resolution for the SDK CLI."""
+
+    def test_openrouter_active_keeps_dots(self, monkeypatch, _clean_config_env):
+        """When OpenRouter is fully active, model keeps dot-separated version."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="anthropic/claude-opus-4.6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "claude-opus-4.6"
+
+    def test_openrouter_disabled_normalizes_to_hyphens(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When OpenRouter is disabled, dots are replaced with hyphens."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="anthropic/claude-opus-4.6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "claude-opus-4-6"
+
+    def test_openrouter_enabled_but_missing_key_normalizes(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When OpenRouter is enabled but api_key is missing, falls back to
+        direct Anthropic and normalizes dots to hyphens."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="anthropic/claude-opus-4.6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key=None,
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "claude-opus-4-6"
+
+    def test_explicit_claude_agent_model_takes_precedence(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When claude_agent_model is explicitly set, it is returned as-is."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="anthropic/claude-opus-4.6",
+            claude_agent_model="claude-sonnet-4-5-20250514",
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "claude-sonnet-4-5-20250514"
+
+    def test_subscription_mode_returns_none(self, monkeypatch, _clean_config_env):
+        """When using Claude Code subscription, returns None (CLI picks model)."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="anthropic/claude-opus-4.6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() is None
+
+    def test_model_without_provider_prefix(self, monkeypatch, _clean_config_env):
+        """When model has no provider prefix, it still normalizes correctly."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            model="claude-opus-4.6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "claude-opus-4-6"
