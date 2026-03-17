@@ -715,12 +715,14 @@ class NotificationManager(AppService):
                     try:
                         # Try to render the email to check its size
                         template = self.email_sender._get_template(event.type)
-                        _, test_message = await self.email_sender.formatter.format_email(
-                            base_template=template.base_template,
-                            subject_template=template.subject_template,
-                            content_template=template.body_template,
-                            data={"notifications": chunk},
-                            unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
+                        _, test_message = (
+                            await self.email_sender.formatter.format_email(
+                                base_template=template.base_template,
+                                subject_template=template.subject_template,
+                                content_template=template.body_template,
+                                data={"notifications": chunk},
+                                unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
+                            )
                         )
 
                         if len(test_message) < MAX_EMAIL_SIZE:

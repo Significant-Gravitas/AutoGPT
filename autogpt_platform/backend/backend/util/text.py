@@ -196,9 +196,7 @@ def _safe_range(*args: int) -> range:
     """range() replacement that caps the number of items to prevent DoS."""
     r = range(*args)
     if len(r) > MAX_RANGE:
-        raise OverflowError(
-            f"range() too large ({len(r)} items, max {MAX_RANGE})"
-        )
+        raise OverflowError(f"range() too large ({len(r)} items, max {MAX_RANGE})")
     return r
 
 
@@ -223,9 +221,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         if __obj is pow and len(args) >= 2:
             base, exp = args[0], args[1]
             if isinstance(exp, (int, float)) and abs(exp) > MAX_EXPONENT:
-                raise OverflowError(
-                    f"Exponent too large (max {MAX_EXPONENT})"
-                )
+                raise OverflowError(f"Exponent too large (max {MAX_EXPONENT})")
             if isinstance(base, (int, float)) and abs(base) > MAX_EXPONENT:
                 raise OverflowError(
                     f"Base too large for exponentiation (max {MAX_EXPONENT})"
@@ -236,9 +232,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         # Intercept the ** (power) operator
         if operator == "**":
             if isinstance(right, (int, float)) and abs(right) > MAX_EXPONENT:
-                raise OverflowError(
-                    f"Exponent too large (max {MAX_EXPONENT})"
-                )
+                raise OverflowError(f"Exponent too large (max {MAX_EXPONENT})")
             if isinstance(left, (int, float)) and abs(left) > MAX_EXPONENT:
                 raise OverflowError(
                     f"Base too large for exponentiation (max {MAX_EXPONENT})"
