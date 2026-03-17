@@ -5,12 +5,14 @@ on:
     branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:

@@ -418,6 +418,43 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Agent Mail Create Draft](block-integrations/agent_mail/drafts.md#agent-mail-create-draft) | Create a draft email for review or scheduled sending |
+| [Agent Mail Create Inbox](block-integrations/agent_mail/inbox.md#agent-mail-create-inbox) | Create a new email inbox for an AI agent via AgentMail |
+| [Agent Mail Create List Entry](block-integrations/agent_mail/lists.md#agent-mail-create-list-entry) | Add an email address or domain to an allow/block list |
+| [Agent Mail Create Pod](block-integrations/agent_mail/pods.md#agent-mail-create-pod) | Create a new pod for multi-tenant customer isolation |
+| [Agent Mail Create Pod Inbox](block-integrations/agent_mail/pods.md#agent-mail-create-pod-inbox) | Create a new email inbox within a pod |
+| [Agent Mail Delete Draft](block-integrations/agent_mail/drafts.md#agent-mail-delete-draft) | Delete a draft or cancel a scheduled email |
+| [Agent Mail Delete Inbox](block-integrations/agent_mail/inbox.md#agent-mail-delete-inbox) | Permanently delete an AgentMail inbox and all its messages, threads, and drafts |
+| [Agent Mail Delete Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-delete-inbox-thread) | Permanently delete a conversation thread and all its messages |
+| [Agent Mail Delete List Entry](block-integrations/agent_mail/lists.md#agent-mail-delete-list-entry) | Remove an email address or domain from an allow/block list to stop filtering it |
+| [Agent Mail Delete Pod](block-integrations/agent_mail/pods.md#agent-mail-delete-pod) | Permanently delete a pod |
+| [Agent Mail Forward Message](block-integrations/agent_mail/messages.md#agent-mail-forward-message) | Forward an email message to one or more recipients |
+| [Agent Mail Get Draft](block-integrations/agent_mail/drafts.md#agent-mail-get-draft) | Retrieve a draft email to review its contents, recipients, and scheduled send status |
+| [Agent Mail Get Inbox](block-integrations/agent_mail/inbox.md#agent-mail-get-inbox) | Retrieve details of an existing AgentMail inbox including its email address, display name, and configuration |
+| [Agent Mail Get Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-get-inbox-thread) | Retrieve a conversation thread with all its messages |
+| [Agent Mail Get List Entry](block-integrations/agent_mail/lists.md#agent-mail-get-list-entry) | Check if an email address or domain is in an allow/block list |
+| [Agent Mail Get Message](block-integrations/agent_mail/messages.md#agent-mail-get-message) | Retrieve a specific email message by ID |
+| [Agent Mail Get Message Attachment](block-integrations/agent_mail/attachments.md#agent-mail-get-message-attachment) | Download a file attachment from an email message |
+| [Agent Mail Get Org Thread](block-integrations/agent_mail/threads.md#agent-mail-get-org-thread) | Retrieve a conversation thread by ID from anywhere in the organization, without needing the inbox ID |
+| [Agent Mail Get Pod](block-integrations/agent_mail/pods.md#agent-mail-get-pod) | Retrieve details of an existing pod including its client_id mapping and metadata |
+| [Agent Mail Get Thread Attachment](block-integrations/agent_mail/attachments.md#agent-mail-get-thread-attachment) | Download a file attachment from a conversation thread |
+| [Agent Mail List Drafts](block-integrations/agent_mail/drafts.md#agent-mail-list-drafts) | List drafts in an AgentMail inbox |
+| [Agent Mail List Entries](block-integrations/agent_mail/lists.md#agent-mail-list-entries) | List all entries in an AgentMail allow/block list |
+| [Agent Mail List Inbox Threads](block-integrations/agent_mail/threads.md#agent-mail-list-inbox-threads) | List all conversation threads in an AgentMail inbox |
+| [Agent Mail List Inboxes](block-integrations/agent_mail/inbox.md#agent-mail-list-inboxes) | List all email inboxes in your AgentMail organization with pagination support |
+| [Agent Mail List Messages](block-integrations/agent_mail/messages.md#agent-mail-list-messages) | List messages in an AgentMail inbox |
+| [Agent Mail List Org Drafts](block-integrations/agent_mail/drafts.md#agent-mail-list-org-drafts) | List all drafts across every inbox in your organization |
+| [Agent Mail List Org Threads](block-integrations/agent_mail/threads.md#agent-mail-list-org-threads) | List threads across ALL inboxes in your organization |
+| [Agent Mail List Pod Drafts](block-integrations/agent_mail/pods.md#agent-mail-list-pod-drafts) | List all drafts across all inboxes within a pod |
+| [Agent Mail List Pod Inboxes](block-integrations/agent_mail/pods.md#agent-mail-list-pod-inboxes) | List all inboxes within a pod |
+| [Agent Mail List Pod Threads](block-integrations/agent_mail/pods.md#agent-mail-list-pod-threads) | List all conversation threads across all inboxes within a pod |
+| [Agent Mail List Pods](block-integrations/agent_mail/pods.md#agent-mail-list-pods) | List all tenant pods in your organization |
+| [Agent Mail Reply To Message](block-integrations/agent_mail/messages.md#agent-mail-reply-to-message) | Reply to an existing email in the same conversation thread |
+| [Agent Mail Send Draft](block-integrations/agent_mail/drafts.md#agent-mail-send-draft) | Send a draft immediately, converting it into a delivered message |
+| [Agent Mail Send Message](block-integrations/agent_mail/messages.md#agent-mail-send-message) | Send a new email from an AgentMail inbox |
+| [Agent Mail Update Draft](block-integrations/agent_mail/drafts.md#agent-mail-update-draft) | Update a draft's content, recipients, or scheduled send time |
+| [Agent Mail Update Inbox](block-integrations/agent_mail/inbox.md#agent-mail-update-inbox) | Update the display name of an AgentMail inbox |
+| [Agent Mail Update Message](block-integrations/agent_mail/messages.md#agent-mail-update-message) | Add or remove labels on an email message |
 | [Baas Bot Join Meeting](block-integrations/baas/bots.md#baas-bot-join-meeting) | Deploy a bot to join and record a meeting |
 | [Baas Bot Leave Meeting](block-integrations/baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
 | [Gmail Add Label](block-integrations/google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
