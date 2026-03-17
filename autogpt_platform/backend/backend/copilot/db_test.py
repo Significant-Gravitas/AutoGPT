@@ -41,14 +41,14 @@ def _make_session(
 ) -> PrismaChatSession:
     """Build a minimal PrismaChatSession for testing."""
     now = datetime.now(UTC)
-    return PrismaChatSession(
+    return PrismaChatSession.model_construct(
         id=session_id,
         createdAt=now,
         updatedAt=now,
         userId=user_id,
-        credentials="{}",
-        successfulAgentRuns="{}",
-        successfulAgentSchedules="{}",
+        credentials={},
+        successfulAgentRuns={},
+        successfulAgentSchedules={},
         totalPromptTokens=0,
         totalCompletionTokens=0,
         title=None,
