@@ -10755,6 +10755,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Input Schema"
+          },
+          "integrity_hash": {
+            "type": "string",
+            "title": "Integrity Hash",
+            "default": ""
           }
         },
         "type": "object",
