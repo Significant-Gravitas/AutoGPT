@@ -42,7 +42,7 @@ def _validate_workspace_path(
     Delegates to :func:`is_allowed_local_path` which permits:
     - The SDK working directory (``/tmp/copilot-<session>/``)
     - The current session's tool-results directory
-      (``~/.claude/projects/<encoded-cwd>/tool-results/``)
+      (``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/``)
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
@@ -310,7 +310,11 @@ def create_security_hooks(
             This hook provides visibility into when compaction happens.
             """
             _ = context, tool_use_id
-            # Sanitize untrusted input before logging to prevent log injection
+            # Sanitize untrusted input: strip control chars for logging AND
+            # for the value passed downstream.  read_compacted_entries()
+            # validates against _projects_base() as defence-in-depth, but
+            # sanitizing here prevents log injection and rejects obviously
+            # malformed paths early.
             trigger = (
                 str(input_data.get("trigger", "auto"))
                 .replace("\n", "")
