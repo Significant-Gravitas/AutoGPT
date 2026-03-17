@@ -30,7 +30,7 @@ function guessMimeType(url: string): string | null {
     const mimeMatch = url.match(/^data:([^;,]+)/);
     return mimeMatch?.[1] || null;
   }
-  const extension = url.split("?")[0].split(".").pop()?.toLowerCase();
+  const extension = url.split(/[?#]/)[0].split(".").pop()?.toLowerCase();
   const mimeMap: Record<string, string> = {
     mp4: "video/mp4",
     webm: "video/webm",
@@ -63,6 +63,8 @@ function isEmbeddableVideoURL(url: string): boolean {
 }
 
 function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
+  if (typeof value !== "string") return false;
+
   if (
     metadata?.type === "video" ||
     (metadata?.mimeType && videoMimeTypes.includes(metadata.mimeType))
@@ -70,27 +72,25 @@ function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
     return true;
   }
 
-  if (typeof value === "string") {
-    if (value.startsWith("data:video/")) {
+  if (value.startsWith("data:video/")) {
+    return true;
+  }
+
+  if (isEmbeddableVideoURL(value)) {
+    return true;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    const cleanURL = value.split(/[?#]/)[0].toLowerCase();
+    if (videoExtensions.some((ext) => cleanURL.endsWith(ext))) {
       return true;
     }
+  }
 
-    if (isEmbeddableVideoURL(value)) {
-      return true;
-    }
-
-    if (value.startsWith("http://") || value.startsWith("https://")) {
-      const cleanURL = value.split("?")[0].toLowerCase();
-      if (videoExtensions.some((ext) => cleanURL.endsWith(ext))) {
-        return true;
-      }
-    }
-
-    if (metadata?.filename) {
-      return videoExtensions.some((ext) =>
-        metadata.filename!.toLowerCase().endsWith(ext),
-      );
-    }
+  if (metadata?.filename) {
+    return videoExtensions.some((ext) =>
+      metadata.filename!.toLowerCase().endsWith(ext),
+    );
   }
 
   return false;
@@ -111,7 +111,7 @@ function renderVideo(
           src={`https://www.youtube.com/embed/${youtubeID}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-presentation"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen allow-popups"
           title="YouTube video"
         />
       </div>
@@ -127,7 +127,7 @@ function renderVideo(
           src={`https://player.vimeo.com/video/${vimeoID}`}
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-presentation"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen allow-popups"
           title="Vimeo video"
         />
       </div>
@@ -193,6 +193,14 @@ function getDownloadContentVideo(
   metadata?: OutputMetadata,
 ): DownloadContent | null {
   const videoUrl = String(value);
+
+  if (isEmbeddableVideoURL(videoUrl)) {
+    return {
+      data: new Blob([videoUrl], { type: "text/plain" }),
+      filename: metadata?.filename || "video-url.txt",
+      mimeType: "text/plain",
+    };
+  }
 
   if (videoUrl.startsWith("data:")) {
     const [mimeInfo, base64Data] = videoUrl.split(",");

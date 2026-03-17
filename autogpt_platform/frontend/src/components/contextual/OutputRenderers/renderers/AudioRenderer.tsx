@@ -22,7 +22,7 @@ function guessMimeType(url: string): string | null {
     const mimeMatch = url.match(/^data:([^;,]+)/);
     return mimeMatch?.[1] || null;
   }
-  const extension = url.split("?")[0].split(".").pop()?.toLowerCase();
+  const extension = url.split(/[?#]/)[0].split(".").pop()?.toLowerCase();
   const mimeMap: Record<string, string> = {
     mp3: "audio/mpeg",
     wav: "audio/wav",
@@ -35,6 +35,8 @@ function guessMimeType(url: string): string | null {
 }
 
 function canRenderAudio(value: unknown, metadata?: OutputMetadata): boolean {
+  if (typeof value !== "string") return false;
+
   if (
     metadata?.type === "audio" ||
     (metadata?.mimeType && audioMimeTypes.includes(metadata.mimeType))
@@ -42,22 +44,20 @@ function canRenderAudio(value: unknown, metadata?: OutputMetadata): boolean {
     return true;
   }
 
-  if (typeof value === "string") {
-    if (value.startsWith("data:audio/")) {
+  if (value.startsWith("data:audio/")) {
+    return true;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    const cleanURL = value.split(/[?#]/)[0].toLowerCase();
+    if (audioExtensions.some((ext) => cleanURL.endsWith(ext))) {
       return true;
     }
+  }
 
-    if (value.startsWith("http://") || value.startsWith("https://")) {
-      const cleanURL = value.split("?")[0].toLowerCase();
-      if (audioExtensions.some((ext) => cleanURL.endsWith(ext))) {
-        return true;
-      }
-    }
-
-    if (metadata?.filename) {
-      const cleanName = metadata.filename.toLowerCase();
-      return audioExtensions.some((ext) => cleanName.endsWith(ext));
-    }
+  if (metadata?.filename) {
+    const cleanName = metadata.filename.toLowerCase();
+    return audioExtensions.some((ext) => cleanName.endsWith(ext));
   }
 
   return false;

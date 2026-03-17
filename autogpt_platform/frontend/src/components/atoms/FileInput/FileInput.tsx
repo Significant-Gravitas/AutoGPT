@@ -64,10 +64,11 @@ function isPreviewableFile(
     parseWorkspaceURI(value)?.mimeType ||
     (value.startsWith("data:") ? getMimeFromDataURI(value) : null);
   if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase();
   return (
-    mimeType.startsWith("audio/") ||
-    mimeType.startsWith("video/") ||
-    mimeType.startsWith("image/")
+    normalized.startsWith("audio/") ||
+    normalized.startsWith("video/") ||
+    normalized.startsWith("image/")
   );
 }
 
@@ -451,10 +452,16 @@ export function FileInput(props: Props) {
                     }
                   />
                 )}
-                <TrashIcon
-                  className="h-5 w-5 cursor-pointer text-black"
+                <Button
+                  variant="outline"
+                  size="small"
+                  type="button"
                   onClick={handleClear}
-                />
+                  aria-label="Clear file"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </Button>
               </div>
             </div>
           </div>
