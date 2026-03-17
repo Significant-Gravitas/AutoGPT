@@ -26,6 +26,7 @@ from typing import cast
 
 from cachetools import TTLCache
 
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
@@ -34,12 +35,9 @@ from backend.integrations.creds_manager import (
 
 logger = logging.getLogger(__name__)
 
-# Maps provider slug → env var names to inject when the provider is connected.
-# Add new providers here when adding integration support.
-# NOTE: keep in sync with connect_integration._PROVIDER_INFO — both registries
-# must be updated when adding a new provider.
+# Derived from the single SUPPORTED_PROVIDERS registry for backward compat.
 PROVIDER_ENV_VARS: dict[str, list[str]] = {
-    "github": ["GH_TOKEN", "GITHUB_TOKEN"],
+    slug: entry["env_vars"] for slug, entry in SUPPORTED_PROVIDERS.items()
 }
 
 _TOKEN_CACHE_TTL = 300.0  # seconds — for found tokens

@@ -9,6 +9,7 @@ without configured credentials.
 from typing import Any, TypedDict
 
 from backend.copilot.model import ChatSession
+from backend.copilot.providers import SUPPORTED_PROVIDERS, get_provider_auth_types
 from backend.copilot.tools.models import (
     ErrorResponse,
     ResponseType,
@@ -19,13 +20,6 @@ from backend.copilot.tools.models import (
 )
 
 from .base import BaseTool
-
-
-class _ProviderInfo(TypedDict):
-    name: str
-    types: list[str]
-    # Default OAuth scopes requested when the agent doesn't specify any.
-    scopes: list[str]
 
 
 class _CredentialEntry(TypedDict):
@@ -48,36 +42,6 @@ class _CredentialEntry(TypedDict):
     # All supported credential types the user can choose from (e.g. ["api_key", "oauth2"]).
     types: list[str]
     scopes: list[str]
-
-
-def _is_github_oauth_configured() -> bool:
-    """Return True if GitHub OAuth env vars are set.
-
-    Uses a lazy import to avoid triggering ``Secrets()`` during module import,
-    which can fail in environments where secrets are not yet loaded (e.g. tests,
-    CLI tooling).  The imported constant itself never changes at runtime.
-    """
-    from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
-
-    return GITHUB_OAUTH_IS_CONFIGURED
-
-
-# Registry of known providers: name + supported credential types for the UI.
-# When adding a new provider, also add its env var names to
-# backend.copilot.integration_creds.PROVIDER_ENV_VARS.
-def _get_provider_info() -> dict[str, _ProviderInfo]:
-    """Build the provider registry, evaluating OAuth config lazily."""
-    return {
-        "github": {
-            "name": "GitHub",
-            "types": (
-                ["api_key", "oauth2"] if _is_github_oauth_configured() else ["api_key"]
-            ),
-            # Default: repo scope covers clone/push/pull for public and private repos.
-            # Agent can request additional scopes (e.g. "read:org") via the scopes param.
-            "scopes": ["repo"],
-        },
-    }
 
 
 class ConnectIntegrationTool(BaseTool):
@@ -113,7 +77,7 @@ class ConnectIntegrationTool(BaseTool):
                         "Integration provider slug, e.g. 'github'. "
                         "Must be one of the supported providers."
                     ),
-                    "enum": list(_get_provider_info().keys()),
+                    "enum": list(SUPPORTED_PROVIDERS.keys()),
                 },
                 "reason": {
                     "type": "string",
@@ -170,10 +134,9 @@ class ConnectIntegrationTool(BaseTool):
             str(s).strip() for s in (kwargs.get("scopes") or []) if str(s).strip()
         ]
 
-        provider_info = _get_provider_info()
-        info = provider_info.get(provider)
-        if not info:
-            supported = ", ".join(f"'{p}'" for p in provider_info)
+        entry = SUPPORTED_PROVIDERS.get(provider)
+        if not entry:
+            supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDERS)
             return ErrorResponse(
                 message=(
                     f"Unknown provider '{provider}'. "
@@ -183,10 +146,10 @@ class ConnectIntegrationTool(BaseTool):
                 session_id=session_id,
             )
 
-        provider_name: str = info["name"]
-        supported_types: list[str] = info["types"]
+        provider_name: str = entry["name"]
+        supported_types: list[str] = get_provider_auth_types(provider)
         # Merge agent-requested scopes with provider defaults (deduplicated, order preserved).
-        default_scopes: list[str] = info["scopes"]
+        default_scopes: list[str] = entry["default_scopes"]
         seen: set[str] = set()
         scopes: list[str] = []
         for s in default_scopes + extra_scopes:
