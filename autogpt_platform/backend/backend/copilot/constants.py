@@ -35,3 +35,24 @@ def parse_node_id_from_exec_id(node_exec_id: str) -> str:
     Format: "{node_id}:{random_hex}" → returns "{node_id}".
     """
     return node_exec_id.rsplit(COPILOT_NODE_EXEC_ID_SEPARATOR, 1)[0]
+
+
+# ---------------------------------------------------------------------------
+# Transient Anthropic API error detection
+# ---------------------------------------------------------------------------
+# Patterns in error text that indicate a transient Anthropic API error
+# (ECONNRESET / dropped TCP connection) which is retryable.
+_TRANSIENT_ERROR_PATTERNS = (
+    "socket connection was closed unexpectedly",
+    "ECONNRESET",
+    "connection was forcibly closed",
+    "network socket disconnected",
+)
+
+FRIENDLY_TRANSIENT_MSG = "Anthropic connection interrupted — please retry"
+
+
+def is_transient_api_error(error_text: str) -> bool:
+    """Return True if *error_text* matches a known transient Anthropic API error."""
+    lower = error_text.lower()
+    return any(pat.lower() in lower for pat in _TRANSIENT_ERROR_PATTERNS)

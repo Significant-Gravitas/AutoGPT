@@ -37,7 +37,12 @@ from backend.util.prompt import compress_context
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
-from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
+from ..constants import (
+    COPILOT_ERROR_PREFIX,
+    COPILOT_SYSTEM_PREFIX,
+    FRIENDLY_TRANSIENT_MSG,
+    is_transient_api_error,
+)
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -1039,17 +1044,36 @@ async def stream_chat_completion_sdk(
                         # Exception in receive_response() — capture it
                         # so the session can still be saved and the
                         # frontend gets a clean finish.
-                        logger.error(
-                            "%s Stream error from SDK: %s",
-                            log_prefix,
-                            stream_err,
-                            exc_info=True,
-                        )
+                        err_str = str(stream_err)
+                        is_transient = is_transient_api_error(err_str)
+                        if is_transient:
+                            logger.warning(
+                                "%s Transient stream error from SDK: %s",
+                                log_prefix,
+                                stream_err,
+                                exc_info=True,
+                            )
+                        else:
+                            logger.error(
+                                "%s Stream error from SDK: %s",
+                                log_prefix,
+                                stream_err,
+                                exc_info=True,
+                            )
                         ended_with_stream_error = True
 
                         yield StreamError(
-                            errorText=f"SDK stream error: {stream_err}",
-                            code="sdk_stream_error",
+                            errorText=(
+                                FRIENDLY_TRANSIENT_MSG
+                                if is_transient
+                                else f"SDK stream error: {stream_err}"
+                            ),
+                            code=(
+                                "transient_api_error"
+                                if is_transient
+                                else "sdk_stream_error"
+                            ),
+                            retryable=is_transient,
                         )
                         break
 
@@ -1069,14 +1093,33 @@ async def stream_chat_completion_sdk(
                     # so we can debug Anthropic API 400s surfaced by the CLI.
                     sdk_error = getattr(sdk_msg, "error", None)
                     if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        error_preview = str(sdk_msg.content)[:500]
                         logger.error(
                             "[SDK] [%s] AssistantMessage has error=%s, "
                             "content_blocks=%d, content_preview=%s",
                             session_id[:12],
                             sdk_error,
                             len(sdk_msg.content),
-                            str(sdk_msg.content)[:500],
+                            error_preview,
                         )
+
+                        # Intercept transient API errors (socket closed,
+                        # ECONNRESET) — replace raw message with a
+                        # user-friendly error and mark as retryable so the
+                        # frontend can offer a retry button.
+                        if is_transient_api_error(error_preview):
+                            logger.warning(
+                                "%s Transient Anthropic API error detected, "
+                                "suppressing raw error text",
+                                log_prefix,
+                            )
+                            ended_with_stream_error = True
+                            yield StreamError(
+                                errorText=FRIENDLY_TRANSIENT_MSG,
+                                code="transient_api_error",
+                                retryable=True,
+                            )
+                            break
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1378,12 +1421,16 @@ async def stream_chat_completion_sdk(
             else:
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
+        is_transient = is_transient_api_error(error_msg)
+        display_msg = FRIENDLY_TRANSIENT_MSG if is_transient else error_msg
+
         # Append error marker to session (non-invasive text parsing approach)
         # The finally block will persist the session with this error marker
         if session:
             session.messages.append(
                 ChatMessage(
-                    role="assistant", content=f"{COPILOT_ERROR_PREFIX} {error_msg}"
+                    role="assistant",
+                    content=f"{COPILOT_ERROR_PREFIX} {display_msg}",
                 )
             )
             logger.debug(
@@ -1398,8 +1445,9 @@ async def stream_chat_completion_sdk(
         )
         if not is_cancellation:
             yield StreamError(
-                errorText=error_msg,
-                code="sdk_error",
+                errorText=display_msg,
+                code="transient_api_error" if is_transient else "sdk_error",
+                retryable=is_transient,
             )
 
         raise

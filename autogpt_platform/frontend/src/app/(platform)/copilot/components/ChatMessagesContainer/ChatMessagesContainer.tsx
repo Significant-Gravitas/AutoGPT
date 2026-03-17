@@ -32,11 +32,13 @@ interface Props {
   isLoading: boolean;
   headerSlot?: React.ReactNode;
   sessionID?: string | null;
+  onRetry?: () => void;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
+  onRetry?: () => void,
 ): React.ReactNode[] {
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
@@ -48,6 +50,7 @@ function renderSegments(
         part={seg.part}
         messageID={messageID}
         partIndex={seg.index}
+        onRetry={onRetry}
       />
     );
   });
@@ -104,6 +107,7 @@ export function ChatMessagesContainer({
   isLoading,
   headerSlot,
   sessionID,
+  onRetry,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
@@ -212,13 +216,18 @@ export function ChatMessagesContainer({
                   </ReasoningCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(responseSegments, message.id)
+                  ? renderSegments(
+                      responseSegments,
+                      message.id,
+                      isLastAssistant ? onRetry : undefined,
+                    )
                   : message.parts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
                         messageID={message.id}
                         partIndex={i}
+                        onRetry={isLastAssistant ? onRetry : undefined}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (

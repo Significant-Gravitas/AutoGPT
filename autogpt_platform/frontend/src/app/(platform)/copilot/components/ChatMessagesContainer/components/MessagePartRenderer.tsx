@@ -65,13 +65,22 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
+/** Error text that the backend emits for transient Anthropic API failures. */
+const TRANSIENT_ERROR_TEXT = "Anthropic connection interrupted";
+
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
   partIndex: number;
+  onRetry?: () => void;
 }
 
-export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
+export function MessagePartRenderer({
+  part,
+  messageID,
+  partIndex,
+  onRetry,
+}: Props) {
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
@@ -95,11 +104,13 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
             </div>
           );
         }
+        const isTransient = markerText.includes(TRANSIENT_ERROR_TEXT);
         return (
           <ErrorCard
             key={key}
             responseError={{ message: markerText }}
             context="execution"
+            onRetry={isTransient ? onRetry : undefined}
           />
         );
       }

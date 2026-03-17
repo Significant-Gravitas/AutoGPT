@@ -200,6 +200,10 @@ class StreamError(StreamBaseResponse):
     type: ResponseType = ResponseType.ERROR
     errorText: str = Field(..., description="Error message text")
     code: str | None = Field(default=None, description="Error code")
+    retryable: bool = Field(
+        default=False,
+        description="Whether the frontend should offer a retry action",
+    )
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
     )
