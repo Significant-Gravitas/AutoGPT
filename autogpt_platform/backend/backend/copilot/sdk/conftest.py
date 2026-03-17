@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
+
 from backend.util import json
+
+
+@pytest.fixture()
+def mock_chat_config():
+    """Mock ChatConfig so compact_transcript tests skip real config lookup."""
+    with patch(
+        "backend.copilot.config.ChatConfig",
+        return_value=type("Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"})(),
+    ):
+        yield
 
 
 def build_test_transcript(pairs: list[tuple[str, str]]) -> str:

@@ -366,20 +366,14 @@ class TestMessagesToTranscript:
 
 class TestCompactTranscript:
     @pytest.mark.asyncio
-    async def test_too_few_messages_returns_none(self):
+    async def test_too_few_messages_returns_none(self, mock_chat_config):
         """compact_transcript returns None when transcript has < 2 messages."""
         transcript = _build_transcript([("user", "Hello")])
-        with patch(
-            "backend.copilot.config.ChatConfig",
-            return_value=type(
-                "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
-            )(),
-        ):
-            result = await compact_transcript(transcript, model="test-model")
+        result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_not_compacted(self):
+    async def test_returns_none_when_not_compacted(self, mock_chat_config):
         """When compress_context says no compaction needed, returns None.
         The compressor couldn't reduce it, so retrying with the same
         content would fail identically."""
@@ -401,24 +395,16 @@ class TestCompactTranscript:
                 "messages_dropped": 0,
             },
         )()
-        with (
-            patch(
-                "backend.copilot.config.ChatConfig",
-                return_value=type(
-                    "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
-                )(),
-            ),
-            patch(
-                "backend.copilot.sdk.transcript._run_compression",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
+        with patch(
+            "backend.copilot.sdk.transcript._run_compression",
+            new_callable=AsyncMock,
+            return_value=mock_result,
         ):
             result = await compact_transcript(transcript, model="test-model")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_compacted_transcript(self):
+    async def test_returns_compacted_transcript(self, mock_chat_config):
         """When compaction succeeds, returns a valid compacted transcript."""
         transcript = _build_transcript(
             [
@@ -444,18 +430,10 @@ class TestCompactTranscript:
                 "messages_dropped": 0,
             },
         )()
-        with (
-            patch(
-                "backend.copilot.config.ChatConfig",
-                return_value=type(
-                    "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
-                )(),
-            ),
-            patch(
-                "backend.copilot.sdk.transcript._run_compression",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
+        with patch(
+            "backend.copilot.sdk.transcript._run_compression",
+            new_callable=AsyncMock,
+            return_value=mock_result,
         ):
             result = await compact_transcript(transcript, model="test-model")
         assert result is not None
@@ -465,7 +443,7 @@ class TestCompactTranscript:
         assert msgs[1]["content"] == "Summarized response"
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_compression_failure(self):
+    async def test_returns_none_on_compression_failure(self, mock_chat_config):
         """When _run_compression raises, returns None."""
         transcript = _build_transcript(
             [
@@ -473,18 +451,10 @@ class TestCompactTranscript:
                 ("assistant", "Hi"),
             ]
         )
-        with (
-            patch(
-                "backend.copilot.config.ChatConfig",
-                return_value=type(
-                    "Cfg", (), {"model": "m", "api_key": "k", "base_url": "u"}
-                )(),
-            ),
-            patch(
-                "backend.copilot.sdk.transcript._run_compression",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("LLM unavailable"),
-            ),
+        with patch(
+            "backend.copilot.sdk.transcript._run_compression",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LLM unavailable"),
         ):
             result = await compact_transcript(transcript, model="test-model")
         assert result is None
