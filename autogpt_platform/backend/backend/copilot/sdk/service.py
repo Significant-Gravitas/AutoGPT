@@ -259,12 +259,13 @@ def _build_sdk_env(
     base = (config.base_url or "").rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
-    if (
-        not config.use_openrouter
-        or not config.api_key
-        or not base
-        or not base.startswith("http")
-    ):
+    if not config.use_openrouter:
+        return {}
+    if not config.api_key or not base or not base.startswith("http"):
+        logger.warning(
+            "[SDK] OpenRouter enabled but api_key/base_url missing; "
+            "falling back to direct Anthropic mode"
+        )
         return {}
 
     # --- Mode 3: OpenRouter proxy ---
