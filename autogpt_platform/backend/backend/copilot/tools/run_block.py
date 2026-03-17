@@ -12,6 +12,7 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.db_accessors import review_db
 from backend.data.execution import ExecutionContext
 
@@ -196,6 +197,29 @@ class RunBlockTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+        # Expand @@agptfile: refs in input_data with the block's input
+        # schema.  The generic _truncating wrapper skips opaque object
+        # properties (input_data has no declared inner properties in the
+        # tool schema), so file ref tokens are still intact here.
+        # Using the block's schema lets us return raw text for string-typed
+        # fields and parsed structures for list/dict-typed fields.
+        if input_data:
+            try:
+                input_data = await expand_file_refs_in_args(
+                    input_data,
+                    user_id,
+                    session,
+                    input_schema=input_schema,
+                )
+            except FileRefExpansionError as exc:
+                return ErrorResponse(
+                    message=(
+                        f"Failed to resolve file reference: {exc}. "
+                        "Ensure the file exists before referencing it."
+                    ),
+                    session_id=session_id,
+                )
 
         if missing_credentials:
             # Return setup requirements response with missing credentials
