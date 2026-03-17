@@ -1,4 +1,4 @@
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
@@ -47,7 +47,7 @@ export function GraphSearchContent({
           </div>
         )}
         <ScrollArea className="h-full w-full">
-          <div className="space-y-3 px-4 py-4">
+          <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
               <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
                 {trimmedQuery
@@ -76,6 +76,9 @@ export function GraphSearchContent({
                   <div
                     key={node.id}
                     ref={(el) => setItemRef(index, el)}
+                    role="option"
+                    aria-selected={index === selectedIndex}
+                    tabIndex={index === selectedIndex ? 0 : -1}
                     className={cn(
                       "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem]",
                       index === selectedIndex

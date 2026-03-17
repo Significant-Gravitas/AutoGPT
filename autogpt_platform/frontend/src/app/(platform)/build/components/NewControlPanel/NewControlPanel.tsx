@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { memo } from "react";
 import { BlockMenu } from "./NewBlockMenu/BlockMenu/BlockMenu";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/ui/separator";
 import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
 import { GraphSearchMenu } from "./NewSearchGraph/GraphMenu/GraphMenu";
 import { UndoRedoButtons } from "./UndoRedoButtons";
