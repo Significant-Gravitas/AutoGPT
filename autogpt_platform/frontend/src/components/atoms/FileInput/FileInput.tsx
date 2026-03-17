@@ -14,8 +14,17 @@ import { Text } from "../Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 
-function PreviewButton({ value, title }: { value: string; title: string }) {
-  const renderer = globalRegistry.getRenderer(value);
+function PreviewButton({
+  value,
+  title,
+  contentType,
+}: {
+  value: string;
+  title: string;
+  contentType?: string;
+}) {
+  const metadata = contentType ? { mimeType: contentType } : undefined;
+  const renderer = globalRegistry.getRenderer(value, metadata);
   if (!renderer) return null;
 
   return (
@@ -33,7 +42,7 @@ function PreviewButton({ value, title }: { value: string; title: string }) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="overflow-hidden [&>*]:rounded-xlarge">
-          {renderer.render(value)}
+          {renderer.render(value, metadata)}
         </div>
       </Dialog.Content>
     </Dialog>
@@ -356,6 +365,7 @@ export function FileInput(props: Props) {
                       ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : "Preview"
                   }
+                  contentType={fileInfo?.content_type}
                 />
               )}
               <Button
