@@ -41,7 +41,9 @@ def _json_to_themed_prompts(value: Any) -> dict[str, list[str]]:
     """
     if isinstance(value, dict):
         return {
-            k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, list)
+            k: [i for i in v if isinstance(i, str)]
+            for k, v in value.items()
+            if isinstance(k, str) and isinstance(v, list)
         }
     if isinstance(value, list) and value:
         return {"General": [str(p) for p in value if isinstance(p, str)]}

@@ -11,7 +11,6 @@ import {
   getGreetingName,
   getInputPlaceholder,
   getSuggestionThemes,
-  type SuggestionTheme,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
 
@@ -40,12 +39,11 @@ export function EmptySession({
     useGetV2GetSuggestedPrompts({
       query: { staleTime: Infinity },
     });
-  // TODO: remove cast after regenerating API client (themes field added in backend)
-  const responseData =
+  const themes = getSuggestionThemes(
     suggestedPromptsResponse?.status === 200
-      ? (suggestedPromptsResponse.data as { themes?: SuggestionTheme[] })
-      : undefined;
-  const themes = getSuggestionThemes(responseData?.themes);
+      ? suggestedPromptsResponse.data.themes
+      : undefined,
+  );
 
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),
