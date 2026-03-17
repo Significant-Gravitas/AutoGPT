@@ -1224,7 +1224,9 @@ async def test_e2e_jsonl_heterogeneous_to_list_block():
 
 _PARQUET_AVAILABLE = True
 try:
-    import pyarrow  # noqa: F401
+    import importlib
+
+    importlib.import_module("pyarrow")
 except ImportError:
     _PARQUET_AVAILABLE = False
 

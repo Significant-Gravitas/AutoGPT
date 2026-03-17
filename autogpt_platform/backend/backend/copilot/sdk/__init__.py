@@ -19,7 +19,13 @@ least invasive way to break the cycle while keeping module-level constants
 intact.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .service import stream_chat_completion_sdk as stream_chat_completion_sdk
+    from .tool_adapter import (
+        create_copilot_mcp_server as create_copilot_mcp_server,
+    )
 
 __all__ = [
     "stream_chat_completion_sdk",
