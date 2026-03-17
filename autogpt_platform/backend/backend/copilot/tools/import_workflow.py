@@ -106,6 +106,12 @@ class ImportWorkflowTool(BaseTool):
                     message=f"Invalid JSON: {e}",
                     session_id=session_id,
                 )
+            if not isinstance(workflow_json, dict):
+                return ErrorResponse(
+                    message="Expected a JSON object, got "
+                    f"{type(workflow_json).__name__}.",
+                    session_id=session_id,
+                )
 
         # Step 2: Detect format
         fmt = detect_format(workflow_json)
