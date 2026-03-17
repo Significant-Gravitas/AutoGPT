@@ -15,30 +15,34 @@ import {
 import { isMacPlatform } from "@/lib/platform";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
-import { useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useCallback, useMemo } from "react";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { useGraphMenu } from "./useGraphMenu";
 
 export function GraphSearchMenu() {
-  const nodes = useNodeStore(useShallow((state) => state.nodes));
+  const nodes = useNodeStore((state) => state.nodes);
   const { graphSearchOpen, setGraphSearchOpen } = useControlPanelStore();
   const reactFlow = useReactFlow();
 
   const isMac = useMemo(() => isMacPlatform(), []);
 
+  const onNodeSelect = useCallback(
+    (nodeID: string) => {
+      reactFlow.fitView({
+        nodes: [{ id: nodeID }],
+        duration: 600,
+        maxZoom: 1.5,
+        padding: 0.5,
+      });
+    },
+    [reactFlow],
+  );
+
   const { searchQuery, setSearchQuery, filteredNodes, handleNodeSelect } =
     useGraphMenu({
       nodes,
-      onNodeSelect(nodeID) {
-        reactFlow.fitView({
-          nodes: [{ id: nodeID }],
-          duration: 600,
-          maxZoom: 1.5,
-          padding: 0.5,
-        });
-      },
+      onNodeSelect,
     });
 
   return (
