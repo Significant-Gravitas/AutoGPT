@@ -57,10 +57,10 @@ export function useLibraryImportWorkflowDialog() {
 
       toast({
         title: "Workflow Parsed",
-        description: `Detected ${data.source_format} workflow "${data.source_name}". Redirecting to CoPilot...`,
+        description: `Detected ${data.source_format} workflow "${data.source_name}". Redirecting to AutoPilot...`,
       });
 
-      // Redirect to CoPilot with the prompt pre-filled and auto-submitted
+      // Redirect to AutoPilot with the prompt pre-filled and auto-submitted
       const encodedPrompt = encodeURIComponent(data.copilot_prompt);
       router.push(`/copilot?autosubmit=true#prompt=${encodedPrompt}`);
     } catch (error) {

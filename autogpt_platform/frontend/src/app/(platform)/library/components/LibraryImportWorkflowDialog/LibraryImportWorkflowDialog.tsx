@@ -146,7 +146,7 @@ export default function LibraryImportWorkflowDialog() {
                 <span>Parsing workflow...</span>
               </div>
             ) : (
-              "Import to CoPilot"
+              "Import to AutoPilot"
             )}
           </Button>
         </Form>
