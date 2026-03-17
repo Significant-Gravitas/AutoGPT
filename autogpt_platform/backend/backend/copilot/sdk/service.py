@@ -173,6 +173,31 @@ class ReducedContext(NamedTuple):
 
 
 @dataclass
+class _TokenUsage:
+    """Token usage accumulators for a single turn.
+
+    Separated from ``_RetryState`` because usage is reset between retry
+    attempts independently of the retry-control fields, and is read by
+    the outer ``stream_chat_completion_sdk`` scope after the retry loop
+    completes.
+    """
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float | None = None
+
+    def reset(self) -> None:
+        """Reset all accumulators for a new attempt."""
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.cache_read_tokens = 0
+        self.cache_creation_tokens = 0
+        self.cost_usd = None
+
+
+@dataclass
 class _RetryState:
     """Mutable state passed to ``_run_stream_attempt`` instead of closures.
 
@@ -188,13 +213,7 @@ class _RetryState:
     transcript_msg_count: int
     adapter: SDKResponseAdapter
     transcript_builder: TranscriptBuilder
-
-    # Token usage accumulators — populated from ResultMessage in the stream
-    turn_prompt_tokens: int = 0
-    turn_completion_tokens: int = 0
-    turn_cache_read_tokens: int = 0
-    turn_cache_creation_tokens: int = 0
-    turn_cost_usd: float | None = None
+    usage: _TokenUsage
 
 
 @dataclass
@@ -1214,27 +1233,27 @@ async def _run_stream_attempt(
                 #   cache_read_input_tokens = served from cache
                 #   cache_creation_input_tokens = written to cache
                 if sdk_msg.usage:
-                    state.turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
-                    state.turn_cache_read_tokens += sdk_msg.usage.get(
+                    state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                    state.usage.cache_read_tokens += sdk_msg.usage.get(
                         "cache_read_input_tokens", 0
                     )
-                    state.turn_cache_creation_tokens += sdk_msg.usage.get(
+                    state.usage.cache_creation_tokens += sdk_msg.usage.get(
                         "cache_creation_input_tokens", 0
                     )
-                    state.turn_completion_tokens += sdk_msg.usage.get(
+                    state.usage.completion_tokens += sdk_msg.usage.get(
                         "output_tokens", 0
                     )
                     logger.info(
                         "%s Token usage: uncached=%d, cache_read=%d, "
                         "cache_create=%d, output=%d",
                         ctx.log_prefix,
-                        state.turn_prompt_tokens,
-                        state.turn_cache_read_tokens,
-                        state.turn_cache_creation_tokens,
-                        state.turn_completion_tokens,
+                        state.usage.prompt_tokens,
+                        state.usage.cache_read_tokens,
+                        state.usage.cache_creation_tokens,
+                        state.usage.completion_tokens,
                     )
                 if sdk_msg.total_cost_usd is not None:
-                    state.turn_cost_usd = sdk_msg.total_cost_usd
+                    state.usage.cost_usd = sdk_msg.total_cost_usd
 
             # Emit compaction end if SDK finished compacting.
             # Sync TranscriptBuilder with the CLI's active context.
@@ -1721,6 +1740,7 @@ async def stream_chat_completion_sdk(
             transcript_msg_count=transcript_msg_count,
             adapter=adapter,
             transcript_builder=transcript_builder,
+            usage=_TokenUsage(),
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
@@ -1769,11 +1789,7 @@ async def stream_chat_completion_sdk(
                 )
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.
-                state.turn_prompt_tokens = 0
-                state.turn_completion_tokens = 0
-                state.turn_cache_read_tokens = 0
-                state.turn_cache_creation_tokens = 0
-                state.turn_cost_usd = None
+                state.usage.reset()
 
             pre_attempt_msg_count = len(session.messages)
             events_yielded = 0
@@ -1898,11 +1914,11 @@ async def stream_chat_completion_sdk(
         # Copy token usage from retry state to outer-scope accumulators
         # so the finally block can persist them.
         if state is not None:
-            turn_prompt_tokens = state.turn_prompt_tokens
-            turn_completion_tokens = state.turn_completion_tokens
-            turn_cache_read_tokens = state.turn_cache_read_tokens
-            turn_cache_creation_tokens = state.turn_cache_creation_tokens
-            turn_cost_usd = state.turn_cost_usd
+            turn_prompt_tokens = state.usage.prompt_tokens
+            turn_completion_tokens = state.usage.completion_tokens
+            turn_cache_read_tokens = state.usage.cache_read_tokens
+            turn_cache_creation_tokens = state.usage.cache_creation_tokens
+            turn_cost_usd = state.usage.cost_usd
 
         # Emit token usage to the client (must be in try to reach SSE stream).
         # Session persistence of usage is in finally to stay consistent with
