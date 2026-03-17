@@ -86,6 +86,14 @@ class BashExecTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
+
+        Dispatches to :meth:`_execute_on_e2b` when a sandbox is present in the
+        current execution context, otherwise falls back to the local bubblewrap
+        sandbox.  Returns a :class:`BashExecResponse` on success or an
+        :class:`ErrorResponse` when the sandbox is unavailable or the command
+        is empty.
+        """
         session_id = session.session_id if session else None
 
         command: str = (kwargs.get("command") or "").strip()
