@@ -22,7 +22,7 @@ export function TallyPopupSimple() {
         <Button
           variant="primary"
           onClick={handlers.handleResetTutorial}
-          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left font-sans text-lg font-medium leading-6"
+          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,0.55)] text-left font-sans text-lg font-medium leading-6 backdrop-blur-md border border-white/10 shadow-lg"
         >
           Tutorial
         </Button>
@@ -42,7 +42,7 @@ export function TallyPopupSimple() {
             : String(state.isAuthenticated)
         }
         data-email={state.userEmail || "not-authenticated"}
-        className="mb-0 h-14 rounded-2xl bg-[rgba(65,65,64,1)] text-center font-sans text-lg font-medium leading-6"
+        className="mb-0 h-14 rounded-2xl bg-[rgba(65,65,64,0.55)] text-center font-sans text-lg font-medium leading-6 backdrop-blur-md border border-white/10 shadow-lg"
       >
         Give Feedback
       </Button>
