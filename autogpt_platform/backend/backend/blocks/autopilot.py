@@ -143,6 +143,18 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
+        timeout_seconds: int = SchemaField(
+            description=(
+                "Maximum execution time in seconds. The autopilot stream will "
+                "be cancelled if it exceeds this limit, preventing indefinite "
+                "executor slot occupation."
+            ),
+            default=300,
+            ge=10,
+            le=3600,
+            advanced=True,
+        )
+
     class Output(BlockSchemaOutput):
         """Output schema for the AutoPilot block."""
 
@@ -191,6 +203,7 @@ class AutoPilotBlock(Block):
                 "system_context": "",
                 "session_id": "",
                 "max_recursion_depth": 3,
+                "timeout_seconds": 300,
             },
             test_output=[
                 ("response", "You have 2 agents: Agent A and Agent B."),
@@ -372,20 +385,30 @@ class AutoPilotBlock(Block):
         if not sid:
             sid = await self.create_session(execution_context.user_id)
 
+        timeout = input_data.timeout_seconds
         try:
-            response, tool_calls, history, _, usage = await self.execute_copilot(
-                prompt=input_data.prompt,
-                system_context=input_data.system_context,
-                session_id=sid,
-                max_recursion_depth=input_data.max_recursion_depth,
-                user_id=execution_context.user_id,
-            )
+            async with asyncio.timeout(timeout):
+                response, tool_calls, history, _, usage = await self.execute_copilot(
+                    prompt=input_data.prompt,
+                    system_context=input_data.system_context,
+                    session_id=sid,
+                    max_recursion_depth=input_data.max_recursion_depth,
+                    user_id=execution_context.user_id,
+                )
 
             yield "response", response
             yield "tool_calls", tool_calls
             yield "conversation_history", history
             yield "session_id", sid
             yield "token_usage", usage
+        except TimeoutError:
+            logger.warning(
+                "AutoPilot execution timed out after %ds for session %s",
+                timeout,
+                sid,
+            )
+            yield "session_id", sid
+            yield "error", f"AutoPilot execution timed out after {timeout}s."
         except asyncio.CancelledError:
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
