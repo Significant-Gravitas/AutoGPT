@@ -94,6 +94,28 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
+def _append_error_marker(
+    session: ChatSession | None,
+    display_msg: str,
+    *,
+    retryable: bool = False,
+) -> None:
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Args:
+        session: The chat session to append to (no-op if ``None``).
+        display_msg: User-visible error text.
+        retryable: If ``True``, use the retryable prefix so the frontend
+            shows a "Try Again" button.
+    """
+    if session is None:
+        return
+    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
+    session.messages.append(
+        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
+    )
+
+
 def _setup_langfuse_otel() -> None:
     """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
 
@@ -254,6 +276,7 @@ def _build_sdk_env(
 
     # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
     def _safe(v: str) -> str:
+        """Sanitise a header value: strip newlines/whitespace and cap length."""
         return v.replace("\r", "").replace("\n", "").strip()[:128]
 
     parts = []
@@ -654,9 +677,10 @@ async def stream_chat_completion_sdk(
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
-    # Clean up stale error markers from previous turn before starting new turn
-    # If the last message contains an error marker, remove it (user is retrying)
-    if (
+    # Clean up ALL trailing error markers from previous turn before starting
+    # a new turn.  Multiple markers can accumulate when a mid-stream error is
+    # followed by a cleanup error in __aexit__ (both append a marker).
+    while (
         len(session.messages) > 0
         and session.messages[-1].role == "assistant"
         and session.messages[-1].content
@@ -801,7 +825,7 @@ async def stream_chat_completion_sdk(
                 )
             except Exception as transcript_err:
                 logger.warning(
-                    "%s Transcript download failed, continuing without " "--resume: %s",
+                    "%s Transcript download failed, continuing without --resume: %s",
                     log_prefix,
                     transcript_err,
                 )
@@ -824,7 +848,7 @@ async def stream_chat_completion_sdk(
             is_valid = validate_transcript(dl.content)
             dl_lines = dl.content.strip().split("\n") if dl.content else []
             logger.info(
-                "%s Downloaded transcript: %dB, %d lines, " "msg_count=%d, valid=%s",
+                "%s Downloaded transcript: %dB, %d lines, msg_count=%d, valid=%s",
                 log_prefix,
                 len(dl.content),
                 len(dl_lines),
@@ -1044,18 +1068,16 @@ async def stream_chat_completion_sdk(
                         # so the session can still be saved and the
                         # frontend gets a clean finish.
                         if is_transient_api_error(str(stream_err)):
-                            log, display, code, prefix = (
+                            log, display, code = (
                                 logger.warning,
                                 FRIENDLY_TRANSIENT_MSG,
                                 "transient_api_error",
-                                COPILOT_RETRYABLE_ERROR_PREFIX,
                             )
                         else:
-                            log, display, code, prefix = (
+                            log, display, code = (
                                 logger.error,
                                 f"SDK stream error: {stream_err}",
                                 "sdk_stream_error",
-                                COPILOT_ERROR_PREFIX,
                             )
 
                         log(
@@ -1065,18 +1087,16 @@ async def stream_chat_completion_sdk(
                             exc_info=True,
                         )
                         ended_with_stream_error = True
-                        session.messages.append(
-                            ChatMessage(
-                                role="assistant",
-                                content=f"{prefix} {display}",
-                            )
+                        _append_error_marker(
+                            session,
+                            display,
+                            retryable=(code == "transient_api_error"),
                         )
                         yield StreamError(errorText=display, code=code)
                         break
 
                     logger.info(
-                        "%s Received: %s %s "
-                        "(unresolved=%d, current=%d, resolved=%d)",
+                        "%s Received: %s %s (unresolved=%d, current=%d, resolved=%d)",
                         log_prefix,
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
@@ -1102,9 +1122,9 @@ async def stream_chat_completion_sdk(
                         )
 
                         # Intercept transient API errors (socket closed,
-                        # ECONNRESET) — replace raw message with a
-                        # user-friendly error and mark as retryable so the
-                        # frontend can offer a retry button.
+                        # ECONNRESET) — replace the raw message with a
+                        # user-friendly error text and use the retryable
+                        # error prefix so the frontend shows a retry button.
                         # Check both the error field and content for patterns.
                         if is_transient_api_error(error_text) or is_transient_api_error(
                             error_preview
@@ -1115,11 +1135,10 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                             )
                             ended_with_stream_error = True
-                            session.messages.append(
-                                ChatMessage(
-                                    role="assistant",
-                                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} {FRIENDLY_TRANSIENT_MSG}",
-                                )
+                            _append_error_marker(
+                                session,
+                                FRIENDLY_TRANSIENT_MSG,
+                                retryable=True,
                             )
                             yield StreamError(
                                 errorText=FRIENDLY_TRANSIENT_MSG,
@@ -1233,16 +1252,10 @@ async def stream_chat_completion_sdk(
                                 response.errorText,
                                 response.code,
                             )
-                            err_prefix = (
-                                COPILOT_RETRYABLE_ERROR_PREFIX
-                                if response.code == "transient_api_error"
-                                else COPILOT_ERROR_PREFIX
-                            )
-                            session.messages.append(
-                                ChatMessage(
-                                    role="assistant",
-                                    content=f"{err_prefix} {response.errorText}",
-                                )
+                            _append_error_marker(
+                                session,
+                                response.errorText,
+                                retryable=(response.code == "transient_api_error"),
                             )
                             ended_with_stream_error = True
 
@@ -1439,24 +1452,18 @@ async def stream_chat_completion_sdk(
             else:
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
-        if is_transient_api_error(error_msg):
-            display_msg, code, prefix = (
-                FRIENDLY_TRANSIENT_MSG,
-                "transient_api_error",
-                COPILOT_RETRYABLE_ERROR_PREFIX,
-            )
+        is_transient = is_transient_api_error(error_msg)
+        if is_transient:
+            display_msg, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
         else:
-            display_msg, code, prefix = error_msg, "sdk_error", COPILOT_ERROR_PREFIX
+            display_msg, code = error_msg, "sdk_error"
 
-        # Append error marker to session (non-invasive text parsing approach)
-        # The finally block will persist the session with this error marker
-        if session:
-            session.messages.append(
-                ChatMessage(
-                    role="assistant",
-                    content=f"{prefix} {display_msg}",
-                )
-            )
+        # Append error marker to session (non-invasive text parsing approach).
+        # The finally block will persist the session with this error marker.
+        # Skip if a marker was already appended inside the stream loop
+        # (ended_with_stream_error) to avoid duplicate stale markers.
+        if not ended_with_stream_error:
+            _append_error_marker(session, display_msg, retryable=is_transient)
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
