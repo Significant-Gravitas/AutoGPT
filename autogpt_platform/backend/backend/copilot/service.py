@@ -28,10 +28,24 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
-client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+
+_client: LangfuseAsyncOpenAI | None = None
+_langfuse = None
 
 
-langfuse = get_client()
+def _get_openai_client() -> LangfuseAsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+    return _client
+
+
+def _get_langfuse():
+    global _langfuse
+    if _langfuse is None:
+        _langfuse = get_client()
+    return _langfuse
+
 
 # Default system prompt used when Langfuse is not configured
 # Provides minimal baseline tone and personality - all workflow, tools, and
@@ -95,7 +109,7 @@ async def _get_system_prompt_template(
                 else "latest"
             )
             prompt = await asyncio.to_thread(
-                langfuse.get_prompt,
+                _get_langfuse().get_prompt,
                 resolved_prompt_name,
                 label=label,
                 cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
@@ -184,7 +198,7 @@ async def _generate_session_title(
             "environment": settings.config.app_env.value,
         }
 
-        response = await client.chat.completions.create(
+        response = await _get_openai_client().chat.completions.create(
             model=config.title_model,
             messages=[
                 {

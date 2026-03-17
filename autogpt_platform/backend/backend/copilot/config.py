@@ -82,6 +82,27 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
+    # Rate limiting — token-based limits per day and per week.
+    # Per-turn token cost varies with context size: ~10-15K for early turns,
+    # ~30-50K mid-session, up to ~100K pre-compaction. Average across a
+    # session with compaction cycles is ~25-35K tokens/turn, so 2.5M daily
+    # allows ~70-100 turns/day.
+    # Checked at the HTTP layer (routes.py) before each turn.
+    #
+    # TODO: These are deploy-time constants applied identically to every user.
+    #  If per-user or per-plan limits are needed (e.g., free tier vs paid), these
+    #  must move to the database (e.g., a UserPlan table) and get_usage_status /
+    #  check_rate_limit would look up each user's specific limits instead of
+    #  reading config.daily_token_limit / config.weekly_token_limit.
+    daily_token_limit: int = Field(
+        default=2_500_000,
+        description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
+    )
+    weekly_token_limit: int = Field(
+        default=12_500_000,
+        description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
+    )
+
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,

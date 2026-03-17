@@ -1,4 +1,5 @@
 import logging
+import re
 
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
@@ -167,3 +168,76 @@ class TextFormatter:
         )
 
         return rendered_subject_template, rendered_base_template
+
+
+# ---------------------------------------------------------------------------
+# CamelCase splitting
+# ---------------------------------------------------------------------------
+
+# Map of split forms back to their canonical compound terms.
+# Mirrors the frontend exception list in frontend/src/lib/utils.ts.
+_CAMELCASE_EXCEPTIONS: dict[str, str] = {
+    "Auto GPT": "AutoGPT",
+    "Open AI": "OpenAI",
+    "You Tube": "YouTube",
+    "Git Hub": "GitHub",
+    "Linked In": "LinkedIn",
+}
+
+_CAMELCASE_EXCEPTION_RE = re.compile(
+    "|".join(re.escape(k) for k in _CAMELCASE_EXCEPTIONS),
+)
+
+
+def split_camelcase(text: str) -> str:
+    """Split CamelCase into separate words.
+
+    Uses a single-pass character-by-character algorithm to avoid any
+    regex backtracking concerns (guaranteed O(n) time).
+
+    After splitting, known compound terms are restored via an exception
+    list (e.g. ``"YouTube"`` stays ``"YouTube"`` instead of becoming
+    ``"You Tube"``).  The list mirrors the frontend mapping in
+    ``frontend/src/lib/utils.ts``.
+
+    Examples::
+
+        >>> split_camelcase("AITextGeneratorBlock")
+        'AI Text Generator Block'
+        >>> split_camelcase("OAuth2Block")
+        'OAuth2 Block'
+        >>> split_camelcase("YouTubeBlock")
+        'YouTube Block'
+    """
+    if len(text) <= 1:
+        return text
+
+    parts: list[str] = []
+    prev = 0
+    for i in range(1, len(text)):
+        # Insert split between lowercase/digit and uppercase: "camelCase" -> "camel|Case"
+        if (text[i - 1].islower() or text[i - 1].isdigit()) and text[i].isupper():
+            parts.append(text[prev:i])
+            prev = i
+        # Insert split between uppercase run (2+ chars) and uppercase+lowercase:
+        # "AIText" -> "AI|Text".  Requires at least 3 consecutive uppercase chars
+        # before the lowercase so that the left part keeps 2+ uppercase chars
+        # (mirrors the original regex r"([A-Z]{2,})([A-Z][a-z])").
+        elif (
+            i >= 2
+            and text[i - 2].isupper()
+            and text[i - 1].isupper()
+            and text[i].islower()
+            and (i - 1 - prev) >= 2  # left part must retain at least 2 upper chars
+        ):
+            parts.append(text[prev : i - 1])
+            prev = i - 1
+
+    parts.append(text[prev:])
+    result = " ".join(parts)
+
+    # Restore known compound terms that should not be split.
+    result = _CAMELCASE_EXCEPTION_RE.sub(
+        lambda m: _CAMELCASE_EXCEPTIONS[m.group()], result
+    )
+    return result
