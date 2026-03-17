@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
 # for sweep operations without depending on a private implementation detail.
-SDK_PROJECTS_DIR = os.path.realpath(os.path.expanduser("~/.claude/projects"))
+# Respects CLAUDE_CONFIG_DIR env var, consistent with transcript.py's
+# _projects_base() function.
+_config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+SDK_PROJECTS_DIR = os.path.realpath(os.path.join(_config_dir, "projects"))
 
 # Compiled UUID pattern for validating conversation directory names.
 # Kept as a module-level constant so the security-relevant pattern is easy
