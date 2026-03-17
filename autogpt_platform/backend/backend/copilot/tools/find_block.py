@@ -123,7 +123,7 @@ class FindBlockTool(BaseTool):
         try:
             # Direct ID lookup if query looks like a UUID
             if UUID_V4_PATTERN.match(query):
-                block = get_block(query)
+                block = get_block(query.lower())
                 if block:
                     if block.disabled:
                         return NoResultsResponse(

@@ -46,6 +46,7 @@ async def search_agents(
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
+    query = query.strip()
     if not query:
         return ErrorResponse(
             message="Please provide a search query", session_id=session_id
@@ -114,8 +115,9 @@ async def _search_library(
             session_id=session_id,
         )
 
+    query = query.strip()
     # Normalize list-all keywords to empty string
-    if query.lower().strip() in _LIST_ALL_KEYWORDS:
+    if query.lower() in _LIST_ALL_KEYWORDS:
         query = ""
 
     agents: list[AgentInfo] = []
