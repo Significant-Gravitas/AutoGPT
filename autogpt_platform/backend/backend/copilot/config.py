@@ -168,15 +168,6 @@ class ChatConfig(BaseSettings):
         """
         return self.e2b_api_key if self.e2b_active else None
 
-    @field_validator("use_e2b_sandbox", mode="before")
-    @classmethod
-    def get_use_e2b_sandbox(cls, v):
-        """Get use_e2b_sandbox from environment if not provided."""
-        env_val = os.getenv("CHAT_USE_E2B_SANDBOX", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        return True if v is None else v
-
     @field_validator("e2b_api_key", mode="before")
     @classmethod
     def get_e2b_api_key(cls, v):
@@ -218,26 +209,6 @@ class ChatConfig(BaseSettings):
             if not v:
                 v = OPENROUTER_BASE_URL
         return v
-
-    @field_validator("use_claude_agent_sdk", mode="before")
-    @classmethod
-    def get_use_claude_agent_sdk(cls, v):
-        """Get use_claude_agent_sdk from environment if not provided."""
-        # Check environment variable - default to True if not set
-        env_val = os.getenv("CHAT_USE_CLAUDE_AGENT_SDK", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        # Default to True (SDK enabled by default)
-        return True if v is None else v
-
-    @field_validator("use_claude_code_subscription", mode="before")
-    @classmethod
-    def get_use_claude_code_subscription(cls, v):
-        """Get use_claude_code_subscription from environment if not provided."""
-        env_val = os.getenv("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
-        return False if v is None else v
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
