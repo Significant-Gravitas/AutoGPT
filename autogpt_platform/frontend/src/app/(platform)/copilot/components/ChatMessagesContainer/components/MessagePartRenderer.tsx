@@ -65,9 +65,6 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
-/** Error text that the backend emits for transient Anthropic API failures. */
-const TRANSIENT_ERROR_TEXT = "Anthropic connection interrupted";
-
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
@@ -89,7 +86,7 @@ export function MessagePartRenderer({
         part.text,
       );
 
-      if (markerType === "error") {
+      if (markerType === "error" || markerType === "retryable_error") {
         const lowerMarker = markerText.toLowerCase();
         const isCancellation =
           lowerMarker === "operation cancelled" ||
@@ -104,15 +101,12 @@ export function MessagePartRenderer({
             </div>
           );
         }
-        const isTransient = markerText
-          .toLowerCase()
-          .includes(TRANSIENT_ERROR_TEXT.toLowerCase());
         return (
           <ErrorCard
             key={key}
             responseError={{ message: markerText }}
             context="execution"
-            onRetry={isTransient ? onRetry : undefined}
+            onRetry={markerType === "retryable_error" ? onRetry : undefined}
           />
         );
       }
