@@ -212,65 +212,55 @@ def _build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
 ) -> dict[str, str]:
-    """Build env vars for the SDK CLI process.
+    """Build env vars for the SDK CLI subprocess.
 
-    When ``config.use_openrouter`` is True (default), routes API calls
-    through OpenRouter using ``config.api_key`` / ``config.base_url``.
-
-    When ``config.use_openrouter`` is False, returns an empty dict so the
-    subprocess inherits ``ANTHROPIC_API_KEY`` from the parent environment
-    and connects to Anthropic directly (no proxy hop).
-
-    When *session_id* is provided and OpenRouter is active, an
-    ``x-session-id`` custom header is injected so that OpenRouter Broadcast
-    forwards traces to Langfuse.
+    Three modes (checked in order):
+    1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
+    2. **Direct Anthropic** — returns ``{}``; subprocess inherits
+       ``ANTHROPIC_API_KEY`` from the parent environment.
+    3. **OpenRouter** (default) — overrides base URL and auth token to
+       route through the proxy, with Langfuse trace headers.
     """
-    env: dict[str, str] = {}
-
+    # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
-        # Claude Code subscription: let the CLI use its own logged-in auth.
-        # Explicitly clear API key env vars so the subprocess doesn't pick
-        # them up from the parent process and bypass subscription auth.
         _validate_claude_code_subscription()
-        env["ANTHROPIC_API_KEY"] = ""
-        env["ANTHROPIC_AUTH_TOKEN"] = ""
-        env["ANTHROPIC_BASE_URL"] = ""
-    elif not config.use_openrouter:
-        # Direct Anthropic: skip OpenRouter proxy. The subprocess inherits
-        # ANTHROPIC_API_KEY from the parent environment (set via shared
-        # secrets). No base_url override needed — the SDK defaults to
-        # https://api.anthropic.com.
-        pass
-    elif config.api_key and config.base_url:
-        # Strip /v1 suffix — SDK expects the base URL without a version path
-        base = config.base_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        if not base or not base.startswith("http"):
-            # Invalid base_url — don't override SDK defaults
-            return env
-        env["ANTHROPIC_BASE_URL"] = base
-        env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
-        # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
-        env["ANTHROPIC_API_KEY"] = ""
+        return {
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
+            "ANTHROPIC_BASE_URL": "",
+        }
+
+    # --- Mode 2: Direct Anthropic (no proxy hop) ---
+    if not config.use_openrouter:
+        return {}
+
+    # --- Mode 3: OpenRouter proxy ---
+    if not (config.api_key and config.base_url):
+        return {}
+
+    base = config.base_url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    if not base or not base.startswith("http"):
+        return {}
+
+    env: dict[str, str] = {
+        "ANTHROPIC_BASE_URL": base,
+        "ANTHROPIC_AUTH_TOKEN": config.api_key,
+        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+    }
 
     # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    # The ``x-session-id`` header is *required* for the Anthropic-native
-    # ``/messages`` endpoint — without it broadcast silently drops the
-    # trace even when org-level Langfuse integration is configured.
-    def _safe(value: str) -> str:
-        """Strip CR/LF to prevent header injection, then truncate."""
-        return value.replace("\r", "").replace("\n", "").strip()[:128]
+    def _safe(v: str) -> str:
+        return v.replace("\r", "").replace("\n", "").strip()[:128]
 
-    headers: list[str] = []
+    parts = []
     if session_id:
-        headers.append(f"x-session-id: {_safe(session_id)}")
+        parts.append(f"x-session-id: {_safe(session_id)}")
     if user_id:
-        headers.append(f"x-user-id: {_safe(user_id)}")
-    # Only inject headers when routing through OpenRouter/proxy — they're
-    # meaningless (and leak internal IDs) when using subscription mode.
-    if headers and env.get("ANTHROPIC_BASE_URL"):
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+        parts.append(f"x-user-id: {_safe(user_id)}")
+    if parts:
+        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
 
     return env
 
