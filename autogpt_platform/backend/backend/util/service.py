@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
@@ -249,6 +250,14 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+
+        # Resolve string annotations (from `from __future__ import annotations`
+        # or forward refs) using the function's own module namespace.
+        try:
+            resolved_hints = typing.get_type_hints(func)
+        except Exception:
+            resolved_hints = {}
+
         fields = {}
 
         is_bound_method = False
@@ -257,9 +266,14 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Prefer the resolved type hint; fall back to the raw annotation or str
+            annotation = resolved_hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -269,6 +283,13 @@ class AppService(BaseAppService, ABC):
 
         # Dynamically create a Pydantic model for the request body
         RequestBodyModel = create_model("RequestBodyModel", **fields)
+
+        # Rebuild the model to resolve any remaining forward references
+        # using the function's module namespace.
+        if not RequestBodyModel.__pydantic_complete__:
+            func_module = inspect.getmodule(func)
+            ns = vars(func_module) if func_module else {}
+            RequestBodyModel.model_rebuild(_types_namespace=ns)
         f = func.__get__(self) if is_bound_method else func
 
         if asyncio.iscoroutinefunction(f):
