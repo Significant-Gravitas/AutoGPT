@@ -878,8 +878,13 @@ async def _run_stream_attempt(
     caller so the retry loop can rollback and retry.
 
     Args:
-        ctx: Read-only per-request context (session, IDs, attachments, etc.)
-            that does not change between retry attempts.
+        ctx: Per-request context shared across retry attempts.  Scalar
+            fields (IDs, paths, message string) are set once and never
+            reassigned.  ``session``, ``compaction``, and ``lock`` are
+            shared mutable references: ``session.messages`` is rolled back
+            on retry, ``compaction`` tracks mid-stream compaction events,
+            and ``lock`` is refreshed during heartbeats.  Their references
+            are constant even though the objects they point to are mutated.
         state: Mutable retry state — holds values that the retry loop
             modifies between attempts (options, query, adapter, etc.).
 
@@ -1620,8 +1625,9 @@ async def stream_chat_completion_sdk(
 
         tried_compaction = False
 
-        # Build the per-request context carrier (read-only across attempts).
-        # See ``_StreamContext`` and module-level ``_run_stream_attempt``.
+        # Build the per-request context carrier (shared across attempts).
+        # Scalar fields are immutable; session/compaction/lock are shared
+        # mutable references (see ``_StreamContext`` docstring for details).
         stream_ctx = _StreamContext(
             session=session,
             session_id=session_id,
