@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import bleach
 from markdown_it import MarkdownIt
@@ -136,8 +137,10 @@ def _markdown_to_email_html(text: str | None) -> str:
 
 def _build_session_link(session_id: str, *, show_autopilot: bool) -> str:
     base_url = get_frontend_base_url()
-    suffix = "&showAutopilot=1" if show_autopilot else ""
-    return f"{base_url}/copilot?sessionId={session_id}{suffix}"
+    params = {"sessionId": session_id}
+    if show_autopilot:
+        params["showAutopilot"] = "1"
+    return f"{base_url}/copilot?{urlencode(params)}"
 
 
 def _get_completion_email_template_name(start_type: ChatSessionStartType) -> str:

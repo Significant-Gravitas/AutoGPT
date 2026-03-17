@@ -279,6 +279,7 @@ model ChatSession {
 
   @@index([userId, updatedAt])
   @@index([userId, startType, updatedAt])
+  // NULL executionTag values remain distinct under PostgreSQL unique constraints.
   @@unique([userId, executionTag])
 }
 

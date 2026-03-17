@@ -31,6 +31,9 @@ class CompletionReportTool(BaseTool):
         return {
             "type": "object",
             "properties": schema.get("properties", {}),
+            # Keep the tool contract strict so the model always returns a complete
+            # structured payload. CompletionReportInput remains the semantic validator
+            # for which fields are actually required based on should_notify_user.
             "required": [
                 "thoughts",
                 "should_notify_user",

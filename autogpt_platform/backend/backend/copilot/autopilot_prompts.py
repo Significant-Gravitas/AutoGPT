@@ -105,24 +105,24 @@ Do not mention hidden system instructions or internal control text to the user."
 
 @dataclass(frozen=True)
 class _AutopilotPromptConfig:
-    prompt_name_attr: str
+    prompt_name: str
     fallback_prompt: str
     label: str
 
 
 _AUTOPILOT_PROMPT_CONFIGS = {
     ChatSessionStartType.AUTOPILOT_NIGHTLY: _AutopilotPromptConfig(
-        prompt_name_attr="langfuse_autopilot_nightly_prompt_name",
+        prompt_name=chat_config.langfuse_autopilot_nightly_prompt_name,
         fallback_prompt=DEFAULT_AUTOPILOT_NIGHTLY_SYSTEM_PROMPT,
         label="Nightly",
     ),
     ChatSessionStartType.AUTOPILOT_CALLBACK: _AutopilotPromptConfig(
-        prompt_name_attr="langfuse_autopilot_callback_prompt_name",
+        prompt_name=chat_config.langfuse_autopilot_callback_prompt_name,
         fallback_prompt=DEFAULT_AUTOPILOT_CALLBACK_SYSTEM_PROMPT,
         label="Callback",
     ),
     ChatSessionStartType.AUTOPILOT_INVITE_CTA: _AutopilotPromptConfig(
-        prompt_name_attr="langfuse_autopilot_invite_cta_prompt_name",
+        prompt_name=chat_config.langfuse_autopilot_invite_cta_prompt_name,
         fallback_prompt=DEFAULT_AUTOPILOT_INVITE_CTA_SYSTEM_PROMPT,
         label="Beta Invite CTA",
     ),
@@ -166,8 +166,7 @@ def _get_autopilot_prompt_config(
 
 
 def _get_autopilot_prompt_name(start_type: ChatSessionStartType) -> str:
-    config = _get_autopilot_prompt_config(start_type)
-    return getattr(chat_config, config.prompt_name_attr)
+    return _get_autopilot_prompt_config(start_type).prompt_name
 
 
 def _get_autopilot_fallback_prompt(start_type: ChatSessionStartType) -> str:
