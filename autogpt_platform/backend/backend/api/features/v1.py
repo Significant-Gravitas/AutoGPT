@@ -149,15 +149,20 @@ class CheckInviteResponse(BaseModel):
 async def check_invite_route(
     request: CheckInviteRequest,
 ) -> CheckInviteResponse:
+    """Check if an email is allowed to sign up (no auth required).
+
+    Called by the frontend before creating a Supabase auth user to prevent
+    orphaned accounts when the invite gate is enabled.
+    """
     if not settings.config.enable_invite_gate:
         return CheckInviteResponse(allowed=True)
 
-    normalized = normalize_email(request.email)
+    email = normalize_email(request.email)
 
-    if normalized.endswith("@agpt.co"):
+    if email.endswith("@agpt.co"):
         return CheckInviteResponse(allowed=True)
 
-    allowed = await check_invite_eligibility(normalized)
+    allowed = await check_invite_eligibility(email)
     return CheckInviteResponse(allowed=allowed)
 
 

@@ -49,7 +49,10 @@ export async function signup(
       }
       // If the check fails (backend unreachable), fall through to signup —
       // the backend-level check in get_or_activate_user() still catches it.
-    } catch {
+    } catch (precheckError) {
+      Sentry.captureException(precheckError, {
+        tags: { flow: "signup_precheck" },
+      });
       // Graceful fallback: don't block signup if the pre-check itself fails.
     }
 

@@ -213,12 +213,15 @@ async def _apply_tally_understanding(
 async def check_invite_eligibility(email: str) -> bool:
     """Check if an email is allowed to sign up based on the invite list.
 
+    Args:
+        email: The email to check (will be normalized internally).
+
     Returns True if the email has an active (INVITED) invite record.
     Does NOT check enable_invite_gate — the caller is responsible for that.
     """
-    normalized = normalize_email(email)
+    email = normalize_email(email)
     invited_user = await prisma.models.InvitedUser.prisma().find_unique(
-        where={"email": normalized}
+        where={"email": email}
     )
     return (
         invited_user is not None
