@@ -8,11 +8,14 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
-from backend.data.db_accessors import workspace_db
+from backend.data.credit import UsageTransactionMetadata
+from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.exceptions import BlockError
+from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.type import coerce_inputs_to_schema
 
 from .models import BlockOutputResponse, ErrorResponse, ToolResponseBase
 from .utils import match_credentials_to_requirements
@@ -111,6 +114,24 @@ async def execute_block(
                     session_id=session_id,
                 )
 
+        # Coerce non-matching data types to the expected input schema.
+        coerce_inputs_to_schema(input_data, block.input_schema)
+
+        # Pre-execution credit check (courtesy; spend_credits is atomic)
+        cost, cost_filter = block_usage_cost(block, input_data)
+        has_cost = cost > 0
+        _credit_db = credit_db()
+        if has_cost:
+            balance = await _credit_db.get_credits(user_id)
+            if balance < cost:
+                return ErrorResponse(
+                    message=(
+                        f"Insufficient credits to run '{block.name}'. "
+                        "Please top up your credits to continue."
+                    ),
+                    session_id=session_id,
+                )
+
         # Execute the block and collect outputs
         outputs: dict[str, list[Any]] = defaultdict(list)
         async for output_name, output_data in block.execute(
@@ -118,6 +139,51 @@ async def execute_block(
             **exec_kwargs,
         ):
             outputs[output_name].append(output_data)
+
+        # Charge credits for block execution
+        if has_cost:
+            try:
+                await _credit_db.spend_credits(
+                    user_id=user_id,
+                    cost=cost,
+                    metadata=UsageTransactionMetadata(
+                        graph_exec_id=synthetic_graph_id,
+                        graph_id=synthetic_graph_id,
+                        node_id=synthetic_node_id,
+                        node_exec_id=node_exec_id,
+                        block_id=block_id,
+                        block=block.name,
+                        input=cost_filter,
+                        reason="copilot_block_execution",
+                    ),
+                )
+            except Exception as e:
+                # Block already executed (with possible side effects). Never
+                # return ErrorResponse here — the user received output and
+                # deserves it. Log the billing failure for reconciliation.
+                leak_type = (
+                    "INSUFFICIENT_BALANCE"
+                    if isinstance(e, InsufficientBalanceError)
+                    else "UNEXPECTED_ERROR"
+                )
+                logger.error(
+                    "BILLING_LEAK[%s]: block executed but credit charge failed — "
+                    "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+                    leak_type,
+                    user_id,
+                    block_id,
+                    node_exec_id,
+                    cost,
+                    e,
+                    extra={
+                        "json_fields": {
+                            "billing_leak": True,
+                            "leak_type": leak_type,
+                            "user_id": user_id,
+                            "cost": str(cost),
+                        }
+                    },
+                )
 
         return BlockOutputResponse(
             message=f"Block '{block.name}' executed successfully",
@@ -129,14 +195,14 @@ async def execute_block(
         )
 
     except BlockError as e:
-        logger.warning(f"Block execution failed: {e}")
+        logger.warning("Block execution failed: %s", e)
         return ErrorResponse(
             message=f"Block execution failed: {e}",
             error=str(e),
             session_id=session_id,
         )
     except Exception as e:
-        logger.error(f"Unexpected error executing block: {e}", exc_info=True)
+        logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
             message=f"Failed to execute block: {str(e)}",
             error=str(e),

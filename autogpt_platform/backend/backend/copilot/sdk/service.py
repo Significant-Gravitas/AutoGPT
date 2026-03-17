@@ -29,6 +29,7 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
+from backend.copilot.context import get_workspace_manager
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -54,15 +55,16 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from ..service import (
     _build_system_prompt,
     _generate_session_title,
     _is_langfuse_configured,
 )
+from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
-from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -77,6 +79,7 @@ from .tool_adapter import (
 from .transcript import (
     cleanup_cli_project_dir,
     download_transcript,
+    read_compacted_entries,
     upload_transcript,
     validate_transcript,
     write_transcript_to_tempfile,
@@ -564,7 +567,7 @@ async def _prepare_file_attachments(
         return empty
 
     try:
-        manager = await get_manager(user_id, session_id)
+        manager = await get_workspace_manager(user_id, session_id)
     except Exception:
         logger.warning(
             "Failed to create workspace manager for file attachments",
@@ -735,6 +738,13 @@ async def stream_chat_completion_sdk(
     _otel_ctx: Any = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
+    # Token usage accumulators — populated from ResultMessage at end of turn
+    turn_prompt_tokens = 0  # uncached input tokens only
+    turn_completion_tokens = 0
+    turn_cache_read_tokens = 0
+    turn_cache_creation_tokens = 0
+    turn_cost_usd: float | None = None
+
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
         # Pre-compute the cwd here so the exact working directory path can be
@@ -1045,6 +1055,7 @@ async def stream_chat_completion_sdk(
                             exc_info=True,
                         )
                         ended_with_stream_error = True
+
                         yield StreamError(
                             errorText=f"SDK stream error: {stream_err}",
                             code="sdk_stream_error",
@@ -1110,7 +1121,7 @@ async def stream_chat_completion_sdk(
                                 - len(adapter.resolved_tool_calls),
                             )
 
-                    # Log ResultMessage details for debugging
+                    # Log ResultMessage details and capture token usage
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
                             "%s Received: ResultMessage %s "
@@ -1129,9 +1140,53 @@ async def stream_chat_completion_sdk(
                                 sdk_msg.result or "(no error message provided)",
                             )
 
-                    # Emit compaction end if SDK finished compacting
-                    for ev in await compaction.emit_end_if_ready(session):
+                        # Capture token usage from ResultMessage.
+                        # Anthropic reports cached tokens separately:
+                        #   input_tokens = uncached only
+                        #   cache_read_input_tokens = served from cache
+                        #   cache_creation_input_tokens = written to cache
+                        if sdk_msg.usage:
+                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                            turn_cache_read_tokens += sdk_msg.usage.get(
+                                "cache_read_input_tokens", 0
+                            )
+                            turn_cache_creation_tokens += sdk_msg.usage.get(
+                                "cache_creation_input_tokens", 0
+                            )
+                            turn_completion_tokens += sdk_msg.usage.get(
+                                "output_tokens", 0
+                            )
+                            logger.info(
+                                "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
+                                log_prefix,
+                                turn_prompt_tokens,
+                                turn_cache_read_tokens,
+                                turn_cache_creation_tokens,
+                                turn_completion_tokens,
+                            )
+                        if sdk_msg.total_cost_usd is not None:
+                            turn_cost_usd = sdk_msg.total_cost_usd
+
+                    # Emit compaction end if SDK finished compacting.
+                    # When compaction ends, sync TranscriptBuilder with the
+                    # CLI's active context so they stay identical.
+                    compact_result = await compaction.emit_end_if_ready(session)
+                    for ev in compact_result.events:
                         yield ev
+                    # After replace_entries, skip append_assistant for this
+                    # sdk_msg — the CLI session file already contains it,
+                    # so appending again would create a duplicate.
+                    entries_replaced = False
+                    if compact_result.just_ended:
+                        compacted = await asyncio.to_thread(
+                            read_compacted_entries,
+                            compact_result.transcript_path,
+                        )
+                        if compacted is not None:
+                            transcript_builder.replace_entries(
+                                compacted, log_prefix=log_prefix
+                            )
+                            entries_replaced = True
 
                     for response in adapter.convert_message(sdk_msg):
                         if isinstance(response, StreamStart):
@@ -1218,10 +1273,11 @@ async def stream_chat_completion_sdk(
                                     tool_call_id=response.toolCallId,
                                 )
                             )
-                            transcript_builder.append_tool_result(
-                                tool_use_id=response.toolCallId,
-                                content=content,
-                            )
+                            if not entries_replaced:
+                                transcript_builder.append_tool_result(
+                                    tool_use_id=response.toolCallId,
+                                    content=content,
+                                )
                             has_tool_results = True
 
                         elif isinstance(response, StreamFinish):
@@ -1231,7 +1287,9 @@ async def stream_chat_completion_sdk(
                     # any stashed tool results from the previous turn are
                     # recorded first, preserving the required API order:
                     # assistant(tool_use) → tool_result → assistant(text).
-                    if isinstance(sdk_msg, AssistantMessage):
+                    # Skip if replace_entries just ran — the CLI session
+                    # file already contains this message.
+                    if isinstance(sdk_msg, AssistantMessage) and not entries_replaced:
                         transcript_builder.append_assistant(
                             content_blocks=_format_sdk_content_blocks(sdk_msg.content),
                             model=sdk_msg.model,
@@ -1325,6 +1383,26 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
+        # Emit token usage to the client (must be in try to reach SSE stream).
+        # Session persistence of usage is in finally to stay consistent with
+        # rate-limit recording even if an exception interrupts between here
+        # and the finally block.
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            # total_tokens = prompt (uncached input) + completion (output).
+            # Cache tokens are tracked separately and excluded from total
+            # so that the semantics match the baseline path (OpenRouter)
+            # which folds cache into prompt_tokens. Keeping total_tokens
+            # = prompt + completion everywhere makes cross-path comparisons
+            # and session-level aggregation consistent.
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            yield StreamUsage(
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                total_tokens=total_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+            )
+
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
         # old resume file, then the finally block overwrote it with the
@@ -1389,6 +1467,20 @@ async def stream_chat_completion_sdk(
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
 
+        # --- Persist token usage to session + rate-limit counters ---
+        # Both must live in finally so they stay consistent even when an
+        # exception interrupts the try block after StreamUsage was yielded.
+        await persist_and_record_usage(
+            session=session,
+            user_id=user_id,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            cache_read_tokens=turn_cache_read_tokens,
+            cache_creation_tokens=turn_cache_creation_tokens,
+            log_prefix=log_prefix,
+            cost_usd=turn_cost_usd,
+        )
+
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
         # is stopped early (e.g., user clicks stop, processor breaks stream loop).
@@ -1422,13 +1514,13 @@ async def stream_chat_completion_sdk(
             task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
-        # This MUST run in finally so the transcript is uploaded even when
-        # the streaming loop raises an exception.
-        # The transcript represents the COMPLETE active context (atomic).
+        # TranscriptBuilder is the single source of truth.  It mirrors the
+        # CLI's active context: on compaction, replace_entries() syncs it
+        # with the compacted session file.  No CLI file read needed here.
         if config.claude_agent_use_resume and user_id and session is not None:
             try:
-                # Build complete transcript from captured SDK messages
                 transcript_content = transcript_builder.to_jsonl()
+                entry_count = transcript_builder.entry_count
 
                 if not transcript_content:
                     logger.warning(
@@ -1438,18 +1530,15 @@ async def stream_chat_completion_sdk(
                     logger.warning(
                         "%s Transcript invalid, skipping upload (entries=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                     )
                 else:
                     logger.info(
-                        "%s Uploading complete transcript (entries=%d, bytes=%d)",
+                        "%s Uploading transcript (entries=%d, bytes=%d)",
                         log_prefix,
-                        transcript_builder.entry_count,
+                        entry_count,
                         len(transcript_content),
                     )
-                    # Shield upload from cancellation - let it complete even if
-                    # the finally block is interrupted. No timeout to avoid race
-                    # conditions where backgrounded uploads overwrite newer transcripts.
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

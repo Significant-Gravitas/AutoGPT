@@ -58,10 +58,31 @@ poetry run pytest path/to/test.py --snapshot-update
 - **Authentication**: JWT-based with Supabase integration
 - **Security**: Cache protection middleware prevents sensitive data caching in browsers/proxies
 
+## Code Style
+
+- **Top-level imports only** — no local/inner imports (lazy imports only for heavy optional deps like `openpyxl`)
+- **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols
+- **Pydantic models** over dataclass/namedtuple/dict for structured data
+- **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
+- **List comprehensions** over manual loop-and-append
+- **Early return** — guard clauses first, avoid deep nesting
+- **Lazy `%s` logging** — `logger.info("Processing %s items", count)` not `logger.info(f"Processing {count} items")`
+- **Sanitize error paths** — `os.path.basename()` in error messages to avoid leaking directory structure
+- **TOCTOU awareness** — avoid check-then-act patterns for file access and credit charging
+- **`Security()` vs `Depends()`** — use `Security()` for auth deps to get proper OpenAPI security spec
+- **Redis pipelines** — `transaction=True` for atomicity on multi-step operations
+- **`max(0, value)` guards** — for computed values that should never be negative
+- **SSE protocol** — `data:` lines for frontend-parsed events (must match Zod schema), `: comment` lines for heartbeats/status
+- **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
+- **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
+
 ## Testing Approach
 
 - Uses pytest with snapshot testing for API responses
 - Test files are colocated with source files (`*_test.py`)
+- Mock at boundaries — mock where the symbol is **used**, not where it's **defined**
+- After refactoring, update mock targets to match new module paths
+- Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 
 ## Database Schema
 
@@ -156,6 +177,16 @@ yield "image_url", result_url
 2. Add/update Pydantic models in same directory
 3. Write tests alongside the route file
 4. Run `poetry run test` to verify
+
+## Workspace & Media Files
+
+**Read [Workspace & Media Architecture](../../docs/platform/workspace-media-architecture.md) when:**
+- Working on CoPilot file upload/download features
+- Building blocks that handle `MediaFileType` inputs/outputs
+- Modifying `WorkspaceManager` or `store_media_file()`
+- Debugging file persistence or virus scanning issues
+
+Covers: `WorkspaceManager` (persistent storage with session scoping), `store_media_file()` (media normalization pipeline), and responsibility boundaries for virus scanning and persistence.
 
 ## Security Implementation
 

@@ -1,4 +1,4 @@
-import { KeyIcon } from "@phosphor-icons/react";
+import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
 import {
   FaDiscord,
@@ -8,6 +8,7 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
+import { CredentialsType } from "@/lib/autogpt-server-api/types";
 
 export const fallbackIcon = KeyIcon;
 
@@ -68,6 +69,62 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
     }
 );
 
+export function countSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): number {
+  return [
+    supportsOAuth2,
+    supportsApiKey,
+    supportsUserPassword,
+    supportsHostScoped,
+  ].filter(Boolean).length;
+}
+
+export function getSupportedTypes(
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): CredentialsType[] {
+  const types: CredentialsType[] = [];
+  if (supportsOAuth2) types.push("oauth2");
+  if (supportsApiKey) types.push("api_key");
+  if (supportsUserPassword) types.push("user_password");
+  if (supportsHostScoped) types.push("host_scoped");
+  return types;
+}
+
+const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
+  oauth2: "OAuth",
+  api_key: "API Key",
+  user_password: "Password",
+  host_scoped: "Headers",
+};
+
+export function getCredentialTypeLabel(type: CredentialsType): string {
+  return CREDENTIAL_TYPE_LABELS[type] ?? type;
+}
+
+type CredentialIcon = React.FC<{ className?: string; size?: string | number }>;
+
+export function getCredentialTypeIcon(
+  type: CredentialsType,
+  provider?: string,
+): CredentialIcon {
+  if (type === "oauth2" && provider) {
+    const icon = providerIcons[provider];
+    if (icon) return icon as CredentialIcon;
+    return GlobeSimple as CredentialIcon;
+  }
+  if (type === "api_key") return KeyIcon as CredentialIcon;
+  if (type === "user_password") return Password as CredentialIcon;
+  if (type === "host_scoped") return Lock as CredentialIcon;
+  return KeyIcon as CredentialIcon;
+}
+
 export function getActionButtonText(
   supportsOAuth2: boolean,
   supportsApiKey: boolean,
@@ -75,6 +132,18 @@ export function getActionButtonText(
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
 ): string {
+  const multipleTypes =
+    countSupportedTypes(
+      supportsOAuth2,
+      supportsApiKey,
+      supportsUserPassword,
+      supportsHostScoped,
+    ) > 1;
+
+  if (multipleTypes) {
+    return hasExistingCredentials ? "Add another credential" : "Add credential";
+  }
+
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
