@@ -79,12 +79,18 @@ async def import_workflow(
 
     # Step 2: Detect format
     fmt = detect_format(workflow_json)
+    logger.info(
+        "Workflow format detection: result=%s, top-level keys=%s",
+        fmt.value,
+        list(workflow_json.keys())[:20],
+    )
     if fmt == SourcePlatform.UNKNOWN:
         raise HTTPException(
             status_code=400,
             detail="Could not detect workflow format. Supported formats: "
             "n8n, Make.com, Zapier. Ensure you're uploading a valid "
-            "workflow export file.",
+            "workflow export file. "
+            f"Found top-level keys: {list(workflow_json.keys())[:10]}",
         )
 
     # Step 3: Describe the workflow

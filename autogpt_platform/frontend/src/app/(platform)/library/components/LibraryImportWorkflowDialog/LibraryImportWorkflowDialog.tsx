@@ -4,21 +4,8 @@ import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormMessage,
-} from "@/components/molecules/Form/Form";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import { z } from "zod";
 import { useLibraryImportWorkflowDialog } from "./useLibraryImportWorkflowDialog";
-
-export const importWorkflowFormSchema = z.object({
-  workflowFile: z.string(),
-  templateUrl: z.string(),
-});
 
 export default function LibraryImportWorkflowDialog() {
   const {
@@ -26,15 +13,14 @@ export default function LibraryImportWorkflowDialog() {
     isConverting,
     isOpen,
     setIsOpen,
-    form,
     importMode,
     setImportMode,
+    hasInput,
+    fileValue,
+    setFileValue,
+    urlValue,
+    setUrlValue,
   } = useLibraryImportWorkflowDialog();
-
-  const hasInput =
-    importMode === "url"
-      ? !!form.watch("templateUrl")
-      : !!form.watch("workflowFile");
 
   return (
     <Dialog
@@ -46,7 +32,8 @@ export default function LibraryImportWorkflowDialog() {
       }}
       onClose={() => {
         setIsOpen(false);
-        form.reset();
+        setFileValue("");
+        setUrlValue("");
       }}
     >
       <Dialog.Trigger>
@@ -86,70 +73,44 @@ export default function LibraryImportWorkflowDialog() {
           automatically converted to an AutoGPT agent.
         </p>
 
-        <Form
-          form={form}
-          onSubmit={onSubmit}
-          className="flex flex-col justify-center gap-0 px-1"
-        >
-          {importMode === "file" ? (
-            <FormField
-              control={form.control}
-              name="workflowFile"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <FileInput
-                      mode="base64"
-                      value={field.value}
-                      onChange={field.onChange}
-                      accept=".json,application/json"
-                      placeholder="Workflow JSON file (n8n, Make.com, or Zapier export)"
-                      maxFileSize={10 * 1024 * 1024}
-                      showStorageNote={false}
-                      className="mb-4 mt-2"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          ) : (
-            <FormField
-              control={form.control}
-              name="templateUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      id={field.name}
-                      label="n8n template URL"
-                      placeholder="https://n8n.io/workflows/1234"
-                      className="mb-4 mt-2 w-full rounded-[10px]"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
+        {importMode === "file" ? (
+          <FileInput
+            mode="base64"
+            value={fileValue}
+            onChange={setFileValue}
+            accept=".json,application/json"
+            placeholder="Workflow JSON file (n8n, Make.com, or Zapier export)"
+            maxFileSize={10 * 1024 * 1024}
+            showStorageNote={false}
+            className="mb-4 mt-2"
+          />
+        ) : (
+          <Input
+            id="template-url"
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            label="n8n template URL"
+            placeholder="https://n8n.io/workflows/1234"
+            className="mb-4 mt-2 w-full rounded-[10px]"
+          />
+        )}
 
-          <Button
-            type="submit"
-            variant="primary"
-            className="min-w-[18rem]"
-            disabled={!hasInput || isConverting}
-          >
-            {isConverting ? (
-              <div className="flex items-center gap-2">
-                <LoadingSpinner size="small" className="text-white" />
-                <span>Parsing workflow...</span>
-              </div>
-            ) : (
-              "Import to AutoPilot"
-            )}
-          </Button>
-        </Form>
+        <Button
+          type="button"
+          variant="primary"
+          className="min-w-[18rem]"
+          disabled={!hasInput || isConverting}
+          onClick={onSubmit}
+        >
+          {isConverting ? (
+            <div className="flex items-center gap-2">
+              <LoadingSpinner size="small" className="text-white" />
+              <span>Parsing workflow...</span>
+            </div>
+          ) : (
+            "Import to AutoPilot"
+          )}
+        </Button>
       </Dialog.Content>
     </Dialog>
   );

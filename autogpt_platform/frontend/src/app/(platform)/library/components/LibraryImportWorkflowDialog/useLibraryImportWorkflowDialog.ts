@@ -2,41 +2,30 @@ import { usePostV2ImportAWorkflowFromAnotherToolN8nMakeComZapier } from "@/app/a
 import type { ImportWorkflowRequest } from "@/app/api/__generated__/models/importWorkflowRequest";
 import type { ImportWorkflowResponse } from "@/app/api/__generated__/models/importWorkflowResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { importWorkflowFormSchema } from "./LibraryImportWorkflowDialog";
 
 export function useLibraryImportWorkflowDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
   const [importMode, setImportMode] = useState<"file" | "url">("file");
+  const [fileValue, setFileValue] = useState("");
+  const [urlValue, setUrlValue] = useState("");
 
   const { mutateAsync: importWorkflow, isPending: isConverting } =
     usePostV2ImportAWorkflowFromAnotherToolN8nMakeComZapier();
 
-  const form = useForm<z.infer<typeof importWorkflowFormSchema>>({
-    resolver: zodResolver(importWorkflowFormSchema),
-    defaultValues: {
-      workflowFile: "",
-      templateUrl: "",
-    },
-  });
+  const hasInput = importMode === "url" ? !!urlValue : !!fileValue;
 
-  const onSubmit = async (values: z.infer<typeof importWorkflowFormSchema>) => {
+  async function onSubmit() {
     try {
       let body: ImportWorkflowRequest;
 
-      if (importMode === "url" && values.templateUrl) {
-        body = { template_url: values.templateUrl };
-      } else if (importMode === "file" && values.workflowFile) {
-        // Decode base64 file to JSON
-        const base64Match = values.workflowFile.match(
-          /^data:[^;]+;base64,(.+)$/,
-        );
+      if (importMode === "url" && urlValue) {
+        body = { template_url: urlValue };
+      } else if (importMode === "file" && fileValue) {
+        const base64Match = fileValue.match(/^data:[^;]+;base64,(.+)$/);
         if (!base64Match) {
           throw new Error("Invalid file format");
         }
@@ -48,12 +37,11 @@ export function useLibraryImportWorkflowDialog() {
       }
 
       const response = await importWorkflow({ data: body });
-      // Cast needed: generated client returns union with error types,
-      // but errors throw before reaching here
       const data = response.data as ImportWorkflowResponse;
 
       setIsOpen(false);
-      form.reset();
+      setFileValue("");
+      setUrlValue("");
 
       toast({
         title: "Workflow Parsed",
@@ -75,15 +63,19 @@ export function useLibraryImportWorkflowDialog() {
         duration: 5000,
       });
     }
-  };
+  }
 
   return {
     onSubmit,
     isConverting,
     isOpen,
     setIsOpen,
-    form,
     importMode,
     setImportMode,
+    hasInput,
+    fileValue,
+    setFileValue,
+    urlValue,
+    setUrlValue,
   };
 }

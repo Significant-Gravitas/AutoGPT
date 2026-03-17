@@ -60,15 +60,24 @@ async def fetch_n8n_template(url: str) -> dict[str, Any]:
             "expected JSON object"
         )
 
-    # n8n API wraps the workflow in a `workflow` key
-    workflow = data.get("workflow", data)
+    # n8n API returns: { workflow: { workflow: { nodes, connections }, ... } }
+    # The outer `workflow` is template metadata; the inner `workflow` is the
+    # actual workflow definition with nodes and connections.
+    template = data.get("workflow", data)
+    if not isinstance(template, dict):
+        raise RuntimeError(
+            f"Unexpected response format from n8n API for template {template_id}"
+        )
+
+    # Unwrap the inner workflow if present
+    workflow = template.get("workflow", template)
     if not isinstance(workflow, dict):
         raise RuntimeError(
             f"Unexpected response format from n8n API for template {template_id}"
         )
 
     # Preserve the workflow name from the template metadata
-    if "name" not in workflow and "name" in data:
-        workflow["name"] = data["name"]
+    if "name" not in workflow:
+        workflow["name"] = template.get("name") or data.get("name", "")
 
     return workflow
