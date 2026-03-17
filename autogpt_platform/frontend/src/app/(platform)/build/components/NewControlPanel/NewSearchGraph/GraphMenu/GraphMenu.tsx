@@ -6,7 +6,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/molecules/Popover";
+} from "@/components/molecules/Popover/Popover";
 import {
   Tooltip,
   TooltipContent,
@@ -48,7 +48,7 @@ export function GraphSearchMenu() {
   return (
     <Popover
       open={graphSearchOpen}
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         setGraphSearchOpen(open);
         if (!open) {
           setSearchQuery("");
