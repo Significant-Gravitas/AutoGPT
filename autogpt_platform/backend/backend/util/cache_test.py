@@ -1174,10 +1174,10 @@ class TestCacheHMAC:
         assert len(keys) >= 1, "Expected at least one cache key"
 
         for key in keys:
-            raw = redis.get(key)
+            raw: bytes | None = redis.get(key)  # type: ignore[assignment]
             assert raw is not None
             # Flip a byte in the signature portion to simulate tampering
-            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]
+            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]  # type: ignore[index]
             redis.set(key, tampered)
 
         # Next call should detect tampering and recompute
