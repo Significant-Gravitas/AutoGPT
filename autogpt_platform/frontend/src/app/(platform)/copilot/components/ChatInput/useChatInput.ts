@@ -1,3 +1,4 @@
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 interface Args {
@@ -16,6 +17,16 @@ export function useChatInput({
 }: Args) {
   const [value, setValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
+
+  useEffect(
+    function consumeInitialPrompt() {
+      if (!initialPrompt) return;
+      setValue((prev) => (prev.length === 0 ? initialPrompt : prev));
+      setInitialPrompt(null);
+    },
+    [initialPrompt, setInitialPrompt],
+  );
 
   useEffect(
     function focusOnMount() {
