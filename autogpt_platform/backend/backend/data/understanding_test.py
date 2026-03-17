@@ -86,8 +86,8 @@ def test_from_db_themed_prompts():
     assert result.suggested_prompts == themed
 
 
-def test_from_db_legacy_list_prompts_returns_empty():
-    """from_db ignores legacy list[str] format and returns empty dict."""
+def test_from_db_legacy_list_prompts_preserved_under_general():
+    """from_db preserves legacy list[str] prompts under a 'General' key."""
     db_record = MagicMock()
     db_record.id = "test-id"
     db_record.userId = "user-1"
@@ -101,7 +101,7 @@ def test_from_db_legacy_list_prompts_returns_empty():
 
     result = BusinessUnderstanding.from_db(db_record)
 
-    assert result.suggested_prompts == {}
+    assert result.suggested_prompts == {"General": ["Old prompt 1", "Old prompt 2"]}
 
 
 # ─── _json_to_themed_prompts helper ───────────────────────────────────
@@ -112,8 +112,8 @@ def test_json_to_themed_prompts_with_dict():
     assert _json_to_themed_prompts(value) == {"Learn": ["a", "b"], "Create": ["c"]}
 
 
-def test_json_to_themed_prompts_with_list_returns_empty():
-    assert _json_to_themed_prompts(["a", "b"]) == {}
+def test_json_to_themed_prompts_with_list_returns_general():
+    assert _json_to_themed_prompts(["a", "b"]) == {"General": ["a", "b"]}
 
 
 def test_json_to_themed_prompts_with_none_returns_empty():
