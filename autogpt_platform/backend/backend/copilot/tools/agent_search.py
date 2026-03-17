@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -19,14 +18,11 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
-from .utils import UUID_V4_PATTERN
+from .utils import is_creator_slug, is_uuid
 
 logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
-
-# Matches "creator/slug" identifiers used in the marketplace
-_CREATOR_SLUG_PATTERN = re.compile(r"^[\w-]+/[\w-]+$")
 
 # Keywords that should be treated as "list all" rather than a literal search
 _LIST_ALL_KEYWORDS = frozenset({"all", "*", "everything", "any", ""})
@@ -55,7 +51,7 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
     agents: list[AgentInfo] = []
     try:
         # Direct lookup if query matches "creator/slug" pattern
-        if _CREATOR_SLUG_PATTERN.match(query):
+        if is_creator_slug(query):
             logger.info(f"Query looks like creator/slug, trying direct lookup: {query}")
             creator, slug = query.split("/", 1)
             agent_info = await _get_marketplace_agent_by_slug(creator, slug)
@@ -122,7 +118,7 @@ async def _search_library(
 
     agents: list[AgentInfo] = []
     try:
-        if _is_uuid(query):
+        if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(user_id, query)
             if agent:
@@ -195,11 +191,6 @@ async def _search_library(
         count=len(agents),
         session_id=session_id,
     )
-
-
-def _is_uuid(text: str) -> bool:
-    """Check if text is a valid UUID v4."""
-    return bool(UUID_V4_PATTERN.match(text.strip()))
 
 
 def _marketplace_agent_to_info(agent: Any) -> AgentInfo:

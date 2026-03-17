@@ -15,7 +15,7 @@ from .models import (
     ErrorResponse,
     NoResultsResponse,
 )
-from .utils import UUID_V4_PATTERN
+from .utils import is_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class FindBlockTool(BaseTool):
 
         try:
             # Direct ID lookup if query looks like a UUID
-            if UUID_V4_PATTERN.match(query):
+            if is_uuid(query):
                 block = get_block(query.lower())
                 if block:
                     if block.disabled:
