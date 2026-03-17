@@ -129,7 +129,8 @@ class TestGetProviderToken:
         assert result == "oauth-tok"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_oauth2_refresh_failure_falls_back_to_stale_token(self):
+    async def test_oauth2_refresh_failure_returns_none(self):
+        """On refresh failure, return None instead of caching a stale token."""
         oauth_creds = _make_oauth2_creds("stale-oauth-tok")
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
@@ -138,7 +139,8 @@ class TestGetProviderToken:
         with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
-        assert result == "stale-oauth-tok"
+        # Stale tokens must NOT be returned — forces re-auth.
+        assert result is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_credentials_caches_null_entry(self):

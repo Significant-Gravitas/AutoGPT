@@ -131,11 +131,15 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
             except Exception:
                 logger.warning(
                     "Failed to refresh %s OAuth token for user %s; "
-                    "falling back to potentially stale token",
+                    "discarding stale token to force re-auth",
                     provider,
                     user_id,
+                    exc_info=True,
                 )
-                token = cast(OAuth2Credentials, creds).access_token.get_secret_value()
+                # Do NOT fall back to the stale token — it is likely expired
+                # or revoked.  Returning None forces the caller to re-auth,
+                # preventing the LLM from receiving a non-functional token.
+                continue
             _token_cache[cache_key] = token
             return token
 
