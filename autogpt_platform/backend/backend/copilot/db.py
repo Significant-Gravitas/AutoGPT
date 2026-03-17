@@ -30,6 +30,7 @@ class PaginatedMessages(BaseModel):
     messages: list[ChatMessage]
     has_more: bool
     oldest_sequence: int | None
+    session: ChatSessionInfo
 
 
 async def get_chat_session(session_id: str) -> ChatSession | None:
@@ -54,8 +55,12 @@ async def get_chat_messages_paginated(
     limit: int = 50,
     before_sequence: int | None = None,
     user_id: str | None = None,
-) -> PaginatedMessages:
+) -> PaginatedMessages | None:
     """Get paginated messages for a session, newest first.
+
+    Verifies session existence (and ownership when ``user_id`` is provided)
+    in parallel with the message query.  Returns ``None`` when the session
+    is not found or does not belong to the user.
 
     Args:
         session_id: The chat session ID.
@@ -64,17 +69,32 @@ async def get_chat_messages_paginated(
         user_id: If provided, filters via ``Session.userId`` so only the
             session owner's messages are returned (acts as an ownership guard).
     """
-    where: dict[str, Any] = {"sessionId": session_id}
-    if before_sequence is not None:
-        where["sequence"] = {"lt": before_sequence}
+    # Build session-existence / ownership check
+    session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
-        where["Session"] = {"is": {"userId": user_id}}
+        session_where["userId"] = user_id
 
-    results = await PrismaChatMessage.prisma().find_many(
-        where=where,
-        order={"sequence": "desc"},
-        take=limit + 1,
+    # Build message query
+    msg_where: dict[str, Any] = {"sessionId": session_id}
+    if before_sequence is not None:
+        msg_where["sequence"] = {"lt": before_sequence}
+    if user_id is not None:
+        msg_where["Session"] = {"is": {"userId": user_id}}
+
+    # Run session check and message fetch in parallel
+    session, results = await asyncio.gather(
+        PrismaChatSession.prisma().find_first(where=session_where),
+        PrismaChatMessage.prisma().find_many(
+            where=msg_where,
+            order={"sequence": "desc"},
+            take=limit + 1,
+        ),
     )
+
+    if session is None:
+        return None
+
+    session_info = ChatSessionInfo.from_db(session)
 
     has_more = len(results) > limit
     results = results[:limit]
@@ -92,6 +112,8 @@ async def get_chat_messages_paginated(
             "sessionId": session_id,
             "sequence": {"lt": results[0].sequence},
         }
+        if user_id is not None:
+            boundary_where["Session"] = {"is": {"userId": user_id}}
         extra = await PrismaChatMessage.prisma().find_many(
             where=boundary_where,
             order={"sequence": "desc"},
@@ -128,6 +150,7 @@ async def get_chat_messages_paginated(
         messages=messages,
         has_more=has_more,
         oldest_sequence=oldest_sequence,
+        session=session_info,
     )
 
 

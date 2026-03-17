@@ -25,7 +25,6 @@ from backend.copilot.model import (
     create_chat_session,
     delete_chat_session,
     get_chat_session,
-    get_chat_session_metadata,
     get_user_sessions,
     update_session_title,
 )
@@ -372,15 +371,10 @@ async def get_session(
         SessionDetailResponse: Details for the requested session, including
             active_stream info and pagination metadata.
     """
-    # Run ownership check and paginated message query in parallel.
-    # Both filter by user_id independently for defense-in-depth.
-    session_info, page = await asyncio.gather(
-        get_chat_session_metadata(session_id, user_id),
-        get_chat_messages_paginated(
-            session_id, limit, before_sequence, user_id=user_id
-        ),
+    page = await get_chat_messages_paginated(
+        session_id, limit, before_sequence, user_id=user_id
     )
-    if not session_info:
+    if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
     messages = [message.model_dump() for message in page.messages]
 
@@ -401,10 +395,10 @@ async def get_session(
             )
 
     return SessionDetailResponse(
-        id=session_info.session_id,
-        created_at=session_info.started_at.isoformat(),
-        updated_at=session_info.updated_at.isoformat(),
-        user_id=session_info.user_id or None,
+        id=page.session.session_id,
+        created_at=page.session.started_at.isoformat(),
+        updated_at=page.session.updated_at.isoformat(),
+        user_id=page.session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
         has_more_messages=page.has_more,
