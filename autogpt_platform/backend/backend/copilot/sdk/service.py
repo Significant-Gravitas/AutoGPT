@@ -1739,6 +1739,9 @@ async def stream_chat_completion_sdk(
                     events_yielded,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # Re-append the error marker so it survives the rollback
+                # and is persisted by the finally block (see #2947655365).
+                _append_error_marker(session, FRIENDLY_TRANSIENT_MSG, retryable=True)
                 ended_with_stream_error = True
                 break
             except Exception as e:
