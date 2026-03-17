@@ -604,7 +604,7 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     with (
         patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve),
         patch(
-            "backend.copilot.tools.workspace_files.get_manager",
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
             AsyncMock(return_value=mock_manager),
         ),
         patch(
