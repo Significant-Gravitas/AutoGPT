@@ -882,6 +882,133 @@ async def _prepare_file_attachments(
     return PreparedAttachments(hint=hint, image_blocks=image_blocks)
 
 
+@dataclass
+class _StreamAccumulator:
+    """Mutable state accumulated during a single streaming attempt.
+
+    Tracks the assistant message being built, tool calls, and flags that
+    control session-message bookkeeping in the dispatch loop.
+    """
+
+    assistant_response: ChatMessage
+    accumulated_tool_calls: list[dict[str, Any]]
+    has_appended_assistant: bool = False
+    has_tool_results: bool = False
+    stream_completed: bool = False
+
+
+def _dispatch_response(
+    response: StreamBaseResponse,
+    acc: _StreamAccumulator,
+    ctx: "_StreamContext",
+    state: "_RetryState",
+    entries_replaced: bool,
+    log_prefix: str,
+) -> StreamBaseResponse | None:
+    """Process a single adapter response and update session/accumulator state.
+
+    Returns the response to yield to the client, or ``None`` if the response
+    should be suppressed (e.g. ``StreamStart`` duplicates).
+
+    Handles:
+    - Logging tool events and errors
+    - Persisting error markers
+    - Accumulating text deltas into ``assistant_response``
+    - Appending tool input/output to session messages and transcript
+    - Detecting ``StreamFinish``
+    """
+    if isinstance(response, StreamStart):
+        return None
+
+    if isinstance(
+        response,
+        (StreamToolInputAvailable, StreamToolOutputAvailable),
+    ):
+        extra = ""
+        if isinstance(response, StreamToolOutputAvailable):
+            out_len = len(str(response.output))
+            extra = f", output_len={out_len}"
+        logger.info(
+            "%s Tool event: %s, tool=%s%s",
+            log_prefix,
+            type(response).__name__,
+            getattr(response, "toolName", "N/A"),
+            extra,
+        )
+
+    # Persist error markers so they survive page refresh
+    if isinstance(response, StreamError):
+        logger.error(
+            "%s Sending error to frontend: %s (code=%s)",
+            log_prefix,
+            response.errorText,
+            response.code,
+        )
+        _append_error_marker(
+            ctx.session,
+            response.errorText,
+            retryable=(response.code == "transient_api_error"),
+        )
+
+    if isinstance(response, StreamTextDelta):
+        delta = response.delta or ""
+        if acc.has_tool_results and acc.has_appended_assistant:
+            acc.assistant_response = ChatMessage(role="assistant", content=delta)
+            acc.accumulated_tool_calls = []
+            acc.has_appended_assistant = False
+            acc.has_tool_results = False
+            ctx.session.messages.append(acc.assistant_response)
+            acc.has_appended_assistant = True
+        else:
+            acc.assistant_response.content = (
+                acc.assistant_response.content or ""
+            ) + delta
+            if not acc.has_appended_assistant:
+                ctx.session.messages.append(acc.assistant_response)
+                acc.has_appended_assistant = True
+
+    elif isinstance(response, StreamToolInputAvailable):
+        acc.accumulated_tool_calls.append(
+            {
+                "id": response.toolCallId,
+                "type": "function",
+                "function": {
+                    "name": response.toolName,
+                    "arguments": json.dumps(response.input or {}),
+                },
+            }
+        )
+        acc.assistant_response.tool_calls = acc.accumulated_tool_calls
+        if not acc.has_appended_assistant:
+            ctx.session.messages.append(acc.assistant_response)
+            acc.has_appended_assistant = True
+
+    elif isinstance(response, StreamToolOutputAvailable):
+        content = (
+            response.output
+            if isinstance(response.output, str)
+            else json.dumps(response.output, ensure_ascii=False)
+        )
+        ctx.session.messages.append(
+            ChatMessage(
+                role="tool",
+                content=content,
+                tool_call_id=response.toolCallId,
+            )
+        )
+        if not entries_replaced:
+            state.transcript_builder.append_tool_result(
+                tool_use_id=response.toolCallId,
+                content=content,
+            )
+        acc.has_tool_results = True
+
+    elif isinstance(response, StreamFinish):
+        acc.stream_completed = True
+
+    return response
+
+
 class _TransientErrorHandled(Exception):
     """Raised by ``_run_stream_attempt`` after it has already yielded a
     ``StreamError`` for a transient API error.
@@ -920,11 +1047,10 @@ async def _run_stream_attempt(
         ``stream_chat_completion_sdk`` — owns the retry loop that calls this
         function up to ``_MAX_STREAM_ATTEMPTS`` times with reduced context.
     """
-    assistant_response = ChatMessage(role="assistant", content="")
-    accumulated_tool_calls: list[dict[str, Any]] = []
-    has_appended_assistant = False
-    has_tool_results = False
-    stream_completed = False
+    acc = _StreamAccumulator(
+        assistant_response=ChatMessage(role="assistant", content=""),
+        accumulated_tool_calls=[],
+    )
     ended_with_stream_error = False
 
     async with ClaudeSDKClient(options=state.options) as client:
@@ -1129,101 +1255,11 @@ async def _run_stream_attempt(
 
             # --- Dispatch adapter responses ---
             for response in state.adapter.convert_message(sdk_msg):
-                if isinstance(response, StreamStart):
-                    continue
-
-                if isinstance(
-                    response,
-                    (
-                        StreamToolInputAvailable,
-                        StreamToolOutputAvailable,
-                    ),
-                ):
-                    extra = ""
-                    if isinstance(response, StreamToolOutputAvailable):
-                        out_len = len(str(response.output))
-                        extra = f", output_len={out_len}"
-                    logger.info(
-                        "%s Tool event: %s, tool=%s%s",
-                        ctx.log_prefix,
-                        type(response).__name__,
-                        getattr(response, "toolName", "N/A"),
-                        extra,
-                    )
-
-                # Persist error markers so they survive page refresh
-                if isinstance(response, StreamError):
-                    logger.error(
-                        "%s Sending error to frontend: %s (code=%s)",
-                        ctx.log_prefix,
-                        response.errorText,
-                        response.code,
-                    )
-                    _append_error_marker(
-                        ctx.session,
-                        response.errorText,
-                        retryable=(response.code == "transient_api_error"),
-                    )
-
-                yield response
-
-                if isinstance(response, StreamTextDelta):
-                    delta = response.delta or ""
-                    if has_tool_results and has_appended_assistant:
-                        assistant_response = ChatMessage(
-                            role="assistant", content=delta
-                        )
-                        accumulated_tool_calls = []
-                        has_appended_assistant = False
-                        has_tool_results = False
-                        ctx.session.messages.append(assistant_response)
-                        has_appended_assistant = True
-                    else:
-                        assistant_response.content = (
-                            assistant_response.content or ""
-                        ) + delta
-                        if not has_appended_assistant:
-                            ctx.session.messages.append(assistant_response)
-                            has_appended_assistant = True
-
-                elif isinstance(response, StreamToolInputAvailable):
-                    accumulated_tool_calls.append(
-                        {
-                            "id": response.toolCallId,
-                            "type": "function",
-                            "function": {
-                                "name": response.toolName,
-                                "arguments": json.dumps(response.input or {}),
-                            },
-                        }
-                    )
-                    assistant_response.tool_calls = accumulated_tool_calls
-                    if not has_appended_assistant:
-                        ctx.session.messages.append(assistant_response)
-                        has_appended_assistant = True
-
-                elif isinstance(response, StreamToolOutputAvailable):
-                    content = (
-                        response.output
-                        if isinstance(response.output, str)
-                        else json.dumps(response.output, ensure_ascii=False)
-                    )
-                    ctx.session.messages.append(
-                        ChatMessage(
-                            role="tool",
-                            content=content,
-                            tool_call_id=response.toolCallId,
-                        )
-                    )
-                    if not entries_replaced:
-                        state.transcript_builder.append_tool_result(
-                            tool_use_id=response.toolCallId,
-                            content=content,
-                        )
-                    has_tool_results = True
-
-                elif isinstance(response, StreamFinish):
-                    stream_completed = True
+                dispatched = _dispatch_response(
+                    response, acc, ctx, state, entries_replaced, ctx.log_prefix
+                )
+                if dispatched is not None:
+                    yield dispatched
 
             # Append assistant entry AFTER convert_message so that
             # any stashed tool results from the previous turn are
@@ -1237,7 +1273,7 @@ async def _run_stream_attempt(
                     model=sdk_msg.model,
                 )
 
-            if stream_completed:
+            if acc.stream_completed:
                 break
 
     # --- Post-stream processing (only on success) ---
@@ -1272,7 +1308,7 @@ async def _run_stream_attempt(
                 )
             yield response
 
-    if not stream_completed and not ended_with_stream_error:
+    if not acc.stream_completed and not ended_with_stream_error:
         logger.info(
             "%s Stream ended without ResultMessage (stopped by user)",
             ctx.log_prefix,
@@ -1289,9 +1325,9 @@ async def _run_stream_attempt(
         )
 
     if (
-        assistant_response.content or assistant_response.tool_calls
-    ) and not has_appended_assistant:
-        ctx.session.messages.append(assistant_response)
+        acc.assistant_response.content or acc.assistant_response.tool_calls
+    ) and not acc.has_appended_assistant:
+        ctx.session.messages.append(acc.assistant_response)
 
     # If the attempt ended with a transient error that was already surfaced
     # to the client (StreamError yielded above), raise so the outer retry
