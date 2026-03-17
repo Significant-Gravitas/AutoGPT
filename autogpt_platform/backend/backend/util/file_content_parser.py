@@ -162,16 +162,18 @@ def parse_file_content(content: str | bytes, fmt: str, *, strict: bool = False) 
 
 def _load_openpyxl_exception() -> type[Exception]:
     """Return openpyxl's InvalidFileException, raising ImportError if absent."""
-    from openpyxl.utils.exceptions import InvalidFileException  # noqa: PLC0415
+    import importlib
 
-    return InvalidFileException
+    mod = importlib.import_module("openpyxl.utils.exceptions")
+    return mod.InvalidFileException
 
 
 def _load_arrow_exception() -> type[Exception]:
     """Return pyarrow's ArrowException, raising ImportError if absent."""
-    from pyarrow import ArrowException  # noqa: PLC0415
+    import importlib
 
-    return ArrowException
+    mod = importlib.import_module("pyarrow")
+    return mod.ArrowException
 
 
 def _optional_exc(loader: "Callable[[], type[Exception]]") -> "type[Exception] | None":
