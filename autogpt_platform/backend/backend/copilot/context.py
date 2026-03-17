@@ -11,6 +11,8 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import workspace_db
+from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -95,6 +97,17 @@ def resolve_sandbox_path(path: str) -> str:
     if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
         raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
     return normalized
+
+
+async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
+    """Create a session-scoped :class:`WorkspaceManager`.
+
+    Placed here (rather than in ``tools/workspace_files``) so that modules
+    like ``sdk/file_ref`` can import it without triggering the heavy
+    ``tools/__init__`` import chain.
+    """
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    return WorkspaceManager(user_id, workspace.id, session_id)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:

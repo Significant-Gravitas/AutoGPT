@@ -30,6 +30,7 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
+from backend.copilot.context import get_workspace_manager
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -64,7 +65,6 @@ from ..service import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
-from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -573,7 +573,7 @@ async def _prepare_file_attachments(
         return empty
 
     try:
-        manager = await get_manager(user_id, session_id)
+        manager = await get_workspace_manager(user_id, session_id)
     except Exception:
         logger.warning(
             "Failed to create workspace manager for file attachments",
