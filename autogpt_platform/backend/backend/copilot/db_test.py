@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma import Json
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
@@ -47,9 +46,9 @@ def _make_session(
         createdAt=now,
         updatedAt=now,
         userId=user_id,
-        credentials=Json({}),
-        successfulAgentRuns=Json({}),
-        successfulAgentSchedules=Json({}),
+        credentials="{}",
+        successfulAgentRuns="{}",
+        successfulAgentSchedules="{}",
         totalPromptTokens=0,
         totalCompletionTokens=0,
         title=None,
