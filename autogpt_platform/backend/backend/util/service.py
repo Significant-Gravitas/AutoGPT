@@ -153,6 +153,30 @@ def _sanitise_field_for_model(annotation: Any, default: Any) -> tuple[Any, Any]:
     return cleaned, default
 
 
+def _build_return_adapter(
+    func: Callable, sig: inspect.Signature
+) -> "TypeAdapter | None":
+    """Build a ``TypeAdapter`` for *func*'s return annotation.
+
+    Resolves string annotations via ``typing.get_type_hints`` and strips
+    non-serialisable sentinel types so Pydantic can handle the result.
+    Returns ``None`` when there is no return annotation.
+    """
+    if sig.return_annotation is inspect.Signature.empty:
+        return None
+
+    try:
+        hints = typing.get_type_hints(func)
+        ret = hints.get("return", sig.return_annotation)
+    except Exception:
+        ret = sig.return_annotation
+
+    # Strip sentinels from the return type as well
+    ret, _ = _sanitise_field_for_model(ret, inspect.Parameter.empty)
+
+    return TypeAdapter(ret)
+
+
 # --------------------------------------------------
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
@@ -800,10 +824,10 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
-            expected_return = (
-                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
-            )
+
+            # Resolve the return annotation (may be a string due to
+            # `from __future__ import annotations`) and strip sentinels.
+            expected_return = _build_return_adapter(original_func, sig)
 
             if inspect.iscoroutinefunction(original_func):
 
