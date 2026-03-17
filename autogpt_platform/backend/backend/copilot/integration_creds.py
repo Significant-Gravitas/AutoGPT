@@ -76,7 +76,11 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
 # that any create/update/delete operation immediately evicts stale cache
 # entries.  This avoids a lazy import inside creds_manager and eliminates the
 # circular-import risk.
-register_creds_changed_hook(invalidate_user_provider_cache)
+try:
+    register_creds_changed_hook(invalidate_user_provider_cache)
+except RuntimeError:
+    # Hook already registered (e.g. module re-import in tests).
+    pass
 
 # Module-level singleton to avoid re-instantiating IntegrationCredentialsManager
 # on every cache-miss call to get_provider_token().

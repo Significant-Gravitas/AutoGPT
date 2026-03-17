@@ -32,12 +32,30 @@ def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
     """Register a callback invoked after any credential is created/updated/deleted.
 
     The callback receives ``(user_id, provider)`` and should be idempotent.
-    Only one hook can be registered at a time; calling this again replaces the
-    previous hook.  Intended to be called once at application startup by the
-    copilot module to bust its token cache without creating an import cycle.
+    Only one hook can be registered at a time.  Intended to be called once at
+    application startup by the copilot module to bust its token cache without
+    creating an import cycle.
+
+    Raises:
+        RuntimeError: If a hook is already registered.  Call
+            :func:`unregister_creds_changed_hook` first if replacement is needed.
     """
     global _on_creds_changed
+    if _on_creds_changed is not None:
+        raise RuntimeError(
+            "A creds_changed hook is already registered. "
+            "Call unregister_creds_changed_hook() before registering a new one."
+        )
     _on_creds_changed = hook
+
+
+def unregister_creds_changed_hook() -> None:
+    """Remove the currently registered creds-changed hook (if any).
+
+    Primarily useful in tests to reset global state between test cases.
+    """
+    global _on_creds_changed
+    _on_creds_changed = None
 
 
 def _bust_copilot_cache(user_id: str, provider: str) -> None:
