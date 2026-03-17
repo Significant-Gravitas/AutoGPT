@@ -81,8 +81,8 @@ class ImportWorkflowTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
-        url = kwargs.get("url", "").strip()
-        workflow_json_str = kwargs.get("workflow_json", "").strip()
+        url = (kwargs.get("url") or "").strip()
+        workflow_json_str = (kwargs.get("workflow_json") or "").strip()
 
         if not url and not workflow_json_str:
             return ErrorResponse(

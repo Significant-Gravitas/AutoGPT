@@ -163,14 +163,19 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
             )
         )
 
-    # Detect trigger
+    # Detect trigger from filtered steps (not raw flow, which may contain
+    # non-dictionary elements at the start).
     trigger_type = None
-    if flow and isinstance(flow[0], dict):
-        first_module = flow[0].get("module", "")
-        if isinstance(first_module, str) and (
-            "watch" in first_module.lower() or "trigger" in first_module.lower()
+    if steps:
+        first_action = steps[0].action.lower()
+        first_service = steps[0].service.lower()
+        if (
+            "trigger" in first_action
+            or "watch" in first_action
+            or "trigger" in first_service
+            or "watch" in first_service
         ):
-            trigger_type = first_module.split(":")[0].replace("-", " ").title()
+            trigger_type = steps[0].service
 
     return WorkflowDescription(
         name=json_data.get("name", "Imported Make.com Scenario"),
