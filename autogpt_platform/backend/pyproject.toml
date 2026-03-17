@@ -95,7 +95,6 @@ fpdf2 = "^2.8.6"
 langsmith = "^0.7.7"
 openpyxl = "^3.1.5"
 pyarrow = "^23.0.0"
-agentmail = "^0.4.5"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
