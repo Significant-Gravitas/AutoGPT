@@ -1,19 +1,25 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { HeartIcon } from "@phosphor-icons/react";
+import {
+  TabsLine,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
+import { HeartIcon, Icon } from "@phosphor-icons/react";
+import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
-import { LibraryTabs, Tab } from "../LibraryTabs/LibraryTabs";
 import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 
 interface Props {
   searchTerm: string;
-  tabs: Tab[];
+  tabs: { id: string; title: string; icon: Icon }[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
   setLibrarySort: (value: LibraryAgentSort) => void;
@@ -35,17 +41,34 @@ export function FavoritesSection({
     isFetchingNextPage,
   } = useFavoriteAgents({ searchTerm });
 
+  const { registerFavoritesTabRef } = useFavoriteAnimation();
+  const favoritesRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    registerFavoritesTabRef(favoritesRef.current);
+  }, [registerFavoritesTabRef]);
+
   return (
     <>
       <LibraryActionSubHeader
         agentCount={agentCount}
         setLibrarySort={setLibrarySort}
       />
-      <LibraryTabs
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={onTabChange}
-      />
+      <TabsLine value={activeTab} onValueChange={onTabChange}>
+        <TabsLineList>
+          {tabs.map((tab) => (
+            <TabsLineTrigger
+              key={tab.id}
+              value={tab.id}
+              ref={tab.id === "favorites" ? favoritesRef : undefined}
+              className="inline-flex items-center gap-1.5"
+            >
+              <tab.icon size={16} />
+              {tab.title}
+            </TabsLineTrigger>
+          ))}
+        </TabsLineList>
+      </TabsLine>
 
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">

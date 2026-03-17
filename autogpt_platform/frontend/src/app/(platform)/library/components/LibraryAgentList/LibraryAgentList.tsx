@@ -7,9 +7,8 @@ import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, HeartIcon, Icon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Tab } from "../LibraryTabs/LibraryTabs";
 import {
   AnimatePresence,
   LayoutGroup,
@@ -68,7 +67,7 @@ interface Props {
   setLibrarySort: (value: LibraryAgentSort) => void;
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
-  tabs: Tab[];
+  tabs: { id: string; title: string; icon: Icon }[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
 }
