@@ -542,7 +542,9 @@ async def download_transcript(
     except (FileNotFoundError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.info("%s Downloaded %sB (msg_count=%s)", log_prefix, len(content), message_count)
+    logger.info(
+        "%s Downloaded %sB (msg_count=%s)", log_prefix, len(content), message_count
+    )
     return TranscriptDownload(
         content=content,
         message_count=message_count,

@@ -480,7 +480,9 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
         )
         return session
     except Exception as e:
-        logger.error("Failed to deserialize session %s: %s", session_id, e, exc_info=True)
+        logger.error(
+            "Failed to deserialize session %s: %s", session_id, e, exc_info=True
+        )
         raise RedisError(f"Corrupted session data for {session_id}") from e
 
 
@@ -725,7 +727,9 @@ async def create_chat_session(
                 skip_existence_check=True,
             )
     except Exception as e:
-        logger.error("Failed to create session %s in database: %s", session.session_id, e)
+        logger.error(
+            "Failed to create session %s in database: %s", session.session_id, e
+        )
         raise DatabaseError(
             f"Failed to create chat session {session.session_id} in database"
         ) from e

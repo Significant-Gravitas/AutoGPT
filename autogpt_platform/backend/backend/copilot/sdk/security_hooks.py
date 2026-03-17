@@ -111,7 +111,9 @@ def _validate_user_isolation(
         # the tool itself via _validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
-            logger.warning("Blocked path traversal attempt: %s by user %s", path, user_id)
+            logger.warning(
+                "Blocked path traversal attempt: %s by user %s", path, user_id
+            )
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
