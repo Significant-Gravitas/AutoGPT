@@ -1,15 +1,16 @@
 """Workflow import module.
 
-Converts workflows from n8n, Make.com, and Zapier into AutoGPT agent graphs.
+Parses workflows from n8n, Make.com, and Zapier into structured descriptions,
+then builds CoPilot prompts for the agentic agent-generator to handle conversion.
 """
 
-from .converter import convert_workflow
+from .converter import build_copilot_prompt
 from .format_detector import SourcePlatform, detect_format
 from .models import WorkflowDescription
 
 __all__ = [
     "SourcePlatform",
     "WorkflowDescription",
-    "convert_workflow",
+    "build_copilot_prompt",
     "detect_format",
 ]

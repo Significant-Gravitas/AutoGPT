@@ -2924,7 +2924,7 @@
       "post": {
         "tags": ["v2", "import"],
         "summary": "Import a workflow from another tool (n8n, Make.com, Zapier)",
-        "description": "Import a workflow from another automation platform and convert it to an\nAutoGPT agent.\n\nAccepts either raw workflow JSON or a template URL (n8n only for now).\nThe workflow is parsed, described, and then converted to an AutoGPT graph\nusing LLM-powered block mapping.",
+        "description": "Parse an external workflow and return a CoPilot prompt.\n\nAccepts either raw workflow JSON or a template URL (n8n only for now).\nThe workflow is parsed and described, then a structured prompt is returned\nfor CoPilot's agent-generator to handle the actual conversion.",
         "operationId": "postV2Import a workflow from another tool (n8n, make.com, zapier)",
         "requestBody": {
           "content": {
@@ -10023,8 +10023,7 @@
           "template_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Template Url"
-          },
-          "save": { "type": "boolean", "title": "Save", "default": true }
+          }
         },
         "type": "object",
         "title": "ImportWorkflowRequest",
@@ -10032,32 +10031,14 @@
       },
       "ImportWorkflowResponse": {
         "properties": {
-          "graph": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Graph"
-          },
-          "graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Graph Id"
-          },
-          "library_agent_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Library Agent Id"
-          },
+          "copilot_prompt": { "type": "string", "title": "Copilot Prompt" },
           "source_format": { "type": "string", "title": "Source Format" },
-          "source_name": { "type": "string", "title": "Source Name" },
-          "conversion_notes": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Conversion Notes",
-            "default": []
-          }
+          "source_name": { "type": "string", "title": "Source Name" }
         },
         "type": "object",
-        "required": ["graph", "source_format", "source_name"],
+        "required": ["copilot_prompt", "source_format", "source_name"],
         "title": "ImportWorkflowResponse",
-        "description": "Response from importing an external workflow."
+        "description": "Response from parsing an external workflow.\n\nReturns a CoPilot prompt that the frontend uses to redirect the user\nto CoPilot, where the agentic agent-generator handles the conversion."
       },
       "InputValidationErrorResponse": {
         "properties": {

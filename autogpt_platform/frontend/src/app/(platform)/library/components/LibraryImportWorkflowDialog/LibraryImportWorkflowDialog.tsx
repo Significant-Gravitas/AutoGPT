@@ -143,10 +143,10 @@ export default function LibraryImportWorkflowDialog() {
             {isConverting ? (
               <div className="flex items-center gap-2">
                 <LoadingSpinner size="small" className="text-white" />
-                <span>Converting workflow...</span>
+                <span>Parsing workflow...</span>
               </div>
             ) : (
-              "Import & Convert"
+              "Import to CoPilot"
             )}
           </Button>
         </Form>

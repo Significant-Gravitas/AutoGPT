@@ -1,13 +1,13 @@
-"""API endpoint for importing external workflows."""
+"""API endpoint for importing external workflows via CoPilot."""
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
 import pydantic
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import requires_user
 from fastapi import APIRouter, HTTPException, Security
 
-from backend.copilot.workflow_import.converter import convert_workflow
+from backend.copilot.workflow_import.converter import build_copilot_prompt
 from backend.copilot.workflow_import.describers import describe_workflow
 from backend.copilot.workflow_import.format_detector import (
     SourcePlatform,
@@ -25,7 +25,6 @@ class ImportWorkflowRequest(pydantic.BaseModel):
 
     workflow_json: dict[str, Any] | None = None
     template_url: str | None = None
-    save: bool = True
 
     @pydantic.model_validator(mode="after")
     def check_exactly_one_source(self) -> "ImportWorkflowRequest":
@@ -41,14 +40,15 @@ class ImportWorkflowRequest(pydantic.BaseModel):
 
 
 class ImportWorkflowResponse(pydantic.BaseModel):
-    """Response from importing an external workflow."""
+    """Response from parsing an external workflow.
 
-    graph: dict[str, Any]
-    graph_id: str | None = None
-    library_agent_id: str | None = None
+    Returns a CoPilot prompt that the frontend uses to redirect the user
+    to CoPilot, where the agentic agent-generator handles the conversion.
+    """
+
+    copilot_prompt: str
     source_format: str
     source_name: str
-    conversion_notes: list[str] = []
 
 
 @router.post(
@@ -58,14 +58,12 @@ class ImportWorkflowResponse(pydantic.BaseModel):
 )
 async def import_workflow(
     request: ImportWorkflowRequest,
-    user_id: Annotated[str, Security(get_user_id)],
 ) -> ImportWorkflowResponse:
-    """Import a workflow from another automation platform and convert it to an
-    AutoGPT agent.
+    """Parse an external workflow and return a CoPilot prompt.
 
     Accepts either raw workflow JSON or a template URL (n8n only for now).
-    The workflow is parsed, described, and then converted to an AutoGPT graph
-    using LLM-powered block mapping.
+    The workflow is parsed and described, then a structured prompt is returned
+    for CoPilot's agent-generator to handle the actual conversion.
     """
     # Step 1: Get the raw workflow JSON
     if request.template_url is not None:
@@ -92,42 +90,11 @@ async def import_workflow(
     # Step 3: Describe the workflow
     desc = describe_workflow(workflow_json, fmt)
 
-    # Step 4: Convert to AutoGPT agent
-    try:
-        agent_json, conversion_notes = await convert_workflow(desc)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Workflow conversion failed: {e}",
-        ) from e
-
-    # Step 5: Optionally save
-    graph_id = None
-    library_agent_id = None
-
-    if request.save:
-        from backend.copilot.tools.agent_generator.core import save_agent_to_library
-
-        try:
-            created_graph, library_agent = await save_agent_to_library(
-                agent_json, user_id
-            )
-            graph_id = created_graph.id
-            library_agent_id = library_agent.id
-            conversion_notes.append(f"Agent saved as '{created_graph.name}'")
-        except Exception as e:
-            logger.error("Failed to save imported agent: %s", e, exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail="Workflow was converted but could not be saved. "
-                "Please try again.",
-            ) from e
+    # Step 4: Build CoPilot prompt
+    prompt = build_copilot_prompt(desc)
 
     return ImportWorkflowResponse(
-        graph=agent_json,
-        graph_id=graph_id,
-        library_agent_id=library_agent_id,
+        copilot_prompt=prompt,
         source_format=fmt.value,
         source_name=desc.name,
-        conversion_notes=conversion_notes,
     )

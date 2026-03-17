@@ -1,6 +1,6 @@
 """Tests for workflow_import.py API endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import fastapi
 import pytest
@@ -63,87 +63,56 @@ def setup_app_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture()
-def mock_converter(mocker):
-    """Mock the LLM converter to avoid actual LLM calls."""
-    agent_json = {
-        "name": "Converted Agent",
-        "description": "Test agent",
-        "version": 1,
-        "is_active": True,
-        "nodes": [],
-        "links": [],
-    }
-    return mocker.patch(
-        "backend.api.features.workflow_import.convert_workflow",
-        new_callable=AsyncMock,
-        return_value=(agent_json, ["Applied 2 auto-fixes"]),
-    )
-
-
-@pytest.fixture()
-def mock_save(mocker):
-    """Mock save_agent_to_library."""
-    graph = MagicMock()
-    graph.id = "graph-123"
-    graph.name = "Converted Agent"
-    library_agent = MagicMock()
-    library_agent.id = "lib-456"
-    return mocker.patch(
-        "backend.copilot.tools.agent_generator.core.save_agent_to_library",
-        new_callable=AsyncMock,
-        return_value=(graph, library_agent),
-    )
-
-
 class TestImportWorkflow:
-    def test_import_n8n_workflow(self, mock_converter, mock_save):
+    def test_import_n8n_workflow(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": N8N_WORKFLOW, "save": True},
+            json={"workflow_json": N8N_WORKFLOW},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["source_format"] == "n8n"
         assert data["source_name"] == "Email on Webhook"
-        assert data["graph_id"] == "graph-123"
-        mock_converter.assert_called_once()
+        assert "copilot_prompt" in data
+        assert "n8n" in data["copilot_prompt"]
+        assert "Email on Webhook" in data["copilot_prompt"]
 
-    def test_import_make_workflow(self, mock_converter, mock_save):
+    def test_import_make_workflow(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": MAKE_WORKFLOW, "save": True},
+            json={"workflow_json": MAKE_WORKFLOW},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["source_format"] == "make"
         assert data["source_name"] == "Sheets to Calendar"
+        assert "copilot_prompt" in data
 
-    def test_import_zapier_workflow(self, mock_converter, mock_save):
+    def test_import_zapier_workflow(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": ZAPIER_WORKFLOW, "save": True},
+            json={"workflow_json": ZAPIER_WORKFLOW},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["source_format"] == "zapier"
         assert data["source_name"] == "Gmail to Slack"
+        assert "copilot_prompt" in data
 
-    def test_import_without_save(self, mock_converter, mock_save):
+    def test_prompt_includes_steps(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": N8N_WORKFLOW, "save": False},
+            json={"workflow_json": N8N_WORKFLOW},
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["graph_id"] is None
-        assert data["library_agent_id"] is None
-        mock_save.assert_not_called()
+        prompt = response.json()["copilot_prompt"]
+        # Should include step details from the workflow
+        assert "Webhook" in prompt or "webhook" in prompt
+        assert "Gmail" in prompt or "gmail" in prompt
 
     def test_no_source_provided(self):
         response = client.post(
             "/workflow",
-            json={"save": True},
+            json={},
         )
         assert response.status_code == 422  # Pydantic validation error
 
@@ -153,46 +122,17 @@ class TestImportWorkflow:
             json={
                 "workflow_json": N8N_WORKFLOW,
                 "template_url": "https://n8n.io/workflows/123",
-                "save": True,
             },
         )
         assert response.status_code == 422
 
-    def test_unknown_format_returns_400(self, mock_converter):
+    def test_unknown_format_returns_400(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": {"foo": "bar"}, "save": False},
+            json={"workflow_json": {"foo": "bar"}},
         )
         assert response.status_code == 400
         assert "Could not detect workflow format" in response.json()["detail"]
-
-    def test_converter_failure_returns_502(self, mocker):
-        mocker.patch(
-            "backend.api.features.workflow_import.convert_workflow",
-            new_callable=AsyncMock,
-            side_effect=ValueError("LLM call failed"),
-        )
-        response = client.post(
-            "/workflow",
-            json={"workflow_json": N8N_WORKFLOW, "save": False},
-        )
-        assert response.status_code == 502
-        assert "LLM call failed" in response.json()["detail"]
-
-    def test_save_failure_returns_500(self, mock_converter, mocker):
-        mocker.patch(
-            "backend.copilot.tools.agent_generator.core.save_agent_to_library",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB connection failed"),
-        )
-        response = client.post(
-            "/workflow",
-            json={"workflow_json": N8N_WORKFLOW, "save": True},
-        )
-        assert response.status_code == 500
-        assert "could not be saved" in response.json()["detail"]
-        # Ensure internal error details are not leaked
-        assert "DB connection failed" not in response.json()["detail"]
 
     def test_url_fetch_bad_url_returns_400(self, mocker):
         mocker.patch(
@@ -202,7 +142,7 @@ class TestImportWorkflow:
         )
         response = client.post(
             "/workflow",
-            json={"template_url": "https://bad-url.com", "save": False},
+            json={"template_url": "https://bad-url.com"},
         )
         assert response.status_code == 400
         assert "Invalid URL format" in response.json()["detail"]
@@ -215,22 +155,19 @@ class TestImportWorkflow:
         )
         response = client.post(
             "/workflow",
-            json={"template_url": "https://n8n.io/workflows/123", "save": False},
+            json={"template_url": "https://n8n.io/workflows/123"},
         )
         assert response.status_code == 502
         assert "n8n API returned 500" in response.json()["detail"]
 
-    def test_response_model_shape(self, mock_converter, mock_save):
+    def test_response_model_shape(self):
         response = client.post(
             "/workflow",
-            json={"workflow_json": N8N_WORKFLOW, "save": True},
+            json={"workflow_json": N8N_WORKFLOW},
         )
         data = response.json()
-        # Verify all expected fields are present
-        assert "graph" in data
-        assert "graph_id" in data
-        assert "library_agent_id" in data
+        assert "copilot_prompt" in data
         assert "source_format" in data
         assert "source_name" in data
-        assert "conversion_notes" in data
-        assert isinstance(data["conversion_notes"], list)
+        assert isinstance(data["copilot_prompt"], str)
+        assert len(data["copilot_prompt"]) > 0

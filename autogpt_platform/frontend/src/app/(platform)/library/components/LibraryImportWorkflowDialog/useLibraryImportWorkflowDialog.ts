@@ -31,7 +31,7 @@ export function useLibraryImportWorkflowDialog() {
       let body: ImportWorkflowRequest;
 
       if (importMode === "url" && values.templateUrl) {
-        body = { template_url: values.templateUrl, save: true };
+        body = { template_url: values.templateUrl };
       } else if (importMode === "file" && values.workflowFile) {
         // Decode base64 file to JSON
         const base64Match = values.workflowFile.match(
@@ -42,7 +42,7 @@ export function useLibraryImportWorkflowDialog() {
         }
         const jsonString = atob(base64Match[1]);
         const workflowJson = JSON.parse(jsonString);
-        body = { workflow_json: workflowJson, save: true };
+        body = { workflow_json: workflowJson };
       } else {
         throw new Error("Please provide a workflow file or template URL");
       }
@@ -55,21 +55,14 @@ export function useLibraryImportWorkflowDialog() {
       setIsOpen(false);
       form.reset();
 
-      const notes = data.conversion_notes || [];
-      const hasWarnings = notes.some(
-        (n: string) => n.includes("warning") || n.includes("Warning"),
-      );
-
       toast({
-        title: "Workflow Imported",
-        description: hasWarnings
-          ? `Imported from ${data.source_format} with warnings. Check the builder for details.`
-          : `Successfully imported "${data.source_name}" from ${data.source_format}`,
+        title: "Workflow Parsed",
+        description: `Detected ${data.source_format} workflow "${data.source_name}". Redirecting to CoPilot...`,
       });
 
-      if (data.graph_id) {
-        router.push(`/build?flowID=${data.graph_id}`);
-      }
+      // Redirect to CoPilot with the prompt pre-filled and auto-submitted
+      const encodedPrompt = encodeURIComponent(data.copilot_prompt);
+      router.push(`/copilot?autosubmit=true#prompt=${encodedPrompt}`);
     } catch (error) {
       console.error("Import failed:", error);
       toast({
@@ -77,7 +70,7 @@ export function useLibraryImportWorkflowDialog() {
         description:
           error instanceof Error
             ? error.message
-            : "Failed to import workflow. Please check the file format.",
+            : "Failed to parse workflow. Please check the file format.",
         variant: "destructive",
         duration: 5000,
       });
