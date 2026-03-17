@@ -50,10 +50,13 @@ BLOCKED_IP_NETWORKS = [
     # IPv4 Ranges
     ipaddress.ip_network("0.0.0.0/8"),  # "This" Network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-Use
+    ipaddress.ip_network("100.64.0.0/10"),  # Shared Address Space (CGNAT, RFC 6598)
     ipaddress.ip_network("127.0.0.0/8"),  # Loopback
     ipaddress.ip_network("169.254.0.0/16"),  # Link Local
     ipaddress.ip_network("172.16.0.0/12"),  # Private-Use
+    ipaddress.ip_network("192.0.0.0/24"),  # IETF Protocol Assignments
     ipaddress.ip_network("192.168.0.0/16"),  # Private-Use
+    ipaddress.ip_network("198.18.0.0/15"),  # Benchmarking
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved for Future Use
     # IPv6 Ranges
@@ -71,8 +74,17 @@ HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname patt
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
+
+    IPv4-mapped IPv6 addresses (e.g. ``::ffff:127.0.0.1``) are normalized to
+    their IPv4 equivalent before checking, so the IPv4 blocklist cannot be
+    bypassed by encoding a private IPv4 address as IPv6.
     """
     ip_addr = ipaddress.ip_address(ip)
+
+    # Normalize IPv4-mapped IPv6 → IPv4 so the IPv4 blocklist applies
+    if isinstance(ip_addr, ipaddress.IPv6Address) and ip_addr.ipv4_mapped:
+        ip_addr = ip_addr.ipv4_mapped
+
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
