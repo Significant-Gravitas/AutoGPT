@@ -1055,13 +1055,19 @@ async def stream_chat_completion_sdk(
                                 exc_info=True,
                             )
                         ended_with_stream_error = True
-
+                        display = (
+                            FRIENDLY_TRANSIENT_MSG
+                            if is_transient
+                            else f"SDK stream error: {stream_err}"
+                        )
+                        session.messages.append(
+                            ChatMessage(
+                                role="assistant",
+                                content=f"{COPILOT_ERROR_PREFIX} {display}",
+                            )
+                        )
                         yield StreamError(
-                            errorText=(
-                                FRIENDLY_TRANSIENT_MSG
-                                if is_transient
-                                else f"SDK stream error: {stream_err}"
-                            ),
+                            errorText=display,
                             code=(
                                 "transient_api_error"
                                 if is_transient
@@ -1112,6 +1118,12 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                             )
                             ended_with_stream_error = True
+                            session.messages.append(
+                                ChatMessage(
+                                    role="assistant",
+                                    content=f"{COPILOT_ERROR_PREFIX} {FRIENDLY_TRANSIENT_MSG}",
+                                )
+                            )
                             yield StreamError(
                                 errorText=FRIENDLY_TRANSIENT_MSG,
                                 code="transient_api_error",

@@ -104,7 +104,9 @@ export function MessagePartRenderer({
             </div>
           );
         }
-        const isTransient = markerText.includes(TRANSIENT_ERROR_TEXT);
+        const isTransient = markerText
+          .toLowerCase()
+          .includes(TRANSIENT_ERROR_TEXT.toLowerCase());
         return (
           <ErrorCard
             key={key}
