@@ -7,8 +7,6 @@ Use pods when building SaaS platforms, agency tools, or AI agent fleets that
 serve multiple customers.
 """
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -20,11 +18,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailCreatePodBlock(Block):
@@ -57,21 +51,44 @@ class AgentMailCreatePodBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("pod_id", "mock-pod-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "create_pod": lambda *a, **kw: type(
+                    "Pod",
+                    (),
+                    {
+                        "pod_id": "mock-pod-id",
+                        "model_dump": lambda self: {"pod_id": "mock-pod-id"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def create_pod(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.pods.create(**params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {}
-        if input_data.client_id:
-            params["client_id"] = input_data.client_id
+        try:
+            params: dict = {}
+            if input_data.client_id:
+                params["client_id"] = input_data.client_id
 
-        pod = await client.pods.create(**params)
-        result = pod.__dict__ if hasattr(pod, "__dict__") else {}
+            pod = await self.create_pod(credentials, **params)
+            result = pod.model_dump()
 
-        yield "pod_id", pod.pod_id
-        yield "result", result
+            yield "pod_id", pod.pod_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetPodBlock(Block):
@@ -100,17 +117,40 @@ class AgentMailGetPodBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[
+                ("pod_id", "test-pod"),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_pod": lambda *a, **kw: type(
+                    "Pod",
+                    (),
+                    {
+                        "pod_id": "test-pod",
+                        "model_dump": lambda self: {"pod_id": "test-pod"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_pod(credentials: APIKeyCredentials, pod_id: str):
+        client = _client(credentials)
+        return await client.pods.get(pod_id=pod_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        pod = await client.pods.get(pod_id=input_data.pod_id)
-        result = pod.__dict__ if hasattr(pod, "__dict__") else {}
+        try:
+            pod = await self.get_pod(credentials, pod_id=input_data.pod_id)
+            result = pod.model_dump()
 
-        yield "pod_id", pod.pod_id
-        yield "result", result
+            yield "pod_id", pod.pod_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListPodsBlock(Block):
@@ -154,27 +194,47 @@ class AgentMailListPodsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("pods", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_pods": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "pods": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_pods(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.pods.list(**params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.pods.list(**params)
-        pods = [
-            p.__dict__ if hasattr(p, "__dict__") else p
-            for p in getattr(response, "pods", [])
-        ]
+            response = await self.list_pods(credentials, **params)
+            pods = [p.model_dump() for p in response.pods]
 
-        yield "pods", pods
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(pods)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "pods", pods
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailDeletePodBlock(Block):
@@ -207,14 +267,27 @@ class AgentMailDeletePodBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[("success", True)],
+            test_mock={
+                "delete_pod": lambda *a, **kw: None,
+            },
         )
+
+    @staticmethod
+    async def delete_pod(credentials: APIKeyCredentials, pod_id: str):
+        client = _client(credentials)
+        await client.pods.delete(pod_id=pod_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        await client.pods.delete(pod_id=input_data.pod_id)
-        yield "success", True
+        try:
+            await self.delete_pod(credentials, pod_id=input_data.pod_id)
+            yield "success", True
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListPodInboxesBlock(Block):
@@ -259,27 +332,49 @@ class AgentMailListPodInboxesBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[
+                ("inboxes", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_pod_inboxes": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "inboxes": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_pod_inboxes(credentials: APIKeyCredentials, pod_id: str, **params):
+        client = _client(credentials)
+        return await client.pods.inboxes.list(pod_id=pod_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.pods.inboxes.list(pod_id=input_data.pod_id, **params)
-        inboxes = [
-            i.__dict__ if hasattr(i, "__dict__") else i
-            for i in getattr(response, "inboxes", [])
-        ]
+            response = await self.list_pod_inboxes(
+                credentials, pod_id=input_data.pod_id, **params
+            )
+            inboxes = [i.model_dump() for i in response.inboxes]
 
-        yield "inboxes", inboxes
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(inboxes)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "inboxes", inboxes
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListPodThreadsBlock(Block):
@@ -330,29 +425,51 @@ class AgentMailListPodThreadsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[
+                ("threads", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_pod_threads": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "threads": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_pod_threads(credentials: APIKeyCredentials, pod_id: str, **params):
+        client = _client(credentials)
+        return await client.pods.threads.list(pod_id=pod_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
-        if input_data.labels:
-            params["labels"] = input_data.labels
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        response = await client.pods.threads.list(pod_id=input_data.pod_id, **params)
-        threads = [
-            t.__dict__ if hasattr(t, "__dict__") else t
-            for t in getattr(response, "threads", [])
-        ]
+            response = await self.list_pod_threads(
+                credentials, pod_id=input_data.pod_id, **params
+            )
+            threads = [t.model_dump() for t in response.threads]
 
-        yield "threads", threads
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(threads)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "threads", threads
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListPodDraftsBlock(Block):
@@ -397,27 +514,49 @@ class AgentMailListPodDraftsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[
+                ("drafts", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_pod_drafts": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "drafts": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_pod_drafts(credentials: APIKeyCredentials, pod_id: str, **params):
+        client = _client(credentials)
+        return await client.pods.drafts.list(pod_id=pod_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.pods.drafts.list(pod_id=input_data.pod_id, **params)
-        drafts = [
-            d.__dict__ if hasattr(d, "__dict__") else d
-            for d in getattr(response, "drafts", [])
-        ]
+            response = await self.list_pod_drafts(
+                credentials, pod_id=input_data.pod_id, **params
+            )
+            drafts = [d.model_dump() for d in response.drafts]
 
-        yield "drafts", drafts
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(drafts)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "drafts", drafts
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailCreatePodInboxBlock(Block):
@@ -464,23 +603,49 @@ class AgentMailCreatePodInboxBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
+            test_output=[
+                ("inbox_id", "mock-inbox-id"),
+                ("email_address", "mock-inbox-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "create_pod_inbox": lambda *a, **kw: type(
+                    "Inbox",
+                    (),
+                    {
+                        "inbox_id": "mock-inbox-id",
+                        "model_dump": lambda self: {"inbox_id": "mock-inbox-id"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def create_pod_inbox(credentials: APIKeyCredentials, pod_id: str, **params):
+        client = _client(credentials)
+        return await client.pods.inboxes.create(pod_id=pod_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {}
-        if input_data.username:
-            params["username"] = input_data.username
-        if input_data.domain:
-            params["domain"] = input_data.domain
-        if input_data.display_name:
-            params["display_name"] = input_data.display_name
+        try:
+            params: dict = {}
+            if input_data.username:
+                params["username"] = input_data.username
+            if input_data.domain:
+                params["domain"] = input_data.domain
+            if input_data.display_name:
+                params["display_name"] = input_data.display_name
 
-        inbox = await client.pods.inboxes.create(pod_id=input_data.pod_id, **params)
-        result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
+            inbox = await self.create_pod_inbox(
+                credentials, pod_id=input_data.pod_id, **params
+            )
+            result = inbox.model_dump()
 
-        yield "inbox_id", inbox.inbox_id
-        yield "email_address", getattr(inbox, "email_address", inbox.inbox_id)
-        yield "result", result
+            yield "inbox_id", inbox.inbox_id
+            yield "email_address", inbox.inbox_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)

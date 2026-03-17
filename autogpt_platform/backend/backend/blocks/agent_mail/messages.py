@@ -6,8 +6,6 @@ A Message is an individual email within a Thread. Agents can send new messages
 labels for state tracking (e.g. read/unread, campaign tags).
 """
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -19,11 +17,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailSendMessageBlock(Block):
@@ -90,38 +84,72 @@ class AgentMailSendMessageBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "to": ["user@example.com"],
+                "subject": "Test",
+                "text": "Hello",
+            },
+            test_output=[
+                ("message_id", "mock-msg-id"),
+                ("thread_id", "mock-thread-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "send_message": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "mock-msg-id",
+                        "thread_id": "mock-thread-id",
+                        "model_dump": lambda self: {
+                            "message_id": "mock-msg-id",
+                            "thread_id": "mock-thread-id",
+                        },
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def send_message(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.messages.send(inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
-        if total > 50:
-            raise ValueError(
-                f"Max 50 combined recipients across to, cc, and bcc (got {total})"
-            )
+        try:
+            total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
+            if total > 50:
+                raise ValueError(
+                    f"Max 50 combined recipients across to, cc, and bcc (got {total})"
+                )
 
-        client = _client(credentials)
-        params: dict = {
-            "to": input_data.to,
-            "subject": input_data.subject,
-            "text": input_data.text,
-        }
-        if input_data.html:
-            params["html"] = input_data.html
-        if input_data.cc:
-            params["cc"] = input_data.cc
-        if input_data.bcc:
-            params["bcc"] = input_data.bcc
-        if input_data.labels:
-            params["labels"] = input_data.labels
+            params: dict = {
+                "to": input_data.to,
+                "subject": input_data.subject,
+                "text": input_data.text,
+            }
+            if input_data.html:
+                params["html"] = input_data.html
+            if input_data.cc:
+                params["cc"] = input_data.cc
+            if input_data.bcc:
+                params["bcc"] = input_data.bcc
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        msg = await client.inboxes.messages.send(input_data.inbox_id, **params)
-        result = msg.__dict__ if hasattr(msg, "__dict__") else {}
+            msg = await self.send_message(credentials, input_data.inbox_id, **params)
+            result = msg.model_dump()
 
-        yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", None) or ""
-        yield "result", result
+            yield "message_id", msg.message_id
+            yield "thread_id", msg.thread_id or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListMessagesBlock(Block):
@@ -174,29 +202,54 @@ class AgentMailListMessagesBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+            },
+            test_output=[
+                ("messages", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_messages": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "messages": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_messages(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.messages.list(inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
-        if input_data.labels:
-            params["labels"] = input_data.labels
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        response = await client.inboxes.messages.list(input_data.inbox_id, **params)
-        messages = [
-            m.__dict__ if hasattr(m, "__dict__") else m
-            for m in getattr(response, "messages", [])
-        ]
+            response = await self.list_messages(
+                credentials, input_data.inbox_id, **params
+            )
+            messages = [m.model_dump() for m in response.messages]
 
-        yield "messages", messages
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(messages)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "messages", messages
+            yield "count", (c if (c := response.count) is not None else len(messages))
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetMessageBlock(Block):
@@ -243,25 +296,67 @@ class AgentMailGetMessageBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "message_id": "test-msg",
+            },
+            test_output=[
+                ("message_id", "test-msg"),
+                ("thread_id", "t1"),
+                ("subject", "Hi"),
+                ("text", "Hello"),
+                ("extracted_text", "Hello"),
+                ("html", ""),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_message": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "test-msg",
+                        "thread_id": "t1",
+                        "subject": "Hi",
+                        "text": "Hello",
+                        "extracted_text": "Hello",
+                        "html": "",
+                        "model_dump": lambda self: {"message_id": "test-msg"},
+                    },
+                )(),
+            },
+        )
+
+    @staticmethod
+    async def get_message(
+        credentials: APIKeyCredentials,
+        inbox_id: str,
+        message_id: str,
+    ):
+        client = _client(credentials)
+        return await client.inboxes.messages.get(
+            inbox_id=inbox_id, message_id=message_id
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        msg = await client.inboxes.messages.get(
-            inbox_id=input_data.inbox_id,
-            message_id=input_data.message_id,
-        )
-        result = msg.__dict__ if hasattr(msg, "__dict__") else {}
+        try:
+            msg = await self.get_message(
+                credentials, input_data.inbox_id, input_data.message_id
+            )
+            result = msg.model_dump()
 
-        yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", None) or ""
-        yield "subject", getattr(msg, "subject", None) or ""
-        yield "text", getattr(msg, "text", None) or ""
-        yield "extracted_text", getattr(msg, "extracted_text", None) or ""
-        yield "html", getattr(msg, "html", None) or ""
-        yield "result", result
+            yield "message_id", msg.message_id
+            yield "thread_id", msg.thread_id or ""
+            yield "subject", msg.subject or ""
+            yield "text", msg.text or ""
+            yield "extracted_text", msg.extracted_text or ""
+            yield "html", msg.html or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailReplyToMessageBlock(Block):
@@ -307,26 +402,61 @@ class AgentMailReplyToMessageBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "message_id": "test-msg",
+                "text": "Reply",
+            },
+            test_output=[
+                ("message_id", "mock-reply-id"),
+                ("thread_id", "mock-thread-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "reply_to_message": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "mock-reply-id",
+                        "thread_id": "mock-thread-id",
+                        "model_dump": lambda self: {"message_id": "mock-reply-id"},
+                    },
+                )(),
+            },
+        )
+
+    @staticmethod
+    async def reply_to_message(
+        credentials: APIKeyCredentials, inbox_id: str, message_id: str, **params
+    ):
+        client = _client(credentials)
+        return await client.inboxes.messages.reply(
+            inbox_id=inbox_id, message_id=message_id, **params
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"text": input_data.text}
-        if input_data.html:
-            params["html"] = input_data.html
+        try:
+            params: dict = {"text": input_data.text}
+            if input_data.html:
+                params["html"] = input_data.html
 
-        reply = await client.inboxes.messages.reply(
-            inbox_id=input_data.inbox_id,
-            message_id=input_data.message_id,
-            **params,
-        )
-        result = reply.__dict__ if hasattr(reply, "__dict__") else {}
+            reply = await self.reply_to_message(
+                credentials,
+                input_data.inbox_id,
+                input_data.message_id,
+                **params,
+            )
+            result = reply.model_dump()
 
-        yield "message_id", reply.message_id
-        yield "thread_id", getattr(reply, "thread_id", None) or ""
-        yield "result", result
+            yield "message_id", reply.message_id
+            yield "thread_id", reply.thread_id or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailForwardMessageBlock(Block):
@@ -393,40 +523,75 @@ class AgentMailForwardMessageBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "message_id": "test-msg",
+                "to": ["user@example.com"],
+            },
+            test_output=[
+                ("message_id", "mock-fwd-id"),
+                ("thread_id", "mock-thread-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "forward_message": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "mock-fwd-id",
+                        "thread_id": "mock-thread-id",
+                        "model_dump": lambda self: {"message_id": "mock-fwd-id"},
+                    },
+                )(),
+            },
+        )
+
+    @staticmethod
+    async def forward_message(
+        credentials: APIKeyCredentials, inbox_id: str, message_id: str, **params
+    ):
+        client = _client(credentials)
+        return await client.inboxes.messages.forward(
+            inbox_id=inbox_id, message_id=message_id, **params
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
-        if total > 50:
-            raise ValueError(
-                f"Max 50 combined recipients across to, cc, and bcc (got {total})"
+        try:
+            total = len(input_data.to) + len(input_data.cc) + len(input_data.bcc)
+            if total > 50:
+                raise ValueError(
+                    f"Max 50 combined recipients across to, cc, and bcc (got {total})"
+                )
+
+            params: dict = {"to": input_data.to}
+            if input_data.cc:
+                params["cc"] = input_data.cc
+            if input_data.bcc:
+                params["bcc"] = input_data.bcc
+            if input_data.subject:
+                params["subject"] = input_data.subject
+            if input_data.text:
+                params["text"] = input_data.text
+            if input_data.html:
+                params["html"] = input_data.html
+
+            fwd = await self.forward_message(
+                credentials,
+                input_data.inbox_id,
+                input_data.message_id,
+                **params,
             )
+            result = fwd.model_dump()
 
-        client = _client(credentials)
-        params: dict = {"to": input_data.to}
-        if input_data.cc:
-            params["cc"] = input_data.cc
-        if input_data.bcc:
-            params["bcc"] = input_data.bcc
-        if input_data.subject:
-            params["subject"] = input_data.subject
-        if input_data.text:
-            params["text"] = input_data.text
-        if input_data.html:
-            params["html"] = input_data.html
-
-        fwd = await client.inboxes.messages.forward(
-            inbox_id=input_data.inbox_id,
-            message_id=input_data.message_id,
-            **params,
-        )
-        result = fwd.__dict__ if hasattr(fwd, "__dict__") else {}
-
-        yield "message_id", fwd.message_id
-        yield "thread_id", getattr(fwd, "thread_id", None) or ""
-        yield "result", result
+            yield "message_id", fwd.message_id
+            yield "thread_id", fwd.thread_id or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailUpdateMessageBlock(Block):
@@ -469,29 +634,62 @@ class AgentMailUpdateMessageBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "message_id": "test-msg",
+                "add_labels": ["read"],
+            },
+            test_output=[
+                ("message_id", "test-msg"),
+                ("result", dict),
+            ],
+            test_mock={
+                "update_message": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "test-msg",
+                        "model_dump": lambda self: {"message_id": "test-msg"},
+                    },
+                )(),
+            },
+        )
+
+    @staticmethod
+    async def update_message(
+        credentials: APIKeyCredentials, inbox_id: str, message_id: str, **params
+    ):
+        client = _client(credentials)
+        return await client.inboxes.messages.update(
+            inbox_id=inbox_id, message_id=message_id, **params
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.add_labels and not input_data.remove_labels:
-            raise ValueError(
-                "Must specify at least one label operation: add_labels or remove_labels"
+        try:
+            if not input_data.add_labels and not input_data.remove_labels:
+                raise ValueError(
+                    "Must specify at least one label operation: add_labels or remove_labels"
+                )
+
+            params: dict = {}
+            if input_data.add_labels:
+                params["add_labels"] = input_data.add_labels
+            if input_data.remove_labels:
+                params["remove_labels"] = input_data.remove_labels
+
+            msg = await self.update_message(
+                credentials,
+                input_data.inbox_id,
+                input_data.message_id,
+                **params,
             )
+            result = msg.model_dump()
 
-        client = _client(credentials)
-        params: dict = {}
-        if input_data.add_labels:
-            params["add_labels"] = input_data.add_labels
-        if input_data.remove_labels:
-            params["remove_labels"] = input_data.remove_labels
-
-        msg = await client.inboxes.messages.update(
-            inbox_id=input_data.inbox_id,
-            message_id=input_data.message_id,
-            **params,
-        )
-        result = msg.__dict__ if hasattr(msg, "__dict__") else {}
-
-        yield "message_id", msg.message_id
-        yield "result", result
+            yield "message_id", msg.message_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)

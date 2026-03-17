@@ -6,8 +6,6 @@ created automatically when a new message is sent and grow as replies are added.
 Threads can be queried per-inbox or across the entire organization.
 """
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -19,11 +17,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailListInboxThreadsBlock(Block):
@@ -75,31 +69,54 @@ class AgentMailListInboxThreadsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+            },
+            test_output=[
+                ("threads", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_threads": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "threads": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_threads(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.threads.list(inbox_id=inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
-        if input_data.labels:
-            params["labels"] = input_data.labels
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        response = await client.inboxes.threads.list(
-            inbox_id=input_data.inbox_id, **params
-        )
-        threads = [
-            t.__dict__ if hasattr(t, "__dict__") else t
-            for t in getattr(response, "threads", [])
-        ]
+            response = await self.list_threads(
+                credentials, input_data.inbox_id, **params
+            )
+            threads = [t.model_dump() for t in response.threads]
 
-        yield "threads", threads
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(threads)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "threads", threads
+            yield "count", (c if (c := response.count) is not None else len(threads))
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetInboxThreadBlock(Block):
@@ -137,27 +154,54 @@ class AgentMailGetInboxThreadBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "thread_id": "test-thread",
+            },
+            test_output=[
+                ("thread_id", "test-thread"),
+                ("messages", []),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_thread": lambda *a, **kw: type(
+                    "Thread",
+                    (),
+                    {
+                        "thread_id": "test-thread",
+                        "messages": [],
+                        "model_dump": lambda self: {
+                            "thread_id": "test-thread",
+                            "messages": [],
+                        },
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_thread(credentials: APIKeyCredentials, inbox_id: str, thread_id: str):
+        client = _client(credentials)
+        return await client.inboxes.threads.get(inbox_id=inbox_id, thread_id=thread_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        thread = await client.inboxes.threads.get(
-            inbox_id=input_data.inbox_id,
-            thread_id=input_data.thread_id,
-        )
-        messages = [
-            m.__dict__ if hasattr(m, "__dict__") else m
-            for m in getattr(thread, "messages", [])
-        ]
-        result = dict(thread.__dict__) if hasattr(thread, "__dict__") else {}
-        if "messages" in result:
+        try:
+            thread = await self.get_thread(
+                credentials, input_data.inbox_id, input_data.thread_id
+            )
+            messages = [m.model_dump() for m in thread.messages]
+            result = thread.model_dump()
             result["messages"] = messages
 
-        yield "thread_id", thread.thread_id
-        yield "messages", messages
-        yield "result", result
+            yield "thread_id", thread.thread_id
+            yield "messages", messages
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailDeleteInboxThreadBlock(Block):
@@ -191,17 +235,35 @@ class AgentMailDeleteInboxThreadBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "thread_id": "test-thread",
+            },
+            test_output=[("success", True)],
+            test_mock={
+                "delete_thread": lambda *a, **kw: None,
+            },
         )
+
+    @staticmethod
+    async def delete_thread(
+        credentials: APIKeyCredentials, inbox_id: str, thread_id: str
+    ):
+        client = _client(credentials)
+        await client.inboxes.threads.delete(inbox_id=inbox_id, thread_id=thread_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        await client.inboxes.threads.delete(
-            inbox_id=input_data.inbox_id,
-            thread_id=input_data.thread_id,
-        )
-        yield "success", True
+        try:
+            await self.delete_thread(
+                credentials, input_data.inbox_id, input_data.thread_id
+            )
+            yield "success", True
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListOrgThreadsBlock(Block):
@@ -251,29 +313,49 @@ class AgentMailListOrgThreadsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("threads", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_org_threads": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "threads": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_org_threads(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.threads.list(**params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
-        if input_data.labels:
-            params["labels"] = input_data.labels
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        response = await client.threads.list(**params)
-        threads = [
-            t.__dict__ if hasattr(t, "__dict__") else t
-            for t in getattr(response, "threads", [])
-        ]
+            response = await self.list_org_threads(credentials, **params)
+            threads = [t.model_dump() for t in response.threads]
 
-        yield "threads", threads
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(threads)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "threads", threads
+            yield "count", (c if (c := response.count) is not None else len(threads))
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetOrgThreadBlock(Block):
@@ -309,21 +391,48 @@ class AgentMailGetOrgThreadBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "thread_id": "test-thread",
+            },
+            test_output=[
+                ("thread_id", "test-thread"),
+                ("messages", []),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_org_thread": lambda *a, **kw: type(
+                    "Thread",
+                    (),
+                    {
+                        "thread_id": "test-thread",
+                        "messages": [],
+                        "model_dump": lambda self: {
+                            "thread_id": "test-thread",
+                            "messages": [],
+                        },
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_org_thread(credentials: APIKeyCredentials, thread_id: str):
+        client = _client(credentials)
+        return await client.threads.get(thread_id=thread_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        thread = await client.threads.get(thread_id=input_data.thread_id)
-        messages = [
-            m.__dict__ if hasattr(m, "__dict__") else m
-            for m in getattr(thread, "messages", [])
-        ]
-        result = dict(thread.__dict__) if hasattr(thread, "__dict__") else {}
-        if "messages" in result:
+        try:
+            thread = await self.get_org_thread(credentials, input_data.thread_id)
+            messages = [m.model_dump() for m in thread.messages]
+            result = thread.model_dump()
             result["messages"] = messages
 
-        yield "thread_id", thread.thread_id
-        yield "messages", messages
-        yield "result", result
+            yield "thread_id", thread.thread_id
+            yield "messages", messages
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)

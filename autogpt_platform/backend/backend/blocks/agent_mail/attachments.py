@@ -11,8 +11,6 @@ then use these blocks to retrieve the file content as base64.
 
 import base64
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -24,11 +22,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailGetMessageAttachmentBlock(Block):
@@ -70,14 +64,42 @@ class AgentMailGetMessageAttachmentBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "message_id": "test-msg",
+                "attachment_id": "test-attach",
+            },
+            test_output=[
+                ("content_base64", "dGVzdA=="),
+                ("attachment_id", "test-attach"),
+            ],
+            test_mock={
+                "get_attachment": lambda *a, **kw: b"test",
+            },
+        )
+
+    @staticmethod
+    async def get_attachment(
+        credentials: APIKeyCredentials,
+        inbox_id: str,
+        message_id: str,
+        attachment_id: str,
+    ):
+        client = _client(credentials)
+        return await client.inboxes.messages.get_attachment(
+            inbox_id=inbox_id,
+            message_id=message_id,
+            attachment_id=attachment_id,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            client = _client(credentials)
-            data = await client.inboxes.messages.get_attachment(
+            data = await self.get_attachment(
+                credentials=credentials,
                 inbox_id=input_data.inbox_id,
                 message_id=input_data.message_id,
                 attachment_id=input_data.attachment_id,
@@ -134,14 +156,42 @@ class AgentMailGetThreadAttachmentBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "thread_id": "test-thread",
+                "attachment_id": "test-attach",
+            },
+            test_output=[
+                ("content_base64", "dGVzdA=="),
+                ("attachment_id", "test-attach"),
+            ],
+            test_mock={
+                "get_attachment": lambda *a, **kw: b"test",
+            },
+        )
+
+    @staticmethod
+    async def get_attachment(
+        credentials: APIKeyCredentials,
+        inbox_id: str,
+        thread_id: str,
+        attachment_id: str,
+    ):
+        client = _client(credentials)
+        return await client.inboxes.threads.get_attachment(
+            inbox_id=inbox_id,
+            thread_id=thread_id,
+            attachment_id=attachment_id,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            client = _client(credentials)
-            data = await client.inboxes.threads.get_attachment(
+            data = await self.get_attachment(
+                credentials=credentials,
                 inbox_id=input_data.inbox_id,
                 thread_id=input_data.thread_id,
                 attachment_id=input_data.attachment_id,

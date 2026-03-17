@@ -2,6 +2,8 @@
 Shared configuration for all AgentMail blocks.
 """
 
+from agentmail import AsyncAgentMail
+
 from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
 
 agent_mail = (
@@ -17,3 +19,15 @@ TEST_CREDENTIALS = APIKeyCredentials(
     api_key=SecretStr("mock-agentmail-api-key"),
     expires_at=None,
 )
+
+TEST_CREDENTIALS_INPUT = {
+    "id": TEST_CREDENTIALS.id,
+    "provider": TEST_CREDENTIALS.provider,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
+
+
+def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
+    """Create an AsyncAgentMail client from credentials."""
+    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())

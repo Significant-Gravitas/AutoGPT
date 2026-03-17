@@ -6,7 +6,6 @@ a unique email address and can send, receive, and manage emails via the
 AgentMail API. You can create thousands of inboxes on demand.
 """
 
-from agentmail import AsyncAgentMail
 from agentmail.inboxes.types import CreateInboxRequest
 
 from backend.sdk import (
@@ -20,11 +19,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailCreateInboxBlock(Block):
@@ -75,26 +70,50 @@ class AgentMailCreateInboxBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("inbox_id", "mock-inbox-id"),
+                ("email_address", "mock-inbox-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "create_inbox": lambda *a, **kw: type(
+                    "Inbox",
+                    (),
+                    {
+                        "inbox_id": "mock-inbox-id",
+                        "model_dump": lambda self: {"inbox_id": "mock-inbox-id"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def create_inbox(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.inboxes.create(request=CreateInboxRequest(**params))
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {}
-        if input_data.username:
-            params["username"] = input_data.username
-        if input_data.domain:
-            params["domain"] = input_data.domain
-        if input_data.display_name:
-            params["display_name"] = input_data.display_name
+        try:
+            params: dict = {}
+            if input_data.username:
+                params["username"] = input_data.username
+            if input_data.domain:
+                params["domain"] = input_data.domain
+            if input_data.display_name:
+                params["display_name"] = input_data.display_name
 
-        inbox = await client.inboxes.create(request=CreateInboxRequest(**params))
-        result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
+            inbox = await self.create_inbox(credentials, **params)
+            result = inbox.model_dump()
 
-        yield "inbox_id", inbox.inbox_id
-        yield "email_address", getattr(inbox, "email_address", inbox.inbox_id)
-        yield "result", result
+            yield "inbox_id", inbox.inbox_id
+            yield "email_address", inbox.inbox_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetInboxBlock(Block):
@@ -131,19 +150,48 @@ class AgentMailGetInboxBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+            },
+            test_output=[
+                ("inbox_id", "test-inbox"),
+                ("email_address", "test-inbox"),
+                ("display_name", ""),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_inbox": lambda *a, **kw: type(
+                    "Inbox",
+                    (),
+                    {
+                        "inbox_id": "test-inbox",
+                        "display_name": "",
+                        "model_dump": lambda self: {"inbox_id": "test-inbox"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_inbox(credentials: APIKeyCredentials, inbox_id: str):
+        client = _client(credentials)
+        return await client.inboxes.get(inbox_id=inbox_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        inbox = await client.inboxes.get(inbox_id=input_data.inbox_id)
-        result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
+        try:
+            inbox = await self.get_inbox(credentials, input_data.inbox_id)
+            result = inbox.model_dump()
 
-        yield "inbox_id", inbox.inbox_id
-        yield "email_address", getattr(inbox, "email_address", inbox.inbox_id)
-        yield "display_name", getattr(inbox, "display_name", None) or ""
-        yield "result", result
+            yield "inbox_id", inbox.inbox_id
+            yield "email_address", inbox.inbox_id
+            yield "display_name", inbox.display_name or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListInboxesBlock(Block):
@@ -189,27 +237,47 @@ class AgentMailListInboxesBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("inboxes", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_inboxes": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "inboxes": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_inboxes(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.inboxes.list(**params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.inboxes.list(**params)
-        inboxes = [
-            inbox.__dict__ if hasattr(inbox, "__dict__") else inbox
-            for inbox in getattr(response, "inboxes", [])
-        ]
+            response = await self.list_inboxes(credentials, **params)
+            inboxes = [i.model_dump() for i in response.inboxes]
 
-        yield "inboxes", inboxes
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(inboxes)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "inboxes", inboxes
+            yield "count", (c if (c := response.count) is not None else len(inboxes))
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailUpdateInboxBlock(Block):
@@ -245,20 +313,48 @@ class AgentMailUpdateInboxBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "display_name": "Updated",
+            },
+            test_output=[
+                ("inbox_id", "test-inbox"),
+                ("result", dict),
+            ],
+            test_mock={
+                "update_inbox": lambda *a, **kw: type(
+                    "Inbox",
+                    (),
+                    {
+                        "inbox_id": "test-inbox",
+                        "model_dump": lambda self: {"inbox_id": "test-inbox"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def update_inbox(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.update(inbox_id=inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        inbox = await client.inboxes.update(
-            inbox_id=input_data.inbox_id,
-            display_name=input_data.display_name,
-        )
-        result = inbox.__dict__ if hasattr(inbox, "__dict__") else {}
+        try:
+            inbox = await self.update_inbox(
+                credentials,
+                input_data.inbox_id,
+                display_name=input_data.display_name,
+            )
+            result = inbox.model_dump()
 
-        yield "inbox_id", inbox.inbox_id
-        yield "result", result
+            yield "inbox_id", inbox.inbox_id
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailDeleteInboxBlock(Block):
@@ -292,11 +388,27 @@ class AgentMailDeleteInboxBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+            },
+            test_output=[("success", True)],
+            test_mock={
+                "delete_inbox": lambda *a, **kw: None,
+            },
         )
+
+    @staticmethod
+    async def delete_inbox(credentials: APIKeyCredentials, inbox_id: str):
+        client = _client(credentials)
+        await client.inboxes.delete(inbox_id=inbox_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        await client.inboxes.delete(inbox_id=input_data.inbox_id)
-        yield "success", True
+        try:
+            await self.delete_inbox(credentials, input_data.inbox_id)
+            yield "success", True
+        except Exception as e:
+            yield "error", str(e)

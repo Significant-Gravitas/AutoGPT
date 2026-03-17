@@ -13,8 +13,6 @@ direction (send/receive) and type (allow/block).
 
 from enum import Enum
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -26,11 +24,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class ListDirection(str, Enum):
@@ -91,29 +85,58 @@ class AgentMailListEntriesBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "direction": "receive",
+                "list_type": "block",
+            },
+            test_output=[
+                ("entries", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_entries": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "entries": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_entries(
+        credentials: APIKeyCredentials, direction: str, list_type: str, **params
+    ):
+        client = _client(credentials)
+        return await client.lists.list(direction, list_type, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.lists.list(
-            input_data.direction.value, input_data.list_type.value, **params
-        )
-        entries = [
-            e.__dict__ if hasattr(e, "__dict__") else e
-            for e in getattr(response, "entries", [])
-        ]
+            response = await self.list_entries(
+                credentials,
+                input_data.direction.value,
+                input_data.list_type.value,
+                **params,
+            )
+            entries = [e.model_dump() for e in response.entries]
 
-        yield "entries", entries
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(entries)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "entries", entries
+            yield "count", (c if (c := response.count) is not None else len(entries))
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailCreateListEntryBlock(Block):
@@ -159,23 +182,55 @@ class AgentMailCreateListEntryBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "direction": "receive",
+                "list_type": "block",
+                "entry": "spam@example.com",
+            },
+            test_output=[
+                ("entry", "spam@example.com"),
+                ("result", dict),
+            ],
+            test_mock={
+                "create_entry": lambda *a, **kw: type(
+                    "Entry",
+                    (),
+                    {
+                        "model_dump": lambda self: {"entry": "spam@example.com"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def create_entry(
+        credentials: APIKeyCredentials, direction: str, list_type: str, **params
+    ):
+        client = _client(credentials)
+        return await client.lists.create(direction, list_type, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"entry": input_data.entry}
-        if input_data.reason and input_data.list_type == ListType.BLOCK:
-            params["reason"] = input_data.reason
+        try:
+            params: dict = {"entry": input_data.entry}
+            if input_data.reason and input_data.list_type == ListType.BLOCK:
+                params["reason"] = input_data.reason
 
-        result = await client.lists.create(
-            input_data.direction.value, input_data.list_type.value, **params
-        )
-        result_dict = result.__dict__ if hasattr(result, "__dict__") else {}
+            result = await self.create_entry(
+                credentials,
+                input_data.direction.value,
+                input_data.list_type.value,
+                **params,
+            )
+            result_dict = result.model_dump()
 
-        yield "entry", input_data.entry
-        yield "result", result_dict
+            yield "entry", input_data.entry
+            yield "result", result_dict
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetListEntryBlock(Block):
@@ -212,21 +267,51 @@ class AgentMailGetListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "direction": "receive",
+                "list_type": "block",
+                "entry": "spam@example.com",
+            },
+            test_output=[
+                ("entry", "spam@example.com"),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_entry": lambda *a, **kw: type(
+                    "Entry",
+                    (),
+                    {
+                        "model_dump": lambda self: {"entry": "spam@example.com"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_entry(
+        credentials: APIKeyCredentials, direction: str, list_type: str, entry: str
+    ):
+        client = _client(credentials)
+        return await client.lists.get(direction, list_type, entry=entry)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        result = await client.lists.get(
-            input_data.direction.value,
-            input_data.list_type.value,
-            entry=input_data.entry,
-        )
-        result_dict = result.__dict__ if hasattr(result, "__dict__") else {}
+        try:
+            result = await self.get_entry(
+                credentials,
+                input_data.direction.value,
+                input_data.list_type.value,
+                input_data.entry,
+            )
+            result_dict = result.model_dump()
 
-        yield "entry", input_data.entry
-        yield "result", result_dict
+            yield "entry", input_data.entry
+            yield "result", result_dict
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailDeleteListEntryBlock(Block):
@@ -264,15 +349,36 @@ class AgentMailDeleteListEntryBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "direction": "receive",
+                "list_type": "block",
+                "entry": "spam@example.com",
+            },
+            test_output=[("success", True)],
+            test_mock={
+                "delete_entry": lambda *a, **kw: None,
+            },
         )
+
+    @staticmethod
+    async def delete_entry(
+        credentials: APIKeyCredentials, direction: str, list_type: str, entry: str
+    ):
+        client = _client(credentials)
+        await client.lists.delete(direction, list_type, entry=entry)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        await client.lists.delete(
-            input_data.direction.value,
-            input_data.list_type.value,
-            entry=input_data.entry,
-        )
-        yield "success", True
+        try:
+            await self.delete_entry(
+                credentials,
+                input_data.direction.value,
+                input_data.list_type.value,
+                input_data.entry,
+            )
+            yield "success", True
+        except Exception as e:
+            yield "error", str(e)

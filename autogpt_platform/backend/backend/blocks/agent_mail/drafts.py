@@ -8,8 +8,6 @@ and complex multi-step email composition workflows.
 
 from typing import Optional
 
-from agentmail import AsyncAgentMail
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -21,11 +19,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import agent_mail
-
-
-def _client(credentials: APIKeyCredentials) -> AsyncAgentMail:
-    return AsyncAgentMail(api_key=credentials.api_key.get_secret_value())
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, _client, agent_mail
 
 
 class AgentMailCreateDraftBlock(Block):
@@ -94,34 +88,63 @@ class AgentMailCreateDraftBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "to": ["user@example.com"],
+            },
+            test_output=[
+                ("draft_id", "mock-draft-id"),
+                ("send_status", ""),
+                ("result", dict),
+            ],
+            test_mock={
+                "create_draft": lambda *a, **kw: type(
+                    "Draft",
+                    (),
+                    {
+                        "draft_id": "mock-draft-id",
+                        "send_status": "",
+                        "model_dump": lambda self: {"draft_id": "mock-draft-id"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def create_draft(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.drafts.create(inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"to": input_data.to}
-        if input_data.subject:
-            params["subject"] = input_data.subject
-        if input_data.text:
-            params["text"] = input_data.text
-        if input_data.html:
-            params["html"] = input_data.html
-        if input_data.cc:
-            params["cc"] = input_data.cc
-        if input_data.bcc:
-            params["bcc"] = input_data.bcc
-        if input_data.in_reply_to:
-            params["in_reply_to"] = input_data.in_reply_to
-        if input_data.send_at:
-            params["send_at"] = input_data.send_at
+        try:
+            params: dict = {"to": input_data.to}
+            if input_data.subject:
+                params["subject"] = input_data.subject
+            if input_data.text:
+                params["text"] = input_data.text
+            if input_data.html:
+                params["html"] = input_data.html
+            if input_data.cc:
+                params["cc"] = input_data.cc
+            if input_data.bcc:
+                params["bcc"] = input_data.bcc
+            if input_data.in_reply_to:
+                params["in_reply_to"] = input_data.in_reply_to
+            if input_data.send_at:
+                params["send_at"] = input_data.send_at
 
-        draft = await client.inboxes.drafts.create(input_data.inbox_id, **params)
-        result = draft.__dict__ if hasattr(draft, "__dict__") else {}
+            draft = await self.create_draft(credentials, input_data.inbox_id, **params)
+            result = draft.model_dump()
 
-        yield "draft_id", draft.draft_id
-        yield "send_status", getattr(draft, "send_status", None) or ""
-        yield "result", result
+            yield "draft_id", draft.draft_id
+            yield "send_status", draft.send_status or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailGetDraftBlock(Block):
@@ -161,23 +184,55 @@ class AgentMailGetDraftBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "draft_id": "test-draft",
+            },
+            test_output=[
+                ("draft_id", "test-draft"),
+                ("subject", ""),
+                ("send_status", ""),
+                ("send_at", ""),
+                ("result", dict),
+            ],
+            test_mock={
+                "get_draft": lambda *a, **kw: type(
+                    "Draft",
+                    (),
+                    {
+                        "draft_id": "test-draft",
+                        "subject": "",
+                        "send_status": "",
+                        "send_at": "",
+                        "model_dump": lambda self: {"draft_id": "test-draft"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def get_draft(credentials: APIKeyCredentials, inbox_id: str, draft_id: str):
+        client = _client(credentials)
+        return await client.inboxes.drafts.get(inbox_id=inbox_id, draft_id=draft_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        draft = await client.inboxes.drafts.get(
-            inbox_id=input_data.inbox_id,
-            draft_id=input_data.draft_id,
-        )
-        result = draft.__dict__ if hasattr(draft, "__dict__") else {}
+        try:
+            draft = await self.get_draft(
+                credentials, input_data.inbox_id, input_data.draft_id
+            )
+            result = draft.model_dump()
 
-        yield "draft_id", draft.draft_id
-        yield "subject", getattr(draft, "subject", None) or ""
-        yield "send_status", getattr(draft, "send_status", None) or ""
-        yield "send_at", getattr(draft, "send_at", None) or ""
-        yield "result", result
+            yield "draft_id", draft.draft_id
+            yield "subject", draft.subject or ""
+            yield "send_status", draft.send_status or ""
+            yield "send_at", draft.send_at or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListDraftsBlock(Block):
@@ -229,29 +284,54 @@ class AgentMailListDraftsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+            },
+            test_output=[
+                ("drafts", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_drafts": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "drafts": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_drafts(credentials: APIKeyCredentials, inbox_id: str, **params):
+        client = _client(credentials)
+        return await client.inboxes.drafts.list(inbox_id, **params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
-        if input_data.labels:
-            params["labels"] = input_data.labels
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
+            if input_data.labels:
+                params["labels"] = input_data.labels
 
-        response = await client.inboxes.drafts.list(input_data.inbox_id, **params)
-        drafts = [
-            d.__dict__ if hasattr(d, "__dict__") else d
-            for d in getattr(response, "drafts", [])
-        ]
+            response = await self.list_drafts(
+                credentials, input_data.inbox_id, **params
+            )
+            drafts = [d.model_dump() for d in response.drafts]
 
-        yield "drafts", drafts
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(drafts)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "drafts", drafts
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailUpdateDraftBlock(Block):
@@ -307,34 +387,65 @@ class AgentMailUpdateDraftBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "draft_id": "test-draft",
+            },
+            test_output=[
+                ("draft_id", "test-draft"),
+                ("send_status", ""),
+                ("result", dict),
+            ],
+            test_mock={
+                "update_draft": lambda *a, **kw: type(
+                    "Draft",
+                    (),
+                    {
+                        "draft_id": "test-draft",
+                        "send_status": "",
+                        "model_dump": lambda self: {"draft_id": "test-draft"},
+                    },
+                )(),
+            },
+        )
+
+    @staticmethod
+    async def update_draft(
+        credentials: APIKeyCredentials, inbox_id: str, draft_id: str, **params
+    ):
+        client = _client(credentials)
+        return await client.inboxes.drafts.update(
+            inbox_id=inbox_id, draft_id=draft_id, **params
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {}
-        if input_data.to is not None:
-            params["to"] = input_data.to
-        if input_data.subject is not None:
-            params["subject"] = input_data.subject
-        if input_data.text is not None:
-            params["text"] = input_data.text
-        if input_data.html is not None:
-            params["html"] = input_data.html
-        if input_data.send_at is not None:
-            params["send_at"] = input_data.send_at
+        try:
+            params: dict = {}
+            if input_data.to is not None:
+                params["to"] = input_data.to
+            if input_data.subject is not None:
+                params["subject"] = input_data.subject
+            if input_data.text is not None:
+                params["text"] = input_data.text
+            if input_data.html is not None:
+                params["html"] = input_data.html
+            if input_data.send_at is not None:
+                params["send_at"] = input_data.send_at
 
-        draft = await client.inboxes.drafts.update(
-            inbox_id=input_data.inbox_id,
-            draft_id=input_data.draft_id,
-            **params,
-        )
-        result = draft.__dict__ if hasattr(draft, "__dict__") else {}
+            draft = await self.update_draft(
+                credentials, input_data.inbox_id, input_data.draft_id, **params
+            )
+            result = draft.model_dump()
 
-        yield "draft_id", draft.draft_id
-        yield "send_status", getattr(draft, "send_status", None) or ""
-        yield "result", result
+            yield "draft_id", draft.draft_id
+            yield "send_status", draft.send_status or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailSendDraftBlock(Block):
@@ -373,21 +484,49 @@ class AgentMailSendDraftBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "draft_id": "test-draft",
+            },
+            test_output=[
+                ("message_id", "mock-msg-id"),
+                ("thread_id", "mock-thread-id"),
+                ("result", dict),
+            ],
+            test_mock={
+                "send_draft": lambda *a, **kw: type(
+                    "Msg",
+                    (),
+                    {
+                        "message_id": "mock-msg-id",
+                        "thread_id": "mock-thread-id",
+                        "model_dump": lambda self: {"message_id": "mock-msg-id"},
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def send_draft(credentials: APIKeyCredentials, inbox_id: str, draft_id: str):
+        client = _client(credentials)
+        return await client.inboxes.drafts.send(inbox_id=inbox_id, draft_id=draft_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        msg = await client.inboxes.drafts.send(
-            inbox_id=input_data.inbox_id,
-            draft_id=input_data.draft_id,
-        )
-        result = msg.__dict__ if hasattr(msg, "__dict__") else {}
+        try:
+            msg = await self.send_draft(
+                credentials, input_data.inbox_id, input_data.draft_id
+            )
+            result = msg.model_dump()
 
-        yield "message_id", msg.message_id
-        yield "thread_id", getattr(msg, "thread_id", None) or ""
-        yield "result", result
+            yield "message_id", msg.message_id
+            yield "thread_id", msg.thread_id or ""
+            yield "result", result
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailDeleteDraftBlock(Block):
@@ -423,17 +562,35 @@ class AgentMailDeleteDraftBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_sensitive_action=True,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "inbox_id": "test-inbox",
+                "draft_id": "test-draft",
+            },
+            test_output=[("success", True)],
+            test_mock={
+                "delete_draft": lambda *a, **kw: None,
+            },
         )
+
+    @staticmethod
+    async def delete_draft(
+        credentials: APIKeyCredentials, inbox_id: str, draft_id: str
+    ):
+        client = _client(credentials)
+        await client.inboxes.drafts.delete(inbox_id=inbox_id, draft_id=draft_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        await client.inboxes.drafts.delete(
-            inbox_id=input_data.inbox_id,
-            draft_id=input_data.draft_id,
-        )
-        yield "success", True
+        try:
+            await self.delete_draft(
+                credentials, input_data.inbox_id, input_data.draft_id
+            )
+            yield "success", True
+        except Exception as e:
+            yield "error", str(e)
 
 
 class AgentMailListOrgDraftsBlock(Block):
@@ -478,24 +635,44 @@ class AgentMailListOrgDraftsBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_output=[
+                ("drafts", []),
+                ("count", 0),
+                ("next_page_token", ""),
+            ],
+            test_mock={
+                "list_org_drafts": lambda *a, **kw: type(
+                    "Resp",
+                    (),
+                    {
+                        "drafts": [],
+                        "count": 0,
+                        "next_page_token": "",
+                    },
+                )(),
+            },
         )
+
+    @staticmethod
+    async def list_org_drafts(credentials: APIKeyCredentials, **params):
+        client = _client(credentials)
+        return await client.drafts.list(**params)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        client = _client(credentials)
-        params: dict = {"limit": input_data.limit}
-        if input_data.page_token:
-            params["page_token"] = input_data.page_token
+        try:
+            params: dict = {"limit": input_data.limit}
+            if input_data.page_token:
+                params["page_token"] = input_data.page_token
 
-        response = await client.drafts.list(**params)
-        drafts = [
-            d.__dict__ if hasattr(d, "__dict__") else d
-            for d in getattr(response, "drafts", [])
-        ]
+            response = await self.list_org_drafts(credentials, **params)
+            drafts = [d.model_dump() for d in response.drafts]
 
-        yield "drafts", drafts
-        yield "count", (
-            c if (c := getattr(response, "count", None)) is not None else len(drafts)
-        )
-        yield "next_page_token", getattr(response, "next_page_token", "") or ""
+            yield "drafts", drafts
+            yield "count", response.count
+            yield "next_page_token", response.next_page_token or ""
+        except Exception as e:
+            yield "error", str(e)
