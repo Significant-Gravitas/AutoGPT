@@ -16,6 +16,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -247,12 +248,9 @@ class CoPilotProcessor:
             # Claude Code subscription forces SDK mode (CLI subprocess auth).
             config = ChatConfig()
 
-            # Test mode: use dummy service for e2e testing without LLM calls.
-            if os.environ.get("COPILOT_TEST_MODE", "").lower() == "true":
-                from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-
+            if config.test_mode:
                 stream_fn = stream_chat_completion_dummy
-                log.warning("Using DUMMY service (COPILOT_TEST_MODE=true)")
+                log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
             else:
                 use_sdk = (
                     config.use_claude_code_subscription

@@ -125,6 +125,12 @@ class ChatConfig(BaseSettings):
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
     )
+    test_mode: bool = Field(
+        default=False,
+        description="Use dummy service instead of real LLM calls. "
+        "Send __test_transient_error__, __test_fatal_error__, or "
+        "__test_slow_response__ to trigger specific scenarios.",
+    )
 
     # E2B Sandbox Configuration
     use_e2b_sandbox: bool = Field(

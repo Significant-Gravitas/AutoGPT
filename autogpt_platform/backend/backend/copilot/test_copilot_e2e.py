@@ -4,7 +4,7 @@ These tests verify the complete copilot flow using dummy implementations
 for agent generator and SDK service, allowing automated testing without
 external LLM calls.
 
-Enable test mode with COPILOT_TEST_MODE=true environment variable.
+Enable test mode with CHAT_TEST_MODE=true environment variable (or in .env).
 
 Note: StreamFinish is NOT emitted by the dummy service — it is published
 by mark_session_completed in the processor layer.  These tests only cover
@@ -30,9 +30,9 @@ from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 @pytest.fixture(autouse=True)
 def enable_test_mode():
     """Enable test mode for all tests in this module."""
-    os.environ["COPILOT_TEST_MODE"] = "true"
+    os.environ["CHAT_TEST_MODE"] = "true"
     yield
-    os.environ.pop("COPILOT_TEST_MODE", None)
+    os.environ.pop("CHAT_TEST_MODE", None)
 
 
 @pytest.mark.asyncio

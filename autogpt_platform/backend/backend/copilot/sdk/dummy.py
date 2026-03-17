@@ -1,7 +1,7 @@
 """Dummy SDK service for testing copilot streaming.
 
 Returns mock streaming responses without calling Claude Agent SDK.
-Enable via COPILOT_TEST_MODE=true environment variable.
+Enable via CHAT_TEST_MODE=true in .env (ChatConfig.test_mode).
 
 WARNING: This is for testing only. Do not use in production.
 
