@@ -168,9 +168,12 @@ export function ChatMessagesContainer({
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
+          const markerType =
+            lastTextPart !== undefined
+              ? parseSpecialMarkers(lastTextPart.text).markerType
+              : null;
           const hasErrorMarker =
-            lastTextPart !== undefined &&
-            parseSpecialMarkers(lastTextPart.text).markerType === "error";
+            markerType === "error" || markerType === "retryable_error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
