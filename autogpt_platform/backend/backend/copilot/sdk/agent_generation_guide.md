@@ -153,11 +153,18 @@ call in a loop until the task is complete:
    - `agent_mode_max_iterations`: Choose based on task complexity:
      - `1` for single-step tool calls (AI picks one tool, calls it, done)
      - `3`–`10` for multi-step tasks (AI calls tools iteratively)
-     - `-1` for open-ended orchestration (AI loops until it decides it's done)
+     - `-1` for open-ended orchestration (AI loops until it decides it's done).
+       **Use with caution** — prefer bounded iterations (3–10) unless
+       genuinely needed, as unbounded loops risk runaway cost and execution.
      Do NOT use `0` (traditional mode) — it requires complex external
      conversation-history loop wiring that the agent generator does not
      produce.
    - `conversation_compaction`: `true` (recommended to avoid context overflow)
+   - `retry`: Number of retries on tool-call failure (default `3`).
+     Set to `0` to disable retries.
+   - `multiple_tool_calls`: Whether the AI can invoke multiple tools in a
+     single turn (default `false`). Enable when tools are independent and
+     can run concurrently.
    - Optional: `sys_prompt` for extra LLM context about how to orchestrate
 3. Wire the `prompt` input from an `AgentInputBlock` (the user's task)
 4. Create downstream tool blocks — regular blocks **or** `AgentExecutorBlock`
@@ -184,6 +191,22 @@ call in a loop until the task is complete:
   - SDM→Agent B (per input field): `source_name: "tools"`,
     `sink_name: "<agent_b_input_field>"`
   - SDM→Output: `source_name: "finished"`, `sink_name: "value"`
+
+**Example — Orchestrator calling regular blocks as tools:**
+- Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
+- Node 2: `SmartDecisionMakerBlock` (input_default:
+  `{"agent_mode_max_iterations": 5, "conversation_compaction": true}`)
+- Node 3: `GetWebpageBlock` (regular block — the AI calls it as a tool)
+- Node 4: `AITextGeneratorBlock` (another regular block as a tool)
+- Node 5: `AgentOutputBlock` (input_default: `{"name": "result"}`)
+- Links:
+  - Input→SDM: `source_name: "result"`, `sink_name: "prompt"`
+  - SDM→GetWebpage: `source_name: "tools"`, `sink_name: "url"`
+  - SDM→AITextGenerator: `source_name: "tools"`, `sink_name: "prompt"`
+  - SDM→Output: `source_name: "finished"`, `sink_name: "value"`
+
+Regular blocks work exactly like sub-agents as tools — wire each input
+field from `source_name: "tools"` on the SmartDecisionMaker side.
 
 ### Example: Simple AI Text Processor
 
