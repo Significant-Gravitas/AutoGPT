@@ -354,6 +354,7 @@ app.include_router(
     tags=["oauth"],
     prefix="/api/oauth",
 )
+
 app.mount("/external-api", external_api)
 
 
