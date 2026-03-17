@@ -660,7 +660,10 @@ async def stream_chat_completion_sdk(
         len(session.messages) > 0
         and session.messages[-1].role == "assistant"
         and session.messages[-1].content
-        and COPILOT_ERROR_PREFIX in session.messages[-1].content
+        and (
+            COPILOT_ERROR_PREFIX in session.messages[-1].content
+            or COPILOT_RETRYABLE_ERROR_PREFIX in session.messages[-1].content
+        )
     ):
         logger.info(
             "[SDK] [%s] Removing stale error marker from previous turn",
