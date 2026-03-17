@@ -130,7 +130,7 @@ class AgentOutputTool(BaseTool):
                 },
                 "store_slug": {
                     "type": "string",
-                    "description": "Marketplace 'username/agent-slug'.",
+                    "description": "Marketplace 'username/agent-name'.",
                 },
                 "execution_id": {
                     "type": "string",
@@ -138,7 +138,7 @@ class AgentOutputTool(BaseTool):
                 },
                 "run_time": {
                     "type": "string",
-                    "description": "Time filter: 'latest', today/yesterday/last week/last 7 days/last month/last 30 days, 'YYYY-MM-DD', or ISO datetime.",
+                    "description": "Time filter: 'latest', today, yesterday, last 7/30 days, 'YYYY-MM-DD', or ISO datetime.",
                 },
                 "wait_if_running": {
                     "type": "integer",
