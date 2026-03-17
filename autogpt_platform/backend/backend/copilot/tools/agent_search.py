@@ -19,15 +19,11 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .utils import UUID_V4_PATTERN
 
 logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
-
-_UUID_PATTERN = re.compile(
-    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-    re.IGNORECASE,
-)
 
 # Matches "creator/slug" identifiers used in the marketplace
 _CREATOR_SLUG_PATTERN = re.compile(r"^[\w-]+/[\w-]+$")
@@ -79,19 +75,17 @@ async def search_agents(
             if _CREATOR_SLUG_PATTERN.match(query):
                 creator, slug = query.split("/", 1)
                 logger.info(
-                    "Query looks like creator/slug, trying direct lookup: %s",
-                    query,
+                    f"Query looks like creator/slug, trying direct lookup: {query}"
                 )
                 agent_info = await _get_marketplace_agent_by_slug(creator, slug)
                 if agent_info:
                     agents.append(agent_info)
                     logger.info(
-                        "Found marketplace agent by direct lookup: %s",
-                        agent_info.name,
+                        f"Found marketplace agent by direct lookup: {agent_info.name}"
                     )
 
             if not agents:
-                logger.info("Searching marketplace for: %s", query)
+                logger.info(f"Searching marketplace for: {query}")
                 results = await store_db().get_store_agents(
                     search_query=query, page_size=5
                 )
@@ -212,7 +206,7 @@ async def search_agents(
 
 def _is_uuid(text: str) -> bool:
     """Check if text is a valid UUID v4."""
-    return bool(_UUID_PATTERN.match(text.strip()))
+    return bool(UUID_V4_PATTERN.match(text.strip()))
 
 
 def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
@@ -252,15 +246,12 @@ async def _get_marketplace_agent_by_slug(creator: str, slug: str) -> AgentInfo |
             is_featured=False,
         )
     except NotFoundError:
-        logger.debug("Marketplace agent not found: %s/%s", creator, slug)
+        pass
     except DatabaseError:
         raise
     except Exception as e:
         logger.warning(
-            "Could not fetch marketplace agent %s/%s: %s",
-            creator,
-            slug,
-            e,
+            f"Could not fetch marketplace agent {creator}/{slug}: {e}",
             exc_info=True,
         )
     return None
@@ -278,10 +269,9 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     try:
         agent = await lib_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
-            logger.debug(f"Found library agent by graph_id: {agent.name}")
             return _library_agent_to_info(agent)
     except NotFoundError:
-        logger.debug(f"Library agent not found by graph_id: {agent_id}")
+        pass
     except DatabaseError:
         raise
     except Exception as e:
@@ -293,10 +283,9 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     try:
         agent = await lib_db.get_library_agent(agent_id, user_id)
         if agent:
-            logger.debug(f"Found library agent by library_id: {agent.name}")
             return _library_agent_to_info(agent)
     except NotFoundError:
-        logger.debug(f"Library agent not found by library_id: {agent_id}")
+        pass
     except DatabaseError:
         raise
     except Exception as e:

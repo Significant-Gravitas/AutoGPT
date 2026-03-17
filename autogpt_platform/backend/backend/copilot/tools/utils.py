@@ -1,6 +1,7 @@
 """Shared utilities for chat tools."""
 
 import logging
+import re
 from typing import Any
 
 from backend.api.features.library import model as library_model
@@ -18,6 +19,12 @@ from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
+
+# Shared UUID v4 pattern used by multiple tools for direct ID lookups.
+UUID_V4_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    re.IGNORECASE,
+)
 
 
 async def fetch_graph_from_store_slug(

@@ -1,5 +1,4 @@
 import logging
-import re
 from typing import Any
 
 from prisma.enums import ContentType
@@ -16,13 +15,9 @@ from .models import (
     ErrorResponse,
     NoResultsResponse,
 )
+from .utils import UUID_V4_PATTERN
 
 logger = logging.getLogger(__name__)
-
-_UUID_PATTERN = re.compile(
-    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-    re.IGNORECASE,
-)
 
 _TARGET_RESULTS = 10
 # Over-fetch to compensate for post-hoc filtering of graph-only blocks.
@@ -127,39 +122,57 @@ class FindBlockTool(BaseTool):
 
         try:
             # Direct ID lookup if query looks like a UUID
-            if _UUID_PATTERN.match(query):
+            if UUID_V4_PATTERN.match(query):
                 block = get_block(query)
-                if block and not block.disabled:
-                    if (
-                        block.block_type not in COPILOT_EXCLUDED_BLOCK_TYPES
-                        and block.id not in COPILOT_EXCLUDED_BLOCK_IDS
-                    ):
-                        summary = BlockInfoSummary(
-                            id=query,
-                            name=block.name,
-                            description=(
-                                block.optimized_description or block.description or ""
-                            ),
-                            categories=[c.value for c in block.categories],
-                        )
-                        if include_schemas:
-                            info = block.get_info()
-                            summary.input_schema = info.inputSchema
-                            summary.output_schema = info.outputSchema
-                            summary.static_output = info.staticOutput
-
-                        return BlockListResponse(
-                            message=(
-                                f"Found block '{block.name}' by ID. "
-                                "To see inputs/outputs and execute it, use "
-                                "run_block with the block's 'id' - providing "
-                                "no inputs."
-                            ),
-                            blocks=[summary],
-                            count=1,
-                            query=query,
+                if block:
+                    if block.disabled:
+                        return NoResultsResponse(
+                            message=f"Block '{block.name}' (ID: {query}) is disabled and cannot be used.",
+                            suggestions=["Search for an alternative block by name"],
                             session_id=session_id,
                         )
+                    if (
+                        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
+                        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                    ):
+                        return NoResultsResponse(
+                            message=(
+                                f"Block '{block.name}' (ID: {query}) is not available "
+                                "in CoPilot. It can only be used within agent graphs."
+                            ),
+                            suggestions=[
+                                "Search for an alternative block by name",
+                                "Use this block in an agent graph instead",
+                            ],
+                            session_id=session_id,
+                        )
+
+                    summary = BlockInfoSummary(
+                        id=query,
+                        name=block.name,
+                        description=(
+                            block.optimized_description or block.description or ""
+                        ),
+                        categories=[c.value for c in block.categories],
+                    )
+                    if include_schemas:
+                        info = block.get_info()
+                        summary.input_schema = info.inputSchema
+                        summary.output_schema = info.outputSchema
+                        summary.static_output = info.staticOutput
+
+                    return BlockListResponse(
+                        message=(
+                            f"Found block '{block.name}' by ID. "
+                            "To see inputs/outputs and execute it, use "
+                            "run_block with the block's 'id' - providing "
+                            "no inputs."
+                        ),
+                        blocks=[summary],
+                        count=1,
+                        query=query,
+                        session_id=session_id,
+                    )
 
             # Search for blocks using hybrid search
             results, total = await search().unified_hybrid_search(
