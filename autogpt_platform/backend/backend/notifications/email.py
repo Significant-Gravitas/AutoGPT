@@ -72,9 +72,7 @@ class EmailSender:
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
-        unsubscribe_link = (
-            user_unsubscribe_link or f"{base_url}/profile/settings"
-        )
+        unsubscribe_link = user_unsubscribe_link or f"{base_url}/profile/settings"
 
         base_template_path = "templates/base.html.jinja2"
         with open(pathlib.Path(__file__).parent / base_template_path, "r") as f:
@@ -96,20 +94,6 @@ class EmailSender:
             subject=subject,
             body=full_message,
             user_unsubscribe_link=unsubscribe_link,
-        )
-
-    def send_html(
-        self,
-        user_email: str,
-        subject: str,
-        body: str,
-        user_unsubscribe_link: str | None = None,
-    ) -> None:
-        self._send_email(
-            user_email=user_email,
-            subject=subject,
-            body=body,
-            user_unsubscribe_link=user_unsubscribe_link,
         )
 
     def send_templated(

@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from typing import Any, cast
 
 from backend.api.test_helpers import override_config
@@ -217,25 +216,3 @@ def test_send_template_still_sends_in_production(mocker) -> None:
         )
 
     send_email.assert_called_once()
-
-
-def test_send_html_uses_default_unsubscribe_link(mocker) -> None:
-    sender = EmailSender()
-    send = mocker.Mock()
-    sender.postmark = cast(Any, SimpleNamespace(emails=SimpleNamespace(send=send)))
-
-    mocker.patch(
-        "backend.notifications.email.get_frontend_base_url",
-        return_value="https://example.com",
-    )
-    with override_config(settings, "postmark_sender_email", "test@example.com"):
-        sender.send_html(
-            user_email="user@example.com",
-            subject="Autopilot update",
-            body="<p>Hello</p>",
-        )
-
-    headers = send.call_args.kwargs["Headers"]
-
-    assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
-    assert headers["List-Unsubscribe"] == "<https://example.com/profile/settings>"
