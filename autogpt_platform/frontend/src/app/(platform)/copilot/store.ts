@@ -7,6 +7,10 @@ export interface DeleteTarget {
 }
 
 interface CopilotUIState {
+  /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
+  initialPrompt: string | null;
+  setInitialPrompt: (prompt: string | null) => void;
+
   sessionToDelete: DeleteTarget | null;
   setSessionToDelete: (target: DeleteTarget | null) => void;
 
@@ -31,6 +35,9 @@ interface CopilotUIState {
 }
 
 export const useCopilotUIStore = create<CopilotUIState>((set) => ({
+  initialPrompt: null,
+  setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
   sessionToDelete: null,
   setSessionToDelete: (target) => set({ sessionToDelete: target }),
 
