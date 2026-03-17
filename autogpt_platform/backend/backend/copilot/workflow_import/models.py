@@ -13,6 +13,13 @@ class SourcePlatform(str, Enum):
     UNKNOWN = "unknown"
 
 
+class Connection(pydantic.BaseModel):
+    """A typed connection between two workflow steps."""
+
+    target_step: int
+    connection_type: str  # e.g. "main", "ai_tool", "ai_memory", "ai_languageModel"
+
+
 class StepDescription(pydantic.BaseModel):
     """A single step/node extracted from an external workflow."""
 
@@ -21,6 +28,7 @@ class StepDescription(pydantic.BaseModel):
     service: str
     parameters: dict[str, Any] = pydantic.Field(default_factory=dict)
     connections_to: list[int] = pydantic.Field(default_factory=list)
+    typed_connections: list[Connection] = pydantic.Field(default_factory=list)
 
 
 class WorkflowDescription(pydantic.BaseModel):

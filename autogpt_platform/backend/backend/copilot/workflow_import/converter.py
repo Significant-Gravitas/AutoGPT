@@ -12,9 +12,6 @@ from .models import WorkflowDescription
 def build_copilot_prompt(desc: WorkflowDescription) -> str:
     """Build an AutoPilot prompt from a parsed WorkflowDescription.
 
-    The prompt describes the external workflow in enough detail for AutoPilot's
-    agent-generator to recreate it as an AutoGPT agent graph.
-
     Args:
         desc: Structured description of the source workflow.
 
@@ -23,10 +20,13 @@ def build_copilot_prompt(desc: WorkflowDescription) -> str:
     """
     steps_lines: list[str] = []
     for step in desc.steps:
-        conns = (
-            f" → connects to steps {step.connections_to}" if step.connections_to else ""
-        )
-        steps_lines.append(f"  {step.order}. [{step.service}] {step.action}{conns}")
+        line = f"  {step.order}. [{step.service}] {step.action}"
+        if step.typed_connections:
+            conn_parts = []
+            for tc in step.typed_connections:
+                conn_parts.append(f"step {tc.target_step} ({tc.connection_type})")
+            line += f" → {', '.join(conn_parts)}"
+        steps_lines.append(line)
     steps_text = "\n".join(steps_lines)
 
     trigger_line = f"\nTrigger: {desc.trigger_type}" if desc.trigger_type else ""

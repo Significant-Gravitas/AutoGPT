@@ -7,7 +7,7 @@ format into a platform-agnostic WorkflowDescription. No LLM calls are made here.
 import re
 from typing import Any
 
-from .models import SourcePlatform, StepDescription, WorkflowDescription
+from .models import Connection, SourcePlatform, StepDescription, WorkflowDescription
 
 
 def describe_workflow(
@@ -73,24 +73,34 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
             )
         )
 
-    # Resolve connections: n8n format is {NodeName: {main: [[{node, type, index}]]}}
+    # Resolve connections: n8n format is
+    # {NodeName: {conn_type: [[{node, type, index}]]}}
+    # conn_type can be "main", "ai_tool", "ai_memory", "ai_languageModel", etc.
     for source_name, conn_data in connections.items():
         source_idx = node_index.get(source_name)
-        if source_idx is None:
+        if source_idx is None or not isinstance(conn_data, dict):
             continue
-        main_outputs = conn_data.get("main", [])
-        for output_group in main_outputs:
-            if not isinstance(output_group, list):
+        for conn_type, output_groups in conn_data.items():
+            if not isinstance(output_groups, list):
                 continue
-            for conn in output_group:
-                if not isinstance(conn, dict):
+            for output_group in output_groups:
+                if not isinstance(output_group, list):
                     continue
-                target_name = conn.get("node")
-                if not isinstance(target_name, str):
-                    continue
-                target_idx = node_index.get(target_name)
-                if target_idx is not None:
-                    steps[source_idx].connections_to.append(target_idx)
+                for conn in output_group:
+                    if not isinstance(conn, dict):
+                        continue
+                    target_name = conn.get("node")
+                    if not isinstance(target_name, str):
+                        continue
+                    target_idx = node_index.get(target_name)
+                    if target_idx is not None:
+                        steps[source_idx].connections_to.append(target_idx)
+                        steps[source_idx].typed_connections.append(
+                            Connection(
+                                target_step=target_idx,
+                                connection_type=conn_type,
+                            )
+                        )
 
     # Detect trigger type
     trigger_type = None
