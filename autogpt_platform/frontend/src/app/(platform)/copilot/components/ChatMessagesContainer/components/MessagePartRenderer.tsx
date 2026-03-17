@@ -69,9 +69,15 @@ interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
   partIndex: number;
+  onRetry?: () => void;
 }
 
-export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
+export function MessagePartRenderer({
+  part,
+  messageID,
+  partIndex,
+  onRetry,
+}: Props) {
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
@@ -80,7 +86,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
         part.text,
       );
 
-      if (markerType === "error") {
+      if (markerType === "error" || markerType === "retryable_error") {
         const lowerMarker = markerText.toLowerCase();
         const isCancellation =
           lowerMarker === "operation cancelled" ||
@@ -100,6 +106,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
             key={key}
             responseError={{ message: markerText }}
             context="execution"
+            onRetry={markerType === "retryable_error" ? onRetry : undefined}
           />
         );
       }
