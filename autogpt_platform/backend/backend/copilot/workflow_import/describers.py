@@ -37,14 +37,20 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
     node_index: dict[str, int] = {}
     steps: list[StepDescription] = []
 
+    # Node types that are purely visual/documentation and not functional
+    _SKIP_TYPES = {"n8n-nodes-base.stickyNote", "n8n-nodes-base.noOp"}
+
     for i, node in enumerate(nodes):
         if not isinstance(node, dict):
+            continue
+
+        node_type = node.get("type", "unknown")
+        if node_type in _SKIP_TYPES:
             continue
 
         node_name = node.get("name", f"Node {i}")
         node_index[node_name] = len(steps)
 
-        node_type = node.get("type", "unknown")
         # Extract service name from type (e.g., "n8n-nodes-base.gmail" -> "Gmail")
         service = _extract_n8n_service(node_type)
 
