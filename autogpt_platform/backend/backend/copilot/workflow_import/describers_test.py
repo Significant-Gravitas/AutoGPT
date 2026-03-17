@@ -67,6 +67,43 @@ class TestDescribeN8nWorkflow:
         assert len(desc.steps) == 0
         assert desc.trigger_type is None
 
+    def test_trigger_detection_skips_sticky_notes(self):
+        """Trigger detection should use filtered steps, not raw node list."""
+        data = {
+            "name": "Sticky then Trigger",
+            "nodes": [
+                {
+                    "name": "Note",
+                    "type": "n8n-nodes-base.stickyNote",
+                    "parameters": {"content": "docs"},
+                },
+                {
+                    "name": "Webhook Trigger",
+                    "type": "n8n-nodes-base.webhookTrigger",
+                    "parameters": {"path": "/hook"},
+                },
+                {
+                    "name": "Action",
+                    "type": "n8n-nodes-base.httpRequest",
+                    "parameters": {"url": "https://example.com"},
+                },
+            ],
+            "connections": {
+                "Webhook Trigger": {
+                    "main": [[{"node": "Action", "type": "main", "index": 0}]]
+                }
+            },
+        }
+        desc = describe_n8n_workflow(data)
+        # Sticky note should be filtered out, leaving 2 steps
+        assert len(desc.steps) == 2
+        # First step should be the trigger, and trigger_type should be detected
+        assert desc.trigger_type is not None
+        assert (
+            "trigger" in desc.trigger_type.lower()
+            or "webhook" in desc.trigger_type.lower()
+        )
+
 
 class TestDescribeMakeWorkflow:
     def test_basic_scenario(self):
@@ -137,3 +174,18 @@ class TestDescribeWorkflowRouter:
     def test_unknown_raises(self):
         with pytest.raises(ValueError, match="No describer"):
             describe_workflow({}, SourcePlatform.UNKNOWN)
+
+    def test_empty_steps_raises(self):
+        """describe_workflow should raise ValueError when all nodes are filtered out."""
+        data = {
+            "nodes": [
+                {
+                    "name": "Note",
+                    "type": "n8n-nodes-base.stickyNote",
+                    "parameters": {"content": "docs only"},
+                },
+            ],
+            "connections": {},
+        }
+        with pytest.raises(ValueError, match="no steps"):
+            describe_workflow(data, SourcePlatform.N8N)

@@ -124,7 +124,10 @@ class ImportWorkflowTool(BaseTool):
             )
 
         # Step 3: Describe the workflow
-        desc = describe_workflow(workflow_json, fmt)
+        try:
+            desc = describe_workflow(workflow_json, fmt)
+        except ValueError as e:
+            return ErrorResponse(message=str(e), session_id=session_id)
 
         # Build a human-readable summary
         steps_lines: list[str] = []

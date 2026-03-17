@@ -101,14 +101,19 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
                             )
                         )
 
-    # Detect trigger type
+    # Detect trigger type from the first functional step (not raw nodes,
+    # which may start with sticky notes or other non-functional nodes).
     trigger_type = None
-    if nodes and isinstance(nodes[0], dict):
-        first_type = nodes[0].get("type", "")
-        if isinstance(first_type, str) and (
-            "trigger" in first_type.lower() or "webhook" in first_type.lower()
+    if steps:
+        first_action = steps[0].action.lower()
+        first_service = steps[0].service.lower()
+        if (
+            "trigger" in first_action
+            or "webhook" in first_action
+            or "trigger" in first_service
+            or "webhook" in first_service
         ):
-            trigger_type = _extract_n8n_service(first_type)
+            trigger_type = steps[0].service
 
     return WorkflowDescription(
         name=json_data.get("name", "Imported n8n Workflow"),
