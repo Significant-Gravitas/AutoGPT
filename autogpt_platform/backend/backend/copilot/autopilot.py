@@ -9,7 +9,6 @@ Implementation is split by responsibility:
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
@@ -18,24 +17,9 @@ from backend.copilot.autopilot_completion import (
     CompletionReportToolCall,
     CompletionReportToolCallFunction,
     ToolOutputEnvelope,
-    _build_completion_report_repair_message,
-    _extract_completion_report_from_session,
-    _get_pending_approval_metadata,
-    _queue_completion_report_repair,
     handle_non_manual_session_completion,
 )
 from backend.copilot.autopilot_dispatch import (
-    _bucket_end_for_now,
-    _create_autopilot_session,
-    _crosses_local_midnight,
-    _enqueue_session_turn,
-    _resolve_timezone_name,
-    _session_exists_for_execution_tag,
-    _try_create_callback_session,
-    _try_create_invite_cta_session,
-    _try_create_nightly_session,
-    _user_has_recent_manual_message,
-    _user_has_session_since,
     dispatch_nightly_copilot,
     get_callback_execution_tag,
     get_graph_exec_id_for_session,
@@ -45,11 +29,6 @@ from backend.copilot.autopilot_dispatch import (
 )
 from backend.copilot.autopilot_email import (
     PendingCopilotEmailSweepResult,
-    _build_session_link,
-    _get_completion_email_template_name,
-    _markdown_to_email_html,
-    _send_completion_email,
-    _send_nightly_copilot_emails,
     send_nightly_copilot_emails,
     send_pending_copilot_emails_for_user,
 )
@@ -66,11 +45,6 @@ from backend.copilot.autopilot_prompts import (
     DEFAULT_AUTOPILOT_NIGHTLY_SYSTEM_PROMPT,
     INTERNAL_TAG_RE,
     MAX_COMPLETION_REPORT_REPAIRS,
-    _build_autopilot_system_prompt,
-    _format_start_type_label,
-    _get_recent_manual_session_context,
-    _get_recent_sent_email_context,
-    _get_recent_session_summary_context,
     strip_internal_content,
     unwrap_internal_content,
     wrap_internal_message,
@@ -83,23 +57,8 @@ __all__ = [
     "CompletionReportToolCall",
     "CompletionReportToolCallFunction",
     "ToolOutputEnvelope",
-    "_build_completion_report_repair_message",
-    "_extract_completion_report_from_session",
-    "_get_pending_approval_metadata",
-    "_queue_completion_report_repair",
     "handle_non_manual_session_completion",
     # autopilot_dispatch
-    "_bucket_end_for_now",
-    "_create_autopilot_session",
-    "_crosses_local_midnight",
-    "_enqueue_session_turn",
-    "_resolve_timezone_name",
-    "_session_exists_for_execution_tag",
-    "_try_create_callback_session",
-    "_try_create_invite_cta_session",
-    "_try_create_nightly_session",
-    "_user_has_recent_manual_message",
-    "_user_has_session_since",
     "dispatch_nightly_copilot",
     "get_callback_execution_tag",
     "get_graph_exec_id_for_session",
@@ -108,11 +67,6 @@ __all__ = [
     "trigger_autopilot_session_for_user",
     # autopilot_email
     "PendingCopilotEmailSweepResult",
-    "_build_session_link",
-    "_get_completion_email_template_name",
-    "_markdown_to_email_html",
-    "_send_completion_email",
-    "_send_nightly_copilot_emails",
     "send_nightly_copilot_emails",
     "send_pending_copilot_emails_for_user",
     # autopilot_prompts
@@ -128,11 +82,6 @@ __all__ = [
     "DEFAULT_AUTOPILOT_NIGHTLY_SYSTEM_PROMPT",
     "INTERNAL_TAG_RE",
     "MAX_COMPLETION_REPORT_REPAIRS",
-    "_build_autopilot_system_prompt",
-    "_format_start_type_label",
-    "_get_recent_manual_session_context",
-    "_get_recent_sent_email_context",
-    "_get_recent_session_summary_context",
     "strip_internal_content",
     "unwrap_internal_content",
     "wrap_internal_message",
@@ -140,9 +89,6 @@ __all__ = [
     "CallbackTokenConsumeResult",
     "consume_callback_token",
 ]
-
-
-logger = logging.getLogger(__name__)
 
 
 class CallbackTokenConsumeResult(BaseModel):

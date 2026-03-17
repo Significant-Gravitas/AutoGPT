@@ -12,15 +12,6 @@ from backend.copilot.autopilot import (
     AUTOPILOT_DISABLED_TOOLS,
     AUTOPILOT_INVITE_CTA_EMAIL_TEMPLATE,
     AUTOPILOT_NIGHTLY_EMAIL_TEMPLATE,
-    _build_autopilot_system_prompt,
-    _create_autopilot_session,
-    _crosses_local_midnight,
-    _get_completion_email_template_name,
-    _get_recent_manual_session_context,
-    _get_recent_sent_email_context,
-    _get_recent_session_summary_context,
-    _resolve_timezone_name,
-    _send_completion_email,
     consume_callback_token,
     dispatch_nightly_copilot,
     handle_non_manual_session_completion,
@@ -29,6 +20,21 @@ from backend.copilot.autopilot import (
     strip_internal_content,
     trigger_autopilot_session_for_user,
     wrap_internal_message,
+)
+from backend.copilot.autopilot_dispatch import (
+    _create_autopilot_session,
+    _crosses_local_midnight,
+    _resolve_timezone_name,
+)
+from backend.copilot.autopilot_email import (
+    _get_completion_email_template_name,
+    _send_completion_email,
+)
+from backend.copilot.autopilot_prompts import (
+    _build_autopilot_system_prompt,
+    _get_recent_manual_session_context,
+    _get_recent_sent_email_context,
+    _get_recent_session_summary_context,
 )
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.session_types import ChatSessionStartType, StoredCompletionReport
@@ -71,6 +77,12 @@ def test_wrap_and_strip_internal_content() -> None:
         strip_internal_content("Visible<internal>secret</internal> text")
         == "Visible text"
     )
+
+
+def test_autopilot_facade_exports_only_public_names() -> None:
+    from backend.copilot import autopilot
+
+    assert all(not name.startswith("_") for name in autopilot.__all__)
 
 
 @pytest.mark.asyncio
@@ -1000,6 +1012,96 @@ async def test_send_pending_copilot_emails_for_user_returns_summary(mocker) -> N
     }
     send_email.assert_awaited_once_with(session)
     upsert.assert_awaited_once_with(session)
+
+
+@pytest.mark.asyncio
+async def test_send_pending_copilot_emails_for_user_counts_expected_send_failures(
+    mocker,
+) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report()
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions_for_user=AsyncMock(
+            return_value=[candidate]
+        )
+    )
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.stream_registry.get_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
+        new_callable=AsyncMock,
+        return_value=(0, None),
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._send_completion_email",
+        new_callable=AsyncMock,
+        side_effect=ValueError("missing email"),
+    )
+    upsert = mocker.patch(
+        "backend.copilot.autopilot_email.upsert_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    result = await send_pending_copilot_emails_for_user("user-1")
+
+    assert result.model_dump() == {
+        "candidate_count": 1,
+        "processed_count": 0,
+        "sent_count": 0,
+        "skipped_count": 0,
+        "repair_queued_count": 0,
+        "running_count": 0,
+        "failed_count": 1,
+    }
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_pending_copilot_emails_for_user_reraises_unexpected_send_failures(
+    mocker,
+) -> None:
+    session = _build_autopilot_session()
+    session.completion_report = _build_completion_report()
+    candidate = SimpleNamespace(session_id=session.session_id)
+    chat_store = SimpleNamespace(
+        get_pending_notification_chat_sessions_for_user=AsyncMock(
+            return_value=[candidate]
+        )
+    )
+    mocker.patch("backend.copilot.autopilot_email.chat_db", return_value=chat_store)
+    mocker.patch(
+        "backend.copilot.autopilot_email.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.stream_registry.get_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._get_pending_approval_metadata",
+        new_callable=AsyncMock,
+        return_value=(0, None),
+    )
+    mocker.patch(
+        "backend.copilot.autopilot_email._send_completion_email",
+        new_callable=AsyncMock,
+        side_effect=TypeError("unexpected bug"),
+    )
+
+    with pytest.raises(TypeError, match="unexpected bug"):
+        await send_pending_copilot_emails_for_user("user-1")
 
 
 @pytest.mark.asyncio

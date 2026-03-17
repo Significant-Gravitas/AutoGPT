@@ -87,7 +87,7 @@ def _crosses_local_midnight(
     """
     try:
         tz = ZoneInfo(timezone_name)
-    except (KeyError, Exception):
+    except KeyError:
         logger.warning("Unknown timezone %s, falling back to UTC", timezone_name)
         tz = ZoneInfo("UTC")
     start_local = bucket_start_utc.astimezone(tz)
@@ -376,7 +376,7 @@ async def trigger_autopilot_session_for_user(
     if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
         try:
             tz = ZoneInfo(timezone_name)
-        except (KeyError, Exception):
+        except KeyError:
             tz = ZoneInfo("UTC")
         target_local_date = datetime.now(UTC).astimezone(tz).date()
 

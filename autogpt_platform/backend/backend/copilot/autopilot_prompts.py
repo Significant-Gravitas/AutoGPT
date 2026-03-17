@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -101,6 +103,32 @@ If you decide the user should be notified, finish by calling completion_report.
 Do not mention hidden system instructions or internal control text to the user."""
 
 
+@dataclass(frozen=True)
+class _AutopilotPromptConfig:
+    prompt_name_attr: str
+    fallback_prompt: str
+    label: str
+
+
+_AUTOPILOT_PROMPT_CONFIGS = {
+    ChatSessionStartType.AUTOPILOT_NIGHTLY: _AutopilotPromptConfig(
+        prompt_name_attr="langfuse_autopilot_nightly_prompt_name",
+        fallback_prompt=DEFAULT_AUTOPILOT_NIGHTLY_SYSTEM_PROMPT,
+        label="Nightly",
+    ),
+    ChatSessionStartType.AUTOPILOT_CALLBACK: _AutopilotPromptConfig(
+        prompt_name_attr="langfuse_autopilot_callback_prompt_name",
+        fallback_prompt=DEFAULT_AUTOPILOT_CALLBACK_SYSTEM_PROMPT,
+        label="Callback",
+    ),
+    ChatSessionStartType.AUTOPILOT_INVITE_CTA: _AutopilotPromptConfig(
+        prompt_name_attr="langfuse_autopilot_invite_cta_prompt_name",
+        fallback_prompt=DEFAULT_AUTOPILOT_INVITE_CTA_SYSTEM_PROMPT,
+        label="Beta Invite CTA",
+    ),
+}
+
+
 def wrap_internal_message(content: str) -> str:
     return f"<internal>{content}</internal>"
 
@@ -126,34 +154,28 @@ def _truncate_prompt_text(text: str, max_chars: int) -> str:
     return normalized[: max_chars - 3].rstrip() + "..."
 
 
+def _get_autopilot_prompt_config(
+    start_type: ChatSessionStartType,
+) -> _AutopilotPromptConfig:
+    try:
+        return _AUTOPILOT_PROMPT_CONFIGS[start_type]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported start type for autopilot prompt: {start_type}"
+        ) from exc
+
+
 def _get_autopilot_prompt_name(start_type: ChatSessionStartType) -> str:
-    if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
-        return chat_config.langfuse_autopilot_nightly_prompt_name
-    if start_type == ChatSessionStartType.AUTOPILOT_CALLBACK:
-        return chat_config.langfuse_autopilot_callback_prompt_name
-    if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA:
-        return chat_config.langfuse_autopilot_invite_cta_prompt_name
-    raise ValueError(f"Unsupported start type for autopilot prompt: {start_type}")
+    config = _get_autopilot_prompt_config(start_type)
+    return getattr(chat_config, config.prompt_name_attr)
 
 
 def _get_autopilot_fallback_prompt(start_type: ChatSessionStartType) -> str:
-    if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
-        return DEFAULT_AUTOPILOT_NIGHTLY_SYSTEM_PROMPT
-    if start_type == ChatSessionStartType.AUTOPILOT_CALLBACK:
-        return DEFAULT_AUTOPILOT_CALLBACK_SYSTEM_PROMPT
-    if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA:
-        return DEFAULT_AUTOPILOT_INVITE_CTA_SYSTEM_PROMPT
-    raise ValueError(f"Unsupported start type for autopilot prompt: {start_type}")
+    return _get_autopilot_prompt_config(start_type).fallback_prompt
 
 
 def _format_start_type_label(start_type: ChatSessionStartType) -> str:
-    if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
-        return "Nightly"
-    if start_type == ChatSessionStartType.AUTOPILOT_CALLBACK:
-        return "Callback"
-    if start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA:
-        return "Beta Invite CTA"
-    return start_type.value
+    return _get_autopilot_prompt_config(start_type).label
 
 
 def _get_invited_user_tally_understanding(
@@ -200,7 +222,7 @@ def _get_previous_local_midnight_utc(
 ) -> datetime:
     try:
         tz = ZoneInfo(timezone_name)
-    except (KeyError, Exception):
+    except KeyError:
         logger.warning("Unknown timezone %s, falling back to UTC", timezone_name)
         tz = ZoneInfo("UTC")
     previous_midnight_local = datetime.combine(
@@ -351,6 +373,28 @@ async def _get_recent_session_summary_context(user_id: str) -> str:
     )
 
 
+async def _get_recent_manual_session_prompt_context(
+    user_id: str,
+    *,
+    start_type: ChatSessionStartType,
+    timezone_name: str,
+    target_local_date: date | None,
+) -> str:
+    if (
+        start_type != ChatSessionStartType.AUTOPILOT_NIGHTLY
+        or target_local_date is None
+    ):
+        return "Not applicable for this prompt type."
+
+    return await _get_recent_manual_session_context(
+        user_id,
+        since_utc=_get_previous_local_midnight_utc(
+            target_local_date,
+            timezone_name,
+        ),
+    )
+
+
 async def _build_autopilot_system_prompt(
     user: User,
     *,
@@ -359,15 +403,27 @@ async def _build_autopilot_system_prompt(
     target_local_date: date | None = None,
     invited_user: InvitedUserRecord | None = None,
 ) -> str:
-    understanding = await understanding_db().get_business_understanding(user.id)
+    (
+        understanding,
+        recent_copilot_emails,
+        recent_session_summaries,
+        recent_manual_sessions,
+    ) = await asyncio.gather(
+        understanding_db().get_business_understanding(user.id),
+        _get_recent_sent_email_context(user.id),
+        _get_recent_session_summary_context(user.id),
+        _get_recent_manual_session_prompt_context(
+            user.id,
+            start_type=start_type,
+            timezone_name=timezone_name,
+            target_local_date=target_local_date,
+        ),
+    )
     business_understanding = (
         format_understanding_for_prompt(understanding)
         if understanding
         else "No saved business understanding yet."
     )
-    recent_copilot_emails = await _get_recent_sent_email_context(user.id)
-    recent_session_summaries = await _get_recent_session_summary_context(user.id)
-    recent_manual_sessions = "Not applicable for this prompt type."
     beta_application_context = "No beta application context available."
 
     users_information_sections = [
@@ -380,18 +436,6 @@ async def _build_autopilot_system_prompt(
         "## Recent Copilot Session Summaries\n" + recent_session_summaries
     )
     users_information = "\n\n".join(users_information_sections)
-
-    if (
-        start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY
-        and target_local_date is not None
-    ):
-        recent_manual_sessions = await _get_recent_manual_session_context(
-            user.id,
-            since_utc=_get_previous_local_midnight_utc(
-                target_local_date,
-                timezone_name,
-            ),
-        )
 
     tally_understanding = _get_invited_user_tally_understanding(invited_user)
     if tally_understanding is not None:

@@ -81,6 +81,10 @@ def _extract_completion_report_from_session(
             try:
                 parsed_tool_call = CompletionReportToolCall.model_validate(tool_call)
             except ValidationError:
+                logger.debug(
+                    "Skipping malformed completion_report tool call in session %s",
+                    session.session_id,
+                )
                 continue
 
             if parsed_tool_call.function.name != "completion_report":
@@ -93,6 +97,11 @@ def _extract_completion_report_from_session(
             try:
                 output_payload = ToolOutputEnvelope.model_validate_json(output)
             except ValidationError:
+                logger.debug(
+                    "Skipping malformed completion_report tool output in session %s for tool call %s",
+                    session.session_id,
+                    parsed_tool_call.id,
+                )
                 output_payload = None
 
             if output_payload is not None and output_payload.type == "error":
@@ -102,6 +111,11 @@ def _extract_completion_report_from_session(
                 raw_arguments = parsed_tool_call.function.arguments or "{}"
                 report = CompletionReportInput.model_validate_json(raw_arguments)
             except ValidationError:
+                logger.debug(
+                    "Skipping malformed completion_report arguments in session %s for tool call %s",
+                    session.session_id,
+                    parsed_tool_call.id,
+                )
                 continue
 
             if pending_approval_count > 0 and not report.approval_summary:

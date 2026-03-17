@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import bleach
 from markdown_it import MarkdownIt
+from postmarker.exceptions import PostmarkerException
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry
@@ -34,6 +35,13 @@ from backend.util.url import get_frontend_base_url
 
 logger = logging.getLogger(__name__)
 PENDING_NOTIFICATION_SWEEP_LIMIT = 200
+_NON_FATAL_EMAIL_SWEEP_ERRORS = (
+    ConnectionError,
+    OSError,
+    PostmarkerException,
+    TimeoutError,
+    ValueError,
+)
 
 _md = MarkdownIt("commonmark", {"html": False})
 
@@ -201,11 +209,10 @@ async def _send_completion_email(session: ChatSession) -> None:
 
     approval_cta = report.has_pending_approvals
     template_name = _get_completion_email_template_name(session.start_type)
+    cta_url = _build_session_link(session.session_id, show_autopilot=True)
     if approval_cta:
-        cta_url = _build_session_link(session.session_id, show_autopilot=True)
         cta_label = "Review in Copilot"
     else:
-        cta_url = _build_session_link(session.session_id, show_autopilot=True)
         cta_label = (
             "Try Copilot"
             if session.start_type == ChatSessionStartType.AUTOPILOT_INVITE_CTA
@@ -281,13 +288,7 @@ async def _process_pending_copilot_email_candidates(
                 }
             )
 
-        try:
-            await _ensure_session_title_for_completed_session(session)
-        except Exception:
-            logger.exception(
-                "Failed to ensure session title for session %s",
-                session.session_id,
-            )
+        await _ensure_session_title_for_completed_session(session)
 
         if not session.completion_report.should_notify_user:
             session.notification_email_skipped_at = datetime.now(UTC)
@@ -297,7 +298,7 @@ async def _process_pending_copilot_email_candidates(
 
         try:
             await _send_completion_email(session)
-        except Exception:
+        except _NON_FATAL_EMAIL_SWEEP_ERRORS:
             logger.exception(
                 "Failed to send nightly copilot email for session %s",
                 session.session_id,
