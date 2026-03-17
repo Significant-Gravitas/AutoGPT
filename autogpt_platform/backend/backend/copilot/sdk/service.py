@@ -1039,40 +1039,32 @@ async def stream_chat_completion_sdk(
                         # frontend gets a clean finish.
                         err_str = str(stream_err)
                         is_transient = is_transient_api_error(err_str)
-                        if is_transient:
-                            logger.warning(
-                                "%s Transient stream error from SDK: %s",
-                                log_prefix,
-                                stream_err,
-                                exc_info=True,
-                            )
-                        else:
-                            logger.error(
-                                "%s Stream error from SDK: %s",
-                                log_prefix,
-                                stream_err,
-                                exc_info=True,
-                            )
-                        ended_with_stream_error = True
+                        log = logger.warning if is_transient else logger.error
                         display = (
                             FRIENDLY_TRANSIENT_MSG
                             if is_transient
                             else f"SDK stream error: {stream_err}"
                         )
+                        code = (
+                            "transient_api_error"
+                            if is_transient
+                            else "sdk_stream_error"
+                        )
+
+                        log(
+                            "%s Stream error from SDK: %s",
+                            log_prefix,
+                            stream_err,
+                            exc_info=True,
+                        )
+                        ended_with_stream_error = True
                         session.messages.append(
                             ChatMessage(
                                 role="assistant",
                                 content=f"{COPILOT_ERROR_PREFIX} {display}",
                             )
                         )
-                        yield StreamError(
-                            errorText=display,
-                            code=(
-                                "transient_api_error"
-                                if is_transient
-                                else "sdk_stream_error"
-                            ),
-                        )
+                        yield StreamError(errorText=display, code=code)
                         break
 
                     logger.info(
