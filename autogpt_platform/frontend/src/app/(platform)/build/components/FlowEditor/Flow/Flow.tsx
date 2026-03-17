@@ -112,10 +112,10 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
-          selectionOnDrag={!isLocked}
+          selectionOnDrag={false}
           selectionMode={SelectionMode.Partial}
-          multiSelectionKeyCode={["Shift", "Meta", "Control"]}
-          panOnDrag={isLocked ? true : [1, 2]}
+          selectionKeyCode="Shift"
+          panOnDrag
           panOnScroll
           deleteKeyCode={["Backspace", "Delete"]}
         >
