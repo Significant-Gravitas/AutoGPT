@@ -145,20 +145,20 @@ class TestRunValidation:
         assert "error" not in outputs
 
     @pytest.mark.asyncio
-    async def test_exception_yields_session_id_and_error(self, block):
-        """On failure, run() should still yield session_id and an error message."""
+    async def test_exception_propagates(self, block):
+        """On unexpected failure, run() should let the exception propagate.
+
+        The base Block.execute() wraps unhandled exceptions into
+        BlockExecutionError, so run() does not catch generic exceptions.
+        """
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("boom"))
         block.create_session = AsyncMock(return_value="sess-fail")
 
         input_data = block.Input(prompt="do something", max_recursion_depth=3)
         ctx = _make_context()
-        outputs = {}
-        async for name, value in block.run(input_data, execution_context=ctx):
-            outputs[name] = value
-
-        assert outputs["session_id"] == "sess-fail"
-        assert "boom" in outputs["error"]
-        assert "response" not in outputs
+        with pytest.raises(RuntimeError, match="boom"):
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
 
     @pytest.mark.asyncio
     async def test_cancelled_error_yields_error_and_reraises(self, block):

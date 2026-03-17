@@ -47,50 +47,6 @@ class TokenUsage(TypedDict):
     total_tokens: int
 
 
-# Task-scoped recursion depth counter & chain-wide limit.
-# contextvars are scoped to the current asyncio task, so concurrent
-# graph executions each get independent counters.
-_autopilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "_autopilot_recursion_depth", default=0
-)
-_autopilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
-    "_autopilot_recursion_limit", default=None
-)
-
-
-def _check_recursion(
-    max_depth: int,
-) -> tuple[contextvars.Token[int], contextvars.Token[int | None]]:
-    """Check and increment recursion depth.
-
-    Returns ContextVar tokens that must be passed to ``_reset_recursion``
-    when the caller exits to restore the previous depth.
-
-    Raises:
-        RuntimeError: If the current depth already meets or exceeds the limit.
-    """
-    current = _autopilot_recursion_depth.get()
-    inherited = _autopilot_recursion_limit.get()
-    limit = max_depth if inherited is None else min(inherited, max_depth)
-    if current >= limit:
-        raise RuntimeError(
-            f"AutoPilot recursion depth limit reached ({limit}). "
-            "The autopilot has called itself too many times."
-        )
-    return (
-        _autopilot_recursion_depth.set(current + 1),
-        _autopilot_recursion_limit.set(limit),
-    )
-
-
-def _reset_recursion(
-    tokens: tuple[contextvars.Token[int], contextvars.Token[int | None]],
-) -> None:
-    """Restore recursion depth and limit to their previous values."""
-    _autopilot_recursion_depth.reset(tokens[0])
-    _autopilot_recursion_limit.reset(tokens[1])
-
-
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
@@ -413,7 +369,51 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
-        except Exception as e:
-            logger.exception("AutoPilot execution failed for session %s", sid)
-            yield "session_id", sid
-            yield "error", str(e)
+
+
+# ---------------------------------------------------------------------------
+# Helpers – placed after the block class for top-down readability.
+# ---------------------------------------------------------------------------
+
+# Task-scoped recursion depth counter & chain-wide limit.
+# contextvars are scoped to the current asyncio task, so concurrent
+# graph executions each get independent counters.
+_autopilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "_autopilot_recursion_depth", default=0
+)
+_autopilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "_autopilot_recursion_limit", default=None
+)
+
+
+def _check_recursion(
+    max_depth: int,
+) -> tuple[contextvars.Token[int], contextvars.Token[int | None]]:
+    """Check and increment recursion depth.
+
+    Returns ContextVar tokens that must be passed to ``_reset_recursion``
+    when the caller exits to restore the previous depth.
+
+    Raises:
+        RuntimeError: If the current depth already meets or exceeds the limit.
+    """
+    current = _autopilot_recursion_depth.get()
+    inherited = _autopilot_recursion_limit.get()
+    limit = max_depth if inherited is None else min(inherited, max_depth)
+    if current >= limit:
+        raise RuntimeError(
+            f"AutoPilot recursion depth limit reached ({limit}). "
+            "The autopilot has called itself too many times."
+        )
+    return (
+        _autopilot_recursion_depth.set(current + 1),
+        _autopilot_recursion_limit.set(limit),
+    )
+
+
+def _reset_recursion(
+    tokens: tuple[contextvars.Token[int], contextvars.Token[int | None]],
+) -> None:
+    """Restore recursion depth and limit to their previous values."""
+    _autopilot_recursion_depth.reset(tokens[0])
+    _autopilot_recursion_limit.reset(tokens[1])
