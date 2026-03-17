@@ -2,7 +2,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { useLibraryImportWorkflowDialog } from "./useLibraryImportWorkflowDialog";
@@ -10,7 +9,6 @@ import { useLibraryImportWorkflowDialog } from "./useLibraryImportWorkflowDialog
 export default function LibraryImportWorkflowDialog() {
   const {
     onSubmit,
-    isConverting,
     isOpen,
     setIsOpen,
     importMode,
@@ -69,8 +67,8 @@ export default function LibraryImportWorkflowDialog() {
         </div>
 
         <p className="mb-4 text-sm text-neutral-500">
-          Import workflows from n8n, Make.com, or Zapier. The workflow will be
-          automatically converted to an AutoGPT agent.
+          Import workflows from n8n, Make.com, or Zapier. AutoPilot will
+          automatically convert it to an AutoGPT agent.
         </p>
 
         {importMode === "file" ? (
@@ -99,17 +97,10 @@ export default function LibraryImportWorkflowDialog() {
           type="button"
           variant="primary"
           className="min-w-[18rem]"
-          disabled={!hasInput || isConverting}
+          disabled={!hasInput}
           onClick={onSubmit}
         >
-          {isConverting ? (
-            <div className="flex items-center gap-2">
-              <LoadingSpinner size="small" className="text-white" />
-              <span>Parsing workflow...</span>
-            </div>
-          ) : (
-            "Import to AutoPilot"
-          )}
+          Import to AutoPilot
         </Button>
       </Dialog.Content>
     </Dialog>

@@ -24,6 +24,7 @@ from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
+from .import_workflow import ImportWorkflowTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -59,6 +60,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
+    "import_workflow": ImportWorkflowTool(),
     "find_library_agent": FindLibraryAgentTool(),
     # Folder management tools
     "create_folder": CreateFolderTool(),

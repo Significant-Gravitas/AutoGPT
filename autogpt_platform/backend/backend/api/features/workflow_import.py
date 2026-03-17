@@ -96,8 +96,8 @@ async def import_workflow(
     # Step 3: Describe the workflow
     desc = describe_workflow(workflow_json, fmt)
 
-    # Step 4: Build CoPilot prompt
-    prompt = build_copilot_prompt(desc)
+    # Step 4: Build AutoPilot prompt (include raw JSON for full context)
+    prompt = build_copilot_prompt(desc, workflow_json)
 
     return ImportWorkflowResponse(
         copilot_prompt=prompt,

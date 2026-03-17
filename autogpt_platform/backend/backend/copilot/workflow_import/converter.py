@@ -6,18 +6,25 @@ the multi-turn tool-use pipeline (find_block, create_agent, fixer, validator)
 for reliable workflow-to-agent conversion.
 """
 
+import json
+from typing import Any
+
 from .models import WorkflowDescription
 
 
-def build_copilot_prompt(desc: WorkflowDescription) -> str:
-    """Build an AutoPilot prompt from a parsed WorkflowDescription.
+def build_copilot_prompt(
+    desc: WorkflowDescription, raw_workflow: dict[str, Any]
+) -> str:
+    """Build an AutoPilot prompt with both a summary and the raw workflow JSON.
 
     Args:
         desc: Structured description of the source workflow.
+        raw_workflow: The original workflow JSON for full context.
 
     Returns:
         A user-facing prompt string for AutoPilot.
     """
+    # Human-readable summary for quick orientation
     steps_lines: list[str] = []
     for step in desc.steps:
         line = f"  {step.order}. [{step.service}] {step.action}"
@@ -31,13 +38,19 @@ def build_copilot_prompt(desc: WorkflowDescription) -> str:
 
     trigger_line = f"\nTrigger: {desc.trigger_type}" if desc.trigger_type else ""
 
+    raw_json = json.dumps(raw_workflow, indent=2, default=str)
+
     return f"""I want to import a workflow from {desc.source_format.value} and recreate it as an AutoGPT agent.
 
 **Workflow name**: {desc.name}
-**Description**: {desc.description}
 {trigger_line}
 
-**Functional steps** (non-functional nodes like sticky notes have been filtered out):
+**Summary of functional steps**:
 {steps_text}
+
+**Full original {desc.source_format.value} workflow JSON** (use this for complete node configs, parameters, and connections):
+```json
+{raw_json}
+```
 
 Please build an AutoGPT agent that replicates this workflow. Map each step to the most appropriate AutoGPT block(s), wire them together, and save it.""".strip()
