@@ -4,6 +4,7 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { IntegrationLinkImage } from "@/components/molecules/IntegrationLinkImage/IntegrationLinkImage";
 
 interface StoreCardProps {
   agentName: string;
@@ -15,6 +16,7 @@ interface StoreCardProps {
   avatarSrc: string;
   hideAvatar?: boolean;
   creatorName?: string;
+  topIntegrations?: Array<{ name: string; type: "provider" | "category" }>;
 }
 
 export const StoreCard: React.FC<StoreCardProps> = ({
@@ -27,6 +29,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   avatarSrc,
   hideAvatar = false,
   creatorName,
+  topIntegrations,
 }) => {
   const handleClick = () => {
     onClick();
@@ -48,12 +51,18 @@ export const StoreCard: React.FC<StoreCardProps> = ({
     >
       {/* First Section: Image with Avatar */}
       <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-3xl md:aspect-[2.17/1]">
-        {agentImage && (
+        {agentImage ? (
           <Image
             src={agentImage}
             alt={`${agentName} preview image`}
             fill
             className="object-cover"
+          />
+        ) : (
+          <IntegrationLinkImage
+            integrations={topIntegrations ?? []}
+            size="md"
+            className="absolute inset-0 h-full w-full"
           />
         )}
         {!hideAvatar && (

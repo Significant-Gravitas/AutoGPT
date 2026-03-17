@@ -10,6 +10,7 @@ import {
 } from "@/components/__legacy__/ui/card";
 import { useState } from "react";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { IntegrationLinkImage } from "@/components/molecules/IntegrationLinkImage/IntegrationLinkImage";
 
 interface FeaturedStoreCardProps {
   agent: StoreAgent;
@@ -40,15 +41,32 @@ export const FeaturedAgentCard = ({
       </CardHeader>
       <CardContent className="flex-1 p-4">
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
-          <Image
-            src={agent.agent_image || "/autogpt-logo-dark-bg.png"}
-            alt={`${agent.agent_name} preview`}
-            fill
-            sizes="100%"
-            className={`object-cover transition-opacity duration-200 ${
-              isHovered ? "opacity-0" : "opacity-100"
-            }`}
-          />
+          {agent.agent_image ? (
+            <Image
+              src={agent.agent_image}
+              alt={`${agent.agent_name} preview`}
+              fill
+              sizes="100%"
+              className={`object-cover transition-opacity duration-200 ${
+                isHovered ? "opacity-0" : "opacity-100"
+              }`}
+            />
+          ) : (
+            <IntegrationLinkImage
+              integrations={
+                "top_integrations" in agent
+                  ? (agent.top_integrations as Array<{
+                      name: string;
+                      type: "provider" | "category";
+                    }>)
+                  : []
+              }
+              size="lg"
+              className={`absolute inset-0 h-full w-full transition-opacity duration-200 ${
+                isHovered ? "opacity-0" : "opacity-100"
+              }`}
+            />
+          )}
           <div
             className={`absolute inset-0 overflow-y-auto p-4 transition-opacity duration-200 ${
               isHovered ? "opacity-100" : "opacity-0"

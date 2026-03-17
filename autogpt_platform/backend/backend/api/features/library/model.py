@@ -1,3 +1,4 @@
+import collections
 import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
@@ -6,6 +7,7 @@ import prisma.enums
 import prisma.models
 import pydantic
 
+from backend.blocks._base import BlockCategory
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
 from backend.data.model import (
     CredentialsMetaInput,
@@ -144,6 +146,15 @@ class RecentExecution(pydantic.BaseModel):
     activity_summary: str | None = None
 
 
+def _parse_top_integrations(
+    raw: object, graph: GraphModel
+) -> list[dict[str, str]]:
+    """Parse topIntegrations from database, falling back to on-the-fly computation."""
+    if raw and isinstance(raw, list) and len(raw) > 0:
+        return [dict(item) for item in raw]
+    return _compute_top_integrations(graph)
+
+
 def _parse_settings(settings: dict | str | None) -> GraphSettings:
     """Parse settings from database, handling both dict and string formats."""
     if settings is None:
@@ -154,6 +165,62 @@ def _parse_settings(settings: dict | str | None) -> GraphSettings:
         return GraphSettings.model_validate(settings)
     except Exception:
         return GraphSettings()
+
+
+# Priority order for category-based integration entries
+_CATEGORY_PRIORITY: list[BlockCategory] = [
+    BlockCategory.AI,
+    BlockCategory.SOCIAL,
+    BlockCategory.COMMUNICATION,
+    BlockCategory.DEVELOPER_TOOLS,
+    BlockCategory.DATA,
+    BlockCategory.CRM,
+    BlockCategory.PRODUCTIVITY,
+    BlockCategory.ISSUE_TRACKING,
+    BlockCategory.TEXT,
+    BlockCategory.SEARCH,
+    BlockCategory.MULTIMEDIA,
+    BlockCategory.MARKETING,
+    BlockCategory.LOGIC,
+    BlockCategory.BASIC,
+    BlockCategory.INPUT,
+    BlockCategory.OUTPUT,
+]
+
+
+def _compute_top_integrations(
+    graph: GraphModel,
+) -> list[dict[str, str]]:
+    """Compute the top integrations used by an agent's graph.
+
+    Returns up to 5 entries: providers first (by frequency), then categories.
+    """
+    provider_counter: collections.Counter[str] = collections.Counter()
+    category_counter: collections.Counter[BlockCategory] = collections.Counter()
+
+    for g in [graph, *graph.sub_graphs]:
+        for node in g.nodes:
+            for info in node.block.input_schema.get_credentials_fields_info().values():
+                for provider in info.provider:
+                    provider_counter[provider] += 1
+
+            if node.block.categories:
+                for cat in node.block.categories:
+                    category_counter[cat] += 1
+
+    result: list[dict[str, str]] = [
+        {"name": name, "type": "provider"}
+        for name, _ in provider_counter.most_common(5)
+    ]
+
+    if len(result) < 5:
+        for cat in _CATEGORY_PRIORITY:
+            if len(result) >= 5:
+                break
+            if category_counter.get(cat, 0) > 0:
+                result.append({"name": cat.name, "type": "category"})
+
+    return result
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -215,6 +282,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     recommended_schedule_cron: str | None = None
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+    top_integrations: list[dict[str, str]] = pydantic.Field(default_factory=list)
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -355,6 +423,9 @@ class LibraryAgent(pydantic.BaseModel):
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=_parse_settings(agent.settings),
+            top_integrations=_parse_top_integrations(
+                agent.topIntegrations, graph
+            ),
             marketplace_listing=marketplace_listing_data,
         )
 

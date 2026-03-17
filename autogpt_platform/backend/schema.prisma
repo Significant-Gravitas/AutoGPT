@@ -440,6 +440,8 @@ model LibraryAgent {
 
   settings Json @default("{}")
 
+  topIntegrations Json @default("[]")
+
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
