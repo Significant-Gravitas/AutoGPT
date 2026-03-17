@@ -3,6 +3,7 @@ import type { ImportWorkflowRequest } from "@/app/api/__generated__/models/impor
 import type { ImportWorkflowResponse } from "@/app/api/__generated__/models/importWorkflowResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { importWorkflowFormSchema } from "./LibraryImportWorkflowDialog";
 export function useLibraryImportWorkflowDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
   const [importMode, setImportMode] = useState<"file" | "url">("file");
 
   const { mutateAsync: importWorkflow, isPending: isConverting } =
@@ -66,7 +68,7 @@ export function useLibraryImportWorkflowDialog() {
       });
 
       if (data.graph_id) {
-        window.location.href = `/build?flowID=${data.graph_id}`;
+        router.push(`/build?flowID=${data.graph_id}`);
       }
     } catch (error) {
       console.error("Import failed:", error);

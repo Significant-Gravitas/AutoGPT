@@ -191,6 +191,8 @@ class TestImportWorkflow:
         )
         assert response.status_code == 500
         assert "could not be saved" in response.json()["detail"]
+        # Ensure internal error details are not leaked
+        assert "DB connection failed" not in response.json()["detail"]
 
     def test_url_fetch_bad_url_returns_400(self, mocker):
         mocker.patch(

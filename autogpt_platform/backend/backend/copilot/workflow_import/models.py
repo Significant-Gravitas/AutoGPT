@@ -19,8 +19,8 @@ class StepDescription(pydantic.BaseModel):
     order: int
     action: str
     service: str
-    parameters: dict[str, Any] = {}
-    connections_to: list[int] = []
+    parameters: dict[str, Any] = pydantic.Field(default_factory=dict)
+    connections_to: list[int] = pydantic.Field(default_factory=list)
 
 
 class WorkflowDescription(pydantic.BaseModel):

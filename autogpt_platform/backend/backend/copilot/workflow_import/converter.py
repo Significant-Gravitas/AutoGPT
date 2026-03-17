@@ -8,12 +8,11 @@ import functools
 import json
 import logging
 import pathlib
+import threading
 from typing import Any
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools.agent_generator.blocks import get_blocks_as_dicts
-from backend.copilot.tools.agent_generator.fixer import AgentFixer
-from backend.copilot.tools.agent_generator.validator import AgentValidator
 
 from .models import WorkflowDescription
 
@@ -25,23 +24,29 @@ _AGENT_GUIDE_PATH = (
 
 _MAX_RETRIES = 1
 
-# Cached LLM client — created once on first use
+# Cached LLM client — created once on first use, guarded by lock
 _llm_client: Any = None
 _llm_config: ChatConfig | None = None
+_llm_lock = threading.Lock()
 
 
 def _get_llm_client() -> tuple[Any, ChatConfig]:
-    """Return a cached LangfuseAsyncOpenAI client."""
+    """Return a cached LangfuseAsyncOpenAI client (thread-safe)."""
     global _llm_client, _llm_config
-    if _llm_client is None:
-        from langfuse.openai import (
-            AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
-        )
+    if _llm_client is not None:
+        assert _llm_config is not None
+        return _llm_client, _llm_config
 
-        _llm_config = ChatConfig()
-        _llm_client = LangfuseAsyncOpenAI(
-            api_key=_llm_config.api_key, base_url=_llm_config.base_url
-        )
+    with _llm_lock:
+        if _llm_client is None:
+            from langfuse.openai import (
+                AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
+            )
+
+            _llm_config = ChatConfig()
+            _llm_client = LangfuseAsyncOpenAI(
+                api_key=_llm_config.api_key, base_url=_llm_config.base_url
+            )
     assert _llm_config is not None
     return _llm_client, _llm_config
 
@@ -52,12 +57,26 @@ def _load_agent_guide() -> str:
     return _AGENT_GUIDE_PATH.read_text()
 
 
+_MAX_CATALOG_BLOCKS = 200
+_MAX_CATALOG_CHARS = 50_000
+
+
 def _build_block_catalog(blocks: list[dict[str, Any]]) -> str:
-    """Build a compact block catalog string for the LLM prompt."""
+    """Build a compact block catalog string for the LLM prompt.
+
+    Caps at _MAX_CATALOG_BLOCKS entries / _MAX_CATALOG_CHARS to avoid
+    exceeding the LLM context window.
+    """
     lines: list[str] = []
-    for b in blocks:
+    total_len = 0
+    for b in blocks[:_MAX_CATALOG_BLOCKS]:
         desc = (b.get("description") or "")[:200]
-        lines.append(f"- **{b['name']}** (id: `{b['id']}`): {desc}")
+        line = f"- **{b['name']}** (id: `{b['id']}`): {desc}"
+        total_len += len(line) + 1
+        if total_len > _MAX_CATALOG_CHARS:
+            lines.append(f"... and {len(blocks) - len(lines)} more blocks")
+            break
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -203,20 +222,24 @@ async def convert_workflow(
         agent_json.setdefault("version", 1)
         agent_json.setdefault("is_active", True)
 
-        # Auto-fix
+        # Auto-fix (lazy import to avoid heavy module load at import time)
         try:
+            from backend.copilot.tools.agent_generator.fixer import AgentFixer
+
             fixer = AgentFixer()
             agent_json = fixer.apply_all_fixes(agent_json, blocks)
             fixes = fixer.get_fixes_applied()
             if fixes:
                 conversion_notes.append(f"Applied {len(fixes)} auto-fixes")
-                logger.info(f"Applied {len(fixes)} auto-fixes to imported agent")
+                logger.info("Applied %d auto-fixes to imported agent", len(fixes))
         except Exception as e:
-            logger.warning(f"Auto-fix failed: {e}")
+            logger.warning("Auto-fix failed: %s", e)
             conversion_notes.append(f"Auto-fix warning: {e}")
 
-        # Validate
+        # Validate (lazy import to avoid heavy module load at import time)
         try:
+            from backend.copilot.tools.agent_generator.validator import AgentValidator
+
             validator = AgentValidator()
             is_valid, _ = validator.validate(agent_json, blocks)
             if not is_valid:
@@ -231,7 +254,7 @@ async def convert_workflow(
                 conversion_notes.extend(f"Validation warning: {e}" for e in errors[:5])
                 conversion_notes.append("Agent may need manual fixes in the builder")
         except Exception as e:
-            logger.warning(f"Validation exception: {e}")
+            logger.warning("Validation exception: %s", e)
             conversion_notes.append(f"Validation could not complete: {e}")
 
         return agent_json, conversion_notes

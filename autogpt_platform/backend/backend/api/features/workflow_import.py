@@ -116,10 +116,11 @@ async def import_workflow(
             library_agent_id = library_agent.id
             conversion_notes.append(f"Agent saved as '{created_graph.name}'")
         except Exception as e:
-            logger.error(f"Failed to save imported agent: {e}", exc_info=True)
+            logger.error("Failed to save imported agent: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"Workflow was converted but could not be saved: {e}",
+                detail="Workflow was converted but could not be saved. "
+                "Please try again.",
             ) from e
 
     return ImportWorkflowResponse(
