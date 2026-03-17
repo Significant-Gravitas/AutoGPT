@@ -307,9 +307,10 @@ class AutoPilotBlock(Block):
                         tc["output"] = event.output
                         tc["success"] = event.success
                 elif isinstance(event, StreamUsage):
-                    total_usage["prompt_tokens"] += event.promptTokens
-                    total_usage["completion_tokens"] += event.completionTokens
-                    total_usage["total_tokens"] += event.totalTokens
+                    usage = event.model_dump()
+                    total_usage["prompt_tokens"] += usage["promptTokens"]
+                    total_usage["completion_tokens"] += usage["completionTokens"]
+                    total_usage["total_tokens"] += usage["totalTokens"]
                 elif isinstance(event, StreamError):
                     raise RuntimeError(f"AutoPilot error: {event.errorText}")
 
