@@ -3,6 +3,7 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { environment } from "@/services/environment";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
@@ -26,6 +27,30 @@ export async function signup(
         success: false,
         error: "Invalid signup payload",
       };
+    }
+
+    // Pre-check invite eligibility before creating a Supabase auth user.
+    // This prevents orphaned auth accounts when the invite gate is enabled.
+    try {
+      const checkResponse = await fetch(
+        `${environment.getAGPTServerApiUrl()}/auth/check-invite`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: parsed.data.email }),
+        },
+      );
+
+      if (checkResponse.ok) {
+        const { allowed } = await checkResponse.json();
+        if (!allowed) {
+          return { success: false, error: "not_allowed" };
+        }
+      }
+      // If the check fails (backend unreachable), fall through to signup —
+      // the backend-level check in get_or_activate_user() still catches it.
+    } catch {
+      // Graceful fallback: don't block signup if the pre-check itself fails.
     }
 
     const supabase = await getServerSupabase();

@@ -55,7 +55,11 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
-from backend.data.invited_user import get_or_activate_user
+from backend.data.invited_user import (
+    check_invite_eligibility,
+    get_or_activate_user,
+    normalize_email,
+)
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -127,6 +131,34 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+
+
+class CheckInviteRequest(BaseModel):
+    email: str
+
+
+class CheckInviteResponse(BaseModel):
+    allowed: bool
+
+
+@v1_router.post(
+    "/auth/check-invite",
+    summary="Check if an email is allowed to sign up",
+    tags=["auth"],
+)
+async def check_invite_route(
+    request: CheckInviteRequest,
+) -> CheckInviteResponse:
+    if not settings.config.enable_invite_gate:
+        return CheckInviteResponse(allowed=True)
+
+    normalized = normalize_email(request.email)
+
+    if normalized.endswith("@agpt.co"):
+        return CheckInviteResponse(allowed=True)
+
+    allowed = await check_invite_eligibility(normalized)
+    return CheckInviteResponse(allowed=allowed)
 
 
 @v1_router.post(
