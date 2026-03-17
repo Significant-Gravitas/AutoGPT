@@ -1,7 +1,6 @@
 import test from "@playwright/test";
+import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
-import { TEST_CREDENTIALS } from "./credentials";
-import { getSelectors } from "./utils/selectors";
 import {
   hasUrl,
   isDisabled,
@@ -9,6 +8,7 @@ import {
   isHidden,
   isVisible,
 } from "./utils/assertion";
+import { getSelectors } from "./utils/selectors";
 
 test("user can publish an agent through the complete flow", async ({
   page,
@@ -17,7 +17,8 @@ test("user can publish an agent through the complete flow", async ({
 
   const loginPage = new LoginPage(page);
   await page.goto("/login");
-  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+  const richUser = getTestUserWithLibraryAgents();
+  await loginPage.login(richUser.email, richUser.password);
   await hasUrl(page, "/marketplace");
 
   await page.goto("/marketplace");
@@ -82,7 +83,9 @@ test("should display appropriate content in agent creation modal when user is lo
   await getButton("Become a creator").click();
 
   await isVisible(
-    getText("Uh-oh.. It seems like you don't have any agents in your library."),
+    getText(
+      "Log in or create an account to publish your agents to the marketplace and join a community of creators",
+    ),
   );
 });
 
@@ -93,7 +96,8 @@ test("should validate all form fields in publish agent form", async ({
 
   const loginPage = new LoginPage(page);
   await page.goto("/login");
-  await loginPage.login(TEST_CREDENTIALS.email, TEST_CREDENTIALS.password);
+  const richUser = getTestUserWithLibraryAgents();
+  await loginPage.login(richUser.email, richUser.password);
   await hasUrl(page, "/marketplace");
 
   await page.goto("/marketplace");

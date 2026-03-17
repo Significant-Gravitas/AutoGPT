@@ -1,24 +1,20 @@
-import json
+import logging
 import re
-from typing import Any, Type, TypeGuard, TypeVar, overload
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import orjson
-from fastapi.encoders import jsonable_encoder
+from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
-from pydantic import BaseModel
 
+from .truncate import truncate
 from .type import type_match
+
+logger = logging.getLogger(__name__)
 
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
-
-
-def to_dict(data) -> dict:
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
-    return jsonable_encoder(data)
 
 
 def dumps(
@@ -76,19 +72,58 @@ def dumps(
 
 T = TypeVar("T")
 
+# Sentinel value to detect when fallback is not provided
+_NO_FALLBACK = object()
+
 
 @overload
-def loads(data: str | bytes, *args, target_type: Type[T], **kwargs) -> T: ...
+def loads(
+    data: str | bytes, *args, target_type: Type[T], fallback: T | None = None, **kwargs
+) -> T:
+    pass
 
 
 @overload
-def loads(data: str | bytes, *args, **kwargs) -> Any: ...
+def loads(data: str | bytes, *args, fallback: Any = None, **kwargs) -> Any:
+    pass
 
 
 def loads(
-    data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
+    data: str | bytes,
+    *args,
+    target_type: Type[T] | None = None,
+    fallback: Any = _NO_FALLBACK,
+    **kwargs,
 ) -> Any:
-    parsed = orjson.loads(data)
+    """Parse JSON with optional fallback on decode errors.
+
+    Args:
+        data: JSON string or bytes to parse
+        target_type: Optional type to validate/cast result to
+        fallback: Value to return on JSONDecodeError. If not provided, raises.
+        **kwargs: Additional arguments (unused, for compatibility)
+
+    Returns:
+        Parsed JSON data, or fallback value if parsing fails
+
+    Raises:
+        orjson.JSONDecodeError: Only if fallback is not provided
+
+    Examples:
+        >>> loads('{"valid": "json"}')
+        {'valid': 'json'}
+        >>> loads('invalid json', fallback=None)
+        None
+        >>> loads('invalid json', fallback={})
+        {}
+        >>> loads('invalid json')  # raises orjson.JSONDecodeError
+    """
+    try:
+        parsed = orjson.loads(data)
+    except orjson.JSONDecodeError:
+        if fallback is not _NO_FALLBACK:
+            return fallback
+        raise
 
     if target_type:
         return type_match(parsed, target_type)
@@ -109,34 +144,62 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def is_list_of_basemodels(value: object) -> TypeGuard[list[BaseModel]]:
-    return isinstance(value, list) and all(
-        isinstance(item, BaseModel) for item in value
-    )
+def sanitize_string(value: str) -> str:
+    """Remove PostgreSQL-incompatible control characters from string.
+
+    Strips \\x00-\\x08, \\x0B-\\x0C, \\x0E-\\x1F, \\x7F while keeping tab,
+    newline, and carriage return.  Use this before inserting free-form text
+    into PostgreSQL text/varchar columns.
+    """
+    return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
-def convert_pydantic_to_json(output_data: Any) -> Any:
-    if isinstance(output_data, BaseModel):
-        return output_data.model_dump()
-    if is_list_of_basemodels(output_data):
-        return [item.model_dump() for item in output_data]
-    return output_data
+def sanitize_json(data: Any) -> Any:
+    try:
+        # Use two-pass approach for consistent string sanitization:
+        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+        # 2. Then sanitize strings in the result
+        basic_result = to_dict(data)
+        return to_dict(basic_result, custom_encoder={str: sanitize_string})
+    except Exception as e:
+        # Log the failure and fall back to string representation
+        logger.error(
+            "SafeJson fallback to string representation due to serialization error: %s (%s). "
+            "Data type: %s, Data preview: %s",
+            type(e).__name__,
+            truncate(str(e), 200),
+            type(data).__name__,
+            truncate(str(data), 100),
+        )
+
+        # Ultimate fallback: convert to string representation and sanitize
+        return sanitize_string(str(data))
 
 
-def SafeJson(data: Any) -> Json:
+class SafeJson(Json):
     """
     Safely serialize data and return Prisma's Json type.
-    Sanitizes null bytes to prevent PostgreSQL 22P05 errors.
-    """
-    if isinstance(data, BaseModel):
-        json_string = data.model_dump_json(
-            warnings="error",
-            exclude_none=True,
-            fallback=lambda v: None,
-        )
-    else:
-        json_string = dumps(data, default=lambda v: None)
+    Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
-    # Remove PostgreSQL-incompatible control characters in single regex operation
-    sanitized_json = POSTGRES_CONTROL_CHARS.sub("", json_string)
-    return Json(json.loads(sanitized_json))
+    This function:
+    1. Converts Pydantic models to dicts (recursively using to_dict)
+    2. Recursively removes PostgreSQL-incompatible control characters from strings
+    3. Returns a Prisma Json object safe for database storage
+
+    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a two-pass approach.
+
+    Args:
+        data: Input data to sanitize and convert to Json
+
+    Returns:
+        Prisma Json object with control characters removed
+
+    Examples:
+        >>> SafeJson({"text": "Hello\\x00World"})  # null char removed
+        >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
+        >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
+    """
+
+    def __init__(self, data: Any):
+        super().__init__(sanitize_json(data))

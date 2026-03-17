@@ -1,10 +1,14 @@
 import {
+  ApiError,
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
-import { isServerSide } from "@/lib/utils/is-server-side";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
 
+import {
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "@/lib/constants";
+import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
@@ -12,10 +16,10 @@ const FRONTEND_BASE_URL =
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBaseUrl = (): string => {
-  if (!isServerSide()) {
+  if (!environment.isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return getAgptServerBaseUrl();
+    return environment.getAGPTServerBaseUrl();
   }
 };
 
@@ -37,11 +41,9 @@ export const customMutator = async <
   T extends { data: any; status: number; headers: Headers },
 >(
   url: string,
-  options: RequestInit & {
-    params?: any;
-  } = {},
+  options: RequestInit,
 ): Promise<T> => {
-  const { params, ...requestOptions } = options;
+  const requestOptions = options;
   const method = (requestOptions.method || "GET") as
     | "GET"
     | "POST"
@@ -52,6 +54,22 @@ export const customMutator = async <
   let headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
+
+  if (environment.isClientSide()) {
+    try {
+      const impersonatedUserId = sessionStorage.getItem(
+        IMPERSONATION_STORAGE_KEY,
+      );
+      if (impersonatedUserId) {
+        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+      }
+    } catch (error) {
+      console.error(
+        "Admin impersonation: Failed to access sessionStorage:",
+        error,
+      );
+    }
+  }
 
   const isFormData = data instanceof FormData;
   const contentType = isFormData ? "multipart/form-data" : "application/json";
@@ -67,16 +85,13 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const queryString = params
-    ? "?" + new URLSearchParams(params).toString()
-    : "";
-
   const baseUrl = getBaseUrl();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
-  const fullUrl = `${baseUrl}${url}${queryString}`;
+  // here url also contains encoded query params
+  const fullUrl = `${baseUrl}${url}`;
 
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     try {
       const token = await getServerAuthToken();
       const authHeaders = createRequestHeaders(token, !!data, contentType);
@@ -93,23 +108,52 @@ export const customMutator = async <
     body: data,
   });
 
-  // Error handling for server-side requests
-  // We do not need robust error handling for server-side requests; we only need to log the error message and throw the error.
-  // What happens if the server-side request fails?
-  // 1. The error will be logged in the terminal, then.
-  // 2. The error will be thrown, so the cached data for this particular queryKey will be empty, then.
-  // 3. The client-side will send the request again via the proxy. If it fails again, the error will be handled on the client side.
-  // 4. If the request succeeds on the server side, the data will be cached, and the client will use it instead of sending a request to the proxy.
+  // Check if response is a redirect (3xx) and redirect is allowed
+  const allowRedirect = requestOptions.redirect !== "error";
+  const isRedirect = response.status >= 300 && response.status < 400;
 
-  if (!response.ok && isServerSide()) {
-    console.error("Request failed on server side", response, fullUrl);
-    throw new Error(`Request failed with status ${response.status}`);
+  // For redirect responses, return early without trying to parse body
+  if (allowRedirect && isRedirect) {
+    return {
+      status: response.status,
+      data: null,
+      headers: response.headers,
+    } as T;
   }
 
-  const response_data = await getBody<T["data"]>(response);
+  if (!response.ok) {
+    let responseData: any = null;
+    try {
+      responseData = await getBody<any>(response);
+    } catch (error) {
+      console.warn("Failed to parse error response body:", error);
+      responseData = { error: "Failed to parse response" };
+    }
+
+    const errorMessage =
+      responseData?.detail ||
+      responseData?.message ||
+      response.statusText ||
+      `HTTP ${response.status}`;
+
+    console.error(
+      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
+      {
+        status: response.status,
+        method,
+        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+        errorMessage,
+        responseData: responseData || "No response data",
+      },
+    );
+
+    throw new ApiError(errorMessage, response.status, responseData);
+  }
+
+  const responseData = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(response_data);
+  const transformedData = transformDates(responseData);
 
   return {
     status: response.status,

@@ -1,7 +1,7 @@
 import { HelpItem } from "@/components/auth/help-item";
 import { Card, CardContent } from "@/components/__legacy__/ui/card";
-import { BehaveAs } from "@/lib/utils";
 import { AlertCircle, CheckCircle } from "lucide-react";
+import { BehaveAs } from "@/services/environment";
 
 interface Props {
   type: "login" | "signup";

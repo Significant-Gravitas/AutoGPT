@@ -20,7 +20,7 @@ test("user can signup successfully", async ({ page }) => {
 
     const marketplaceText = getText(
       "Bringing you AI agents designed by thinkers from around the world",
-    );
+    ).first();
 
     // Verify we're on marketplace and authenticated
     await hasUrl(page, "/marketplace");

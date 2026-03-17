@@ -3,7 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
@@ -22,7 +23,7 @@ from .models import CreateCommentResponse
 class LinearCreateCommentBlock(Block):
     """Block for creating comments on Linear issues"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with comment creation permissions",
             required_scopes={LinearScope.COMMENTS_CREATE},
@@ -30,12 +31,11 @@ class LinearCreateCommentBlock(Block):
         issue_id: str = SchemaField(description="ID of the issue to comment on")
         comment: str = SchemaField(description="Comment text to add to the issue")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         comment_id: str = SchemaField(description="ID of the created comment")
         comment_body: str = SchemaField(
             description="Text content of the created comment"
         )
-        error: str = SchemaField(description="Error message if comment creation failed")
 
     def __init__(self):
         super().__init__(

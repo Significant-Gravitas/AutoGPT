@@ -3,7 +3,7 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaOutput,
     BlockType,
     SchemaField,
 )
@@ -31,7 +31,7 @@ class PostToThreadsBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post_result: PostResponse = SchemaField(description="The result of the post")
         post: PostIds = SchemaField(description="The result of the post")
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
-import { getAgptServerBaseUrl } from "@/lib/env-config";
 import { execSync } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import { environment } from "@/services/environment";
 
 function fetchOpenApiSpec(): void {
   const args = process.argv.slice(2);
   const forceFlag = args.includes("--force");
 
-  const baseUrl = getAgptServerBaseUrl();
+  const baseUrl = environment.getAGPTServerBaseUrl();
   const openApiUrl = `${baseUrl}/openapi.json`;
   const outputPath = path.join(
     __dirname,

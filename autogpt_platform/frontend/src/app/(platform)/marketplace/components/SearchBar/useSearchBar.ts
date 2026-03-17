@@ -8,7 +8,6 @@ export const useSearchbar = () => {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log(searchQuery);
 
     if (searchQuery.trim()) {
       const encodedTerm = encodeURIComponent(searchQuery);

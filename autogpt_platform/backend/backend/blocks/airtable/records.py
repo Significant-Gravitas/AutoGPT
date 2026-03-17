@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -31,7 +32,7 @@ class AirtableListRecordsBlock(Block):
     Lists records from an Airtable table with optional filtering, sorting, and pagination.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -65,7 +66,7 @@ class AirtableListRecordsBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of record objects")
         offset: Optional[str] = SchemaField(
             description="Offset for next page (null if no more records)", default=None
@@ -137,7 +138,7 @@ class AirtableGetRecordBlock(Block):
     Retrieves a single record from an Airtable table by its ID.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -153,7 +154,7 @@ class AirtableGetRecordBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         id: str = SchemaField(description="The record ID")
         fields: dict = SchemaField(description="The record fields")
         created_time: str = SchemaField(description="The record created time")
@@ -217,7 +218,7 @@ class AirtableCreateRecordsBlock(Block):
     Creates one or more records in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -239,7 +240,7 @@ class AirtableCreateRecordsBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of created record objects")
         details: dict = SchemaField(description="Details of the created records")
 
@@ -290,7 +291,7 @@ class AirtableUpdateRecordsBlock(Block):
     Updates one or more existing records in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -306,7 +307,7 @@ class AirtableUpdateRecordsBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of updated record objects")
 
     def __init__(self):
@@ -339,7 +340,7 @@ class AirtableDeleteRecordsBlock(Block):
     Deletes one or more records from an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -351,7 +352,7 @@ class AirtableDeleteRecordsBlock(Block):
             description="Array of upto 10 record IDs to delete"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of deletion results")
 
     def __init__(self):

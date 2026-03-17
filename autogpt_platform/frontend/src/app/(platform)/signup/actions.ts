@@ -1,59 +1,84 @@
 "use server";
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { z } from "zod";
-import * as Sentry from "@sentry/nextjs";
+
+import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
-import BackendAPI from "@/lib/autogpt-server-api";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+import * as Sentry from "@sentry/nextjs";
+import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 
 export async function signup(
-  values: z.infer<typeof signupFormSchema>,
-  turnstileToken: string,
+  email: string,
+  password: string,
+  confirmPassword: string,
+  agreeToTerms: boolean,
 ) {
-  "use server";
-  return await Sentry.withServerActionInstrumentation(
-    "signup",
-    {},
-    async () => {
-      const supabase = await getServerSupabase();
+  try {
+    const parsed = signupFormSchema.safeParse({
+      email,
+      password,
+      confirmPassword,
+      agreeToTerms,
+    });
 
-      if (!supabase) {
-        redirect("/error");
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: "Invalid signup payload",
+      };
+    }
+
+    const supabase = await getServerSupabase();
+    if (!supabase) {
+      return {
+        success: false,
+        error: "Authentication service unavailable",
+      };
+    }
+
+    const { data, error } = await supabase.auth.signUp(parsed.data);
+
+    if (error) {
+      if (isWaitlistError(error?.code, error?.message)) {
+        logWaitlistError("Signup", error.message);
+        return { success: false, error: "not_allowed" };
       }
 
-      // Verify Turnstile token if provided
-      const success = await verifyTurnstileToken(turnstileToken, "signup");
-      if (!success) {
-        return "CAPTCHA verification failed. Please try again.";
+      if ((error as any).code === "user_already_exists") {
+        return { success: false, error: "user_already_exists" };
       }
 
-      // We are sure that the values are of the correct type because zod validates the form
-      const { data, error } = await supabase.auth.signUp(values);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
 
-      if (error) {
-        console.error("Error signing up", error);
-        // FIXME: supabase doesn't return the correct error message for this case
-        if (error.message.includes("P0001")) {
-          return "not_allowed";
-        }
-        if (error.code === "user_already_exists") {
-          return "user_already_exists";
-        }
-        return error.message;
-      }
+    if (data.session) {
+      await supabase.auth.setSession(data.session);
+    }
 
-      if (data.session) {
-        await supabase.auth.setSession(data.session);
-      }
-      // Don't onboard if disabled
-      if (await new BackendAPI().isOnboardingEnabled()) {
-        revalidatePath("/onboarding", "layout");
-        redirect("/onboarding");
-      }
-      revalidatePath("/", "layout");
-      redirect("/");
-    },
-  );
+    try {
+      await resolveResponse(postV1GetOrCreateUser());
+    } catch (createUserError) {
+      console.error("Error creating user during signup:", createUserError);
+      Sentry.captureException(createUserError);
+      return {
+        success: false,
+        error: "Failed to complete account setup. Please try again.",
+      };
+    }
+
+    // Get onboarding status from backend (includes chat flag evaluated for this user)
+    const { shouldShowOnboarding } = await getOnboardingStatus();
+    const next = shouldShowOnboarding ? "/onboarding" : "/";
+
+    return { success: true, next };
+  } catch (err) {
+    Sentry.captureException(err);
+    return {
+      success: false,
+      error: "Failed to sign up. Please try again.",
+    };
+  }
 }

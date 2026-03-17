@@ -4,65 +4,49 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Mapping, Optional, cast
+from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from backend.blocks import get_block
+from backend.blocks._base import Block, BlockCostType, BlockType
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.block import (
-    Block,
-    BlockCostType,
-    BlockInput,
-    BlockOutputEntry,
-    BlockType,
-    get_block,
-)
+from backend.data import human_review as human_review_db
+from backend.data import onboarding as onboarding_db
+from backend.data import user as user_db
+from backend.data import workspace as workspace_db
+
+# Import dynamic field utilities from centralized location
+from backend.data.block import BlockInput, BlockOutputEntry
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import prisma
+from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionStatus,
+    GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
-    UserContext,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import get_user_by_id
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.logging import TruncatedLogger
-from backend.util.mock import MockObject
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphValidationError,
+    NotFoundError,
+)
+from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
-from backend.util.type import convert
-
-
-async def get_user_context(user_id: str) -> UserContext:
-    """
-    Get UserContext for a user, always returns a valid context with timezone.
-    Defaults to UTC if user has no timezone set.
-    """
-    user_context = UserContext(timezone="UTC")  # Default to UTC
-    try:
-        user = await get_user_by_id(user_id)
-        if user and user.timezone and user.timezone != "not-set":
-            user_context.timezone = user.timezone
-            logger.debug(f"Retrieved user context: timezone={user.timezone}")
-        else:
-            logger.debug("User has no timezone set, using UTC")
-    except Exception as e:
-        logger.warning(f"Could not fetch user timezone: {e}")
-        # Continue with UTC as default
-
-    return user_context
-
+from backend.util.type import coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -91,7 +75,11 @@ class LogMetadata(TruncatedLogger):
             "node_id": node_id,
             "block_name": block_name,
         }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        prefix = (
+            "[ExecutionManager]"
+            if is_structured_logging_enabled()
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+        )
         super().__init__(
             logger,
             max_length=max_length,
@@ -186,195 +174,7 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 # ============ Execution Input Helpers ============ #
 
-# --------------------------------------------------------------------------- #
-#  Delimiters
-# --------------------------------------------------------------------------- #
-
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
-
-# --------------------------------------------------------------------------- #
-#  Tokenisation utilities
-# --------------------------------------------------------------------------- #
-
-
-def _next_delim(s: str) -> tuple[str | None, int]:
-    """
-    Return the *earliest* delimiter appearing in `s` and its index.
-
-    If none present → (None, -1).
-    """
-    first: str | None = None
-    pos = len(s)  # sentinel: larger than any real index
-    for d in _DELIMS:
-        i = s.find(d)
-        if 0 <= i < pos:
-            first, pos = d, i
-    return first, (pos if first else -1)
-
-
-def _tokenise(path: str) -> list[tuple[str, str]] | None:
-    """
-    Convert the raw path string (starting with a delimiter) into
-    [ (delimiter, identifier), … ] or None if the syntax is malformed.
-    """
-    tokens: list[tuple[str, str]] = []
-    while path:
-        # 1. Which delimiter starts this chunk?
-        delim = next((d for d in _DELIMS if path.startswith(d)), None)
-        if delim is None:
-            return None  # invalid syntax
-
-        # 2. Slice off the delimiter, then up to the next delimiter (or EOS)
-        path = path[len(delim) :]
-        nxt_delim, pos = _next_delim(path)
-        token, path = (
-            path[: pos if pos != -1 else len(path)],
-            path[pos if pos != -1 else len(path) :],
-        )
-        if token == "":
-            return None  # empty identifier is invalid
-        tokens.append((delim, token))
-    return tokens
-
-
-# --------------------------------------------------------------------------- #
-#  Public API – parsing (flattened ➜ concrete)
-# --------------------------------------------------------------------------- #
-
-
-def parse_execution_output(output: BlockOutputEntry, name: str) -> JsonValue | None:
-    """
-    Retrieve a nested value out of `output` using the flattened *name*.
-
-    On any failure (wrong name, wrong type, out-of-range, bad path)
-    returns **None**.
-    """
-    base_name, data = output
-
-    # Exact match → whole object
-    if name == base_name:
-        return data
-
-    # Must start with the expected name
-    if not name.startswith(base_name):
-        return None
-    path = name[len(base_name) :]
-    if not path:
-        return None  # nothing left to parse
-
-    tokens = _tokenise(path)
-    if tokens is None:
-        return None
-
-    cur: JsonValue = data
-    for delim, ident in tokens:
-        if delim == LIST_SPLIT:
-            # list[index]
-            try:
-                idx = int(ident)
-            except ValueError:
-                return None
-            if not isinstance(cur, list) or idx >= len(cur):
-                return None
-            cur = cur[idx]
-
-        elif delim == DICT_SPLIT:
-            if not isinstance(cur, dict) or ident not in cur:
-                return None
-            cur = cur[ident]
-
-        elif delim == OBJC_SPLIT:
-            if not hasattr(cur, ident):
-                return None
-            cur = getattr(cur, ident)
-
-        else:
-            return None  # unreachable
-
-    return cur
-
-
-def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
-    """
-    Recursive helper that *returns* the (possibly new) container with
-    `value` assigned along the remaining `tokens` path.
-    """
-    if not tokens:
-        return value  # leaf reached
-
-    delim, ident = tokens[0]
-    rest = tokens[1:]
-
-    # ---------- list ----------
-    if delim == LIST_SPLIT:
-        try:
-            idx = int(ident)
-        except ValueError:
-            raise ValueError("index must be an integer")
-
-        if container is None:
-            container = []
-        elif not isinstance(container, list):
-            container = list(container) if hasattr(container, "__iter__") else []
-
-        while len(container) <= idx:
-            container.append(None)
-        container[idx] = _assign(container[idx], rest, value)
-        return container
-
-    # ---------- dict ----------
-    if delim == DICT_SPLIT:
-        if container is None:
-            container = {}
-        elif not isinstance(container, dict):
-            container = dict(container) if hasattr(container, "items") else {}
-        container[ident] = _assign(container.get(ident), rest, value)
-        return container
-
-    # ---------- object ----------
-    if delim == OBJC_SPLIT:
-        if container is None or not isinstance(container, MockObject):
-            container = MockObject()
-        setattr(
-            container,
-            ident,
-            _assign(getattr(container, ident, None), rest, value),
-        )
-        return container
-
-    return value  # unreachable
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Reconstruct nested objects from a *flattened* dict of key → value.
-
-    Raises ValueError on syntactically invalid list indices.
-    """
-    merged: BlockInput = {}
-
-    for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
-            merged[key] = value
-            continue
-
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
-        merged[base] = _assign(merged.get(base), tokens, value)
-
-    data.update(merged)
-    return data
+# Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
 def validate_exec(
@@ -413,11 +213,8 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in schema.__annotations__.items():
-        value = data.get(name)
-        if (value is not None) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
+    # Coerce non-matching data types to the expected input schema.
+    coerce_inputs_to_schema(data, schema)
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
@@ -436,14 +233,19 @@ async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> dict[str, dict[str, str]]:
+) -> tuple[dict[str, dict[str, str]], set[str]]:
     """
-    Checks all credentials for all nodes of the graph and returns structured errors.
+    Checks all credentials for all nodes of the graph and returns structured errors
+    and a set of nodes that should be skipped due to optional missing credentials.
 
     Returns:
-        dict[node_id, dict[field_name, error_message]]: Credential validation errors per node
+        tuple[
+            dict[node_id, dict[field_name, error_message]]: Credential validation errors per node,
+            set[node_id]: Nodes that should be skipped (optional credentials not configured)
+        ]
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
+    nodes_to_skip: set[str] = set()
 
     for node in graph.nodes:
         block = node.block
@@ -453,27 +255,52 @@ async def _validate_node_input_credentials(
         if not credentials_fields:
             continue
 
+        # Track if any credential field is missing for this node
+        has_missing_credentials = False
+
+        # A credential field is optional if the node metadata says so, or if
+        # the block schema declares a default for the field.
+        required_fields = block.input_schema.get_required_fields()
+        is_creds_optional = node.credentials_optional
+
         for field_name, credentials_meta_type in credentials_fields.items():
+            field_is_optional = is_creds_optional or field_name not in required_fields
             try:
+                # Check nodes_input_masks first, then input_default
+                field_value = None
                 if (
                     nodes_input_masks
                     and (node_input_mask := nodes_input_masks.get(node.id))
                     and field_name in node_input_mask
                 ):
-                    credentials_meta = credentials_meta_type.model_validate(
-                        node_input_mask[field_name]
-                    )
+                    field_value = node_input_mask[field_name]
                 elif field_name in node.input_default:
-                    credentials_meta = credentials_meta_type.model_validate(
-                        node.input_default[field_name]
-                    )
-                else:
-                    # Missing credentials
-                    credential_errors[node.id][
-                        field_name
-                    ] = "These credentials are required"
-                    continue
+                    # For optional credentials, don't use input_default - treat as missing
+                    # This prevents stale credential IDs from failing validation
+                    if field_is_optional:
+                        field_value = None
+                    else:
+                        field_value = node.input_default[field_name]
+
+                # Check if credentials are missing (None, empty, or not present)
+                if field_value is None or (
+                    isinstance(field_value, dict) and not field_value.get("id")
+                ):
+                    has_missing_credentials = True
+                    # If credential field is optional, skip instead of error
+                    if field_is_optional:
+                        continue  # Don't add error, will be marked for skip after loop
+                    else:
+                        credential_errors[node.id][
+                            field_name
+                        ] = "These credentials are required"
+                        continue
+
+                credentials_meta = credentials_meta_type.model_validate(field_value)
+
             except ValidationError as e:
+                # Validation error means credentials were provided but invalid
+                # This should always be an error, even if optional
                 credential_errors[node.id][field_name] = f"Invalid credentials: {e}"
                 continue
 
@@ -484,6 +311,7 @@ async def _validate_node_input_credentials(
                 )
             except Exception as e:
                 # Handle any errors fetching credentials
+                # If credentials were explicitly configured but unavailable, it's an error
                 credential_errors[node.id][
                     field_name
                 ] = f"Credentials not available: {e}"
@@ -510,7 +338,19 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
-    return credential_errors
+        # If node has optional credentials and any are missing, allow running without.
+        # The executor will pass credentials=None to the block's run().
+        if (
+            has_missing_credentials
+            and is_creds_optional
+            and node.id not in credential_errors
+        ):
+            logger.info(
+                f"Node #{node.id}: optional credentials not configured, "
+                "running without"
+            )
+
+    return credential_errors, nodes_to_skip
 
 
 def make_node_credentials_input_map(
@@ -532,7 +372,7 @@ def make_node_credentials_input_map(
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
 
-    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+    for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
         if graph_input_name not in graph_credentials_input:
             continue
@@ -552,21 +392,25 @@ async def validate_graph_with_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> Mapping[str, Mapping[str, str]]:
+) -> tuple[Mapping[str, Mapping[str, str]], set[str]]:
     """
-    Validate graph including credentials and return structured errors per node.
+    Validate graph including credentials and return structured errors per node,
+    along with a set of nodes that should be skipped due to optional missing credentials.
 
     Returns:
-        dict[node_id, dict[field_name, error_message]]: Validation errors per node
+        tuple[
+            dict[node_id, dict[field_name, error_message]]: Validation errors per node,
+            set[node_id]: Nodes that should be skipped (optional credentials not configured)
+        ]
     """
     # Get input validation errors
     node_input_errors = GraphModel.validate_graph_get_errors(
         graph, for_run=True, nodes_input_masks=nodes_input_masks
     )
 
-    # Get credential input/availability/validation errors
-    node_credential_input_errors = await _validate_node_input_credentials(
-        graph, user_id, nodes_input_masks
+    # Get credential input/availability/validation errors and nodes to skip
+    node_credential_input_errors, nodes_to_skip = (
+        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
     )
 
     # Merge credential errors with structural errors
@@ -575,15 +419,15 @@ async def validate_graph_with_credentials(
             node_input_errors[node_id] = {}
         node_input_errors[node_id].update(field_errors)
 
-    return node_input_errors
+    return node_input_errors, nodes_to_skip
 
 
 async def _construct_starting_node_execution_input(
     graph: GraphModel,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> list[tuple[str, BlockInput]]:
+) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
     This function checks the graph for starting nodes, validates the input data
@@ -593,15 +437,18 @@ async def _construct_starting_node_execution_input(
     Args:
         graph (GraphModel): The graph model to execute.
         user_id (str): The ID of the user executing the graph.
-        data (BlockInput): The input data for the graph execution.
+        data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
 
     Returns:
-        list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
-            the corresponding input data for that node.
+        tuple[
+            list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID
+                and the corresponding input data for that node.
+            set[str]: Node IDs that should be skipped (optional credentials not configured)
+        ]
     """
     # Use new validation function that includes credentials
-    validation_errors = await validate_graph_with_credentials(
+    validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
     n_error_nodes = len(validation_errors)
@@ -631,6 +478,22 @@ async def _construct_starting_node_execution_input(
         if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
             input_data.update(node_input_mask)
 
+        # Webhook-triggered agents cannot be executed directly without payload data.
+        # Legitimate webhook triggers provide payload via nodes_input_masks above.
+        if (
+            block.block_type
+            in (
+                BlockType.WEBHOOK,
+                BlockType.WEBHOOK_MANUAL,
+            )
+            and "payload" not in input_data
+        ):
+            raise ValueError(
+                "This agent is triggered by an external event (webhook) "
+                "and cannot be executed directly. "
+                "Please use the appropriate trigger to run this agent."
+            )
+
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
             raise ValueError(error)
@@ -642,17 +505,18 @@ async def _construct_starting_node_execution_input(
             "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
         )
 
-    return nodes_input
+    return nodes_input, nodes_to_skip
 
 
 async def validate_and_construct_node_execution_input(
     graph_id: str,
     user_id: str,
-    graph_inputs: BlockInput,
+    graph_inputs: GraphInput,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks]:
+    is_sub_graph: bool = False,
+) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
     This centralizes the logic used by both scheduler validation and actual execution.
@@ -669,6 +533,7 @@ async def validate_and_construct_node_execution_input(
         GraphModel: Full graph object for the given `graph_id`.
         list[tuple[node_id, BlockInput]]: Starting node IDs with corresponding inputs.
         dict[str, BlockInput]: Node input masks including all passed-in credentials.
+        set[str]: Node IDs that should be skipped (optional credentials not configured).
 
     Raises:
         NotFoundError: If the graph is not found.
@@ -685,9 +550,21 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         version=graph_version,
         include_subgraphs=True,
+        # Execution/access permission is checked by validate_graph_execution_permissions
+        skip_access_check=True,
     )
     if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+
+    # Validate that the user has permission to execute this graph
+    # This checks both library membership and execution permissions,
+    # raising specific exceptions for appropriate error handling.
+    await gdb.validate_graph_execution_permissions(
+        user_id=user_id,
+        graph_id=graph.id,
+        graph_version=graph.version,
+        is_sub_graph=is_sub_graph,
+    )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (
@@ -698,14 +575,16 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input = await _construct_starting_node_execution_input(
-        graph=graph,
-        user_id=user_id,
-        graph_inputs=graph_inputs,
-        nodes_input_masks=nodes_input_masks,
+    starting_nodes_input, nodes_to_skip = (
+        await _construct_starting_node_execution_input(
+            graph=graph,
+            user_id=user_id,
+            graph_inputs=graph_inputs,
+            nodes_input_masks=nodes_input_masks,
+        )
     )
 
-    return graph, starting_nodes_input, nodes_input_masks
+    return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
 
 
 def _merge_nodes_input_masks(
@@ -788,20 +667,74 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
+async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
+    """
+    Get all child executions of a parent execution using the execution_db pattern.
+
+    Args:
+        parent_exec_id: Parent graph execution ID
+
+    Returns:
+        List of child graph executions
+    """
+    from backend.data.db import prisma
+
+    if prisma.is_connected():
+        edb = execution_db
+    else:
+        edb = get_database_manager_async_client()
+
+    return await edb.get_child_graph_executions(parent_exec_id)
+
+
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
     wait_timeout: float = 15.0,
+    cascade: bool = True,
 ):
     """
+    Stop a graph execution and optionally all its child executions.
+
     Mechanism:
-    1. Set the cancel event
-    2. Graph executor's cancel handler thread detects the event, terminates workers,
+    1. Set the cancel event for this execution
+    2. If cascade=True, recursively stop all child executions
+    3. Graph executor's cancel handler thread detects the event, terminates workers,
        reinitializes worker pool, and returns.
-    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    4. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+
+    Args:
+        user_id: User ID who owns the execution
+        graph_exec_id: Graph execution ID to stop
+        wait_timeout: Maximum time to wait for execution to stop (seconds)
+        cascade: If True, recursively stop all child executions
     """
     queue_client = await get_async_execution_queue()
     db = execution_db if prisma.is_connected() else get_database_manager_async_client()
+
+    # First, find and stop all child executions if cascading
+    if cascade:
+        children = await _get_child_executions(graph_exec_id)
+        logger.info(
+            f"Stopping {len(children)} child executions of execution {graph_exec_id}"
+        )
+
+        # Stop all children in parallel (recursively, with cascading enabled)
+        if children:
+            await asyncio.gather(
+                *[
+                    stop_graph_execution(
+                        user_id=user_id,
+                        graph_exec_id=child.id,
+                        wait_timeout=wait_timeout,
+                        cascade=True,  # Recursively cascade to grandchildren
+                    )
+                    for child in children
+                ],
+                return_exceptions=True,  # Don't fail parent stop if child stop fails
+            )
+
+    # Now stop this execution
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -832,9 +765,27 @@ async def stop_graph_execution(
         if graph_exec.status in [
             ExecutionStatus.QUEUED,
             ExecutionStatus.INCOMPLETE,
+            ExecutionStatus.REVIEW,
         ]:
-            # If the graph is still on the queue, we can prevent them from being executed
-            # by setting the status to TERMINATED.
+            # If the graph is queued/incomplete/paused for review, terminate immediately
+            # No need to wait for executor since it's not actively running
+
+            # If graph is in REVIEW status, clean up pending reviews before terminating
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                # Use human_review_db if Prisma connected, else database manager
+                review_db = (
+                    human_review_db
+                    if prisma.is_connected()
+                    else get_database_manager_async_client()
+                )
+                # Mark all pending reviews as rejected/cancelled
+                cancelled_count = await review_db.cancel_pending_reviews_for_execution(
+                    graph_exec_id, user_id
+                )
+                logger.info(
+                    f"Cancelled {cancelled_count} pending review(s) for stopped execution {graph_exec_id}"
+                )
+
             graph_exec.status = ExecutionStatus.TERMINATED
 
             await asyncio.gather(
@@ -860,11 +811,13 @@ async def stop_graph_execution(
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: Optional[BlockInput] = None,
+    inputs: Optional[GraphInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -878,31 +831,60 @@ async def add_graph_execution(
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
+        parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
+        graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
+        NotFoundError: If graph_exec_id is provided but execution is not found.
     """
     if prisma.is_connected():
         edb = execution_db
+        udb = user_db
+        gdb = graph_db
+        odb = onboarding_db
+        wdb = workspace_db
     else:
-        edb = get_database_manager_async_client()
+        edb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, compiled_nodes_input_masks = (
-        await validate_and_construct_node_execution_input(
-            graph_id=graph_id,
+    # Get or create the graph execution
+    if graph_exec_id:
+        # Resume existing execution
+        graph_exec = await edb.get_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs or {},
-            graph_version=graph_version,
-            graph_credentials_inputs=graph_credentials_inputs,
-            nodes_input_masks=nodes_input_masks,
+            execution_id=graph_exec_id,
+            include_node_executions=True,
         )
-    )
-    graph_exec = None
 
-    try:
-        # Sanity check: running add_graph_execution with the properties of
-        # the graph_exec created here should create the same execution again.
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # Use existing execution's compiled input masks
+        compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+        # For resumed executions, nodes_to_skip was already determined at creation time
+        # TODO: Consider storing nodes_to_skip in DB if we need to preserve it across resumes
+        nodes_to_skip: set[str] = set()
+
+        logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
+    else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+
+        # Create new execution
+        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
+            await validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=inputs or {},
+                graph_version=graph_version,
+                graph_credentials_inputs=graph_credentials_inputs,
+                nodes_input_masks=nodes_input_masks,
+                is_sub_graph=parent_exec_id is not None,
+            )
+        )
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
@@ -912,18 +894,67 @@ async def add_graph_execution(
             nodes_input_masks=nodes_input_masks,
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
+            parent_graph_exec_id=parent_exec_id,
         )
 
-        graph_exec_entry = graph_exec.to_graph_execution_entry(
-            user_context=await get_user_context(user_id),
-            compiled_nodes_input_masks=compiled_nodes_input_masks,
-        )
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
-            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
-            f"Now publishing to execution queue."
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
+    # Generate execution context if it's not provided
+    if execution_context is None:
+        user = await udb.get_user_by_id(user_id)
+        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        workspace = await wdb.get_or_create_workspace(user_id)
+
+        execution_context = ExecutionContext(
+            # Execution identity
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            graph_version=graph_exec.graph_version,
+            # Safety settings
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            # User settings
+            user_timezone=(
+                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+            ),
+            # Execution hierarchy
+            root_execution_id=graph_exec.id,
+            # Workspace (enables workspace:// file resolution in blocks)
+            workspace_id=workspace.id,
+        )
+
+    try:
+        graph_exec_entry = graph_exec.to_graph_execution_entry(
+            compiled_nodes_input_masks=compiled_nodes_input_masks,
+            nodes_to_skip=nodes_to_skip,
+            execution_context=execution_context,
+        )
+        logger.info(f"Queueing execution {graph_exec.id}")
+
+        # Update execution status to QUEUED BEFORE publishing to prevent race condition
+        # where two concurrent requests could both publish the same execution
+        updated_exec = await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.QUEUED,
+        )
+
+        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+        # If another request already updated the status, this execution will not be QUEUED
+        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+            logger.warning(
+                f"Skipping queue publish for execution {graph_exec.id} - "
+                f"status update failed or execution already queued by another request"
+            )
+            return graph_exec
+
+        graph_exec.status = ExecutionStatus.QUEUED
+
+        # Publish to execution queue for executor to pick up
+        # This happens AFTER status update to ensure only one request publishes
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
@@ -931,15 +962,6 @@ async def add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
-
-        graph_exec.status = ExecutionStatus.QUEUED
-        await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=graph_exec.status,
-        )
-        await get_async_execution_event_bus().publish(graph_exec)
-
-        return graph_exec
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
@@ -959,6 +981,24 @@ async def add_graph_execution(
             stats=GraphExecutionStats(error=err),
         )
         raise
+
+    try:
+        await get_async_execution_event_bus().publish(graph_exec)
+        logger.info(f"Published update for execution #{graph_exec.id} to event bus")
+    except Exception as e:
+        logger.error(
+            f"Failed to publish execution event for graph exec #{graph_exec.id}: {e}"
+        )
+
+    try:
+        await odb.increment_onboarding_runs(user_id)
+        logger.info(
+            f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+
+    return graph_exec
 
 
 # ============ Execution Output Helpers ============ #

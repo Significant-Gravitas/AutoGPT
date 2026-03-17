@@ -3,7 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
@@ -22,16 +23,15 @@ from .models import Project
 class LinearSearchProjectsBlock(Block):
     """Block for searching projects on Linear"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with read permissions",
             required_scopes={LinearScope.READ},
         )
         term: str = SchemaField(description="Term to search for projects")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         projects: list[Project] = SchemaField(description="List of projects")
-        error: str = SchemaField(description="Error message if issue creation failed")
 
     def __init__(self):
         super().__init__(

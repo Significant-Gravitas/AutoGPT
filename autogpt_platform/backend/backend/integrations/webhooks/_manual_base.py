@@ -18,7 +18,9 @@ class ManualWebhookManagerBase(BaseWebhooksManager[WT]):
         ingress_url: str,
         secret: str,
     ) -> tuple[str, dict]:
-        print(ingress_url)  # FIXME: pass URL to user in front end
+        # TODO: pass ingress_url to user in frontend
+        # See: https://github.com/Significant-Gravitas/AutoGPT/issues/8537
+        logger.debug(f"Manual webhook registered with ingress URL: {ingress_url}")
 
         return "", {}
 

@@ -1,14 +1,5 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/atoms/Input/Input";
-import { Link } from "@/components/atoms/Link/Link";
-import { Text } from "@/components/atoms/Text/Text";
-import { AuthCard } from "@/components/auth/AuthCard";
-import AuthFeedback from "@/components/auth/AuthFeedback";
-import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
-import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import Turnstile from "@/components/auth/Turnstile";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import {
   Form,
@@ -17,22 +8,37 @@ import {
   FormItem,
   FormLabel,
 } from "@/components/__legacy__/ui/form";
-import { getBehaveAs } from "@/lib/utils";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Link } from "@/components/atoms/Link/Link";
+import { Text } from "@/components/atoms/Text/Text";
+import { AuthCard } from "@/components/auth/AuthCard";
+import AuthFeedback from "@/components/auth/AuthFeedback";
+import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
+import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { environment } from "@/services/environment";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { useSearchParams } from "next/navigation";
 
 export default function SignupPage() {
+  const searchParams = useSearchParams();
+  const nextUrl = searchParams.get("next");
+  // Preserve next parameter when switching between login/signup
+  const loginHref = nextUrl
+    ? `/login?next=${encodeURIComponent(nextUrl)}`
+    : "/login";
+
   const {
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoggedIn,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
     handleSubmit,
@@ -161,23 +167,10 @@ export default function SignupPage() {
               )}
             />
 
-            {/* Turnstile CAPTCHA Component */}
-            {isCloudEnv && !turnstile.verified ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="signup"
-                shouldRender={turnstile.shouldRender}
-              />
-            ) : null}
-
             <Button
               variant="primary"
               loading={isLoading}
+              disabled={isGoogleLoading}
               type="submit"
               className="mt-6 w-full"
             >
@@ -196,14 +189,15 @@ export default function SignupPage() {
           type="signup"
           message={feedback}
           isError={!!feedback}
-          behaveAs={getBehaveAs()}
+          behaveAs={environment.getBehaveAs()}
         />
 
         <AuthCard.BottomText
           text="Already a member?"
-          link={{ text: "Log in", href: "/login" }}
+          link={{ text: "Log in", href: loginHref }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

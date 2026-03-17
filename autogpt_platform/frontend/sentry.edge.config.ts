@@ -3,18 +3,11 @@
 // Note that this config is unrelated to the Vercel Edge Runtime and is also required when running locally.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
-import {
-  AppEnv,
-  BehaveAs,
-  getAppEnv,
-  getBehaveAs,
-  getEnvironmentStr,
-} from "./src/lib/utils";
 
-const isProdOrDev = [AppEnv.PROD, AppEnv.DEV].includes(getAppEnv());
-
-const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+const isProdOrDev = environment.isProd() || environment.isDev();
+const isCloud = environment.isCloud();
 const isDisabled = process.env.DISABLE_SENTRY === "true";
 
 const shouldEnable = !isDisabled && isProdOrDev && isCloud;
@@ -22,7 +15,7 @@ const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  environment: getEnvironmentStr(),
+  environment: environment.getEnvironmentStr(),
 
   enabled: shouldEnable,
 
@@ -40,7 +33,7 @@ Sentry.init({
 
   enableLogs: true,
   integrations: [
-    Sentry.captureConsoleIntegration(),
+    Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     Sentry.extraErrorDataIntegration(),
   ],
 });

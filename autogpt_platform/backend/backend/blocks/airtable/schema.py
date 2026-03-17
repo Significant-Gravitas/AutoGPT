@@ -7,7 +7,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -23,13 +24,13 @@ class AirtableListSchemaBlock(Block):
     fields, and views.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
         base_id: str = SchemaField(description="The Airtable base ID")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         base_schema: dict = SchemaField(
             description="Complete base schema with tables, fields, and views"
         )
@@ -66,7 +67,7 @@ class AirtableCreateTableBlock(Block):
     Creates a new table in an Airtable base with specified fields and views.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -77,7 +78,7 @@ class AirtableCreateTableBlock(Block):
             default=[{"name": "Name", "type": "singleLineText"}],
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         table: dict = SchemaField(description="Created table object")
         table_id: str = SchemaField(description="ID of the created table")
 
@@ -109,7 +110,7 @@ class AirtableUpdateTableBlock(Block):
     Updates an existing table's properties such as name or description.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -125,7 +126,7 @@ class AirtableUpdateTableBlock(Block):
             description="The date dependency of the table to update", default=None
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         table: dict = SchemaField(description="Updated table object")
 
     def __init__(self):
@@ -157,7 +158,7 @@ class AirtableCreateFieldBlock(Block):
     Adds a new field (column) to an existing Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -176,7 +177,7 @@ class AirtableCreateFieldBlock(Block):
             description="The options of the field to create", default=None
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         field: dict = SchemaField(description="Created field object")
         field_id: str = SchemaField(description="ID of the created field")
 
@@ -209,7 +210,7 @@ class AirtableUpdateFieldBlock(Block):
     Updates an existing field's properties in an Airtable table.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -225,7 +226,7 @@ class AirtableUpdateFieldBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         field: dict = SchemaField(description="Updated field object")
 
     def __init__(self):

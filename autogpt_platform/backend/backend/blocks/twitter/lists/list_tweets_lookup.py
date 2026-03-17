@@ -3,6 +3,7 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
+from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -26,7 +27,6 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
@@ -59,7 +59,7 @@ class TwitterGetListTweetsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         tweet_ids: list[str] = SchemaField(description="List of tweet IDs")
         texts: list[str] = SchemaField(description="List of tweet texts")
@@ -73,7 +73,6 @@ class TwitterGetListTweetsBlock(Block):
         meta: dict = SchemaField(
             description="Response metadata including pagination tokens"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

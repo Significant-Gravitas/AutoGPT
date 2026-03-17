@@ -4,6 +4,10 @@ export const TEST_CREDENTIALS = {
   password: "testpassword123",
 } as const;
 
+export function getTestUserWithLibraryAgents() {
+  return TEST_CREDENTIALS;
+}
+
 // Dummy constant to help developers identify agents that don't need input
 export const DummyInput = "DummyInput";
 

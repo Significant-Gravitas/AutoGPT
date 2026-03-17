@@ -143,6 +143,9 @@ def instrument_fastapi(
     )
 
     # Create instrumentator with default metrics
+    # Use service-specific inprogress_name to avoid duplicate registration
+    # when multiple FastAPI apps are instrumented in the same process
+    service_subsystem = service_name.replace("-", "_")
     instrumentator = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
@@ -150,7 +153,7 @@ def instrument_fastapi(
         should_instrument_requests_inprogress=True,
         excluded_handlers=excluded_handlers or ["/health", "/readiness"],
         env_var_name="ENABLE_METRICS",
-        inprogress_name="autogpt_http_requests_inprogress",
+        inprogress_name=f"autogpt_{service_subsystem}_http_requests_inprogress",
         inprogress_labels=True,
     )
 

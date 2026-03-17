@@ -17,7 +17,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     BlockWebhookConfig,
     Credentials,
     CredentialsField,
@@ -84,7 +85,7 @@ class TestWebhooksManager(BaseWebhooksManager):
 class TestWebhookBlock(Block):
     """Test webhook block implementation."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = CredentialsField(
             provider="test_webhooks",
             supported_credential_types={"api_key"},
@@ -105,7 +106,7 @@ class TestWebhookBlock(Block):
             default={},
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webhook_id: str = SchemaField(description="Registered webhook ID")
         is_active: bool = SchemaField(description="Webhook is active")
         event_count: int = SchemaField(description="Number of events configured")
@@ -202,7 +203,7 @@ class TestWebhookBlockCreation:
         class FilteredWebhookBlock(Block):
             """Webhook block with filtering."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = CredentialsField(
                     provider="test_webhooks",
                     supported_credential_types={"api_key"},
@@ -217,7 +218,7 @@ class TestWebhookBlockCreation:
                     default={},
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 webhook_active: bool = SchemaField(description="Webhook active")
                 filter_summary: str = SchemaField(description="Active filters")
 
@@ -352,7 +353,7 @@ class TestWebhookManagerIntegration:
         class IntegratedWebhookBlock(Block):
             """Block using integrated webhook manager."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 credentials: CredentialsMetaInput = CredentialsField(
                     provider="integrated_webhooks",
                     supported_credential_types={"api_key"},
@@ -363,7 +364,7 @@ class TestWebhookManagerIntegration:
                     default={},
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 status: str = SchemaField(description="Webhook status")
                 manager_type: str = SchemaField(description="Manager type used")
 
@@ -429,7 +430,7 @@ class TestWebhookEventHandling:
         class WebhookEventBlock(Block):
             """Block that processes webhook events."""
 
-            class Input(BlockSchema):
+            class Input(BlockSchemaInput):
                 event_type: str = SchemaField(description="Type of webhook event")
                 payload: dict = SchemaField(description="Webhook payload")
                 verify_signature: bool = SchemaField(
@@ -437,7 +438,7 @@ class TestWebhookEventHandling:
                     default=True,
                 )
 
-            class Output(BlockSchema):
+            class Output(BlockSchemaOutput):
                 processed: bool = SchemaField(description="Event was processed")
                 event_summary: str = SchemaField(description="Summary of event")
                 action_required: bool = SchemaField(description="Action required")

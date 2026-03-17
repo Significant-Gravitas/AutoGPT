@@ -51,8 +51,10 @@ class ResponseDataSerializer(BaseSerializer):
         return serialized_item
 
     @classmethod
-    def serialize_list(cls, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def serialize_list(cls, data: List[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
         """Serializes a list of dictionary items"""
+        if not data:
+            return []
         return [cls.serialize_dict(item) for item in data]
 
 

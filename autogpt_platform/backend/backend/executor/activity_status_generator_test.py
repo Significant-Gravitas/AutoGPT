@@ -7,12 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.llm import LLMResponse
+from backend.blocks.llm import LlmModel, LLMResponse
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
-    _call_llm_direct,
     generate_activity_status_for_execution,
 )
 
@@ -373,25 +372,24 @@ class TestLLMCall:
     """Tests for LLM calling functionality."""
 
     @pytest.mark.asyncio
-    async def test_call_llm_direct_success(self):
-        """Test successful LLM call."""
+    async def test_structured_llm_call_success(self):
+        """Test successful structured LLM call."""
         from pydantic import SecretStr
 
+        from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        mock_response = LLMResponse(
-            raw_response={},
-            prompt=[],
-            response="Agent successfully processed user input and generated response.",
-            tool_calls=None,
-            prompt_tokens=50,
-            completion_tokens=20,
-        )
-
-        with patch(
-            "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call:
-            mock_llm_call.return_value = mock_response
+        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
+            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        ):
+            mock_llm_call.return_value = LLMResponse(
+                raw_response={},
+                prompt=[],
+                response='<json_output id="test123">{"activity_status": "Test completed successfully", "correctness_score": 0.9}</json_output>',
+                tool_calls=None,
+                prompt_tokens=50,
+                completion_tokens=20,
+            )
 
             credentials = APIKeyCredentials(
                 id="test",
@@ -401,26 +399,61 @@ class TestLLMCall:
             )
 
             prompt = [{"role": "user", "content": "Test prompt"}]
+            expected_format = {
+                "activity_status": "User-friendly summary",
+                "correctness_score": "Float score from 0.0 to 1.0",
+            }
 
-            result = await _call_llm_direct(credentials, prompt)
+            # Create structured block and input
+            structured_block = AIStructuredResponseGeneratorBlock()
+            credentials_input = {
+                "provider": credentials.provider,
+                "id": credentials.id,
+                "type": credentials.type,
+                "title": credentials.title,
+            }
 
-            assert (
-                result
-                == "Agent successfully processed user input and generated response."
+            structured_input = AIStructuredResponseGeneratorBlock.Input(
+                prompt=prompt[0]["content"],
+                expected_format=expected_format,
+                model=LlmModel.GPT4O_MINI,
+                credentials=credentials_input,  # type: ignore
             )
-            mock_llm_call.assert_called_once()
+
+            # Execute the structured LLM call
+            result = None
+            async for output_name, output_data in structured_block.run(
+                structured_input, credentials=credentials
+            ):
+                if output_name == "response":
+                    result = output_data
+                    break
+
+            assert result is not None
+            assert result["activity_status"] == "Test completed successfully"
+            assert result["correctness_score"] == 0.9
+            mock_llm_call.assert_called()
 
     @pytest.mark.asyncio
-    async def test_call_llm_direct_no_response(self):
-        """Test LLM call with no response."""
+    async def test_structured_llm_call_validation_error(self):
+        """Test structured LLM call with validation error."""
         from pydantic import SecretStr
 
+        from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        with patch(
-            "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call:
-            mock_llm_call.return_value = None
+        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
+            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        ):
+            # Return invalid JSON that will fail validation (missing required field)
+            mock_llm_call.return_value = LLMResponse(
+                raw_response={},
+                prompt=[],
+                response='<json_output id="test123">{"activity_status": "Test completed successfully"}</json_output>',
+                tool_calls=None,
+                prompt_tokens=50,
+                completion_tokens=20,
+            )
 
             credentials = APIKeyCredentials(
                 id="test",
@@ -430,10 +463,36 @@ class TestLLMCall:
             )
 
             prompt = [{"role": "user", "content": "Test prompt"}]
+            expected_format = {
+                "activity_status": "User-friendly summary",
+                "correctness_score": "Float score from 0.0 to 1.0",
+            }
 
-            result = await _call_llm_direct(credentials, prompt)
+            # Create structured block and input
+            structured_block = AIStructuredResponseGeneratorBlock()
+            credentials_input = {
+                "provider": credentials.provider,
+                "id": credentials.id,
+                "type": credentials.type,
+                "title": credentials.title,
+            }
 
-            assert result == "Unable to generate activity summary"
+            structured_input = AIStructuredResponseGeneratorBlock.Input(
+                prompt=prompt[0]["content"],
+                expected_format=expected_format,
+                model=LlmModel.GPT4O_MINI,
+                credentials=credentials_input,  # type: ignore
+                retry=1,  # Use fewer retries for faster test
+            )
+
+            with pytest.raises(
+                Exception
+            ):  # AIStructuredResponseGeneratorBlock may raise different exceptions
+                async for output_name, output_data in structured_block.run(
+                    structured_input, credentials=credentials
+                ):
+                    if output_name == "response":
+                        break
 
 
 class TestGenerateActivityStatusForExecution:
@@ -461,17 +520,25 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_get_block, patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
-            "backend.executor.activity_status_generator._call_llm_direct"
-        ) as mock_llm, patch(
+            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+        ) as mock_structured_block, patch(
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-            mock_llm.return_value = (
-                "I analyzed your data and provided the requested insights."
-            )
+
+            # Mock the structured block to return our expected response
+            mock_instance = mock_structured_block.return_value
+
+            async def mock_run(*args, **kwargs):
+                yield "response", {
+                    "activity_status": "I analyzed your data and provided the requested insights.",
+                    "correctness_score": 0.85,
+                }
+
+            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -482,11 +549,16 @@ class TestGenerateActivityStatusForExecution:
                 user_id="test_user",
             )
 
-            assert result == "I analyzed your data and provided the requested insights."
+            assert result is not None
+            assert (
+                result["activity_status"]
+                == "I analyzed your data and provided the requested insights."
+            )
+            assert result["correctness_score"] == 0.85
             mock_db_client.get_node_executions.assert_called_once()
             mock_db_client.get_graph_metadata.assert_called_once()
             mock_db_client.get_graph.assert_called_once()
-            mock_llm.assert_called_once()
+            mock_structured_block.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_status_feature_disabled(self, mock_execution_stats):
@@ -574,15 +646,25 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_get_block, patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
-            "backend.executor.activity_status_generator._call_llm_direct"
-        ) as mock_llm, patch(
+            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+        ) as mock_structured_block, patch(
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ):
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-            mock_llm.return_value = "Agent completed execution."
+
+            # Mock the structured block to return our expected response
+            mock_instance = mock_structured_block.return_value
+
+            async def mock_run(*args, **kwargs):
+                yield "response", {
+                    "activity_status": "Agent completed execution.",
+                    "correctness_score": 0.8,
+                }
+
+            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -593,10 +675,11 @@ class TestGenerateActivityStatusForExecution:
                 user_id="test_user",
             )
 
-            assert result == "Agent completed execution."
-            # Should use fallback graph name in prompt
-            call_args = mock_llm.call_args[0][1]  # prompt argument
-            assert "Graph test_graph" in call_args[1]["content"]
+            assert result is not None
+            assert result["activity_status"] == "Agent completed execution."
+            assert result["correctness_score"] == 0.8
+            # The structured block should have been instantiated
+            assert mock_structured_block.called
 
 
 class TestIntegration:
@@ -626,8 +709,8 @@ class TestIntegration:
         ) as mock_get_block, patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call, patch(
+            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+        ) as mock_structured_block, patch(
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ):
@@ -635,15 +718,16 @@ class TestIntegration:
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
-            mock_response = LLMResponse(
-                raw_response={},
-                prompt=[],
-                response=expected_activity,
-                tool_calls=None,
-                prompt_tokens=100,
-                completion_tokens=30,
-            )
-            mock_llm_call.return_value = mock_response
+            # Mock the structured block to return our expected response
+            mock_instance = mock_structured_block.return_value
+
+            async def mock_run(*args, **kwargs):
+                yield "response", {
+                    "activity_status": expected_activity,
+                    "correctness_score": 0.3,  # Low score since there was a failure
+                }
+
+            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -654,24 +738,14 @@ class TestIntegration:
                 user_id="test_user",
             )
 
-            assert result == expected_activity
+            assert result is not None
+            assert result["activity_status"] == expected_activity
+            assert result["correctness_score"] == 0.3
 
-            # Verify the correct data was passed to LLM
-            llm_call_args = mock_llm_call.call_args
-            prompt = llm_call_args[1]["prompt"]
-
-            # Check system prompt
-            assert prompt[0]["role"] == "system"
-            assert "user's perspective" in prompt[0]["content"]
-
-            # Check user prompt contains expected data
-            user_content = prompt[1]["content"]
-            assert "Test Integration Agent" in user_content
-            assert "user-friendly terms" in user_content.lower()
-
-            # Verify that execution data is present in the prompt
-            assert "{" in user_content  # Should contain JSON data
-            assert "overall_status" in user_content
+            # Verify the structured block was called
+            assert mock_structured_block.called
+            # The structured block should have been instantiated
+            mock_structured_block.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_manager_integration_with_disabled_feature(

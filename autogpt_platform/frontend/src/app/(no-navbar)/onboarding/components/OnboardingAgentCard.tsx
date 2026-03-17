@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import StarRating from "./StarRating";
-import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import SmartImage from "@/components/__legacy__/SmartImage";
+import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 
 type OnboardingAgentCardProps = {
   agent?: StoreAgentDetails;
@@ -21,7 +21,6 @@ export default function OnboardingAgentCard({
           "relative animate-pulse",
           "h-[394px] w-[368px] rounded-[20px] border border-transparent bg-zinc-200",
         )}
-        onClick={onClick}
       />
     );
   }
@@ -67,12 +66,12 @@ export default function OnboardingAgentCard({
         {/* Text content wrapper */}
         <div>
           {/* Title - 2 lines max */}
-          <p className="text-md line-clamp-2 max-h-[50px] font-sans text-base font-medium leading-normal text-zinc-800">
+          <p className="data-sentry-unmask text-md line-clamp-2 max-h-[50px] font-sans text-base font-medium leading-normal text-zinc-800">
             {agent_name}
           </p>
 
           {/* Author - single line with truncate */}
-          <p className="truncate text-sm font-normal leading-normal text-zinc-600">
+          <p className="data-sentry-unmask truncate text-sm font-normal leading-normal text-zinc-600">
             by {creator}
           </p>
 

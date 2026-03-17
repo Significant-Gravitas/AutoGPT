@@ -8,9 +8,7 @@ import dotenv from "dotenv";
 import path from "path";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
+
 export default defineConfig({
   testDir: "./src/tests",
   /* Global setup file that runs before all tests */
@@ -37,11 +35,32 @@ export default defineConfig({
     /* Helps debugging failures */
     trace: "retain-on-failure",
     video: "retain-on-failure",
+
+    /* Auto-accept cookies in all tests to prevent banner interference */
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: "http://localhost:3000",
+          localStorage: [
+            {
+              name: "autogpt_cookie_consent",
+              value: JSON.stringify({
+                hasConsented: true,
+                timestamp: Date.now(),
+                analytics: true,
+                monitoring: true,
+              }),
+            },
+          ],
+        },
+      ],
+    },
   },
   /* Maximum time one test can run for */
   timeout: 25000,
 
-  /* Configure web server to start automatically */
+  /* Configure web server to start automatically (local dev only) */
   webServer: {
     command: "pnpm start",
     url: "http://localhost:3000",

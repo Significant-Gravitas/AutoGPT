@@ -1,7 +1,15 @@
 "use client";
 
-import { redirect } from "next/navigation";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Page() {
-  redirect("/marketplace");
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/copilot");
+  }, [router]);
+
+  return <LoadingSpinner size="large" cover />;
 }

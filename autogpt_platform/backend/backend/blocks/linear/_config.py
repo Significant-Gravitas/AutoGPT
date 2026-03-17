@@ -62,10 +62,10 @@ TEST_CREDENTIALS_OAUTH = OAuth2Credentials(
     title="Mock Linear API key",
     username="mock-linear-username",
     access_token=SecretStr("mock-linear-access-token"),
-    access_token_expires_at=None,
+    access_token_expires_at=1672531200,  # Mock expiration time for short-lived token
     refresh_token=SecretStr("mock-linear-refresh-token"),
     refresh_token_expires_at=None,
-    scopes=["mock-linear-scopes"],
+    scopes=["read", "write"],
 )
 
 TEST_CREDENTIALS_API_KEY = APIKeyCredentials(

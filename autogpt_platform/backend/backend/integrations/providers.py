@@ -18,6 +18,7 @@ class ProviderName(str, Enum):
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
+    ELEVENLABS = "elevenlabs"
     FAL = "fal"
     GITHUB = "github"
     GOOGLE = "google"
@@ -29,6 +30,7 @@ class ProviderName(str, Enum):
     IDEOGRAM = "ideogram"
     JINA = "jina"
     LLAMA_API = "llama_api"
+    MCP = "mcp"
     MEDIUM = "medium"
     MEM0 = "mem0"
     NOTION = "notion"
@@ -45,10 +47,12 @@ class ProviderName(str, Enum):
     SLANT3D = "slant3d"
     SMARTLEAD = "smartlead"
     SMTP = "smtp"
+    TELEGRAM = "telegram"
     TWITTER = "twitter"
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     V0 = "v0"
+    WEBSHARE_PROXY = "webshare_proxy"
     ZEROBOUNCE = "zerobounce"
 
     @classmethod

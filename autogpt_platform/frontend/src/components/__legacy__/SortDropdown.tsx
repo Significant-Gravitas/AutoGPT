@@ -10,9 +10,10 @@ import {
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 
 const sortOptions: SortOption[] = [
-  { label: "Most Recent", value: "recent" },
   { label: "Most Runs", value: "runs" },
   { label: "Highest Rated", value: "rating" },
+  { label: "Name (A-Z)", value: "name" },
+  { label: "Recently Updated", value: "updated_at" },
 ];
 
 interface SortOption {

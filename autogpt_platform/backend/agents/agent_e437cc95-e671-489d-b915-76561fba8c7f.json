@@ -1,0 +1,1064 @@
+{
+  "id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+  "version": 17,
+  "is_active": true,
+  "name": "AI YouTube-to-Blog Converter",
+  "description": "Effortlessly turn YouTube videos into high-quality, SEO-optimized blog posts with this innovative AI YouTube-to-Blog Converter. Perfect for content creators, marketers, and bloggers, this tool analyses video content and generates well-structured articles tailored to your specifications. Simply input a YouTube URL, set your desired tone and word count, and let the AI work its magic. The converter extracts key points, maintains the original message, and enhances readability for a text audience. With options for casual, professional, educational, or formal tones, it adapts to various niches and target readers. Featuring smart SEO optimization, engaging titles, and clear subheadings, this tool helps repurpose video content into shareable, search-engine-friendly blog posts. Expand your content strategy and reach a wider audience by transforming your YouTube videos into compelling written content with the AI YouTube-to-Blog Converter.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "7f37f7a6-6fb9-4c8b-9992-0638abfd7919",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "YouTube URL",
+        "title": null,
+        "value": "https://www.youtube.com/watch?v=J1Mzd1ZeSaU",
+        "secret": false,
+        "advanced": false,
+        "description": "Enter the URL of the YouTube video you want to convert to a blog post",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1083.525390625,
+          "y": -72.1875
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "7548d09d-7ac9-4c3a-901e-f29a2e24e729",
+          "source_id": "7f37f7a6-6fb9-4c8b-9992-0638abfd7919",
+          "sink_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "source_name": "result",
+          "sink_name": "youtube_url",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "13013c6b-505c-408f-aa30-d43a4e0b4309",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Blog Post",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "The main body of the newly written blog post."
+      },
+      "metadata": {
+        "position": {
+          "x": 3771.885044160941,
+          "y": -19.86303750155819
+        }
+      },
+      "input_links": [
+        {
+          "id": "0f89a6e6-d2c4-484f-92de-abcec1f6ecbb",
+          "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "sink_id": "13013c6b-505c-408f-aa30-d43a4e0b4309",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "96280d45-4bdd-4610-958b-054775e77108",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Blog Tone",
+        "title": null,
+        "value": "Educational",
+        "secret": false,
+        "advanced": false,
+        "description": "Select the desired tone for the blog post",
+        "placeholder_values": [
+          "Professional",
+          "Casual",
+          "Educational",
+          "Conversational",
+          "Formal"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -526.960448013501,
+          "y": 1230.0347965176616
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "fa2f1f6a-4798-4e75-aede-44cc1d423f2b",
+          "source_id": "96280d45-4bdd-4610-958b-054775e77108",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_TONE",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+      "block_id": "f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -521.103515625,
+          "y": -69.931640625
+        }
+      },
+      "input_links": [
+        {
+          "id": "7548d09d-7ac9-4c3a-901e-f29a2e24e729",
+          "source_id": "7f37f7a6-6fb9-4c8b-9992-0638abfd7919",
+          "sink_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "source_name": "result",
+          "sink_name": "youtube_url",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "223f88a6-4d00-4fbf-93b1-e6d3b005e46a",
+          "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "cda30ed3-c4bb-429b-ac45-641606b75959",
+          "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "sink_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "source_name": "transcript",
+          "sink_name": "prompt_values_#_TRANSCRIPT",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "abad3718-38d8-4b54-8383-565b6bb0b8d2",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Blog Length",
+        "title": null,
+        "value": "4000",
+        "secret": false,
+        "advanced": false,
+        "description": "Enter the desired word count for the blog post",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1090.8784904050794,
+          "y": 1225.5455600527607
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "9c0078a5-d586-43a6-b893-23cc246fba63",
+          "source_id": "abad3718-38d8-4b54-8383-565b6bb0b8d2",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_WORD_COUNT",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "retry": 3,
+        "prompt": "You are an expert content analyst tasked with extracting comprehensive information from a video transcript. Your goal is to provide a detailed analysis and summary of the transcript, ensuring no important details are lost.\n\nHere is the video transcript you need to analyze:\n\n<transcript>\n{{TRANSCRIPT}}\n</transcript>\n\nPlease follow these steps to analyze the transcript:\n\n1. Carefully read the entire transcript.\n2. Identify potential mistranscriptions and infer the most likely correct words based on context.\n3. Extract the main topics discussed in the video.\n4. For each main topic, identify all relevant key points and supporting details.\n5. Analyze the overall structure and flow of the content.\n6. Compile a comprehensive summary of all the information extracted from the transcript.\n\nBefore providing your final output, wrap your analysis inside <transcript_breakdown> tags. Include the following:\n\n1. List potential mistranscriptions and their likely corrections, quoting the original text.\n2. Identify and quote key phrases for each main topic.\n3. Outline the content structure by noting transitions between topics.\n4. Explain your reasoning for extracting main topics and analyzing the content structure.\n\nAfter your analysis, present your findings in the following format, enclosed in <transcript_analysis_output> tags:\n\n1. Main Topics: List all main topics discussed in the video.\n2. Detailed Breakdown: For each main topic, provide:\n   a. A brief description of the topic\n   b. All key points related to the topic\n   c. Any supporting details or examples mentioned\n3. Content Structure: Describe the overall structure and flow of the video content.\n4. Comprehensive Summary: Provide a detailed summary that captures all significant information from the transcript.\n\nExample output structure (replace with actual content):\n\n<transcript_analysis_output>\n1. Main Topics:\n   - Topic A\n   - Topic B\n   - Topic C\n\n2. Detailed Breakdown:\n   Topic A:\n   a. Description: [Brief description of Topic A]\n   b. Key points:\n      - Point 1\n      - Point 2\n   c. Supporting details:\n      - Detail 1\n      - Detail 2\n\n   [Repeat for Topics B and C]\n\n3. Content Structure:\n   [Description of overall structure and flow]\n\n4. Comprehensive Summary:\n   [Detailed summary of all significant information]\n</transcript_analysis_output>\n\nRemember, the goal is to extract and present as much valuable information as possible from the transcript, ensuring no important details are lost. Be aware that the transcript is auto-generated, so there might be mistranscriptions.",
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 36.80664062500006,
+          "y": -72.1875
+        }
+      },
+      "input_links": [
+        {
+          "id": "cda30ed3-c4bb-429b-ac45-641606b75959",
+          "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "sink_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "source_name": "transcript",
+          "sink_name": "prompt_values_#_TRANSCRIPT",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "8b062f6a-baa4-495b-ba1e-1bfc8824b3a1",
+          "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b747c24b-b846-40a6-905d-4b1dd56f5050",
+          "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_ANALYSIS",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "o1",
+        "retry": 3,
+        "prompt": "Create a well-structured blog post based on the following video content analysis:\n\n{{ANALYSIS}}\n\nUse the following parameters:\n- Write the bog post in the following tone: {{TONE}}\n- Target word count: {{WORD_COUNT}}\n\nThe blog post should include:\n1. An engaging title\n2. An introduction that hooks the reader\n3. Main body with appropriate headings and subheadings\n4. A conclusion that summarizes key points\n5. SEO optimization (include relevant keywords naturally)\n\nFormat the blog post in plaintext, as beautifully as the medium allows.\n\nOutput the title inside a complete set of <title></title> xml tags.\nOutput the blogpost inside a complete set of <blog_post></blog_post> xml tags.\nOutput a list of the used keywords inside a complete set of <keywords></keywords> xml tags\n\nNEVER write xml tags inside of these xml tags, even if mentioned in the video, otherwise the parser will completely fail.",
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 576.2402343750001,
+          "y": -80.80078125000006
+        }
+      },
+      "input_links": [
+        {
+          "id": "fa2f1f6a-4798-4e75-aede-44cc1d423f2b",
+          "source_id": "96280d45-4bdd-4610-958b-054775e77108",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_TONE",
+          "is_static": true
+        },
+        {
+          "id": "b747c24b-b846-40a6-905d-4b1dd56f5050",
+          "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_ANALYSIS",
+          "is_static": false
+        },
+        {
+          "id": "9c0078a5-d586-43a6-b893-23cc246fba63",
+          "source_id": "abad3718-38d8-4b54-8383-565b6bb0b8d2",
+          "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_WORD_COUNT",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5fbdce15-1141-49e4-a3be-243fdc3c81da",
+          "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "sink_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "c5108577-ba7f-4878-bfb4-c45cc4d78dba",
+          "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 3680.5777660860595,
+          "y": 1050.178642988597
+        }
+      },
+      "input_links": [
+        {
+          "id": "223f88a6-4d00-4fbf-93b1-e6d3b005e46a",
+          "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "da4f2ae2-372c-4e33-a350-6d2e07430cc1",
+          "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "94343835-0dc5-4ab8-9755-5ef1a3ca320e",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "678226df-d4f0-440b-841e-493be3b57df8",
+          "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "02e273fe-df05-471a-935e-991f4ab4a65e",
+          "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "8b062f6a-baa4-495b-ba1e-1bfc8824b3a1",
+          "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "c5108577-ba7f-4878-bfb4-c45cc4d78dba",
+          "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1251.681602785506,
+          "y": -39.58716347603245
+        }
+      },
+      "input_links": [
+        {
+          "id": "5fbdce15-1141-49e4-a3be-243fdc3c81da",
+          "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+          "sink_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "94343835-0dc5-4ab8-9755-5ef1a3ca320e",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "16f51325-b332-46e5-bce5-b5f5fc72fb2b",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "018b486e-8d8e-499b-902e-58466d444034",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "0ae3eff0-5861-4fda-a3a5-4d9755255c67",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "title"
+      },
+      "metadata": {
+        "position": {
+          "x": 2437.644150293325,
+          "y": -26.895480664250428
+        }
+      },
+      "input_links": [
+        {
+          "id": "018b486e-8d8e-499b-902e-58466d444034",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "02e273fe-df05-471a-935e-991f4ab4a65e",
+          "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "c0972c6b-b63f-4f20-a952-f72cdd518fbe",
+          "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "sink_id": "8fabda6c-b71f-479b-a729-14f2c97c8430",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "keywords"
+      },
+      "metadata": {
+        "position": {
+          "x": 3047.168210470221,
+          "y": -18.693735013756466
+        }
+      },
+      "input_links": [
+        {
+          "id": "16f51325-b332-46e5-bce5-b5f5fc72fb2b",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "da4f2ae2-372c-4e33-a350-6d2e07430cc1",
+          "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b2609fad-e411-47cc-89e2-6991edc373ec",
+          "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "sink_id": "30772e58-9ffe-4b02-a1c8-1e7f5f395a02",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "blog_post"
+      },
+      "metadata": {
+        "position": {
+          "x": 1842.6779133913146,
+          "y": -27.334164720592128
+        }
+      },
+      "input_links": [
+        {
+          "id": "0ae3eff0-5861-4fda-a3a5-4d9755255c67",
+          "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+          "sink_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "678226df-d4f0-440b-841e-493be3b57df8",
+          "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0f89a6e6-d2c4-484f-92de-abcec1f6ecbb",
+          "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+          "sink_id": "13013c6b-505c-408f-aa30-d43a4e0b4309",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "8fabda6c-b71f-479b-a729-14f2c97c8430",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Title",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "The title of the blog post."
+      },
+      "metadata": {
+        "position": {
+          "x": 4373.488009835746,
+          "y": -15.821288142690591
+        }
+      },
+      "input_links": [
+        {
+          "id": "c0972c6b-b63f-4f20-a952-f72cdd518fbe",
+          "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+          "sink_id": "8fabda6c-b71f-479b-a729-14f2c97c8430",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "30772e58-9ffe-4b02-a1c8-1e7f5f395a02",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Target Keywords",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": "Target keywords used in the blog post."
+      },
+      "metadata": {
+        "position": {
+          "x": 4975.268157067363,
+          "y": -15.821335826406298
+        }
+      },
+      "input_links": [
+        {
+          "id": "b2609fad-e411-47cc-89e2-6991edc373ec",
+          "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+          "sink_id": "30772e58-9ffe-4b02-a1c8-1e7f5f395a02",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1f14dce1-9cbd-4c96-aeaf-630675ef3a6e",
+      "graph_version": 17,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "b747c24b-b846-40a6-905d-4b1dd56f5050",
+      "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+      "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_ANALYSIS",
+      "is_static": false
+    },
+    {
+      "id": "94343835-0dc5-4ab8-9755-5ef1a3ca320e",
+      "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "9c0078a5-d586-43a6-b893-23cc246fba63",
+      "source_id": "abad3718-38d8-4b54-8383-565b6bb0b8d2",
+      "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_WORD_COUNT",
+      "is_static": true
+    },
+    {
+      "id": "da4f2ae2-372c-4e33-a350-6d2e07430cc1",
+      "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "0f89a6e6-d2c4-484f-92de-abcec1f6ecbb",
+      "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+      "sink_id": "13013c6b-505c-408f-aa30-d43a4e0b4309",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "0ae3eff0-5861-4fda-a3a5-4d9755255c67",
+      "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "sink_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "7548d09d-7ac9-4c3a-901e-f29a2e24e729",
+      "source_id": "7f37f7a6-6fb9-4c8b-9992-0638abfd7919",
+      "sink_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+      "source_name": "result",
+      "sink_name": "youtube_url",
+      "is_static": true
+    },
+    {
+      "id": "16f51325-b332-46e5-bce5-b5f5fc72fb2b",
+      "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "sink_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "c5108577-ba7f-4878-bfb4-c45cc4d78dba",
+      "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "018b486e-8d8e-499b-902e-58466d444034",
+      "source_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "sink_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "b2609fad-e411-47cc-89e2-6991edc373ec",
+      "source_id": "b6786db8-d6aa-42de-9d19-515d5e7d9fc6",
+      "sink_id": "30772e58-9ffe-4b02-a1c8-1e7f5f395a02",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "8b062f6a-baa4-495b-ba1e-1bfc8824b3a1",
+      "source_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "678226df-d4f0-440b-841e-493be3b57df8",
+      "source_id": "ef4553a0-4e84-45f1-b972-f6e7123d68e7",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c0972c6b-b63f-4f20-a952-f72cdd518fbe",
+      "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+      "sink_id": "8fabda6c-b71f-479b-a729-14f2c97c8430",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "fa2f1f6a-4798-4e75-aede-44cc1d423f2b",
+      "source_id": "96280d45-4bdd-4610-958b-054775e77108",
+      "sink_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_TONE",
+      "is_static": true
+    },
+    {
+      "id": "02e273fe-df05-471a-935e-991f4ab4a65e",
+      "source_id": "3c3b6d76-54de-4b89-8022-c9ef7ca34b86",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "223f88a6-4d00-4fbf-93b1-e6d3b005e46a",
+      "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+      "sink_id": "c8e51364-ecad-407f-b4e5-9f5496744285",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "cda30ed3-c4bb-429b-ac45-641606b75959",
+      "source_id": "9fa16df6-d785-4b0a-9f58-7f42544d5cdf",
+      "sink_id": "1806c84c-2ff2-4045-9fc7-12b5be4086ab",
+      "source_name": "transcript",
+      "sink_name": "prompt_values_#_TRANSCRIPT",
+      "is_static": false
+    },
+    {
+      "id": "5fbdce15-1141-49e4-a3be-243fdc3c81da",
+      "source_id": "2b85cb39-9cfc-411c-a9fb-a3af03df9e00",
+      "sink_id": "ffdcd234-9c01-4576-8768-b1f092f4b3bb",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2025-04-20T11:23:11.671Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "YouTube URL": {
+        "advanced": false,
+        "secret": false,
+        "title": "YouTube URL",
+        "description": "Enter the URL of the YouTube video you want to convert to a blog post",
+        "default": "https://www.youtube.com/watch?v=J1Mzd1ZeSaU"
+      },
+      "Blog Tone": {
+        "advanced": false,
+        "secret": false,
+        "title": "Blog Tone",
+        "enum": [
+          "Professional",
+          "Casual",
+          "Educational",
+          "Conversational",
+          "Formal"
+        ],
+        "description": "Select the desired tone for the blog post",
+        "default": "Educational"
+      },
+      "Blog Length": {
+        "advanced": false,
+        "secret": false,
+        "title": "Blog Length",
+        "description": "Enter the desired word count for the blog post",
+        "default": "4000"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Blog Post": {
+        "advanced": false,
+        "secret": false,
+        "title": "Blog Post",
+        "description": "The main body of the newly written blog post."
+      },
+      "Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error"
+      },
+      "Title": {
+        "advanced": false,
+        "secret": false,
+        "title": "Title",
+        "description": "The title of the blog post."
+      },
+      "Target Keywords": {
+        "advanced": false,
+        "secret": false,
+        "title": "Target Keywords",
+        "description": "Target keywords used in the blog post."
+      }
+    },
+    "required": [
+      "Blog Post",
+      "Error",
+      "Title",
+      "Target Keywords"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "webshare_proxy_user_password_credentials": {
+        "credentials_provider": [
+          "webshare_proxy"
+        ],
+        "credentials_types": [
+          "user_password"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "webshare_proxy",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "user_password",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.WEBSHARE_PROXY: 'webshare_proxy'>], Literal['user_password']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-4o",
+          "o1"
+        ]
+      }
+    },
+    "required": [
+      "webshare_proxy_user_password_credentials",
+      "openai_api_key_credentials"
+    ],
+    "title": "AIYouTube-to-BlogConverterCredentialsInputSchema",
+    "type": "object"
+  }
+}

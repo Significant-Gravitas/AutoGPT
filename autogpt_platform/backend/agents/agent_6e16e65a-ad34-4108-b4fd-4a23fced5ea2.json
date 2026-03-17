@@ -1,0 +1,1795 @@
+{
+  "id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+  "version": 173,
+  "is_active": true,
+  "name": "Decision Maker Lead Finder",
+  "description": "Find the key decision-makers you need, fast.\n\nThis agent identifies business owners or CEOs of local companies in any area you choose. Simply enter what kind of businesses you\u2019re looking for and where, and it will:\n\n* Search the area and gather public information\n* Return names, roles, and contact details when available\n* Provide smart Google search suggestions if details aren\u2019t found\n\nPerfect for:\n\n* B2B sales teams seeking verified leads\n* Recruiters sourcing local talent\n* Researchers looking to connect with business leaders\n\nSave hours of manual searching and get straight to the people who matter most.",
+  "instructions": "Input the type of businesses that you'd like to contact and a target location and the agent will find you leads.\n\nStart off with a small number and increase the search results once you're happy.",
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "7d2177fa-7974-4058-8da2-4247c4aae83f",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Results",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 3460.582732906506,
+          "y": 274.71786838896395
+        }
+      },
+      "input_links": [
+        {
+          "id": "5121e8ff-68ff-4eee-a4f7-bdef9590da73",
+          "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "sink_id": "7d2177fa-7974-4058-8da2-4247c4aae83f",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1bd025e0-3ccf-4e63-a960-03325f4a6e42",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Here we do the initial google search to get back the results"
+      },
+      "metadata": {
+        "position": {
+          "x": 445.7289615198955,
+          "y": -122.37319867142689
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5119cbae-3244-4b5c-a5df-8ff949391e5f",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Location",
+        "value": "Edinburgh",
+        "secret": false,
+        "advanced": false,
+        "description": "Enter a specific location (e.g. city, neighborhood, or address). For example: \u201cSan Francisco\u201d, \u201cPalo Alto\u201d, or \u201cSoHo, NYC\u201d. This helps narrow the search to a specific area.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1254.565608902577,
+          "y": -445.18205291322886
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "05dafd35-04f0-4a31-80a6-399642febdec",
+          "source_id": "5119cbae-3244-4b5c-a5df-8ff949391e5f",
+          "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "source_name": "result",
+          "sink_name": "values_#_Y",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b2286cfa-84f2-40ff-91a7-36528dc95d1b",
+      "block_id": "96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
+      "input_default": {
+        "name": "Search Radius (meters, max 50,000)",
+        "value": 10000,
+        "secret": false,
+        "advanced": false,
+        "description": "Defines how far around the specified location we\u2019ll look for businesses. For example, 5000 meters covers a large neighborhood or small city.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1235.999879770989,
+          "y": 516.5017041601284
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "62ef44f9-ed35-4eaa-a0ba-d9a023caa05b",
+          "source_id": "b2286cfa-84f2-40ff-91a7-36528dc95d1b",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "result",
+          "sink_name": "radius",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "64d8b6ef-35ef-4b0c-af79-62d0185b1769",
+      "block_id": "96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
+      "input_default": {
+        "name": "Max Number of Businesses to Analyze (max 60)",
+        "value": 3,
+        "secret": false,
+        "advanced": false,
+        "description": "The maximum number of businesses the agent will analyze from the search results. We\u2019ll attempt to identify the CEO or owner for each one.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1241.9447129110408,
+          "y": 1597.7355422461178
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "755618e6-21ee-4017-89aa-1e0891b5ee35",
+          "source_id": "64d8b6ef-35ef-4b0c-af79-62d0185b1769",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "result",
+          "sink_name": "max_results",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 2286.9263830966697,
+          "y": 5098.192228390306
+        }
+      },
+      "input_links": [
+        {
+          "id": "74e0063f-4742-4a5e-9545-e74b9d5aac71",
+          "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f621a673-5f85-417b-b166-45cf4f284d40",
+          "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "e731e593-fb21-4768-9de4-17b17d0d62dc",
+          "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f9bf8eb1-316e-4ed7-92e2-db42493e7fc8",
+          "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "block_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "input_default": {
+        "radius": 5000,
+        "max_results": 20
+      },
+      "metadata": {
+        "position": {
+          "x": 388.18411547948523,
+          "y": 292.0431065385293
+        }
+      },
+      "input_links": [
+        {
+          "id": "62ef44f9-ed35-4eaa-a0ba-d9a023caa05b",
+          "source_id": "b2286cfa-84f2-40ff-91a7-36528dc95d1b",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "result",
+          "sink_name": "radius",
+          "is_static": true
+        },
+        {
+          "id": "9f9a549c-12dc-42c8-8aeb-52221c3e30a9",
+          "source_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "output",
+          "sink_name": "query",
+          "is_static": false
+        },
+        {
+          "id": "755618e6-21ee-4017-89aa-1e0891b5ee35",
+          "source_id": "64d8b6ef-35ef-4b0c-af79-62d0185b1769",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "result",
+          "sink_name": "max_results",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5ea771cc-8621-4bbe-8fe1-c6ff0837247e",
+          "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "sink_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "source_name": "place",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f9bf8eb1-316e-4ed7-92e2-db42493e7fc8",
+          "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "373eef04-8ac1-4741-a9f6-469479e6abd3",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Business Type",
+        "value": "coffee roasters",
+        "secret": false,
+        "advanced": false,
+        "description": "Describe the kind of businesses you're targeting. For example: \u201cAI startups\u201d, \u201cdigital marketing agencies\u201d, or \u201ccoffee roasters\u201d. This will be used in a Google Maps search.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -1250.0050183525716,
+          "y": -1439.6118227804732
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "477c651e-24d2-40b7-a33d-c434c3b40fc8",
+          "source_id": "373eef04-8ac1-4741-a9f6-469479e6abd3",
+          "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "source_name": "result",
+          "sink_name": "values_#_X",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "aba6fb51-53ac-4864-ba90-5765db928731",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "{{X}} in {{Y}}",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": -692.063978515958,
+          "y": -993.3284573108554
+        }
+      },
+      "input_links": [
+        {
+          "id": "477c651e-24d2-40b7-a33d-c434c3b40fc8",
+          "source_id": "373eef04-8ac1-4741-a9f6-469479e6abd3",
+          "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "source_name": "result",
+          "sink_name": "values_#_X",
+          "is_static": true
+        },
+        {
+          "id": "05dafd35-04f0-4a31-80a6-399642febdec",
+          "source_id": "5119cbae-3244-4b5c-a5df-8ff949391e5f",
+          "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "source_name": "result",
+          "sink_name": "values_#_Y",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9f9a549c-12dc-42c8-8aeb-52221c3e30a9",
+          "source_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+          "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "source_name": "output",
+          "sink_name": "query",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "string"
+      },
+      "metadata": {
+        "position": {
+          "x": 1024.5114218164606,
+          "y": 293.3837921763587
+        }
+      },
+      "input_links": [
+        {
+          "id": "5ea771cc-8621-4bbe-8fe1-c6ff0837247e",
+          "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+          "sink_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "source_name": "place",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6a390b2e-1d72-4283-8649-db59caf83671",
+          "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "sink_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "source_name": "value",
+          "sink_name": "Business Info",
+          "is_static": false
+        },
+        {
+          "id": "e731e593-fb21-4768-9de4-17b17d0d62dc",
+          "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {},
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "0c9c3670-b3b4-45ce-92d1-42b178fd92b9",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Business Info"
+          ],
+          "properties": {
+            "Business Info": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Info",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        },
+        "graph_version": 10,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "Results!",
+            "Error"
+          ],
+          "properties": {
+            "Error": {
+              "title": "Error",
+              "secret": false,
+              "advanced": false
+            },
+            "Results!": {
+              "title": "Results!",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 1600.245816656499,
+          "y": 301.35868425022886
+        },
+        "customized_name": "Find Business CEO"
+      },
+      "input_links": [
+        {
+          "id": "6a390b2e-1d72-4283-8649-db59caf83671",
+          "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+          "sink_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "source_name": "value",
+          "sink_name": "Business Info",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "20ba5b01-cd71-483a-9f5d-5ad122671ec3",
+          "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "sink_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+          "source_name": "Results!",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "74e0063f-4742-4a5e-9545-e74b9d5aac71",
+          "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2324.8981774818467,
+          "y": 262.78406464486443
+        }
+      },
+      "input_links": [
+        {
+          "id": "20ba5b01-cd71-483a-9f5d-5ad122671ec3",
+          "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+          "sink_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+          "source_name": "Results!",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d7042b49-fbdd-48dd-b06f-22622f537c97",
+          "source_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+          "sink_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "identified_owner_ceo"
+      },
+      "metadata": {
+        "position": {
+          "x": 2885.0176323637097,
+          "y": 266.28362722772454
+        }
+      },
+      "input_links": [
+        {
+          "id": "d7042b49-fbdd-48dd-b06f-22622f537c97",
+          "source_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+          "sink_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5121e8ff-68ff-4eee-a4f7-bdef9590da73",
+          "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "sink_id": "7d2177fa-7974-4058-8da2-4247c4aae83f",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f621a673-5f85-417b-b166-45cf4f284d40",
+          "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+          "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f6138aaf-4f85-48d5-b905-db11a2ff82f3",
+      "graph_version": 173,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "74e0063f-4742-4a5e-9545-e74b9d5aac71",
+      "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+      "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+      "source_name": "Error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "05dafd35-04f0-4a31-80a6-399642febdec",
+      "source_id": "5119cbae-3244-4b5c-a5df-8ff949391e5f",
+      "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+      "source_name": "result",
+      "sink_name": "values_#_Y",
+      "is_static": true
+    },
+    {
+      "id": "6a390b2e-1d72-4283-8649-db59caf83671",
+      "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+      "sink_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+      "source_name": "value",
+      "sink_name": "Business Info",
+      "is_static": false
+    },
+    {
+      "id": "d7042b49-fbdd-48dd-b06f-22622f537c97",
+      "source_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+      "sink_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "f621a673-5f85-417b-b166-45cf4f284d40",
+      "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+      "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e731e593-fb21-4768-9de4-17b17d0d62dc",
+      "source_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+      "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "f9bf8eb1-316e-4ed7-92e2-db42493e7fc8",
+      "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "sink_id": "786df672-a9cf-4f17-b18f-fd7355ce0c19",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "9f9a549c-12dc-42c8-8aeb-52221c3e30a9",
+      "source_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+      "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "source_name": "output",
+      "sink_name": "query",
+      "is_static": false
+    },
+    {
+      "id": "20ba5b01-cd71-483a-9f5d-5ad122671ec3",
+      "source_id": "f0c906ed-b396-4c7a-bd61-9f5744378fc0",
+      "sink_id": "60dab3ca-79d5-4e6d-b8e4-94f55fab3353",
+      "source_name": "Results!",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "62ef44f9-ed35-4eaa-a0ba-d9a023caa05b",
+      "source_id": "b2286cfa-84f2-40ff-91a7-36528dc95d1b",
+      "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "source_name": "result",
+      "sink_name": "radius",
+      "is_static": true
+    },
+    {
+      "id": "755618e6-21ee-4017-89aa-1e0891b5ee35",
+      "source_id": "64d8b6ef-35ef-4b0c-af79-62d0185b1769",
+      "sink_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "source_name": "result",
+      "sink_name": "max_results",
+      "is_static": true
+    },
+    {
+      "id": "5121e8ff-68ff-4eee-a4f7-bdef9590da73",
+      "source_id": "0bc5330b-96da-4f43-8085-94d09d4dc4ea",
+      "sink_id": "7d2177fa-7974-4058-8da2-4247c4aae83f",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "477c651e-24d2-40b7-a33d-c434c3b40fc8",
+      "source_id": "373eef04-8ac1-4741-a9f6-469479e6abd3",
+      "sink_id": "aba6fb51-53ac-4864-ba90-5765db928731",
+      "source_name": "result",
+      "sink_name": "values_#_X",
+      "is_static": true
+    },
+    {
+      "id": "5ea771cc-8621-4bbe-8fe1-c6ff0837247e",
+      "source_id": "65c45aa1-b513-4741-bd1c-d26b15b1d9d3",
+      "sink_id": "b9653cd3-5cd7-46da-b762-4ef0e3249f0d",
+      "source_name": "place",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [
+    {
+      "id": "d3d3907c-9974-4890-9fee-997519ba2711",
+      "version": 10,
+      "is_active": true,
+      "name": "Find Business CEO",
+      "description": "Input info on a business, this agent will find it's CEO / Leader for you.",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+          "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": -24.95592616214003,
+              "y": 439.8362208290606
+            }
+          },
+          "input_links": [
+            {
+              "id": "91f1d36c-8afb-4037-9add-7ceb7c80fc2c",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "source_name": "value",
+              "sink_name": "input",
+              "is_static": false
+            },
+            {
+              "id": "1eb094ac-70a8-43bf-aef8-72259a9e952a",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "source_name": "value",
+              "sink_name": "data",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "069e3f5d-3a2e-442c-9ce8-8d4dac810fdf",
+              "source_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "output",
+              "sink_name": "prompt_values_#_BUSINESS_INFO",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "506276f9-d5be-4e5c-9569-4fe7999d0cc0",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Results!",
+            "secret": false,
+            "advanced": false,
+            "escape_html": false
+          },
+          "metadata": {
+            "position": {
+              "x": 2318.871796113364,
+              "y": 1268.345179299749
+            }
+          },
+          "input_links": [
+            {
+              "id": "3a4f43c0-658d-4164-90e2-b254867594fd",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "506276f9-d5be-4e5c-9569-4fe7999d0cc0",
+              "source_name": "finished",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+          "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+          "input_default": {
+            "type": "string"
+          },
+          "metadata": {
+            "position": {
+              "x": -624.0481725216048,
+              "y": 445.81163897153147
+            }
+          },
+          "input_links": [
+            {
+              "id": "240d49bf-9350-4d13-a33c-02f34c360a7e",
+              "source_id": "30e9d734-52e2-470c-9323-f2eb2a33e2fb",
+              "sink_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "source_name": "result",
+              "sink_name": "value",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "91f1d36c-8afb-4037-9add-7ceb7c80fc2c",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "source_name": "value",
+              "sink_name": "input",
+              "is_static": false
+            },
+            {
+              "id": "08b6f408-24f7-4556-913a-add356c5bf92",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "1eb094ac-70a8-43bf-aef8-72259a9e952a",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "source_name": "value",
+              "sink_name": "data",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "block_id": "3b191d9f-356f-482d-8238-ba04b6d18381",
+          "input_default": {
+            "model": "gpt-5-mini-2025-08-07",
+            "retry": 3,
+            "prompt": "You are a business CEO/Leader identifier. \n\nYour task is to identify the CEO/Leader of the business below by conducting web research. In order to identify the CEO, use your web search tool.  \n\nHere is the business to find the CEO of:\n<business_info> \n{{BUSINESS_INFO}} \n</business_info>  \n\n\nOnce you can confidently identify the business owner or CEO based on the search results, provide the details in the following format in your \"finished\" message (no tool call).\n<identified_owner_ceo> \nName: [Owner's or CEO's full name] \nPosition: [Owner or CEO] \nBusiness Name: [Name of the business] \nEmail: [Owner's or CEO's email address, if available] \nPhone Number: [Owner's or CEO's phone number, if available] \nBusiness Address: [Complete business address] \n</identified_owner_ceo>\n\nOnly include the fields for which you have information from the search results. \nDo not make assumptions or add information that is not explicitly stated.  \n\nIf you cannot yet confidently identify the business owner or CEO, use your web search tool to find more information about the business owner or CEO. \n\nWhen creating these search queries: \n1. Use specific details from the business information provided \n2. Focus on finding the owner's or CEO's identity and contact information \n3. Vary the types of searches (e.g., business name + CEO, business address + proprietor, written questions also work well etc.) \n4. Include location-specific searches if applicable \n5. Consider searching for business registration or public records \n6. Aim to uncover the owner's or CEO's contact details (email, phone number) if possible  \n\nRemember: \n1. Never make assumptions when identifying the business, owner or CEO. \n2. If any piece of required information is missing, do not try to fill it in with guesses, never make assumptions\n3. Be certain of the owner's or CEO's identity before providing an <identified_owner_ceo> response. \n4. Always call a tool, if you provide a message without a tool call or a \"finished\" message, this will be taken as your final answer.\n\nAnalyze the business information now and provide your response accordingly.",
+            "sys_prompt": "Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures, and always provide the complete argument provided with the type matching the required jsonschema signature, no missing argument is allowed. If you have already completed the task objective, you can end the task by providing the end result of your work as a finish message. Function parameters that has no default value and not optional typed has to be provided. ",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {},
+            "multiple_tool_calls": false,
+            "conversation_history": []
+          },
+          "metadata": {
+            "position": {
+              "x": 1143.4480508963065,
+              "y": 15.954572309820549
+            }
+          },
+          "input_links": [
+            {
+              "id": "d1421048-3a10-46d8-995b-4fdcc8bca179",
+              "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "Answer",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            },
+            {
+              "id": "74066195-307d-4351-a8af-d0240d9a4977",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "conversations",
+              "sink_name": "conversation_history",
+              "is_static": false
+            },
+            {
+              "id": "069e3f5d-3a2e-442c-9ce8-8d4dac810fdf",
+              "source_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "output",
+              "sink_name": "prompt_values_#_BUSINESS_INFO",
+              "is_static": true
+            },
+            {
+              "id": "d67e6d77-c214-4853-97b4-7a8c5a94f1f2",
+              "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "Error",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "647f0ed8-4e1c-4ea7-abd4-67d13022a343",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "source_name": "tools_^_web_search_~_question",
+              "sink_name": "Question",
+              "is_static": false
+            },
+            {
+              "id": "d2b063bf-a2a1-45b3-a705-c912c4b587aa",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "3a4f43c0-658d-4164-90e2-b254867594fd",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "506276f9-d5be-4e5c-9569-4fe7999d0cc0",
+              "source_name": "finished",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "74066195-307d-4351-a8af-d0240d9a4977",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "conversations",
+              "sink_name": "conversation_history",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+          "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+          "input_default": {
+            "inputs": {
+              "Question": "Why is the sky blue?"
+            },
+            "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+            "graph_id": "06fa822d-4c66-43ad-a49e-cd3f2b148b82",
+            "input_schema": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "Question": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "short-text"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Question",
+                  "secret": false,
+                  "default": "Why is the sky blue?",
+                  "advanced": false
+                }
+              }
+            },
+            "graph_version": 16,
+            "output_schema": {
+              "type": "object",
+              "required": [
+                "Answer",
+                "Error"
+              ],
+              "properties": {
+                "Error": {
+                  "title": "Error",
+                  "secret": false,
+                  "advanced": false
+                },
+                "Answer": {
+                  "title": "Answer",
+                  "secret": false,
+                  "advanced": false
+                }
+              }
+            }
+          },
+          "metadata": {
+            "position": {
+              "x": 1892.787309780138,
+              "y": -337.34517929974896
+            }
+          },
+          "input_links": [
+            {
+              "id": "647f0ed8-4e1c-4ea7-abd4-67d13022a343",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "source_name": "tools_^_web_search_~_question",
+              "sink_name": "Question",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "d1421048-3a10-46d8-995b-4fdcc8bca179",
+              "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "Answer",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            },
+            {
+              "id": "d67e6d77-c214-4853-97b4-7a8c5a94f1f2",
+              "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+              "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "source_name": "Error",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "30e9d734-52e2-470c-9323-f2eb2a33e2fb",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Business Info",
+            "secret": false,
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -1289.439195278696,
+              "y": 434.231534401348
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "240d49bf-9350-4d13-a33c-02f34c360a7e",
+              "source_id": "30e9d734-52e2-470c-9323-f2eb2a33e2fb",
+              "sink_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "source_name": "result",
+              "sink_name": "value",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "secret": false,
+            "advanced": false,
+            "escape_html": false
+          },
+          "metadata": {
+            "position": {
+              "x": 2288.060474752282,
+              "y": 2349.5595931194903
+            }
+          },
+          "input_links": [
+            {
+              "id": "d2b063bf-a2a1-45b3-a705-c912c4b587aa",
+              "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+              "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "08b6f408-24f7-4556-913a-add356c5bf92",
+              "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+              "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        }
+      ],
+      "links": [
+        {
+          "id": "069e3f5d-3a2e-442c-9ce8-8d4dac810fdf",
+          "source_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+          "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_BUSINESS_INFO",
+          "is_static": true
+        },
+        {
+          "id": "d67e6d77-c214-4853-97b4-7a8c5a94f1f2",
+          "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+          "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "source_name": "Error",
+          "sink_name": "last_tool_output",
+          "is_static": false
+        },
+        {
+          "id": "647f0ed8-4e1c-4ea7-abd4-67d13022a343",
+          "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "sink_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+          "source_name": "tools_^_web_search_~_question",
+          "sink_name": "Question",
+          "is_static": false
+        },
+        {
+          "id": "240d49bf-9350-4d13-a33c-02f34c360a7e",
+          "source_id": "30e9d734-52e2-470c-9323-f2eb2a33e2fb",
+          "sink_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": true
+        },
+        {
+          "id": "1eb094ac-70a8-43bf-aef8-72259a9e952a",
+          "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+          "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": false
+        },
+        {
+          "id": "3a4f43c0-658d-4164-90e2-b254867594fd",
+          "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "sink_id": "506276f9-d5be-4e5c-9569-4fe7999d0cc0",
+          "source_name": "finished",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d2b063bf-a2a1-45b3-a705-c912c4b587aa",
+          "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "91f1d36c-8afb-4037-9add-7ceb7c80fc2c",
+          "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+          "sink_id": "54bfb5a3-051a-4c4a-a180-7d1fbb7b113e",
+          "source_name": "value",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "08b6f408-24f7-4556-913a-add356c5bf92",
+          "source_id": "61aad48d-ca01-46bd-9b17-67e03136bc17",
+          "sink_id": "6afdc5ce-37db-4238-8fea-86eb4c360fbe",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "74066195-307d-4351-a8af-d0240d9a4977",
+          "source_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "source_name": "conversations",
+          "sink_name": "conversation_history",
+          "is_static": false
+        },
+        {
+          "id": "d1421048-3a10-46d8-995b-4fdcc8bca179",
+          "source_id": "c5b5c09a-152e-4932-ad72-1cfd0735b834",
+          "sink_id": "939682c2-fda2-42e2-b309-492ed9a9422a",
+          "source_name": "Answer",
+          "sink_name": "last_tool_output",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Business Info": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Business Info"
+          }
+        },
+        "required": [
+          "Business Info"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Results!": {
+            "advanced": false,
+            "secret": false,
+            "title": "Results!"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          }
+        },
+        "required": [
+          "Results!",
+          "Error"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    },
+    {
+      "id": "c19b3799-6b6b-40e5-86c8-8496274cddeb",
+      "version": 16,
+      "is_active": true,
+      "name": "Web Search",
+      "description": "Quick web search using perplexity",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "perplexity/sonar-pro",
+            "retry": 3,
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 227.84177932953094,
+              "y": 234.0155945699488
+            }
+          },
+          "input_links": [
+            {
+              "id": "7056a45f-c928-46f5-aed2-b91f5779e3d8",
+              "source_id": "95c75f27-10a9-4caf-980a-4496a9fb1da0",
+              "sink_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "source_name": "result",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "e587d4a7-3753-443e-b4e9-f10b29ff0425",
+              "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "sink_id": "a23d4c5c-e9ca-496c-a5e8-57534dfa9085",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "60e288be-3de9-417c-9c6a-10897293203c",
+              "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "sink_id": "7dcd5103-e3f9-434c-9bde-1b6a844d979d",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "95c75f27-10a9-4caf-980a-4496a9fb1da0",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Question",
+            "value": "Why is the sky blue?",
+            "secret": false,
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -360.0051846165286,
+              "y": 226.56203046586123
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "7056a45f-c928-46f5-aed2-b91f5779e3d8",
+              "source_id": "95c75f27-10a9-4caf-980a-4496a9fb1da0",
+              "sink_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "source_name": "result",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "a23d4c5c-e9ca-496c-a5e8-57534dfa9085",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Answer",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 813.9483980308338,
+              "y": 212.6556938463584
+            }
+          },
+          "input_links": [
+            {
+              "id": "e587d4a7-3753-443e-b4e9-f10b29ff0425",
+              "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "sink_id": "a23d4c5c-e9ca-496c-a5e8-57534dfa9085",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "7dcd5103-e3f9-434c-9bde-1b6a844d979d",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 1435.786315062846,
+              "y": 222.89116078136777
+            }
+          },
+          "input_links": [
+            {
+              "id": "60e288be-3de9-417c-9c6a-10897293203c",
+              "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+              "sink_id": "7dcd5103-e3f9-434c-9bde-1b6a844d979d",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        }
+      ],
+      "links": [
+        {
+          "id": "60e288be-3de9-417c-9c6a-10897293203c",
+          "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+          "sink_id": "7dcd5103-e3f9-434c-9bde-1b6a844d979d",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "7056a45f-c928-46f5-aed2-b91f5779e3d8",
+          "source_id": "95c75f27-10a9-4caf-980a-4496a9fb1da0",
+          "sink_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+          "source_name": "result",
+          "sink_name": "prompt",
+          "is_static": true
+        },
+        {
+          "id": "e587d4a7-3753-443e-b4e9-f10b29ff0425",
+          "source_id": "f14630d5-4344-46c9-a2e4-4516e51aff54",
+          "sink_id": "a23d4c5c-e9ca-496c-a5e8-57534dfa9085",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Question": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Question",
+            "default": "Why is the sky blue?"
+          }
+        },
+        "required": []
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Answer": {
+            "advanced": false,
+            "secret": false,
+            "title": "Answer"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          }
+        },
+        "required": [
+          "Answer",
+          "Error"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    }
+  ],
+  "user_id": "",
+  "created_at": "2025-10-13T20:55:15.988Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Location": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Location",
+        "description": "Enter a specific location (e.g. city, neighborhood, or address). For example: \u201cSan Francisco\u201d, \u201cPalo Alto\u201d, or \u201cSoHo, NYC\u201d. This helps narrow the search to a specific area.",
+        "default": "Edinburgh"
+      },
+      "Search Radius (meters, max 50,000)": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Search Radius (meters, max 50,000)",
+        "description": "Defines how far around the specified location we\u2019ll look for businesses. For example, 5000 meters covers a large neighborhood or small city.",
+        "default": 10000
+      },
+      "Max Number of Businesses to Analyze (max 60)": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Max Number of Businesses to Analyze (max 60)",
+        "description": "The maximum number of businesses the agent will analyze from the search results. We\u2019ll attempt to identify the CEO or owner for each one.",
+        "default": 3
+      },
+      "Business Type": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Business Type",
+        "description": "Describe the kind of businesses you're targeting. For example: \u201cAI startups\u201d, \u201cdigital marketing agencies\u201d, or \u201ccoffee roasters\u201d. This will be used in a Google Maps search.",
+        "default": "coffee roasters"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Results": {
+        "advanced": false,
+        "secret": false,
+        "title": "Results"
+      },
+      "Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error"
+      }
+    },
+    "required": [
+      "Results",
+      "Error"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "google_maps_api_key_credentials": {
+        "credentials_provider": [
+          "google_maps"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "google_maps",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE_MAPS: 'google_maps'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-5-mini-2025-08-07"
+        ]
+      },
+      "open_router_api_key_credentials": {
+        "credentials_provider": [
+          "open_router"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "open_router",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPEN_ROUTER: 'open_router'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "perplexity/sonar-pro"
+        ]
+      }
+    },
+    "required": [
+      "google_maps_api_key_credentials",
+      "openai_api_key_credentials",
+      "open_router_api_key_credentials"
+    ],
+    "title": "DecisionMakerLeadFinderCredentialsInputSchema",
+    "type": "object"
+  }
+}

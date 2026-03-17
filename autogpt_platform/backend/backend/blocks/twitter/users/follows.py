@@ -3,6 +3,13 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -23,7 +30,6 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
@@ -33,7 +39,7 @@ class TwitterUnfollowUserBlock(Block):
     The request succeeds with no action when the authenticated user sends a request to a user they're not following or have already unfollowed.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["users.read", "users.write", "follows.write", "offline.access"]
         )
@@ -43,11 +49,10 @@ class TwitterUnfollowUserBlock(Block):
             placeholder="Enter target user ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the unfollow action was successful"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -105,7 +110,7 @@ class TwitterFollowUserBlock(Block):
     public Tweets.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["users.read", "users.write", "follows.write", "offline.access"]
         )
@@ -115,11 +120,10 @@ class TwitterFollowUserBlock(Block):
             placeholder="Enter target user ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the follow action was successful"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -196,7 +200,7 @@ class TwitterGetFollowersBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         ids: list[str] = SchemaField(description="List of follower user IDs")
         usernames: list[str] = SchemaField(description="List of follower usernames")
         next_token: str = SchemaField(description="Next token for pagination")
@@ -206,8 +210,6 @@ class TwitterGetFollowersBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -370,7 +372,7 @@ class TwitterGetFollowingBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         ids: list[str] = SchemaField(description="List of following user IDs")
         usernames: list[str] = SchemaField(description="List of following usernames")
         next_token: str = SchemaField(description="Next token for pagination")
@@ -380,8 +382,6 @@ class TwitterGetFollowingBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

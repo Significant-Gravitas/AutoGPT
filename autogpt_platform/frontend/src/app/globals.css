@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@source "../node_modules/streamdown/dist/*.js";
 
 @layer base {
   :root {
@@ -29,6 +30,14 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
@@ -56,13 +65,21 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background font-sans text-foreground antialiased transition-colors;
+    @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
   }
 }
 
@@ -70,7 +87,7 @@
 
 @layer components {
   .agpt-border-input {
-    @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+    @apply m-0.5 border border-input data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400;
   }
 
   .agpt-shadow-input {
@@ -149,4 +166,33 @@ input[type="number"]::-webkit-inner-spin-button {
 
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+[class*="picker-dialog"] {
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+}
+
+/* When Google picker is open, lower dialog z-index so picker renders on top */
+body[data-google-picker-open="true"] [data-dialog-overlay],
+body[data-google-picker-open="true"] [data-dialog-content] {
+  z-index: 1 !important;
+  pointer-events: none !important;
+}
+
+/* Streamdown external link dialog: "Open link" button */
+[data-streamdown="link-safety-modal"] button:last-of-type {
+  color: white;
+}
+
+/* CoPilot chat table styling — remove left/right borders, increase padding */
+[data-streamdown="table-wrapper"] table {
+  border-left: none;
+  border-right: none;
+}
+
+[data-streamdown="table-wrapper"] th,
+[data-streamdown="table-wrapper"] td {
+  padding: 0.875rem 1rem; /* py-3.5 px-4 */
 }

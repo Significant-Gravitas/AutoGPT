@@ -1,15 +1,15 @@
 "use client";
 
-import * as React from "react";
 import {
   Select as BaseSelect,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
-  SelectSeparator,
 } from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
+import * as React from "react";
 import { ReactNode } from "react";
 import { Text } from "../Text/Text";
 
@@ -140,7 +140,7 @@ export function Select({
   ) : (
     <label htmlFor={id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="large-medium" as="span" className="text-black">
           {label}
         </Text>
         {hint}

@@ -196,7 +196,7 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
         VirusDetectedError: If virus is found
         VirusScanError: If scanning fails
     """
-    from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
+    from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 
     try:
         result = await get_virus_scanner().scan_file(content, filename=filename)

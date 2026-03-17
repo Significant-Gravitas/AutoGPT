@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
+from backend.data.model import USER_TIMEZONE_NOT_SET
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,7 +140,7 @@ def get_user_timezone_or_utc(user_timezone: Optional[str]) -> str:
     Returns:
         Valid timezone string (user's preference or UTC fallback)
     """
-    if not user_timezone or user_timezone == "not-set":
+    if not user_timezone or user_timezone == USER_TIMEZONE_NOT_SET:
         return "UTC"
 
     if validate_timezone(user_timezone):

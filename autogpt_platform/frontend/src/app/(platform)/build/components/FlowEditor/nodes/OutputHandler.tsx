@@ -1,10 +1,10 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
-import NodeHandle from "../handlers/NodeHandle";
+import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
   Tooltip,
   TooltipContent,
@@ -13,61 +13,174 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
+import { BlockUIType } from "../../types";
+import { cn } from "@/lib/utils";
+import { useBrokenOutputs } from "./useBrokenOutputs";
 
 export const OutputHandler = ({
   outputSchema,
   nodeId,
+  uiType,
 }: {
   outputSchema: RJSFSchema;
   nodeId: string;
+  uiType: BlockUIType;
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(false);
-  const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set());
+  const brokenOutputs = useBrokenOutputs(nodeId);
+  const [expandedObjects, setExpandedObjects] = useState<
+    Record<string, boolean>
+  >({});
 
-  // Helper function to get the parent object key for a sub-output
-  const getParentKey = (key: string) => {
-    if (key.includes('.')) {
-      return key.split('.')[0];
-    }
-    return null;
+  const showHandles = uiType !== BlockUIType.OUTPUT;
+
+  function toggleObjectExpanded(key: string) {
+    setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function hasConnectedOrBrokenDescendant(
+    schema: RJSFSchema,
+    keyPrefix: string,
+  ): boolean {
+    if (!schema) return false;
+    return Object.entries(schema).some(
+      ([key, fieldSchema]: [string, RJSFSchema]) => {
+        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+        if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
+          return true;
+        if (fieldSchema?.properties)
+          return hasConnectedOrBrokenDescendant(
+            fieldSchema.properties,
+            fullKey,
+          );
+        return false;
+      },
+    );
+  }
+
+  const renderOutputHandles = (
+    schema: RJSFSchema,
+    keyPrefix: string = "",
+    titlePrefix: string = "",
+    connectedOnly: boolean = false,
+  ): React.ReactNode[] => {
+    return Object.entries(schema).map(
+      ([key, fieldSchema]: [string, RJSFSchema]) => {
+        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+        const fieldTitle = titlePrefix + (fieldSchema?.title || key);
+
+        const isConnected = isOutputConnected(nodeId, fullKey);
+        const isBroken = brokenOutputs.has(fullKey);
+        const hasNestedProperties = !!fieldSchema?.properties;
+        const selfIsRelevant = isConnected || isBroken;
+        const descendantIsRelevant =
+          hasNestedProperties &&
+          hasConnectedOrBrokenDescendant(fieldSchema.properties!, fullKey);
+
+        const shouldShow = connectedOnly
+          ? selfIsRelevant || descendantIsRelevant
+          : isOutputVisible || selfIsRelevant || descendantIsRelevant;
+
+        const { displayType, colorClass, hexColor } =
+          getTypeDisplayInfo(fieldSchema);
+        const isExpanded = expandedObjects[fullKey] ?? false;
+
+        // User expanded → show all children; auto-expanded → filter to connected only
+        const shouldRenderChildren = isExpanded || descendantIsRelevant;
+
+        return shouldShow ? (
+          <div
+            key={fullKey}
+            className="flex flex-col items-end gap-2"
+            data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
+          >
+            <div className="relative flex items-center gap-2">
+              {hasNestedProperties && (
+                <button
+                  onClick={() => toggleObjectExpanded(fullKey)}
+                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  aria-label={isExpanded ? "Collapse" : "Expand"}
+                >
+                  {isExpanded ? (
+                    <CaretDownIcon size={12} weight="bold" />
+                  ) : (
+                    <CaretRightIcon size={12} weight="bold" />
+                  )}
+                </button>
+              )}
+              {fieldSchema?.description && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        style={{ marginLeft: 6, cursor: "pointer" }}
+                        aria-label="info"
+                        tabIndex={0}
+                      >
+                        <InfoIcon />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{fieldSchema?.description}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              <Text
+                variant="body"
+                className={cn(
+                  "text-slate-700",
+                  isBroken && "text-red-500 line-through",
+                )}
+              >
+                {fieldTitle}
+              </Text>
+              <Text
+                variant="small"
+                as="span"
+                className={cn(
+                  colorClass,
+                  isBroken && "!text-red-500 line-through",
+                )}
+              >
+                ({displayType})
+              </Text>
+
+              {showHandles && (
+                <OutputNodeHandle
+                  isBroken={isBroken}
+                  field_name={fullKey}
+                  nodeId={nodeId}
+                  hexColor={hexColor}
+                />
+              )}
+            </div>
+
+            {/* Nested properties */}
+            {hasNestedProperties &&
+              shouldRenderChildren &&
+              renderOutputHandles(
+                fieldSchema.properties!,
+                fullKey,
+                "",
+                !isExpanded,
+              )}
+          </div>
+        ) : null;
+      },
+    );
   };
-
-  // Helper function to toggle object expansion
-  const toggleObjectExpansion = (key: string) => {
-    setExpandedObjects(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(key)) {
-        newSet.delete(key);
-      } else {
-        newSet.add(key);
-      }
-      return newSet;
-    });
-  };
-
-
-  // Group outputs by parent object
-  const groupedOutputs = Object.entries(properties).reduce((acc, [key, property]) => {
-    const parentKey = getParentKey(key) || key;
-    if (!acc[parentKey]) {
-      acc[parentKey] = [];
-    }
-    acc[parentKey].push([key, property]);
-    return acc;
-  }, {} as Record<string, [string, any][]>);
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
       <Button
         variant="ghost"
-        className="mr-4 p-0"
+        className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
           variant="body"
-          className="flex items-center gap-2 font-medium text-slate-700"
+          className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Output{" "}
           <CaretDownIcon
@@ -79,99 +192,7 @@ export const OutputHandler = ({
       </Button>
 
       <div className="flex flex-col items-end gap-2">
-        {Object.entries(groupedOutputs).map(([parentKey, outputs]) => {
-          const isParentConnected = isOutputConnected(nodeId, parentKey);
-          const isParentExpanded = expandedObjects.has(parentKey);
-          const shouldShowParent = isParentConnected || isOutputVisible;
-          
-          return (
-            <div key={parentKey} className="flex flex-col items-end gap-1">
-              {/* Parent object output */}
-              {shouldShowParent && (
-                <div className="relative flex items-center gap-2">
-                  <Text
-                    variant="body"
-                    className="flex items-center gap-2 font-medium text-slate-700"
-                  >
-                    {outputs[0][1]?.description && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              style={{ marginLeft: 6, cursor: "pointer" }}
-                              aria-label="info"
-                              tabIndex={0}
-                            >
-                              <InfoIcon />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{outputs[0][1]?.description}</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {outputs[0][1]?.title || parentKey}{" "}
-                    <Text variant="small" as="span" className={getTypeDisplayInfo(outputs[0][1]).colorClass}>
-                      ({getTypeDisplayInfo(outputs[0][1]).displayType})
-                    </Text>
-                  </Text>
-                  <NodeHandle id={parentKey} isConnected={isParentConnected} side="right" />
-                  
-                  {/* Expand/collapse button for objects with sub-outputs */}
-                  {outputs.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      className="p-1 h-6 w-6"
-                      onClick={() => toggleObjectExpansion(parentKey)}
-                    >
-                      <CaretDownIcon
-                        size={12}
-                        weight="bold"
-                        className={`transition-transform ${isParentExpanded ? "rotate-180" : ""}`}
-                      />
-                    </Button>
-                  )}
-                </div>
-              )}
-              
-              {/* Sub-outputs */}
-              {shouldShowParent && isParentExpanded && outputs.slice(1).map(([key, property]) => {
-                const isConnected = isOutputConnected(nodeId, key);
-                const { displayType, colorClass } = getTypeDisplayInfo(property);
-                
-                return (
-                  <div key={key} className="relative flex items-center gap-2 ml-4">
-                    <Text
-                      variant="body"
-                      className="flex items-center gap-2 font-medium text-slate-600"
-                    >
-                      {property?.description && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span
-                                style={{ marginLeft: 6, cursor: "pointer" }}
-                                aria-label="info"
-                                tabIndex={0}
-                              >
-                                <InfoIcon />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>{property?.description}</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                      {property?.title || key}{" "}
-                      <Text variant="small" as="span" className={colorClass}>
-                        ({displayType})
-                      </Text>
-                    </Text>
-                    <NodeHandle id={key} isConnected={isConnected} side="right" />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+        {renderOutputHandles(properties, "", "", !isOutputVisible)}
       </div>
     </div>
   );

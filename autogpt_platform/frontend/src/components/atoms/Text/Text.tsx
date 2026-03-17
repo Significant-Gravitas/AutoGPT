@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 import { As, Variant, variantElementMap, variants } from "./helpers";
 
 type CustomProps = {
@@ -22,7 +23,7 @@ export function Text({
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
-  const combinedClassName = `${variantClasses} ${className}`.trim();
+  const combinedClassName = cn(variantClasses, className);
 
   return React.createElement(
     Element,

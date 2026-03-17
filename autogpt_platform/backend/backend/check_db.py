@@ -5,6 +5,8 @@ from datetime import datetime
 from faker import Faker
 from prisma import Prisma
 
+from backend.data.db import query_raw_with_schema
+
 faker = Faker()
 
 
@@ -15,9 +17,9 @@ async def check_cron_job(db):
 
     try:
         # Check if pg_cron extension exists
-        extension_check = await db.query_raw("CREATE EXTENSION pg_cron;")
+        extension_check = await query_raw_with_schema("CREATE EXTENSION pg_cron;")
         print(extension_check)
-        extension_check = await db.query_raw(
+        extension_check = await query_raw_with_schema(
             "SELECT COUNT(*) as count FROM pg_extension WHERE extname = 'pg_cron'"
         )
         if extension_check[0]["count"] == 0:
@@ -25,7 +27,7 @@ async def check_cron_job(db):
             return False
 
         # Check if the refresh job exists
-        job_check = await db.query_raw(
+        job_check = await query_raw_with_schema(
             """
             SELECT jobname, schedule, command 
             FROM cron.job 
@@ -55,33 +57,33 @@ async def get_materialized_view_counts(db):
     print("-" * 40)
 
     # Get counts from mv_agent_run_counts
-    agent_runs = await db.query_raw(
+    agent_runs = await query_raw_with_schema(
         """
         SELECT COUNT(*) as total_agents, 
                SUM(run_count) as total_runs,
                MAX(run_count) as max_runs,
                MIN(run_count) as min_runs
-        FROM mv_agent_run_counts
+        FROM {schema_prefix}mv_agent_run_counts
     """
     )
 
     # Get counts from mv_review_stats
-    review_stats = await db.query_raw(
+    review_stats = await query_raw_with_schema(
         """
         SELECT COUNT(*) as total_listings,
                SUM(review_count) as total_reviews,
                AVG(avg_rating) as overall_avg_rating
-        FROM mv_review_stats
+        FROM {schema_prefix}mv_review_stats
     """
     )
 
     # Get sample data from StoreAgent view
-    store_agents = await db.query_raw(
+    store_agents = await query_raw_with_schema(
         """
         SELECT COUNT(*) as total_store_agents,
                AVG(runs) as avg_runs,
                AVG(rating) as avg_rating
-        FROM "StoreAgent"
+        FROM {schema_prefix}"StoreAgent"
     """
     )
 

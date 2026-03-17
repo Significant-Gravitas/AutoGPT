@@ -6,7 +6,7 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaOutput,
     BlockType,
     SchemaField,
 )
@@ -119,7 +119,7 @@ class PostToYouTubeBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post_result: PostResponse = SchemaField(description="The result of the post")
         post: PostIds = SchemaField(description="The result of the post")
 

@@ -5,6 +5,8 @@ import asyncio
 
 from prisma import Prisma
 
+from backend.data.db import query_raw_with_schema
+
 
 async def check_store_data(db):
     """Check what store data exists in the database."""
@@ -89,11 +91,11 @@ async def check_store_data(db):
         sa.creator_username,
         sa.categories,
         sa.updated_at
-    FROM "StoreAgent" sa
+    FROM {schema_prefix}"StoreAgent" sa
     LIMIT 10;
     """
 
-    store_agents = await db.query_raw(query)
+    store_agents = await query_raw_with_schema(query)
     print(f"Total store agents in view: {len(store_agents)}")
 
     if store_agents:
@@ -111,22 +113,22 @@ async def check_store_data(db):
     # Check for any APPROVED store listing versions
     query = """
     SELECT COUNT(*) as count
-    FROM "StoreListingVersion"
+    FROM {schema_prefix}"StoreListingVersion"
     WHERE "submissionStatus" = 'APPROVED'
     """
 
-    result = await db.query_raw(query)
+    result = await query_raw_with_schema(query)
     approved_count = result[0]["count"] if result else 0
     print(f"Approved store listing versions: {approved_count}")
 
     # Check for store listings with hasApprovedVersion = true
     query = """
     SELECT COUNT(*) as count
-    FROM "StoreListing"
+    FROM {schema_prefix}"StoreListing"
     WHERE "hasApprovedVersion" = true AND "isDeleted" = false
     """
 
-    result = await db.query_raw(query)
+    result = await query_raw_with_schema(query)
     has_approved_count = result[0]["count"] if result else 0
     print(f"Store listings with approved versions: {has_approved_count}")
 
@@ -134,10 +136,10 @@ async def check_store_data(db):
     query = """
     SELECT COUNT(DISTINCT "agentGraphId") as unique_agents,
            COUNT(*) as total_executions
-    FROM "AgentGraphExecution"
+    FROM {schema_prefix}"AgentGraphExecution"
     """
 
-    result = await db.query_raw(query)
+    result = await query_raw_with_schema(query)
     if result:
         print("\nAgent Graph Executions:")
         print(f"  Unique agents with executions: {result[0]['unique_agents']}")

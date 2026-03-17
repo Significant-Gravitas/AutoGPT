@@ -7,7 +7,7 @@ from prisma.enums import AgentExecutionStatus
 from backend.data.execution import get_graph_executions
 from backend.data.graph import get_graph_metadata
 from backend.data.model import UserExecutionSummaryStats
-from backend.server.v2.store.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[SummaryData]")

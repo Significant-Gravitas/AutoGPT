@@ -8,16 +8,21 @@ settings = Settings()
 def configure_logging():
     import autogpt_libs.logging.config
 
-    if (
-        settings.config.behave_as == BehaveAs.LOCAL
-        or settings.config.app_env == AppEnvironment.LOCAL
-    ):
+    if not is_structured_logging_enabled():
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=False)
     else:
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=True)
 
     # Silence httpx logger
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+def is_structured_logging_enabled() -> bool:
+    """Check if structured logging (cloud logging) is enabled."""
+    return not (
+        settings.config.behave_as == BehaveAs.LOCAL
+        or settings.config.app_env == AppEnvironment.LOCAL
+    )
 
 
 class TruncatedLogger:

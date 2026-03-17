@@ -1371,7 +1371,7 @@ async def create_base(
     if tables:
         params["tables"] = tables
 
-    print(params)
+    logger.debug(f"Creating Airtable base with params: {params}")
 
     response = await Requests().post(
         "https://api.airtable.com/v0/meta/bases",

@@ -45,9 +45,6 @@ class MainApp(AppProcess):
 
         app.main(silent=True)
 
-    def cleanup(self):
-        pass
-
 
 @click.group()
 def main():
@@ -247,11 +244,7 @@ def websocket(server_address: str, graph_exec_id: str):
 
     import websockets.asyncio.client
 
-    from backend.server.ws_api import (
-        WSMessage,
-        WSMethod,
-        WSSubscribeGraphExecutionRequest,
-    )
+    from backend.api.ws_api import WSMessage, WSMethod, WSSubscribeGraphExecutionRequest
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"

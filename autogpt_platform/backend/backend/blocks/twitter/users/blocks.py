@@ -3,6 +3,7 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
+from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -20,7 +21,6 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
 
@@ -48,7 +48,7 @@ class TwitterGetBlockedUsersBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         user_ids: list[str] = SchemaField(description="List of blocked user IDs")
         usernames_: list[str] = SchemaField(description="List of blocked usernames")
         included: dict = SchemaField(
@@ -56,7 +56,6 @@ class TwitterGetBlockedUsersBlock(Block):
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
         next_token: str = SchemaField(description="Next token for pagination")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

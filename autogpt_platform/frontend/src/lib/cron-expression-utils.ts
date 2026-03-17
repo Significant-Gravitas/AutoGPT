@@ -150,31 +150,6 @@ export function humanizeCronExpression(cronExpression: string): string {
     return `Every ${days} at ${formatTime(hour, minute)}`;
   }
 
-  // Handle monthly (e.g., 30 14 1,15 * *)
-  if (
-    dayOfMonth !== "*" &&
-    month === "*" &&
-    dayOfWeek === "*" &&
-    !minute.includes("/") &&
-    !hour.includes("/")
-  ) {
-    const days = dayOfMonth.split(",").map(Number);
-    const dayList = days.join(", ");
-    return `On day ${dayList} of every month at ${formatTime(hour, minute)}`;
-  }
-
-  // Handle yearly (e.g., 30 14 1 1,6,12 *)
-  if (
-    dayOfMonth !== "*" &&
-    month !== "*" &&
-    dayOfWeek === "*" &&
-    !minute.includes("/") &&
-    !hour.includes("/")
-  ) {
-    const months = getMonthNames(month);
-    return `Every year on the 1st day of ${months} at ${formatTime(hour, minute)}`;
-  }
-
   // Handle custom minute intervals with other fields as * (e.g., every N minutes)
   if (
     minute.includes("/") &&
@@ -200,6 +175,7 @@ export function humanizeCronExpression(cronExpression: string): string {
   }
 
   // Handle specific days with custom intervals (e.g., every N days)
+  // This must come BEFORE the monthly check to avoid misinterpreting */N as monthly days
   if (
     dayOfMonth.startsWith("*/") &&
     month === "*" &&
@@ -209,6 +185,35 @@ export function humanizeCronExpression(cronExpression: string): string {
   ) {
     const interval = dayOfMonth.substring(2);
     return `Every ${interval} days at ${formatTime(hour, minute)}`;
+  }
+
+  // Handle monthly (e.g., 30 14 1,15 * *)
+  // Check that dayOfMonth doesn't start with */ to avoid matching day intervals
+  if (
+    dayOfMonth !== "*" &&
+    !dayOfMonth.startsWith("*/") &&
+    month === "*" &&
+    dayOfWeek === "*" &&
+    !minute.includes("/") &&
+    !hour.includes("/")
+  ) {
+    const days = dayOfMonth.split(",").map(Number);
+    const dayList = days.join(", ");
+    return `On day ${dayList} of every month at ${formatTime(hour, minute)}`;
+  }
+
+  // Handle yearly (e.g., 30 14 1 1,6,12 *)
+  // Check that dayOfMonth doesn't start with */ to avoid matching day intervals
+  if (
+    dayOfMonth !== "*" &&
+    !dayOfMonth.startsWith("*/") &&
+    month !== "*" &&
+    dayOfWeek === "*" &&
+    !minute.includes("/") &&
+    !hour.includes("/")
+  ) {
+    const months = getMonthNames(month);
+    return `Every year on the 1st day of ${months} at ${formatTime(hour, minute)}`;
   }
 
   return `Cron Expression: ${cronExpression}`;

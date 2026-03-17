@@ -57,7 +57,7 @@ function Dialog({
         <RXDialog.Root
           open={isOpen}
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !forceOpen) {
               config.handleClose();
               onClose?.();
             }
@@ -70,7 +70,7 @@ function Dialog({
           shouldScaleBackground
           open={isOpen}
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !forceOpen) {
               config.handleClose();
               onClose?.();
             }

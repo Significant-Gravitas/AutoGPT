@@ -38,6 +38,37 @@ To run the AutoGPT Platform, follow these steps:
 
 4. After all the services are in ready state, open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
 
+### Running Just Core services
+
+You can now run the following to enable just the core services.
+
+```
+# For help
+make help
+
+# Run just Supabase + Redis + RabbitMQ
+make start-core
+
+# Stop core services
+make stop-core
+
+# View logs from core services 
+make logs-core
+
+# Run formatting and linting for backend and frontend
+make format
+
+# Run migrations for backend database
+make migrate
+
+# Run backend server
+make run-backend
+
+# Run frontend development server
+make run-frontend
+
+```
+
 ### Docker Compose Commands
 
 Here are some useful Docker Compose commands for managing your AutoGPT Platform:

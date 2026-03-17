@@ -1,22 +1,11 @@
 "use client";
 
-import * as React from "react";
-import { useTimezoneForm } from "./useTimezoneForm";
-import { User } from "@supabase/supabase-js";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
-import { Button } from "@/components/atoms/Button/Button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
 import {
   Form,
   FormControl,
@@ -25,48 +14,26 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/__legacy__/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/__legacy__/ui/select";
+import { Button } from "@/components/atoms/Button/Button";
+import { User } from "@supabase/supabase-js";
+import * as React from "react";
+import { TIMEZONES } from "./helpers";
+import { useTimezoneForm } from "./useTimezoneForm";
 
-type TimezoneFormProps = {
+type Props = {
   user: User;
   currentTimezone?: string;
 };
 
-// Common timezones list - can be expanded later
-const TIMEZONES = [
-  { value: "UTC", label: "UTC (Coordinated Universal Time)" },
-  { value: "America/New_York", label: "Eastern Time (US & Canada)" },
-  { value: "America/Chicago", label: "Central Time (US & Canada)" },
-  { value: "America/Denver", label: "Mountain Time (US & Canada)" },
-  { value: "America/Los_Angeles", label: "Pacific Time (US & Canada)" },
-  { value: "America/Phoenix", label: "Arizona (US)" },
-  { value: "America/Anchorage", label: "Alaska (US)" },
-  { value: "Pacific/Honolulu", label: "Hawaii (US)" },
-  { value: "Europe/London", label: "London (UK)" },
-  { value: "Europe/Paris", label: "Paris (France)" },
-  { value: "Europe/Berlin", label: "Berlin (Germany)" },
-  { value: "Europe/Moscow", label: "Moscow (Russia)" },
-  { value: "Asia/Dubai", label: "Dubai (UAE)" },
-  { value: "Asia/Kolkata", label: "India Standard Time" },
-  { value: "Asia/Shanghai", label: "China Standard Time" },
-  { value: "Asia/Tokyo", label: "Tokyo (Japan)" },
-  { value: "Asia/Seoul", label: "Seoul (South Korea)" },
-  { value: "Asia/Singapore", label: "Singapore" },
-  { value: "Australia/Sydney", label: "Sydney (Australia)" },
-  { value: "Australia/Melbourne", label: "Melbourne (Australia)" },
-  { value: "Pacific/Auckland", label: "Auckland (New Zealand)" },
-  { value: "America/Toronto", label: "Toronto (Canada)" },
-  { value: "America/Vancouver", label: "Vancouver (Canada)" },
-  { value: "America/Mexico_City", label: "Mexico City (Mexico)" },
-  { value: "America/Sao_Paulo", label: "São Paulo (Brazil)" },
-  { value: "America/Buenos_Aires", label: "Buenos Aires (Argentina)" },
-  { value: "Africa/Cairo", label: "Cairo (Egypt)" },
-  { value: "Africa/Johannesburg", label: "Johannesburg (South Africa)" },
-];
-
-export function TimezoneForm({
-  user,
-  currentTimezone = "not-set",
-}: TimezoneFormProps) {
+export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
+  console.log("currentTimezone", currentTimezone);
   // If timezone is not set, try to detect it from the browser
   const effectiveTimezone = React.useMemo(() => {
     if (currentTimezone === "not-set") {
@@ -120,7 +87,7 @@ export function TimezoneForm({
                 </FormItem>
               )}
             />
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} size="small">
               {isLoading ? "Saving..." : "Save timezone"}
             </Button>
           </form>

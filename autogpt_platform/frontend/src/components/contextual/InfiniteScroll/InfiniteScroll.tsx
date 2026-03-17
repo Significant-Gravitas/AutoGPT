@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
+import React from "react";
 import { useInfiniteScroll } from "./useInfiniteScroll";
-import LoadingBox from "@/components/__legacy__/ui/loading";
 
 type InfiniteScrollProps = {
   children: React.ReactNode;
@@ -47,7 +47,7 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
     hasNextPage,
   });
 
-  const defaultLoader = <LoadingBox className="w-full py-4" spinnerSize={12} />;
+  const defaultLoader = <LoadingSpinner size="medium" />;
 
   return (
     <div

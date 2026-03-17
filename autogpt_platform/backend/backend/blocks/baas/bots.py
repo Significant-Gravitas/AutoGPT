@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -23,7 +24,7 @@ class BaasBotJoinMeetingBlock(Block):
     Deploy a bot immediately or at a scheduled start_time to join and record a meeting.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
@@ -57,7 +58,7 @@ class BaasBotJoinMeetingBlock(Block):
             description="Custom metadata to attach to the bot", default={}
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         bot_id: str = SchemaField(description="UUID of the deployed bot")
         join_response: dict = SchemaField(
             description="Full response from join operation"
@@ -103,13 +104,13 @@ class BaasBotLeaveMeetingBlock(Block):
     Force the bot to exit the call.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
         bot_id: str = SchemaField(description="UUID of the bot to remove from meeting")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         left: bool = SchemaField(description="Whether the bot successfully left")
 
     def __init__(self):
@@ -138,7 +139,7 @@ class BaasBotFetchMeetingDataBlock(Block):
     Pull MP4 URL, transcript & metadata for a completed meeting.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
@@ -147,7 +148,7 @@ class BaasBotFetchMeetingDataBlock(Block):
             description="Include transcript data in response", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         mp4_url: str = SchemaField(
             description="URL to download the meeting recording (time-limited)"
         )
@@ -185,13 +186,13 @@ class BaasBotDeleteRecordingBlock(Block):
     Purge MP4 + transcript data for privacy or storage management.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = baas.credentials_field(
             description="Meeting BaaS API credentials"
         )
         bot_id: str = SchemaField(description="UUID of the bot whose data to delete")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         deleted: bool = SchemaField(
             description="Whether the data was successfully deleted"
         )

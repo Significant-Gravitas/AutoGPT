@@ -1,14 +1,84 @@
 import {
   ApiError,
+  getServerAuthToken,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
+import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
+
+// Increase body size limit to 256MB to match backend file upload limit
+export const maxDuration = 300; // 5 minutes timeout for large uploads
+export const dynamic = "force-dynamic";
 
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
-  return `${getAgptServerBaseUrl()}/${backendPath}${queryString}`;
+  return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
+}
+
+/**
+ * Check if this is a workspace file download request that needs binary response handling.
+ */
+function isWorkspaceDownloadRequest(path: string[]): boolean {
+  // Match pattern: api/workspace/files/{id}/download (5 segments)
+  return (
+    path.length == 5 &&
+    path[0] === "api" &&
+    path[1] === "workspace" &&
+    path[2] === "files" &&
+    path[path.length - 1] === "download"
+  );
+}
+
+/**
+ * Handle workspace file download requests with proper binary response streaming.
+ */
+async function handleWorkspaceDownload(
+  req: NextRequest,
+  backendUrl: string,
+): Promise<NextResponse> {
+  const token = await getServerAuthToken();
+
+  const headers: Record<string, string> = {};
+  if (token && token !== "no-token-found") {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(backendUrl, {
+    method: "GET",
+    headers,
+    redirect: "follow", // Follow redirects to signed URLs
+  });
+
+  if (!response.ok) {
+    return NextResponse.json(
+      { error: `Failed to download file: ${response.statusText}` },
+      { status: response.status },
+    );
+  }
+
+  // Fully buffer the response before forwarding.  Passing response.body as a
+  // ReadableStream causes silent truncation in Next.js / Vercel — the last
+  // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
+  const buffer = await response.arrayBuffer();
+
+  const contentType =
+    response.headers.get("Content-Type") || "application/octet-stream";
+  const contentDisposition = response.headers.get("Content-Disposition");
+
+  const responseHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Length": String(buffer.byteLength),
+  };
+
+  if (contentDisposition) {
+    responseHeaders["Content-Disposition"] = contentDisposition;
+  }
+
+  return new NextResponse(buffer, {
+    status: 200,
+    headers: responseHeaders,
+  });
 }
 
 async function handleJsonRequest(
@@ -31,6 +101,7 @@ async function handleJsonRequest(
     backendUrl,
     payload,
     "application/json",
+    req,
   );
 }
 
@@ -39,7 +110,7 @@ async function handleFormDataRequest(
   backendUrl: string,
 ): Promise<any> {
   const formData = await req.formData();
-  return await makeAuthenticatedFileUpload(backendUrl, formData);
+  return await makeAuthenticatedFileUpload(backendUrl, formData, req);
 }
 
 async function handleUrlEncodedRequest(
@@ -55,14 +126,22 @@ async function handleUrlEncodedRequest(
     backendUrl,
     payload,
     "application/x-www-form-urlencoded",
+    req,
   );
 }
 
-async function handleRequestWithoutBody(
+async function handleGetDeleteRequest(
   method: string,
   backendUrl: string,
+  req: NextRequest,
 ): Promise<any> {
-  return await makeAuthenticatedRequest(method, backendUrl);
+  return await makeAuthenticatedRequest(
+    method,
+    backendUrl,
+    undefined,
+    "application/json",
+    req,
+  );
 }
 
 function createUnsupportedContentTypeResponse(
@@ -167,13 +246,17 @@ async function handler(
   };
 
   try {
+    // Handle workspace file downloads separately (binary response)
+    if (method === "GET" && isWorkspaceDownloadRequest(path)) {
+      return await handleWorkspaceDownload(req, backendUrl);
+    }
+
     if (method === "GET" || method === "DELETE") {
-      responseBody = await handleRequestWithoutBody(method, backendUrl);
+      responseBody = await handleGetDeleteRequest(method, backendUrl, req);
     } else if (contentType?.includes("application/json")) {
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {

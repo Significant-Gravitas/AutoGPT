@@ -7,6 +7,13 @@ from zerobouncesdk.zb_validate_response import (
     ZBValidateSubStatus,
 )
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.zerobounce._api import ZeroBounceClient
 from backend.blocks.zerobounce._auth import (
     TEST_CREDENTIALS,
@@ -14,7 +21,6 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsField, SchemaField
 
 
@@ -82,7 +88,7 @@ class Response(BaseModel):
 class ValidateEmailsBlock(Block):
     """Search for people in Apollo"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         email: str = SchemaField(
             description="Email to validate",
         )
@@ -94,7 +100,7 @@ class ValidateEmailsBlock(Block):
             description="ZeroBounce credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         response: Response = SchemaField(
             description="Response from ZeroBounce",
         )

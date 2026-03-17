@@ -1,13 +1,7 @@
 "use client";
-import { Button } from "@/components/atoms/Button/Button";
-import { useRouter } from "next/navigation";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+
 import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
-import { Trash2Icon } from "lucide-react";
-import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
-import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Table,
   TableBody,
@@ -16,16 +10,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import { CredentialsProviderName } from "@/lib/autogpt-server-api";
+import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { providerIcons } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
+import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import LoadingBox from "@/components/__legacy__/ui/loading";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
+import { Trash2Icon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export default function UserIntegrationsPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
+
+  useEffect(() => {
+    document.title = "Integrations – AutoGPT Platform";
+  }, []);
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
@@ -111,6 +116,9 @@ export default function UserIntegrationsPage() {
       "63a6e279-2dc2-448e-bf57-85776f7176dc", // ZeroBounce
       "9aa1bde0-4947-4a70-a20c-84daa3850d52", // Google Maps
       "d44045af-1c33-4833-9e19-752313214de2", // Llama API
+      "c4e6d1a0-3b5f-4789-a8e2-9b123456789f", // V0 by Vercel
+      "a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d", // Webshare Proxy
+      "8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f", // OpenWeatherMap
     ],
     [],
   );

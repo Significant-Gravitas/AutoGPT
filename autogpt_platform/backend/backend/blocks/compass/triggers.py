@@ -1,11 +1,12 @@
 from pydantic import BaseModel
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockManualWebhookConfig,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
 from backend.integrations.providers import ProviderName
@@ -27,10 +28,10 @@ class TranscriptionDataModel(BaseModel):
 
 
 class CompassAITriggerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         payload: TranscriptionDataModel = SchemaField(hidden=True)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         transcription: str = SchemaField(
             description="The contents of the compass transcription."
         )

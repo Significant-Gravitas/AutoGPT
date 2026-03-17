@@ -81,24 +81,7 @@ export const MainDashboardPage = () => {
           <SubmissionsLoading />
         ) : submissions && submissions.submissions.length > 0 ? (
           <AgentTable
-            agents={submissions.submissions.map((submission, index) => ({
-              id: index,
-              agent_id: submission.agent_id,
-              agent_version: submission.agent_version,
-              sub_heading: submission.sub_heading,
-              agentName: submission.name,
-              description: submission.description,
-              imageSrc: submission.image_urls || [""],
-              dateSubmitted: submission.date_submitted,
-              status: submission.status,
-              runs: submission.runs,
-              rating: submission.rating,
-              video_url: submission.video_url || undefined,
-              categories: submission.categories,
-              slug: submission.slug,
-              store_listing_version_id:
-                submission.store_listing_version_id || undefined,
-            }))}
+            storeAgentSubmissions={submissions.submissions}
             onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}
             onEditSubmission={onEditSubmission}
