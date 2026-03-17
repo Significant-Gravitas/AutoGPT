@@ -208,21 +208,15 @@ class JoyTrustVerifyBlock(Block):
         is_trusted: bool = SchemaField(
             description="Whether the agent meets trust criteria"
         )
-        trust_score: float = SchemaField(
-            description="Agent's trust score (0.0-2.0)"
-        )
+        trust_score: float = SchemaField(description="Agent's trust score (0.0-2.0)")
         vouch_count: int = SchemaField(
             description="Number of vouches the agent has received"
         )
         verified: bool = SchemaField(
             description="Whether the agent has a verified badge"
         )
-        capabilities: list = SchemaField(
-            description="List of agent capabilities"
-        )
-        error: str = SchemaField(
-            description="Error message if verification failed"
-        )
+        capabilities: list = SchemaField(description="List of agent capabilities")
+        error: str = SchemaField(description="Error message if verification failed")
 
     def __init__(self):
         """Initialize the JoyTrustVerifyBlock with default configuration."""
@@ -381,12 +375,8 @@ class JoyDiscoverAgentsBlock(Block):
         agents: list = SchemaField(
             description="List of trusted agents matching criteria"
         )
-        count: int = SchemaField(
-            description="Number of agents found"
-        )
-        error: str = SchemaField(
-            description="Error message if discovery failed"
-        )
+        count: int = SchemaField(description="Number of agents found")
+        error: str = SchemaField(description="Error message if discovery failed")
 
     def __init__(self):
         """Initialize the JoyDiscoverAgentsBlock with default configuration."""
@@ -548,12 +538,8 @@ class JoyShouldTrustBlock(Block):
     class Output(BlockSchemaOutput):
         """Output schema for JoyShouldTrustBlock."""
 
-        trusted: bool = SchemaField(
-            description="Whether the agent should be trusted"
-        )
-        reason: str = SchemaField(
-            description="Reason for the trust decision"
-        )
+        trusted: bool = SchemaField(description="Whether the agent should be trusted")
+        reason: str = SchemaField(description="Reason for the trust decision")
 
     def __init__(self):
         """Initialize the JoyShouldTrustBlock with default configuration."""
