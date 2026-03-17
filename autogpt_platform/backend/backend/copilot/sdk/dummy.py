@@ -20,8 +20,12 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from ..constants import FRIENDLY_TRANSIENT_MSG
-from ..model import ChatSession
+from ..constants import (
+    COPILOT_ERROR_PREFIX,
+    COPILOT_RETRYABLE_ERROR_PREFIX,
+    FRIENDLY_TRANSIENT_MSG,
+)
+from ..model import ChatMessage, ChatSession, get_chat_session, upsert_chat_session
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -35,6 +39,14 @@ from ..response_model import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _safe_upsert(session: ChatSession) -> None:
+    """Best-effort session persist — skip silently if DB is unavailable."""
+    try:
+        await upsert_chat_session(session)
+    except Exception:
+        logger.debug("[TEST MODE] Could not persist session (DB unavailable)")
 
 
 def _has_keyword(message: str | None, keyword: str) -> bool:
@@ -66,6 +78,16 @@ async def stream_chat_completion_dummy(
         f"[TEST MODE] Using dummy copilot streaming for session {session_id}"
     )
 
+    # Load session from DB (matches SDK service behaviour) so error markers
+    # and the assistant reply are persisted and survive page refresh.
+    # Best-effort: skip if DB is unavailable (e.g. unit tests).
+    if session is None:
+        try:
+            session = await get_chat_session(session_id, user_id)
+        except Exception:
+            logger.debug("[TEST MODE] Could not load session (DB unavailable)")
+            session = None
+
     message_id = str(uuid.uuid4())
     text_block_id = str(uuid.uuid4())
 
@@ -82,7 +104,15 @@ async def stream_chat_completion_dummy(
             await asyncio.sleep(0.1)
         yield StreamTextEnd(id=text_block_id)
         yield StreamFinishStep()
-        # Then emit a retryable error — frontend should show "Try Again"
+        # Persist retryable marker so "Try Again" button shows after refresh
+        if session:
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} {FRIENDLY_TRANSIENT_MSG}",
+                )
+            )
+            await _safe_upsert(session)
         yield StreamError(
             errorText=FRIENDLY_TRANSIENT_MSG,
             code="transient_api_error",
@@ -92,10 +122,17 @@ async def stream_chat_completion_dummy(
     # --- Magic keyword: fatal error (non-retryable) -------------------------
     if _has_keyword(message, "__test_fatal_error__"):
         yield StreamFinishStep()
-        yield StreamError(
-            errorText="Internal SDK error: model refused to respond",
-            code="sdk_error",
-        )
+        error_msg = "Internal SDK error: model refused to respond"
+        # Persist non-retryable error marker
+        if session:
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_ERROR_PREFIX} {error_msg}",
+                )
+            )
+            await _safe_upsert(session)
+        yield StreamError(errorText=error_msg, code="sdk_error")
         return
 
     # --- Magic keyword: slow response ---------------------------------------
@@ -112,5 +149,11 @@ async def stream_chat_completion_dummy(
         yield StreamTextDelta(id=text_block_id, delta=text)
         await asyncio.sleep(delay)
     yield StreamTextEnd(id=text_block_id)
+
+    # Persist the assistant reply so it survives page refresh
+    if session:
+        session.messages.append(ChatMessage(role="assistant", content=dummy_response))
+        await _safe_upsert(session)
+
     yield StreamFinishStep()
     yield StreamFinish()
