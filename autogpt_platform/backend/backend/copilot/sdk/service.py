@@ -202,9 +202,11 @@ def _resolve_sdk_model() -> str | None:
     if "/" in model:
         model = model.split("/", 1)[1]
     # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
-    # Anthropic API requires hyphens (claude-opus-4-6).  Normalise so the
-    # model ID works regardless of routing mode.
-    return model.replace(".", "-")
+    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
+    # when NOT using OpenRouter to avoid breaking OpenRouter's model lookup.
+    if not config.use_openrouter:
+        model = model.replace(".", "-")
+    return model
 
 
 @functools.cache
