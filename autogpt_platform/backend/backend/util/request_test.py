@@ -205,9 +205,9 @@ async def test_large_header_handling():
     ],
 )
 def test_is_ip_blocked(ip: str, expected_blocked: bool):
-    assert _is_ip_blocked(ip) == expected_blocked, (
-        f"Expected _is_ip_blocked({ip!r}) == {expected_blocked}"
-    )
+    assert (
+        _is_ip_blocked(ip) == expected_blocked
+    ), f"Expected _is_ip_blocked({ip!r}) == {expected_blocked}"
 
 
 @pytest.mark.parametrize(
