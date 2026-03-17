@@ -26,6 +26,9 @@ export function LibrarySubSection({ tabs, activeTab, onTabChange }: Props) {
 
   useEffect(() => {
     registerFavoritesTabRef(favoritesRef.current);
+    return () => {
+      registerFavoritesTabRef(null);
+    };
   }, [registerFavoritesTabRef]);
 
   return (

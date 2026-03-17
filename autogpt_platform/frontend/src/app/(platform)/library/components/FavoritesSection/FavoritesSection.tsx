@@ -46,6 +46,9 @@ export function FavoritesSection({
 
   useEffect(() => {
     registerFavoritesTabRef(favoritesRef.current);
+    return () => {
+      registerFavoritesTabRef(null);
+    };
   }, [registerFavoritesTabRef]);
 
   return (
