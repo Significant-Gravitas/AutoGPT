@@ -6,7 +6,10 @@ export interface DeleteTarget {
   title: string | null | undefined;
 }
 
+const isClient = typeof window !== "undefined";
+
 function loadCompletedSessions(): Set<string> {
+  if (!isClient) return new Set();
   const raw = storage.get(Key.COPILOT_COMPLETED_SESSIONS);
   if (!raw) return new Set();
   try {
@@ -77,6 +80,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   },
 
   isNotificationsEnabled:
+    isClient &&
     storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
     typeof Notification !== "undefined" &&
     Notification.permission === "granted",
@@ -85,7 +89,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     set({ isNotificationsEnabled: enabled });
   },
 
-  isSoundEnabled: storage.get(Key.COPILOT_SOUND_ENABLED) !== "false",
+  isSoundEnabled:
+    !isClient || storage.get(Key.COPILOT_SOUND_ENABLED) !== "false",
   toggleSound: () =>
     set((state) => {
       const next = !state.isSoundEnabled;
