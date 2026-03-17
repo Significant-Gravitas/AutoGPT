@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
+    from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -193,7 +194,7 @@ async def _search_library(
     )
 
 
-def _marketplace_agent_to_info(agent: Any) -> AgentInfo:
+def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:
     """Convert a marketplace agent (StoreAgent or StoreAgentDetails) to an AgentInfo."""
     return AgentInfo(
         id=f"{agent.creator}/{agent.slug}",
