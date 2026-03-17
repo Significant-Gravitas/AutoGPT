@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 from prisma.enums import ContentType
@@ -17,6 +18,11 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_UUID_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    re.IGNORECASE,
+)
 
 _TARGET_RESULTS = 10
 # Over-fetch to compensate for post-hoc filtering of graph-only blocks.
@@ -52,7 +58,8 @@ class FindBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for available blocks by name or description. "
+            "Search for available blocks by name or description, or look up a "
+            "specific block by its ID. "
             "Blocks are reusable components that perform specific tasks like "
             "sending emails, making API calls, processing text, etc. "
             "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
@@ -68,7 +75,8 @@ class FindBlockTool(BaseTool):
                 "query": {
                     "type": "string",
                     "description": (
-                        "Search query to find blocks by name or description. "
+                        "Search query to find blocks by name or description, "
+                        "or a block ID (UUID) for direct lookup. "
                         "Use keywords like 'email', 'http', 'text', 'ai', etc."
                     ),
                 },
@@ -113,11 +121,46 @@ class FindBlockTool(BaseTool):
 
         if not query:
             return ErrorResponse(
-                message="Please provide a search query",
+                message="Please provide a search query or block ID",
                 session_id=session_id,
             )
 
         try:
+            # Direct ID lookup if query looks like a UUID
+            if _UUID_PATTERN.match(query):
+                block = get_block(query)
+                if block and not block.disabled:
+                    if (
+                        block.block_type not in COPILOT_EXCLUDED_BLOCK_TYPES
+                        and block.id not in COPILOT_EXCLUDED_BLOCK_IDS
+                    ):
+                        summary = BlockInfoSummary(
+                            id=query,
+                            name=block.name,
+                            description=(
+                                block.optimized_description or block.description or ""
+                            ),
+                            categories=[c.value for c in block.categories],
+                        )
+                        if include_schemas:
+                            info = block.get_info()
+                            summary.input_schema = info.inputSchema
+                            summary.output_schema = info.outputSchema
+                            summary.static_output = info.staticOutput
+
+                        return BlockListResponse(
+                            message=(
+                                f"Found block '{block.name}' by ID. "
+                                "To see inputs/outputs and execute it, use "
+                                "run_block with the block's 'id' - providing "
+                                "no inputs."
+                            ),
+                            blocks=[summary],
+                            count=1,
+                            query=query,
+                            session_id=session_id,
+                        )
+
             # Search for blocks using hybrid search
             results, total = await search().unified_hybrid_search(
                 query=query,

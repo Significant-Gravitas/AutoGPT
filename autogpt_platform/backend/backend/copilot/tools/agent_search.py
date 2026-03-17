@@ -29,6 +29,9 @@ _UUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Matches "creator/slug" identifiers used in the marketplace
+_CREATOR_SLUG_PATTERN = re.compile(r"^[\w-]+/[\w-]+$")
+
 # Keywords that should be treated as "list all" rather than a literal search
 _LIST_ALL_KEYWORDS = frozenset({"all", "*", "everything", "any", ""})
 
@@ -72,23 +75,41 @@ async def search_agents(
     agents: list[AgentInfo] = []
     try:
         if source == "marketplace":
-            logger.info(f"Searching marketplace for: {query}")
-            results = await store_db().get_store_agents(search_query=query, page_size=5)
-            for agent in results.agents:
-                agents.append(
-                    AgentInfo(
-                        id=f"{agent.creator}/{agent.slug}",
-                        name=agent.agent_name,
-                        description=agent.description or "",
-                        source="marketplace",
-                        in_library=False,
-                        creator=agent.creator,
-                        category="general",
-                        rating=agent.rating,
-                        runs=agent.runs,
-                        is_featured=False,
-                    )
+            # Direct lookup if query matches "creator/slug" pattern
+            if _CREATOR_SLUG_PATTERN.match(query):
+                creator, slug = query.split("/", 1)
+                logger.info(
+                    "Query looks like creator/slug, trying direct lookup: %s",
+                    query,
                 )
+                agent_info = await _get_marketplace_agent_by_slug(creator, slug)
+                if agent_info:
+                    agents.append(agent_info)
+                    logger.info(
+                        "Found marketplace agent by direct lookup: %s",
+                        agent_info.name,
+                    )
+
+            if not agents:
+                logger.info("Searching marketplace for: %s", query)
+                results = await store_db().get_store_agents(
+                    search_query=query, page_size=5
+                )
+                for agent in results.agents:
+                    agents.append(
+                        AgentInfo(
+                            id=f"{agent.creator}/{agent.slug}",
+                            name=agent.agent_name,
+                            description=agent.description or "",
+                            source="marketplace",
+                            in_library=False,
+                            creator=agent.creator,
+                            category="general",
+                            rating=agent.rating,
+                            runs=agent.runs,
+                            is_featured=False,
+                        )
+                    )
         else:
             if _is_uuid(query):
                 logger.info(f"Query looks like UUID, trying direct lookup: {query}")
@@ -212,6 +233,37 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
         input_schema=agent.input_schema,
         output_schema=agent.output_schema,
     )
+
+
+async def _get_marketplace_agent_by_slug(creator: str, slug: str) -> AgentInfo | None:
+    """Fetch a marketplace agent by creator/slug identifier."""
+    try:
+        details = await store_db().get_store_agent_details(creator, slug)
+        return AgentInfo(
+            id=f"{details.creator}/{details.slug}",
+            name=details.agent_name,
+            description=details.description or "",
+            source="marketplace",
+            in_library=False,
+            creator=details.creator,
+            category="general",
+            rating=details.rating,
+            runs=details.runs,
+            is_featured=False,
+        )
+    except NotFoundError:
+        logger.debug("Marketplace agent not found: %s/%s", creator, slug)
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            "Could not fetch marketplace agent %s/%s: %s",
+            creator,
+            slug,
+            e,
+            exc_info=True,
+        )
+    return None
 
 
 async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
