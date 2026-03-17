@@ -27,7 +27,6 @@ class StepDescription(pydantic.BaseModel):
     action: str
     service: str
     parameters: dict[str, Any] = pydantic.Field(default_factory=dict)
-    connections_to: list[int] = pydantic.Field(default_factory=list)
     typed_connections: list[Connection] = pydantic.Field(default_factory=list)
 
 

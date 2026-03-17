@@ -34,7 +34,6 @@ import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
-import backend.api.features.workflow_import
 import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
@@ -355,12 +354,6 @@ app.include_router(
     tags=["oauth"],
     prefix="/api/oauth",
 )
-app.include_router(
-    backend.api.features.workflow_import.router,
-    tags=["v2", "import"],
-    prefix="/api/import",
-)
-
 app.mount("/external-api", external_api)
 
 

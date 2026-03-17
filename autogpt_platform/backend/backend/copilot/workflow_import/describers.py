@@ -69,7 +69,7 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
                 action=action,
                 service=service,
                 parameters=clean_params,
-                connections_to=[],  # filled below
+                typed_connections=[],  # filled below
             )
         )
 
@@ -94,7 +94,6 @@ def describe_n8n_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
                         continue
                     target_idx = node_index.get(target_name)
                     if target_idx is not None:
-                        steps[source_idx].connections_to.append(target_idx)
                         steps[source_idx].typed_connections.append(
                             Connection(
                                 target_step=target_idx,
@@ -142,13 +141,12 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 
         # Check for routes (branching) — routers don't connect sequentially
         routes = module.get("routes", [])
+        typed_conns: list[Connection] = []
         if routes:
-            # Router modules branch; don't assign sequential connections
-            connections_to: list[int] = []
             clean_params["_has_routes"] = len(routes)
-        else:
-            # Make.com flows are sequential by default; each step connects to next
-            connections_to = [i + 1] if i < len(valid_modules) - 1 else []
+        elif i < len(valid_modules) - 1:
+            # Make.com flows are sequential by default
+            typed_conns = [Connection(target_step=i + 1, connection_type="main")]
 
         steps.append(
             StepDescription(
@@ -156,7 +154,7 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
                 action=action,
                 service=service,
                 parameters=clean_params,
-                connections_to=connections_to,
+                typed_connections=typed_conns,
             )
         )
 
@@ -193,7 +191,11 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
 
         # Zapier zaps are linear: each step connects to next
-        connections_to = [i + 1] if i < len(valid_steps) - 1 else []
+        typed_conns = (
+            [Connection(target_step=i + 1, connection_type="main")]
+            if i < len(valid_steps) - 1
+            else []
+        )
 
         steps.append(
             StepDescription(
@@ -201,7 +203,7 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
                 action=action_desc,
                 service=app,
                 parameters=clean_params,
-                connections_to=connections_to,
+                typed_connections=typed_conns,
             )
         )
 

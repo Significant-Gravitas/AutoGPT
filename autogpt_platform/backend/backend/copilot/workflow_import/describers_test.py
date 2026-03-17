@@ -37,8 +37,10 @@ class TestDescribeN8nWorkflow:
         assert desc.name == "Email on Webhook"
         assert desc.source_format == SourcePlatform.N8N
         assert len(desc.steps) == 2
-        assert desc.steps[0].connections_to == [1]
-        assert desc.steps[1].connections_to == []
+        assert len(desc.steps[0].typed_connections) == 1
+        assert desc.steps[0].typed_connections[0].target_step == 1
+        assert desc.steps[0].typed_connections[0].connection_type == "main"
+        assert desc.steps[1].typed_connections == []
         assert desc.trigger_type is not None
 
     def test_step_extraction(self):
@@ -86,8 +88,9 @@ class TestDescribeMakeWorkflow:
         assert desc.source_format == SourcePlatform.MAKE
         assert len(desc.steps) == 2
         # Sequential: step 0 connects to step 1
-        assert desc.steps[0].connections_to == [1]
-        assert desc.steps[1].connections_to == []
+        assert len(desc.steps[0].typed_connections) == 1
+        assert desc.steps[0].typed_connections[0].target_step == 1
+        assert desc.steps[1].typed_connections == []
         assert desc.trigger_type is not None  # "watch" in module name
 
     def test_service_extraction(self):
@@ -115,7 +118,8 @@ class TestDescribeZapierWorkflow:
         assert desc.name == "Gmail to Slack"
         assert desc.source_format == SourcePlatform.ZAPIER
         assert len(desc.steps) == 2
-        assert desc.steps[0].connections_to == [1]
+        assert len(desc.steps[0].typed_connections) == 1
+        assert desc.steps[0].typed_connections[0].target_step == 1
         assert desc.trigger_type == "Gmail"
 
 

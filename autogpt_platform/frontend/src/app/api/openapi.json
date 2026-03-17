@@ -2920,46 +2920,6 @@
         }
       }
     },
-    "/api/import/workflow": {
-      "post": {
-        "tags": ["v2", "import"],
-        "summary": "Import a workflow from another tool (n8n, Make.com, Zapier)",
-        "description": "Parse an external workflow and return a CoPilot prompt.\n\nAccepts either raw workflow JSON or a template URL (n8n only for now).\nThe workflow is parsed and described, then a structured prompt is returned\nfor CoPilot's agent-generator to handle the actual conversion.",
-        "operationId": "postV2Import a workflow from another tool (n8n, make.com, zapier)",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/ImportWorkflowRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportWorkflowResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -10010,35 +9970,6 @@
         "type": "object",
         "required": ["image_url"],
         "title": "ImageURLResponse"
-      },
-      "ImportWorkflowRequest": {
-        "properties": {
-          "workflow_json": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Workflow Json"
-          },
-          "template_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Template Url"
-          }
-        },
-        "type": "object",
-        "title": "ImportWorkflowRequest",
-        "description": "Request body for importing an external workflow."
-      },
-      "ImportWorkflowResponse": {
-        "properties": {
-          "copilot_prompt": { "type": "string", "title": "Copilot Prompt" },
-          "source_format": { "type": "string", "title": "Source Format" },
-          "source_name": { "type": "string", "title": "Source Name" }
-        },
-        "type": "object",
-        "required": ["copilot_prompt", "source_format", "source_name"],
-        "title": "ImportWorkflowResponse",
-        "description": "Response from parsing an external workflow.\n\nReturns a CoPilot prompt that the frontend uses to redirect the user\nto CoPilot, where the agentic agent-generator handles the conversion."
       },
       "InputValidationErrorResponse": {
         "properties": {

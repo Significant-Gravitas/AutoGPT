@@ -110,10 +110,15 @@ class ImportWorkflowTool(BaseTool):
         # Step 2: Detect format
         fmt = detect_format(workflow_json)
         if fmt == SourcePlatform.UNKNOWN:
+            logger.info(
+                "Unknown workflow format, top-level keys: %s",
+                list(workflow_json.keys())[:10],
+            )
             return ErrorResponse(
                 message=(
-                    "Could not detect workflow format. Supported: n8n, Make.com, Zapier. "
-                    f"Found top-level keys: {list(workflow_json.keys())[:10]}"
+                    "Could not detect workflow format. "
+                    "Supported formats: n8n, Make.com, Zapier. "
+                    "Ensure you're providing a valid workflow export."
                 ),
                 session_id=session_id,
             )
