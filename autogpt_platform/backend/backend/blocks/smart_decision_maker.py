@@ -1050,8 +1050,10 @@ class SmartDecisionMakerBlock(Block):
 
         values = input_data.prompt_values
         if values:
-            input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
-            input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
+            input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = await llm.fmt.format_string(
+                input_data.sys_prompt, values
+            )
 
         if input_data.sys_prompt and not any(
             p["role"] == "system" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)

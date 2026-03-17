@@ -66,7 +66,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
 - **List comprehensions** over manual loop-and-append
 - **Early return** — guard clauses first, avoid deep nesting
-- **Lazy `%s` logging** — `logger.info("Processing %s items", count)` not `logger.info(f"Processing {count} items")`
+- **f-strings vs printf syntax in log statements** — Use `%s` for deferred interpolation in `debug` statements, f-strings elsewhere for readability: `logger.debug("Processing %s items", count)`, `logger.info(f"Processing {count} items")`
 - **Sanitize error paths** — `os.path.basename()` in error messages to avoid leaking directory structure
 - **TOCTOU awareness** — avoid check-then-act patterns for file access and credit charging
 - **`Security()` vs `Depends()`** — use `Security()` for auth deps to get proper OpenAPI security spec
@@ -75,6 +75,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **SSE protocol** — `data:` lines for frontend-parsed events (must match Zod schema), `: comment` lines for heartbeats/status
 - **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
 - **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
+- **Top-down ordering** — define the main/public function or class first, then the helpers it uses below. A reader should encounter high-level logic before implementation details.
 
 ## Testing Approach
 
